@@ -2174,16 +2174,11 @@ def first_time_dashboard():
         logger.error(f"Error checking user data: {str(e)}")
         return redirect('/static/index.html')
 
-@app.route('/')
-def landing_page():
-    """Landing page for new users"""
-    # Check if user is already logged in
-    if current_user.is_authenticated:
-        # If user is logged in, redirect to dashboard
-        return redirect('/static/index.html')
-
-    # For new/unauthenticated users, show landing page
-    return render_template('landing.html')
+# Removed duplicate / route - keeping only the first one
+# FIXED: There were two @app.route('/') definitions causing conflicts
+# - Line 1679: home() function (KEPT)
+# - Line 2176: landing_page() function (REMOVED)
+# This was causing 404 errors on /landing route
 
 
 @app.route('/landing')

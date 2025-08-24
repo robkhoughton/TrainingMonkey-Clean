@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Training Monkey - The Training Status Your Garmin Can't Show You</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Patent-pending training load divergence analysis for trail runners. Prevent injuries and optimize performance with insights your Garmin can't provide.">
+    <meta name="keywords" content="trail running, training load, injury prevention, ACWR, training analysis, divergence, performance optimization">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Your Training Monkey - Smart Training Analysis for Trail Runners">
+    <meta property="og:description" content="See your training divergence - the key insight missing from every other fitness platform">
+    <meta property="og:url" content="http://localhost:5000">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            overflow-x: hidden;
+        }
+
+        /* Compact Header */
+        .header {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%),
+                        url('wireframe-runner.jpg') center/cover;
+            color: white;
+            text-align: center;
+            padding: 2.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+            min-height: 400px;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+            opacity: 0.3;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .header h1 {
+            font-size: 3.2rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .header .subtitle {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.95;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .header .description {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* Demo Section */
+        .demo-section {
+            background: #f8fafc;
+            padding: 2rem;
+        }
+
+        .demo-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .demo-content {
+            text-align: left;
+        }
+
+        .demo-title {
+            font-size: 2.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .demo-subtitle {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 1.5rem;
+            line-height: 1.7;
+        }
+
+        .demo-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .demo-features li {
+            padding: 0.5rem 0;
+            position: relative;
+            padding-left: 2rem;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .demo-features li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .chart-wrapper {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+            min-height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chart-placeholder {
+            text-align: center;
+            color: #64748b;
+        }
+
+        .chart-placeholder h3 {
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        /* Steps Section */
+        .steps-section {
+            background: white;
+            padding: 2rem;
+        }
+
+        .steps-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .steps-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .steps-subtitle {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            text-align: left;
+        }
+
+        .step {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+            position: relative;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .step-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .step-description {
+            color: #64748b;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            padding: 2.5rem 2rem;
+        }
+
+        .cta-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .cta-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .cta-description {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: #FF5722;
+            color: white;
+            padding: 1rem 2.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 87, 34, 0.4);
+        }
+
+        .cta-button:hover {
+            background: #E64A19;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 87, 34, 0.6);
+        }
+
+        /* Value Propositions Section */
+        .value-section {
+            background: #f8fafc;
+            padding: 3rem 2rem;
+        }
+
+        .value-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .value-item {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .value-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .value-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .value-description {
+            color: #64748b;
+            line-height: 1.6;
+        }
+
+        /* How It Works Section */
+        .how-section {
+            background: white;
+            padding: 3rem 2rem;
+        }
+
+        .how-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 3rem;
+            color: #1e293b;
+        }
+
+        .how-steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .how-steps .step {
+            text-align: center;
+            padding: 2rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: none;
+        }
+
+        .how-steps .step-number {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            font-size: 1.2rem;
+        }
+
+        .how-steps .step-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .how-steps .step-description {
+            color: #64748b;
+            line-height: 1.6;
+        }
+
+        /* Patent Section */
+        .patent-section {
+            background: #1e293b;
+            color: white;
+            padding: 1.5rem 2rem;
+            text-align: center;
+        }
+
+        .patent-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Navigation */
+        .nav {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            z-index: 10;
+        }
+
+        .nav a {
+            display: inline-block;
+            background: rgba(255,255,255,0.9);
+            color: #1e293b;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.2s ease;
+        }
+
+        .nav a:hover {
+            background: rgba(255,255,255,1);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .demo-container {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+                text-align: center;
+            }
+
+            .demo-content {
+                text-align: center;
+            }
+
+            .steps-grid,
+            .value-grid,
+            .how-steps {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                min-height: 350px;
+                padding: 2rem 1rem;
+            }
+
+            .header h1 {
+                font-size: 2.5rem;
+            }
+
+            .header .subtitle {
+                font-size: 1.25rem;
+            }
+
+            .demo-section,
+            .steps-section,
+            .cta-section {
+                padding: 1.5rem 1rem;
+            }
+
+            .demo-title {
+                font-size: 1.8rem;
+            }
+
+            .cta-title {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="above-fold">
+        <nav class="nav">
+            <a href="/login">Sign In</a>
+        </nav>
+
+        <!-- Header Section -->
+        <section class="header">
+            <div class="header-content">
+                <h1>Your Training Monkey</h1>
+                <p class="subtitle">The Training Status Your Garmin Can't Show You</p>
+                <p class="description">Patent-pending divergence analysis reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
+            </div>
+        </section>
+
+        <!-- Demo Section -->
+        <section class="demo-section">
+            <div class="demo-container">
+                <!-- Left Column: Content -->
+                <div class="demo-content">
+                    <h2 class="demo-title">See Your Real Training Divergence</h2>
+                    <p class="demo-subtitle">This is live data from our founder's trail running training—see how the system analyzes training load balance in real-time.</p>
+
+                    <ul class="demo-features">
+                        <li>Patent-pending divergence analysis reveals training stress</li>
+                        <li>External load tracks distance + elevation impact</li>
+                        <li>Internal load monitors heart rate response</li>
+                        <li>Optimal zones prevent overtraining and injury</li>
+                        <li>Real-time insights guide daily training decisions</li>
+                    </ul>
+
+                    <div style="margin-top: 2rem;">
+                        <a href="/auth/strava" class="cta-button">
+                            Try With Your Data
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right Column: Chart Placeholder -->
+                <div class="chart-wrapper">
+                    <div class="chart-placeholder">
+                        <h3>Interactive Training Chart</h3>
+                        <p>This would show a live ACWR chart with training divergence analysis</p>
+                        <p><em>Note: Chart requires Flask app to be running for live data</em></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Steps Section -->
+        <section class="steps-section">
+            <div class="steps-container">
+                <h2 class="steps-title">Start Your Training Analysis</h2>
+                <p class="steps-subtitle">Connect your Strava account and get immediate insights into your training patterns</p>
+
+                <div class="steps-grid">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3 class="step-title">Connect Strava</h3>
+                        <p class="step-description">Securely link your Strava account to import your training history and ongoing activities.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3 class="step-title">Analyze Patterns</h3>
+                        <p class="step-description">Our AI analyzes your training load balance and identifies potential overtraining risks.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3 class="step-title">Train Smarter</h3>
+                        <p class="step-description">Get daily recommendations to optimize performance while avoiding injury.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Value Propositions -->
+    <section class="value-section">
+        <div class="value-container">
+            <div class="value-grid">
+                <div class="value-item">
+                    <div class="value-icon">🎯</div>
+                    <h3 class="value-title">Find Your Training Sweet Spot</h3>
+                    <p class="value-description">Stop second-guessing whether to push hard or rest. Our algorithm shows you exactly when your body and training are in perfect harmony.</p>
+                </div>
+
+                <div class="value-item">
+                    <div class="value-icon">🛡️</div>
+                    <h3 class="value-title">Prevent Injuries Before They Happen</h3>
+                    <p class="value-description">Catch dangerous training imbalances weeks before they become injuries. Train with confidence knowing your risk level in real-time.</p>
+                </div>
+
+                <div class="value-item">
+                    <div class="value-icon">🏔️</div>
+                    <h3 class="value-title">Built for Trail Runners</h3>
+                    <p class="value-description">First system designed specifically for elevation-demanding activities. Your 2,000-foot climb finally counts for what it's worth.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-section">
+        <div class="how-container">
+            <h2 class="section-title">How It Works</h2>
+
+            <div class="how-steps">
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <h3 class="step-title">We Analyze Two Types of Data (that your smart watch has always been collecting)</h3>
+                    <p class="step-description"><strong>External Work:</strong> The work you do (distance + elevation gain)<br>
+                    <strong>Internal Load:</strong> How your body responds (heart rate patterns)</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <h3 class="step-title">Calculate the Divergence</h3>
+                    <p class="step-description">Our patent-pending algorithm compares these work/loads to reveal mismatches between what you're doing and how you're responding.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <h3 class="step-title">Get Actionable Guidance</h3>
+                    <p class="step-description">Receive clear daily recommendations (not just more numbers): train hard when you're in the sweet spot, back off when divergence shows risk, recover when your body needs it most.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="cta-container">
+            <h2 class="cta-title">Ready to See YOUR Divergence?</h2>
+            <p class="cta-description">Connect your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
+
+            <a href="/auth/strava-signup" class="cta-button">
+                Connect with Strava
+            </a>
+
+            <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
+                Need at least 28 days of training data for reliable analysis
+            </p>
+        </div>
+    </section>
+
+    <!-- Patent Section -->
+    <section class="patent-section">
+        <div class="patent-badge">Patent Pending</div>
+        <h2>Revolutionary Technology Available Nowhere Else</h2>
+        <p>Our normalized divergence calculation is the first and only system that compares external and internal training data to specifically predict overtraining or injury risk. You literally cannot get this analysis from any other platform.</p>
+    </section>
+</body>
+</html>
