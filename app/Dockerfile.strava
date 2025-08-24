@@ -1,0 +1,74 @@
+# Dockerfile for Strava Training Personal Service
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=strava_app.py
+ENV PORT=8080
+
+# Create app directory
+WORKDIR /app
+
+# Install system dependencies (minimal since we're using REST API)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY strava_requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r strava_requirements.txt
+
+# Copy application code
+COPY strava_app.py .
+COPY strava_training_load.py .
+COPY db_utils.py .
+COPY llm_recommendations_module.py .
+COPY unified_metrics_service.py .
+COPY enhanced_token_management.py .
+COPY auth.py .
+COPY timezone_utils.py .
+COPY elevation_migration_module.py .
+COPY sync_fix.py .
+COPY settings_utils.py .
+COPY templates/ /app/templates/
+
+# Copy the actual configuration files
+COPY config.json .
+COPY ["# Training Metrics Reference Guide.md", "."]
+
+# Create the static directory structure that Flask expects
+RUN mkdir -p /app/static
+
+# Copy React build files to the correct location for Flask
+COPY build/ /app/static/
+COPY static/ /app/static/
+
+# Verify the structure is correct
+RUN echo "=== Verifying static file structure ===" && \
+    ls -la /app/static/ && \
+    echo "=== Checking for index.html ===" && \
+    ls -la /app/static/index.html || echo "index.html not found" && \
+    echo "=== Checking static subdirectory ===" && \
+    ls -la /app/static/static/ || echo "static subdirectory not found" && \
+    echo "=== Checking images directory ===" && \
+    ls -la /app/static/images/ || echo "images directory not found"
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash app \
+    && chown -R app:app /app
+USER app
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Run the application
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 strava_app:app

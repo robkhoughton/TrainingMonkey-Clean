@@ -1,0 +1,21 @@
+Step-by-Step Deployment from React to Cloud Run:
+1. Verify Image Location
+cmdcd C:\Users\robho\Documents\GarminLocal\frontend
+dir public\training-monkey-runner.webp
+2. Update Component for Production
+In your IntegratedDashboardBanner.tsx, use:
+tsxbackgroundImage: `url('/static/training-monkey-runner.webp')`,  // Single /static/
+3. Rebuild React App
+cmdcd C:\Users\robho\Documents\GarminLocal\frontend
+npm run build
+4. Verify Image is Now in Build
+cmddir build\training-monkey-runner.webp
+The image should now be at the root of build, not in build/static/
+5. Copy to Deployment
+cmdcd C:\Users\robho\Documents\GarminLocal
+xcopy frontend\build\* strava_sync_service\build\ /E /Y
+6. Verify Deployment Copy
+cmddir strava_sync_service\build\training-monkey-runner.webp
+7. Deploy
+cmdcd strava_sync_service
+deploy_strava_simple.bat

@@ -1,0 +1,68 @@
+DEFAULT 2025-07-30T02:05:25.297720Z 2025-07-30 02:05:25,298 - unified_metrics - INFO - Latest activity for user 1: 2025-07-28
+DEFAULT 2025-07-30T02:05:25.297730Z 2025-07-30 02:05:25,298 - unified_metrics - INFO - Activity details: ID=15266515428, External ACWR=0.62, Internal ACWR=0.7
+DEFAULT 2025-07-30T02:05:25.297735Z 2025-07-30 02:05:25,298 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1
+DEFAULT 2025-07-30T02:05:25.297738Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T02:05:25.297747Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T02:05:25.297769Z 2025-07-30 02:05:25,298 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T02:05:25.297774Z 2025-07-30 02:05:25,298 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T02:05:25.297898Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T02:05:25.297929Z 2025-07-30 02:05:25,298 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T02:05:25.321785Z PostgreSQL connection successful
+DEFAULT 2025-07-30T02:05:25.321877Z 2025-07-30 02:05:25,322 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T02:05:25.327509Z 2025-07-30 02:05:25,327 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T02:05:25.327651Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Last rest day for user 1: 2025-07-27. Days since: 2 (using app timezone)
+DEFAULT 2025-07-30T02:05:25.327677Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Current app date: 2025-07-29
+DEFAULT 2025-07-30T02:05:25.327766Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Unified metrics for user 1:
+DEFAULT 2025-07-30T02:05:25.327773Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - External ACWR: 0.62
+DEFAULT 2025-07-30T02:05:25.327843Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Internal ACWR: 0.7
+DEFAULT 2025-07-30T02:05:25.327849Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Normalized Divergence: -0.121
+DEFAULT 2025-07-30T02:05:25.327924Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Days since rest: 2
+DEFAULT 2025-07-30T02:05:25.327934Z 2025-07-30 02:05:25,328 - unified_metrics - INFO - Latest activity date: 2025-07-28
+DEFAULT 2025-07-30T02:05:25.328012Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T02:05:25.328020Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T02:05:25.328040Z 2025-07-30 02:05:25,328 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T02:05:25.328070Z 2025-07-30 02:05:25,328 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T02:05:25.328092Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T02:05:25.328133Z 2025-07-30 02:05:25,328 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T02:05:25.359665Z PostgreSQL connection successful
+DEFAULT 2025-07-30T02:05:25.359795Z 2025-07-30 02:05:25,360 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T02:05:25.365583Z 2025-07-30 02:05:25,366 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T02:05:25.365778Z 2025-07-30 02:05:25,366 - strava_app - INFO - Unified stats for user 1: {'totalActivities': 104, 'lastActivity': '2025-07-28', 'daysSinceRest': 2, 'latestMetrics': {'externalAcwr': 0.62, 'internalAcwr': 0.7, 'sevenDayAvgLoad': 4.3, 'sevenDayAvgTrimp': 52.6, 'normalizedDivergence': -0.121}}
+INFO 2025-07-30T02:05:25.452098Z [httpRequest.requestMethod: GET] [httpRequest.status: 304] [httpRequest.responseSize: 195 B] [httpRequest.latency: 3 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/static/training-monkey-runner.webp
+NOTICE 2025-07-30T02:12:40.513218Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: google.cloud.run.v1.Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/services/strava-training-personal] [protoPayload.authenticationInfo.principalEmail: rob.houghton.ca@gmail.com] audit_log, method: "google.cloud.run.v1.Services.ReplaceService", principal_email: "rob.houghton.ca@gmail.com"
+DEFAULT 2025-07-30T02:13:02.948926Z [2025-07-30 02:13:02 +0000] [1] [INFO] Starting gunicorn 23.0.0
+DEFAULT 2025-07-30T02:13:02.950933Z [2025-07-30 02:13:02 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
+DEFAULT 2025-07-30T02:13:02.951019Z [2025-07-30 02:13:02 +0000] [1] [INFO] Using worker: gthread
+INFO 2025-07-30T02:13:02.966729Z Default STARTUP TCP probe succeeded after 1 attempt for container "strava-training-personal-1" on port 8080.
+DEFAULT 2025-07-30T02:13:02.991983Z [2025-07-30 02:13:02 +0000] [2] [INFO] Booting worker with pid: 2
+INFO 2025-07-30T02:13:03.035496Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: /Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/revisions/strava-training-personal-00107-gbx] Ready condition status changed to True for Revision strava-training-personal-00107-gbx with message: Deploying revision succeeded in 22.26s.
+DEFAULT 2025-07-30T02:13:03.084415Z Cleaned DATABASE_URL: removed 2 unwanted characters
+DEFAULT 2025-07-30T02:13:03.171805Z Using PostgreSQL with connection: postgresql://appuser:trainmonk25@10.109.208.9:5432...
+DEFAULT 2025-07-30T02:13:04.322838Z [2025-07-30 02:13:04 +0000] [1] [INFO] Starting gunicorn 23.0.0
+DEFAULT 2025-07-30T02:13:04.324382Z [2025-07-30 02:13:04 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
+DEFAULT 2025-07-30T02:13:04.324420Z [2025-07-30 02:13:04 +0000] [1] [INFO] Using worker: gthread
+INFO 2025-07-30T02:13:04.326193Z Default STARTUP TCP probe succeeded after 1 attempt for container "strava-training-personal-1" on port 8080.
+DEFAULT 2025-07-30T02:13:04.343807Z [2025-07-30 02:13:04 +0000] [2] [INFO] Booting worker with pid: 2
+INFO 2025-07-30T02:13:04.373544Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: /Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/services/strava-training-personal] Ready condition status changed to True for Service strava-training-personal.
+DEFAULT 2025-07-30T02:13:04.405121Z Cleaned DATABASE_URL: removed 2 unwanted characters
+DEFAULT 2025-07-30T02:13:04.485089Z Using PostgreSQL with connection: postgresql://appuser:trainmonk25@10.109.208.9:5432...
+INFO 2025-07-30T02:13:44.600549Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 323 B] [httpRequest.latency: 3.503 s] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/test-sync-fix-status
+DEFAULT 2025-07-30T02:14:03.989726Z [2025-07-30 02:14:03 +0000] [1] [INFO] Handling signal: term
+DEFAULT 2025-07-30T02:14:04.247494Z [2025-07-30 02:14:04 +0000] [2] [INFO] Worker exiting (pid: 2)
+DEFAULT 2025-07-30T02:14:04.593792Z [2025-07-30 02:14:04 +0000] [1] [INFO] Shutting down: Master
+DEFAULT 2025-07-30T02:24:45.431668Z [2025-07-30 02:24:45 +0000] [1] [INFO] Handling signal: term
+DEFAULT 2025-07-30T02:24:46.231305Z [2025-07-30 02:24:46 +0000] [2] [INFO] Worker exiting (pid: 2)
+DEFAULT 2025-07-30T02:24:46.539170Z [2025-07-30 02:24:46 +0000] [1] [INFO] Shutting down: Master
+NOTICE 2025-07-30T02:27:49.458118Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: google.cloud.run.v1.Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/services/strava-training-personal] [protoPayload.authenticationInfo.principalEmail: rob.houghton.ca@gmail.com] audit_log, method: "google.cloud.run.v1.Services.ReplaceService", principal_email: "rob.houghton.ca@gmail.com"
+DEFAULT 2025-07-30T02:28:04.002328Z [2025-07-30 02:28:04 +0000] [1] [INFO] Handling signal: term
+DEFAULT 2025-07-30T02:28:04.086426Z [2025-07-30 02:28:04 +0000] [2] [INFO] Worker exiting (pid: 2)
+DEFAULT 2025-07-30T02:28:04.405746Z [2025-07-30 02:28:04 +0000] [1] [INFO] Shutting down: Master
+DEFAULT 2025-07-30T02:28:09.224339Z [2025-07-30 02:28:09 +0000] [1] [INFO] Starting gunicorn 23.0.0
+DEFAULT 2025-07-30T02:28:09.226435Z [2025-07-30 02:28:09 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
+DEFAULT 2025-07-30T02:28:09.226534Z [2025-07-30 02:28:09 +0000] [1] [INFO] Using worker: gthread
+INFO 2025-07-30T02:28:09.228061Z Default STARTUP TCP probe succeeded after 1 attempt for container "strava-training-personal-1" on port 8080.
+DEFAULT 2025-07-30T02:28:09.261038Z [2025-07-30 02:28:09 +0000] [2] [INFO] Booting worker with pid: 2
+INFO 2025-07-30T02:28:09.304889Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: /Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/revisions/strava-training-personal-00108-86l] Ready condition status changed to True for Revision strava-training-personal-00108-86l with message: Deploying revision succeeded in 19.56s.
+DEFAULT 2025-07-30T02:28:09.336845Z Cleaned DATABASE_URL: removed 2 unwanted characters
+DEFAULT 2025-07-30T02:28:09.426964Z Using PostgreSQL with connection: postgresql://appuser:trainmonk25@10.109.208.9:5432...
+INFO 2025-07-30T02:28:10.639944Z [protoPayload.serviceName: run.googleapis.com] [protoPayload.methodName: /Services.ReplaceService] [protoPayload.resourceName: namespaces/dev-ruler-460822-e8/services/strava-training-personal] Ready condition status changed to True for Service strava-training-personal.

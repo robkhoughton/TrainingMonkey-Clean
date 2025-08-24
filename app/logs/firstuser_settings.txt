@@ -1,0 +1,10 @@
+INSERT INTO user_settings (email, password_hash, resting_hr, max_hr, gender, is_admin)
+VALUES ('tballaine@gmail.com', 'pbkdf2:sha256:600000$mLFlBptZl8Iw5gTX$b4131e0107f616bc80b42a4e162ffd3e60ea36e4bd5cb7d41217e730609bdafc', 60, 180, 'female', false);
+
+============================================================
+Save this information securely:
+Email: tballaine@gmail.com
+Password: firstuser
+Resting HR: 60
+Max HR: 180
+Gender: female

@@ -1,0 +1,61 @@
+@login_required
+@app.route('/api/training-data', methods=['GET'])
+def get_training_data():
+    """Get training data for dashboard charts - FIXED for DATE standardization"""
+    try:
+        activities = db_utils.execute_query(
+            """
+            SELECT * FROM activities 
+            WHERE user_id = ? 
+            ORDER BY date ASC, activity_id ASC
+            """,
+            (current_user.id,),
+            fetch=True
+        )
+
+        if not activities:
+            return jsonify({
+                'success': True,
+                'message': 'No activities found',
+                'data': []
+            })
+
+        # Convert to list of dictionaries
+        activity_list = []
+        for activity in activities:
+            activity_dict = {}
+            if hasattr(activity, 'keys'):
+                for key in activity.keys():
+                    activity_dict[key] = activity[key]
+            else:
+                activity_dict = dict(activity)
+            activity_list.append(activity_dict)
+
+        logger.info(f"Retrieved {len(activity_list)} records from database (including rest days)")
+
+        # CRITICAL FIX: Apply date serialization BEFORE aggregation
+        activity_list = [ensure_date_serialization(activity) for activity in activity_list]
+
+        # Aggregate multiple activities per day for dashboard display
+        # BUT keep rest days as separate entries
+        aggregated_data = aggregate_daily_activities_with_rest(activity_list)
+
+        # CRITICAL FIX: Apply date serialization AFTER aggregation too (in case aggregation creates new date fields)
+        aggregated_data = [ensure_date_serialization(activity) for activity in aggregated_data]
+
+        logger.info(f"Processed to {len(aggregated_data)} daily records for dashboard")
+
+        return jsonify({
+            'success': True,
+            'data': aggregated_data,  # Now with properly serialized dates
+            'count': len(aggregated_data),
+            'raw_count': len(activity_list)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching training data: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'data': []
+        }), 500

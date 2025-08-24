@@ -1,0 +1,74 @@
+@login_required
+@app.route('/strava-setup', methods=['GET', 'POST'])
+def strava_setup():
+    """Strava connection setup where users provide their own app credentials"""
+    if request.method == 'POST':
+        # Handle the form submission
+        client_id = request.form.get('client_id')
+        client_secret = request.form.get('client_secret')
+
+        if client_id and client_secret:
+            # Generate OAuth URL with user's credentials
+            redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
+            auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
+
+            # Store credentials temporarily in session for OAuth callback
+            session['temp_strava_client_id'] = client_id
+            session['temp_strava_client_secret'] = client_secret
+
+            return redirect(auth_url)
+
+    return '''
+    <html>
+    <head><title>Connect Strava</title></head>
+    <body style="font-family: Arial; max-width: 700px; margin: 30px auto; padding: 20px;">
+        <h2>Connect Your Strava Account</h2>
+
+        <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3>📝 Step 1: Create Your Personal Strava App</h3>
+            <p>Each user needs their own Strava application (this is temporary while we wait for multi-user approval).</p>
+            <ol>
+                <li>Go to <a href="https://www.strava.com/settings/api" target="_blank">Strava API Settings</a></li>
+                <li>Click <strong>"Create App"</strong></li>
+                <li>Fill in the form:
+                    <ul style="margin: 10px 0;">
+                        <li><strong>Application Name:</strong> [Your choice, e.g. "My Training Dashboard"]</li>
+                        <li><strong>Category:</strong> Training</li>
+                        <li><strong>Website:</strong> https://strava-training-personal-382535371225.us-central1.run.app</li>
+                        <li><strong>Authorization Callback Domain:</strong> strava-training-personal-382535371225.us-central1.run.app</li>
+                        <li><strong>Description:</strong> Personal training dashboard</li>
+                    </ul>
+                </li>
+                <li>After creating, copy your <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+            </ol>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+            <h3>🔗 Step 2: Connect Your Account</h3>
+            <form method="POST">
+                <div style="margin: 10px 0;">
+                    <label style="font-weight: bold;">Client ID:</label><br>
+                    <input type="text" name="client_id" required style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 3px;">
+                </div>
+                <div style="margin: 10px 0;">
+                    <label style="font-weight: bold;">Client Secret:</label><br>
+                    <input type="text" name="client_secret" required style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 3px;">
+                </div>
+                <button type="submit" style="background: #FC5200; color: white; padding: 12px 25px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; height: 48px;">Connect with Strava</button>
+            </form>
+        </div>
+
+        <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h4>ℹ️ Why do I need my own app?</h4>
+            <p>This is a temporary setup while we wait for Strava to approve our application for multiple users. Once approved, this step won't be necessary.</p>
+        </div>
+
+        <!-- Required Strava branding compliance -->
+        <div style="text-align: center; margin: 20px 0; padding: 10px; border-top: 1px solid #ddd;">
+            <small style="color: #FC5200;">Powered by Strava</small>
+        </div>
+
+        <p><a href="/static/index.html">← Back to Dashboard</a></p>
+    </body>
+    </html>
+    '''

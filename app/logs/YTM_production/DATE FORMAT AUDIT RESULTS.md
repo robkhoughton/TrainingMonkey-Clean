@@ -1,0 +1,178 @@
+DATE FORMAT AUDIT RESULTS
+==================================================
+⚠️  Found 143 potential date format issues in 8 files
+
+
+📁 .\db_utils.py
+----------------------------------------
+  Line 519 | datetime_strptime    | valid_until = datetime.strptime(latest['valid_until'], '%Y-%m-%d').date()
+
+📁 .\garmin_training_load.py
+----------------------------------------
+  Line 1163 | string_date_splitting | record_date = record['startTime'].split('T')[0]
+  Line 586 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line 670 | date_strftime        | seven_days_ago = (date_obj - timedelta(days=6)).strftime('%Y-%m-%d')
+  Line 671 | date_strftime        | twentyeight_days_ago = (date_obj - timedelta(days=27)).strftime('%Y-%m-%d')
+  Line 1161 | date_strftime        | record_date = datetime.fromtimestamp(record['startTime']/1000).strftime('%Y-%m-%d')
+  Line 1550 | date_strftime        | fetch_end_date = end_date_obj.strftime('%Y-%m-%d')
+  Line 1554 | date_strftime        | fetch_start_date = (end_date_obj - timedelta(days=7)).strftime('%Y-%m-%d')  # Use 84 days for compre...
+  Line 1558 | date_strftime        | # fetch_start_date = (end_date_obj - timedelta(days=regular_process_days)).strftime('%Y-%m-%d')
+  Line 1584 | date_strftime        | calculation_start_date_str = calculation_start_date_obj.strftime('%Y-%m-%d')
+  Line 1585 | date_strftime        | calculation_end_date_str = calculation_end_date_obj.strftime('%Y-%m-%d')
+  Line 1599 | date_strftime        | date_to_update = current_date_for_avg_update.strftime('%Y-%m-%d')
+  Line 579 | datetime_strptime    | start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+  Line 580 | datetime_strptime    | end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+  Line 669 | datetime_strptime    | date_obj = datetime.strptime(date, '%Y-%m-%d')
+  Line 889 | datetime_strptime    | start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+  Line 890 | datetime_strptime    | end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+  Line 998 | datetime_strptime    | start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+  Line 999 | datetime_strptime    | end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+  Line 1569 | datetime_strptime    | latest_activity_date_in_db = datetime.strptime(latest_activity_date_in_db_str, '%Y-%m-%d')
+  Line 1597 | datetime_strptime    | current_date_for_avg_update = datetime.strptime(calculation_start_date_str, '%Y-%m-%d')
+  Line 1008 | date_isoformat       | daily_data = api.get_user_summary(start_datetime.isoformat(), end_datetime.isoformat())
+  Line 1008 | date_isoformat       | daily_data = api.get_user_summary(start_datetime.isoformat(), end_datetime.isoformat())
+  Line 658 | date_comparison      | if date == "2025-05-30":  # Test with known working case
+
+📁 .\llm_recommendations_module.py
+----------------------------------------
+  Line 1170 | date_strftime        | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+  Line 1191 | date_strftime        | cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+  Line 1247 | date_strftime        | target_date_str = target_date.strftime('%Y-%m-%d')
+  Line 1310 | date_strftime        | day_name = target_date_obj.strftime('%A')
+  Line 1418 | date_strftime        | 'generation_date': app_current_date.strftime('%Y-%m-%d'),
+  Line 1419 | date_strftime        | 'valid_until': tomorrow.strftime('%Y-%m-%d'),
+  Line 1435 | date_strftime        | 'next_recommendation_date': tomorrow.strftime('%Y-%m-%d')
+  Line  76 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d').date()
+  Line  79 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d %H:%M:%S').date()
+  Line  88 | datetime_strptime    | return datetime.strptime(str(date_input), '%Y-%m-%d').date()
+  Line  96 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d')
+  Line 102 | datetime_strptime    | return datetime.strptime(str(date_input), '%Y-%m-%d')
+  Line  51 | date_isoformat       | return data.isoformat()
+
+📁 .\run_full_sync.py
+----------------------------------------
+  Line  14 | date_strftime        | start_date_str = start_date.strftime('%Y-%m-%d')
+  Line  15 | date_strftime        | end_date_str = end_date.strftime('%Y-%m-%d')
+  Line  29 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+
+📁 .\strava_app.py
+----------------------------------------
+  Line 1644 | string_date_splitting | date_str_key = date_key.split('T')[0]
+  Line 1679 | string_date_splitting | date_str_key = date_key.split('T')[0]  # "2025-07-26T00:00:00Z" -> "2025-07-26"
+  Line  92 | date_strftime        | data[key] = parsed.strftime('%Y-%m-%d')
+  Line 256 | date_strftime        | start_date_str = start_date.strftime('%Y-%m-%d')
+  Line 257 | date_strftime        | end_date_str = end_date.strftime('%Y-%m-%d')
+  Line 281 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line 658 | date_strftime        | start_date_str = start_date.strftime('%Y-%m-%d')
+  Line 659 | date_strftime        | end_date_str = end_date.strftime('%Y-%m-%d')
+  Line 681 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line 907 | date_strftime        | "timestamp": datetime.now().strftime("%m/%d/%Y %I:%M:%S %p"),
+  Line 1403 | date_strftime        | start_date_str = start_date.strftime('%Y-%m-%d')
+  Line 1404 | date_strftime        | end_date_str = end_date.strftime('%Y-%m-%d')
+  Line 1605 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1605 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1624 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1624 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1638 | date_strftime        | date_str_key = date_key.date().strftime('%Y-%m-%d')
+  Line 1641 | date_strftime        | date_str_key = date_key.strftime('%Y-%m-%d')
+  Line 1662 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1662 | date_strftime        | (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+  Line 1675 | date_strftime        | date_str_key = date_key.date().strftime('%Y-%m-%d')
+  Line 1677 | date_strftime        | date_str_key = date_key.strftime('%Y-%m-%d')
+  Line 1695 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line 1726 | date_strftime        | 'day_name': current_date.strftime('%A'),
+  Line 1727 | date_strftime        | 'formatted_date': current_date.strftime('%B %d'),
+  Line 1745 | date_strftime        | 'center_date': center_date.strftime('%Y-%m-%d'),
+  Line 1747 | date_strftime        | 'app_current_date': app_current_date.strftime('%Y-%m-%d'),
+  Line 1769 | date_strftime        | date_str = date_obj.strftime('%Y-%m-%d')
+  Line 1777 | date_strftime        | date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
+  Line 1779 | date_strftime        | date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
+  Line 1781 | date_strftime        | date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
+  Line 1790 | date_strftime        | return f"Error retrieving recommendation for {date_obj.strftime('%A, %B %d')}"
+  Line 1812 | date_strftime        | (user_id, tomorrow.strftime('%Y-%m-%d')),
+  Line 1816 | date_strftime        | date_label = f"NEXT WORKOUT - {tomorrow.strftime('%A, %B %d')}"
+  Line 1831 | date_strftime        | date_str = date_obj.strftime('%Y-%m-%d')
+  Line 1897 | date_strftime        | date_str = date_obj.strftime('%Y-%m-%d')
+  Line 1917 | date_strftime        | date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
+  Line 1919 | date_strftime        | date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
+  Line 1921 | date_strftime        | date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
+  Line 1948 | date_strftime        | return f"Error retrieving AI recommendation for {date_obj.strftime('%A, %B %d')}"
+  Line 1957 | date_strftime        | date_str = date_obj.strftime('%Y-%m-%d')
+  Line 1962 | date_strftime        | date_label = f"TODAY'S RECOMMENDED WORKOUT ({date_obj.strftime('%A, %B %d')})"
+  Line 1967 | date_strftime        | date_label = f"RECOMMENDED WORKOUT for {date_obj.strftime('%A, %B %d')}"
+  Line 1972 | date_strftime        | date_label = f"PLANNED WORKOUT for {date_obj.strftime('%A, %B %d')}"
+  Line 2023 | date_strftime        | 'next_workout_date': tomorrow.strftime('%Y-%m-%d')
+  Line 2122 | date_strftime        | target_date_str = target_date.strftime('%Y-%m-%d')
+  Line 2134 | date_strftime        | (user_id, (target_date - timedelta(days=2)).strftime('%Y-%m-%d')),
+  Line 2151 | date_strftime        | date_str = date_obj.strftime('%Y-%m-%d')
+  Line 2432 | date_strftime        | yesterday = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+  Line 2486 | date_strftime        | target_date = datetime.now().strftime('%Y-%m-%d')
+  Line 2500 | date_strftime        | (user_id, (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=3)).strftime('%Y-%m-%d')),
+  Line 2576 | date_strftime        | cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+  Line 2652 | date_strftime        | cutoff_date = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+  Line  91 | datetime_strptime    | parsed = datetime.strptime(value, '%Y-%m-%d')
+  Line 1586 | datetime_strptime    | center_date = datetime.strptime(requested_date, '%Y-%m-%d').date()
+  Line 1999 | datetime_strptime    | completed_date_obj = datetime.strptime(completed_date, '%Y-%m-%d').date()
+  Line 2214 | datetime_strptime    | date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+  Line 2343 | datetime_strptime    | datetime.strptime(date_str, '%Y-%m-%d').date(),
+  Line 2354 | datetime_strptime    | datetime.strptime(date_str, '%Y-%m-%d').date(),
+  Line 2432 | datetime_strptime    | yesterday = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+  Line 2500 | datetime_strptime    | (user_id, (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=3)).strftime('%Y-%m-%d')),
+  Line  83 | date_isoformat       | data[key] = value.isoformat()
+  Line  86 | date_isoformat       | data[key] = value.isoformat()
+  Line  97 | date_isoformat       | data[key] = parsed.isoformat()
+  Line 292 | date_isoformat       | 'sync_timestamp': datetime.now().isoformat()
+  Line 469 | date_isoformat       | 'timestamp': datetime.now().isoformat()
+  Line 514 | date_isoformat       | 'sync_timestamp': datetime.now().isoformat()
+  Line 558 | date_isoformat       | 'sync_timestamp': datetime.now().isoformat()
+  Line 579 | date_isoformat       | 'sync_timestamp': datetime.now().isoformat(),
+  Line 591 | date_isoformat       | 'sync_timestamp': datetime.now().isoformat()
+  Line 771 | date_isoformat       | 'test_timestamp': datetime.now().isoformat()
+  Line 777 | date_isoformat       | 'test_timestamp': datetime.now().isoformat()
+  Line 783 | date_isoformat       | 'test_timestamp': datetime.now().isoformat()
+  Line 798 | date_isoformat       | 'report_timestamp': datetime.now().isoformat(),
+  Line 806 | date_isoformat       | 'last_check': datetime.now().isoformat()
+  Line 827 | date_isoformat       | 'report_timestamp': datetime.now().isoformat(),
+  Line 1720 | date_isoformat       | 'generated_at': autopsy_info.get('generated_at').isoformat() if autopsy_info.get('generated_at') els...
+  Line 2626 | date_isoformat       | 'timestamp': datetime.now().isoformat()
+  Line 2703 | date_isoformat       | 'timestamp': datetime.now().isoformat()
+
+📁 .\strava_training_load.py
+----------------------------------------
+  Line 375 | date_strftime        | activity_date = activity.start_date.strftime('%Y-%m-%d')
+  Line 689 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line 785 | date_strftime        | seven_days_ago = (date_obj - timedelta(days=6)).strftime('%Y-%m-%d')
+  Line 786 | date_strftime        | twentyeight_days_ago = (date_obj - timedelta(days=27)).strftime('%Y-%m-%d')
+  Line 1029 | date_strftime        | start_date_str = start_date.strftime('%Y-%m-%d')
+  Line 1030 | date_strftime        | end_date_str = end_date.strftime('%Y-%m-%d')
+  Line 1038 | date_strftime        | dashboard_start = (end_date - timedelta(days=90)).strftime('%Y-%m-%d')
+  Line 1047 | date_strftime        | date_str = current_date.strftime('%Y-%m-%d')
+  Line  58 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d').date()
+  Line  61 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d %H:%M:%S').date()
+  Line  70 | datetime_strptime    | return datetime.strptime(str(date_input), '%Y-%m-%d').date()
+
+📁 .\timezone_utils.py
+----------------------------------------
+  Line  30 | date_strftime        | return get_app_current_date().strftime('%Y-%m-%d')
+  Line  61 | date_strftime        | return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+  Line  61 | date_strftime        | return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+  Line  88 | date_strftime        | logger.info(f"  UTC time: {utc_now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+  Line  89 | date_strftime        | logger.info(f"  App time: {app_now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+  Line  36 | datetime_strptime    | target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+  Line  48 | datetime_strptime    | target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+  Line  70 | datetime_strptime    | target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+📁 .\unified_metrics_service.py
+----------------------------------------
+  Line 229 | date_strftime        | start_date = (current_date - timedelta(days=days)).strftime('%Y-%m-%d')
+  Line 313 | datetime_strptime    | return datetime.strptime(date_input, '%Y-%m-%d').date()
+  Line 322 | datetime_strptime    | return datetime.strptime(str(date_input), '%Y-%m-%d').date()
+  Line  88 | date_isoformat       | 'calculation_timestamp': datetime.now().isoformat(),
+  Line 288 | date_isoformat       | 'timestamp': datetime.now().isoformat(),
+
+🚨 PRIORITY ACTIONS:
+1. Fix all 'date_text_casting' issues immediately (HIGH)
+2. Review 'string_date_splitting' for consistency (MEDIUM)
+3. Standardize 'datetime_strptime' patterns (LOW)
+
+Process finished with exit code 0

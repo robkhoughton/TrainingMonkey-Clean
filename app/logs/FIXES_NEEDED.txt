@@ -1,0 +1,25 @@
+FIXES NEEDED FOR MULTI-USER SYSTEM
+=================================
+
+1. FIX API RESPONSE FOR EMPTY ACTIVITIES
+   File: strava_app.py
+   Function: get_training_data()
+   Issue: Returns 'success': False when no activities found
+   Fix: Change to 'success': True (line ~780)
+
+   Current:
+   return jsonify({
+       'success': False,
+       'message': 'No activities found',
+       'data': []
+   })
+
+   Should be:
+   return jsonify({
+       'success': True,
+       'message': 'No activities found',
+       'data': []
+   })
+
+Date Added: [Today's date]
+Priority: Medium (affects new users)

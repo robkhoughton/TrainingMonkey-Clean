@@ -1,0 +1,117 @@
+{/* Divergence Metric Chart */}
+      <div className={styles.chartContainer}>
+        <h2 className={styles.chartTitle}>Overtraining Risk Analysis</h2>
+        <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
+          <ResponsiveContainer width="100%" height="100%" key={`divergence-${renderKey}`}>
+            <ComposedChart
+              data={filtered}
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                interval={chartDimensions.majorTickInterval}
+                tickFormatter={formatXAxis}
+                padding={{ left: 10, right: 10 }}
+              />
+              <YAxis
+                domain={[-0.5, 0.5]}
+                label={{ value: 'ACWR Divergence', angle: -90, position: 'insideLeft' }}
+              />
+              <Tooltip
+                content={<CustomTooltip />}
+                isAnimationActive={false}
+              />
+              <Legend />
+
+              <ReferenceArea
+                y1={-0.05}
+                y2={0.15}
+                stroke={colors.secondary}
+                strokeWidth={defaultTheme.referenceAreas.optimal.strokeWidth}
+                strokeOpacity={defaultTheme.referenceAreas.optimal.strokeOpacity}
+                fill={`${colors.secondary}${defaultTheme.referenceAreas.optimal.fillOpacity}`}
+                label={{
+                  value: "Balanced Zone",
+                  position: "insideTopRight",
+                  fill: colors.secondary,
+                  fontSize: defaultTheme.referenceAreas.optimal.fontSize,
+                  fontWeight: 'bold'
+                }}
+              />
+
+              <ReferenceArea
+                y1={-0.5}
+                y2={-0.15}
+                stroke={colors.danger}
+                strokeWidth={defaultTheme.referenceAreas.risk.strokeWidth}
+                strokeOpacity={defaultTheme.referenceAreas.risk.strokeOpacity}
+                fill={`${colors.danger}${defaultTheme.referenceAreas.risk.fillOpacity}`}
+                label={{
+                  value: "High Overtraining Risk",
+                  position: "insideBottomLeft",
+                  fill: colors.danger,
+                  fontSize: defaultTheme.referenceAreas.risk.fontSize,
+                  fontWeight: 'bold'
+                }}
+              />
+
+              <ReferenceArea
+                y1={-0.15}
+                y2={-0.05}
+                stroke={colors.warning}
+                strokeWidth={defaultTheme.referenceAreas.moderate.strokeWidth}
+                strokeOpacity={defaultTheme.referenceAreas.moderate.strokeOpacity}
+                fill={`${colors.warning}${defaultTheme.referenceAreas.moderate.fillOpacity}`}
+                label={{
+                  value: "Moderate Risk",
+                  position: "insideBottom",
+                  fill: colors.warning,
+                  fontSize: defaultTheme.referenceAreas.moderate.fontSize,
+                  fontWeight: 'bold'
+                }}
+              />
+
+              <ReferenceArea
+                y1={0.15}
+                y2={0.5}
+                stroke={colors.primary}
+                strokeWidth={defaultTheme.referenceAreas.efficient.strokeWidth}
+                strokeOpacity={defaultTheme.referenceAreas.efficient.strokeOpacity}
+                fill={`${colors.primary}${defaultTheme.referenceAreas.efficient.fillOpacity}`}
+                label={{
+                  value: "Efficient",
+                  position: "insideTopLeft",
+                  fill: colors.primary,
+                  fontSize: defaultTheme.referenceAreas.efficient.fontSize,
+                  fontWeight: 'bold'
+                }}
+              />
+
+              {/* Divergence Line */}
+              <Line
+                type="monotone"
+                dataKey="normalized_divergence"
+                name="ACWR Divergence"
+                stroke={colors.dark}
+                strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
+                connectNulls={true}
+                isAnimationActive={false}
+                dot={(props) => {
+                  if (!props || !props.cx || !props.cy || !props.payload) return null;
+                  const { cx, cy, payload } = props;
+                  if (payload.activity_id === 0) return null;
+                  if (payload.normalized_divergence === null || payload.normalized_divergence === undefined) return null;
+                  return <circle cx={cx} cy={cy} r={4} fill={colors.dark} />;
+                }}
+                activeDot={{ r: 6 }}
+              />
+              <ReferenceLine y={0} stroke="#666" strokeWidth={1} strokeDasharray="3 3" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        <p className={styles.chartNote}>
+          Negative values indicate internal stress (TRIMP) is higher than external load (miles),
+          suggesting potential overtraining. Positive values show efficient handling of workload.
+        </p>
+      </div>

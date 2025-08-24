@@ -1,0 +1,49 @@
+DEFAULT 2025-08-20T17:02:09.689834Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - Prompt will use these metrics for user 1:
+DEFAULT 2025-08-20T17:02:09.689881Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - External ACWR: 0.74
+DEFAULT 2025-08-20T17:02:09.689935Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - Internal ACWR: 0.86
+DEFAULT 2025-08-20T17:02:09.690076Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - Divergence: -0.150
+DEFAULT 2025-08-20T17:02:09.690117Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - Days since rest: 4
+DEFAULT 2025-08-20T17:02:09.690200Z 2025-08-20 17:02:09,690 - llm_recommendations - INFO - Calling Anthropic API with model claude-sonnet-4-20250514
+DEFAULT 2025-08-20T17:02:30.366151Z 2025-08-20 17:02:30,366 - llm_recommendations - INFO - Parsing response of length 2719
+DEFAULT 2025-08-20T17:02:30.366231Z 2025-08-20 17:02:30,366 - llm_recommendations - INFO - Response preview: Hey there! Nice work staying consistent with your training over the past few weeks. I can see you've been putting in some solid effort, especially with those recent trail runs. Let's take a look at wh...
+DEFAULT 2025-08-20T17:02:30.367430Z 2025-08-20 17:02:30,367 - llm_recommendations - INFO - Found daily section: 759 chars
+DEFAULT 2025-08-20T17:02:30.367472Z 2025-08-20 17:02:30,368 - llm_recommendations - INFO - Found weekly section: 715 chars
+DEFAULT 2025-08-20T17:02:30.367536Z 2025-08-20 17:02:30,368 - llm_recommendations - INFO - Found insights section: 904 chars
+DEFAULT 2025-08-20T17:02:30.368687Z 2025-08-20 17:02:30,369 - llm_recommendations - INFO - FINAL PARSED SECTIONS:
+DEFAULT 2025-08-20T17:02:30.368751Z 2025-08-20 17:02:30,369 - llm_recommendations - INFO - ✅ daily_recommendation: 758 characters
+DEFAULT 2025-08-20T17:02:30.368784Z 2025-08-20 17:02:30,369 - llm_recommendations - INFO - ✅ weekly_recommendation: 714 characters
+DEFAULT 2025-08-20T17:02:30.368812Z 2025-08-20 17:02:30,369 - llm_recommendations - INFO - ✅ pattern_insights: 902 characters
+DEFAULT 2025-08-20T17:02:30.369084Z Attempting PostgreSQL connection...
+DEFAULT 2025-08-20T17:02:30.369108Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.369190Z 2025-08-20 17:02:30,369 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-08-20T17:02:30.369201Z 2025-08-20 17:02:30,369 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.369238Z Using standard PostgreSQL connection
+DEFAULT 2025-08-20T17:02:30.369291Z 2025-08-20 17:02:30,369 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-08-20T17:02:30.400006Z PostgreSQL connection successful
+DEFAULT 2025-08-20T17:02:30.400151Z 2025-08-20 17:02:30,400 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-08-20T17:02:30.411994Z 2025-08-20 17:02:30,412 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-08-20T17:02:30.412080Z 2025-08-20 17:02:30,412 - db_utils - INFO - Saved LLM recommendation to database for user 1 with target_date 2025-08-20
+DEFAULT 2025-08-20T17:02:30.412124Z 2025-08-20 17:02:30,412 - llm_recommendations - INFO - Saved enhanced recommendation with ID 1 for user 1 with target_date 2025-08-20
+DEFAULT 2025-08-20T17:02:30.412312Z 2025-08-20 17:02:30,412 - strava_app - INFO - Successfully generated comprehensive recommendation for user 1
+INFO 2025-08-20T17:02:30.518078Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 6.72 KiB] [httpRequest.latency: 79 ms] [httpRequest.userAgent: Chrome 139.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/llm-recommendations
+DEFAULT 2025-08-20T17:02:30.522544Z Attempting PostgreSQL connection...
+DEFAULT 2025-08-20T17:02:30.522560Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.522684Z 2025-08-20 17:02:30,523 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-08-20T17:02:30.522720Z 2025-08-20 17:02:30,523 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.522762Z Using standard PostgreSQL connection
+DEFAULT 2025-08-20T17:02:30.522795Z 2025-08-20 17:02:30,523 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-08-20T17:02:30.553632Z PostgreSQL connection successful
+DEFAULT 2025-08-20T17:02:30.553754Z 2025-08-20 17:02:30,554 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-08-20T17:02:30.563342Z 2025-08-20 17:02:30,563 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-08-20T17:02:30.563454Z 2025-08-20 17:02:30,564 - strava_app - INFO - Fetching LLM recommendations for user 1...
+DEFAULT 2025-08-20T17:02:30.563534Z Attempting PostgreSQL connection...
+DEFAULT 2025-08-20T17:02:30.563559Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.563590Z 2025-08-20 17:02:30,564 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-08-20T17:02:30.563628Z 2025-08-20 17:02:30,564 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-08-20T17:02:30.563660Z Using standard PostgreSQL connection
+DEFAULT 2025-08-20T17:02:30.563712Z 2025-08-20 17:02:30,564 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-08-20T17:02:30.590541Z PostgreSQL connection successful
+DEFAULT 2025-08-20T17:02:30.590692Z 2025-08-20 17:02:30,591 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-08-20T17:02:30.598382Z 2025-08-20 17:02:30,598 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-08-20T17:02:30.598548Z 2025-08-20 17:02:30,599 - db_utils - INFO - Retrieved latest recommendation for user 1 with cleaned target_date: 2025-08-20
+DEFAULT 2025-08-20T17:02:30.598618Z 2025-08-20 17:02:30,599 - strava_app - INFO - Found recommendation for user 1 from 2025-08-20

@@ -1,0 +1,274 @@
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>python fix_strava_metrics.py
+Starting Strava metrics fix...
+
+🛌 Ensuring rest days are recorded...
+Using SQLite connection
+Date range: 2025-06-22 to 2025-06-29
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+Using SQLite connection
+  Added 0 rest day records
+🔧 Fixing Strava Training Metrics
+==================================================
+Using SQLite connection
+Found 8 dates to process: 2025-06-22 to 2025-06-29
+Calculating moving averages for 2025-06-22...
+  7-day range: 2025-06-16 to 2025-06-22
+  28-day range: 2025-05-26 to 2025-06-22
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-22
+Calculating moving averages for 2025-06-23...
+  7-day range: 2025-06-17 to 2025-06-23
+  28-day range: 2025-05-27 to 2025-06-23
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-23
+Calculating moving averages for 2025-06-24...
+  7-day range: 2025-06-18 to 2025-06-24
+  28-day range: 2025-05-28 to 2025-06-24
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-24
+Calculating moving averages for 2025-06-25...
+  7-day range: 2025-06-19 to 2025-06-25
+  28-day range: 2025-05-29 to 2025-06-25
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-25
+Calculating moving averages for 2025-06-26...
+  7-day range: 2025-06-20 to 2025-06-26
+  28-day range: 2025-05-30 to 2025-06-26
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-26
+Calculating moving averages for 2025-06-27...
+  7-day range: 2025-06-21 to 2025-06-27
+  28-day range: 2025-05-31 to 2025-06-27
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-27
+Calculating moving averages for 2025-06-28...
+  7-day range: 2025-06-22 to 2025-06-28
+  28-day range: 2025-06-01 to 2025-06-28
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-28
+Calculating moving averages for 2025-06-29...
+  7-day range: 2025-06-23 to 2025-06-29
+  28-day range: 2025-06-02 to 2025-06-29
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+Using SQLite connection
+    Error in get_sum_result: 'sqlite3.Row' object has no attribute 'values'
+    7-day avg load: 0.0 miles/day (sum: 0)
+    28-day avg load: 0.0 miles/day (sum: 0)
+    7-day avg TRIMP: 0.0/day (sum: 0)
+    28-day avg TRIMP: 0.0/day (sum: 0)
+    External ACWR: 0
+    Internal ACWR: 0
+    Normalized divergence: 0
+Using SQLite connection
+    ✅ Successfully updated moving averages for 2025-06-29
+
+📊 Processing Summary:
+  Total dates processed: 8
+  Successful calculations: 8
+  Failed calculations: 0
+
+✅ All metrics calculated successfully!
+Run 'python check_strava_data.py' to see the updated values
+
+🎉 Metrics fix complete!
+Now run: python check_strava_data.py
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>python check_strava_data.py
+🔍 Checking imported Strava activities...
+==================================================
+Using SQLite connection
+Total activities in database: 9
+Using SQLite connection
+Strava activities: 7
+Using SQLite connection
+Rest days: 2
+
+📊 Recent Strava activities:
+--------------------------------------------------------------------------------
+Using SQLite connection
+2025-06-29: Lunch Trail Run
+  Distance: 3.28 miles, Elevation: 755 ft, TRIMP: 28.9
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-28: Morning Trail Run
+  Distance: 6.00 miles, Elevation: 784 ft, TRIMP: 91.2
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-27: Lunch Run
+  Distance: 6.37 miles, Elevation: 0 ft, TRIMP: 63.4
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-25: Morning Run
+  Distance: 2.84 miles, Elevation: 0 ft, TRIMP: 16.4
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-25: Lunch Weight Training
+  Distance: 0.00 miles, Elevation: 0 ft, TRIMP: 2.5
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-24: Morning Run
+  Distance: 2.62 miles, Elevation: 0 ft, TRIMP: 16.5
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+2025-06-22: Morning Trail Run
+  Distance: 14.61 miles, Elevation: 4596 ft, TRIMP: 297.9
+  External ACWR: 0.00, Internal ACWR: 0.00, Divergence: 0.000
+
+
+📈 Latest training metrics:
+----------------------------------------
+Using SQLite connection
+Latest date: 2025-06-29
+7-day avg load: 0.00 miles/day
+28-day avg load: 0.00 miles/day
+7-day avg TRIMP: 0.0/day
+28-day avg TRIMP: 0.0/day
+
+🗄️ Database structure check:
+------------------------------
+Using SQLite connection
+Database columns (28):
+  ✓ activity_id
+  ✓ acute_chronic_ratio
+  ✓ avg_heart_rate
+  ✓ date
+  ✓ distance_miles
+  ✓ duration_minutes
+  ✓ elevation_gain_feet
+  ✓ elevation_load_miles
+  ✓ feeling_score
+  ✓ max_heart_rate
+  ✓ name
+  ✓ normalized_divergence
+  ✓ notes
+  ✓ perceived_effort
+  ✓ seven_day_avg_load
+  ✓ seven_day_avg_trimp
+  ✓ time_in_zone1
+  ✓ time_in_zone2
+  ✓ time_in_zone3
+  ✓ time_in_zone4
+  ✓ time_in_zone5
+  ✓ total_load_miles
+  ✓ trimp
+  ✓ trimp_acute_chronic_ratio
+  ✓ twentyeight_day_avg_load
+  ✓ twentyeight_day_avg_trimp
+  ✓ type
+  ✓ weight_lbs

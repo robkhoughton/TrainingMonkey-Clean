@@ -1,0 +1,16 @@
+2025-07-01 16:23:01,116 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-01 16:23:01,116 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-07-08 16:48:57,720 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-08 16:48:57,720 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-07-12 15:10:36,203 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-12 15:10:36,203 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-07-28 08:36:44,613 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-28 08:36:44,614 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-07-28 08:46:28,021 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-28 08:46:28,021 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-07-28 08:55:16,088 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-07-28 08:55:16,088 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-08-04 11:15:03,040 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-08-04 11:15:03,040 - llm_recommendations - INFO - Using model: claude-3-7-sonnet-20250219, temperature: 0.7
+2025-08-11 18:51:43,650 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\GarminLocal\strava_sync_service\config.json
+2025-08-11 18:51:43,650 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3

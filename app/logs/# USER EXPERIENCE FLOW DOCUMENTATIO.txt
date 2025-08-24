@@ -1,0 +1,28 @@
+# USER EXPERIENCE FLOW DOCUMENTATION:
+
+"""
+MONDAY EVENING (after completing workout):
+1. User completes Monday's workout
+2. User opens Journal page
+3. User sees "TODAY'S RECOMMENDED WORKOUT (Monday)" - what AI suggested for today
+4. User saves observations (energy, RPE, pain, notes)
+5. Backend triggers:
+   - Generate autopsy for Monday's workout (prescribed vs actual vs felt)
+   - Update Tuesday's recommendation using Monday's autopsy learning
+6. User refreshes Dashboard
+7. User sees "NEXT WORKOUT - Tuesday" with autopsy-informed recommendation
+
+TUESDAY MORNING:
+1. User opens Dashboard
+2. User sees "NEXT WORKOUT - Tuesday" (clear, actionable for today)
+3. User opens Journal page
+4. User sees Monday's row with autopsy analysis
+5. User sees "TODAY'S RECOMMENDED WORKOUT (Tuesday)" for reference
+6. Cycle continues...
+
+KEY Features:
+✅ Clear date labeling removes confusion
+✅ "NEXT WORKOUT" always shows actionable recommendation
+✅ Journal shows historical "RECOMMENDED WORKOUT for [DATE]"
+✅ Autopsy workflow automatically updates future recommendations
+✅ User gets clear feedback on what happened behind the scenes

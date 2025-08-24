@@ -1,0 +1,19 @@
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>gcloud scheduler jobs create http daily-strava-sync-enhanced --schedule="0 6 * * *" --uri="https://strava-training-personal-382535371225.us-central1.run.app/sync-with-auto-refresh" --http-method=POST --headers="Content-Type=application/json" --message-body="{\"days\": 7}" --location=us-central1
+attemptDeadline: 180s
+httpTarget:
+  body: eyJkYXlzIjogN30=
+  headers:
+    Content-Type: application/json
+    User-Agent: Google-Cloud-Scheduler
+  httpMethod: POST
+  uri: https://strava-training-personal-382535371225.us-central1.run.app/sync-with-auto-refresh
+name: projects/dev-ruler-460822-e8/locations/us-central1/jobs/daily-strava-sync-enhanced
+retryConfig:
+  maxBackoffDuration: 3600s
+  maxDoublings: 5
+  maxRetryDuration: 0s
+  minBackoffDuration: 5s
+schedule: 0 6 * * *
+state: ENABLED
+timeZone: Etc/UTC
+userUpdateTime: '2025-07-08T22:07:43Z'

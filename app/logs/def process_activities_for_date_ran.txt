@@ -1,0 +1,78 @@
+def process_activities_for_date_range(client, start_date, end_date=None, hr_config=None, user_id=None):
+    """Process Strava activities for the given date range."""
+
+    # Add validation
+    if user_id is None:
+        raise ValueError("user_id is required for multi-user support")
+
+    logger.info(f"Processing Strava activities for user {user_id}, date range: {start_date} to {end_date}")
+    logger.info(f"Processing Strava activities for date range: {start_date} to {end_date}")
+    
+    if end_date is None:
+        end_date = start_date
+
+    activities = get_activities(client, start_date, end_date)
+    processed_count = 0
+
+    logger.info(f"get_activities returned {len(activities)} activities")
+
+    for activity in activities:
+        activity_id = activity.id
+
+        # Check if activity already exists in database
+        existing = execute_query(
+            "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+            (activity_id, user_id),
+            fetch=True
+        )
+
+        if existing:
+            logger.info(f"Activity {activity_id} already in database - skipping")
+            continue
+
+        # Calculate training load
+        load_data = calculate_training_load(activity, client, hr_config)
+        load_data['user_id'] = user_id
+
+        # Save to database
+        save_training_load(load_data)
+        processed_count += 1
+
+        # Add small delay to avoid API rate limits
+        time.sleep(1)
+
+    logger.info(f"Processed {processed_count} NEW activities out of {len(activities)} found")
+    return processed_count
+
+    if end_date is None:
+        end_date = start_date
+
+    activities = get_activities(client, start_date, end_date)
+    processed_count = 0
+
+    for activity in activities:
+        activity_id = activity.id
+
+        # Check if activity already exists in database
+        existing = execute_query(
+            "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+            (activity_id, user_id),
+            fetch=True
+        )
+
+        if existing:
+            logger.info(f"Activity {activity_id} already in database - skipping")
+            continue
+
+        # Calculate training load
+        load_data = calculate_training_load(activity, client, hr_config)
+        load_data['user_id'] = user_id
+
+        # Save to database
+        save_training_load(load_data)
+        processed_count += 1
+
+        # Add small delay to avoid API rate limits
+        time.sleep(1)
+
+    return processed_count

@@ -1,0 +1,80 @@
+useEffect(() => {
+      const loadData = async () => {
+        try {
+          setIsLoading(true);
+          setError(null);
+
+          console.log("Fetching data from Strava API...");
+          const response = await fetch(`/api/training-data?t=${new Date().getTime()}`);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API responded with status ${response.status}: ${errorText}`);
+          }
+
+          const result = await response.json();
+
+          if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
+            throw new Error("No data returned from API");
+          }
+
+          console.log(`Successfully received ${result.data.length} records from Strava`);
+
+          // Process data with proper date handling
+          const processedData = result.data.map((row: TrainingDataRow) => {
+            const dateObj = new Date(`${row.date}T12:00:00Z`);
+
+            let normalizedDivergence = row.normalized_divergence;
+            if (normalizedDivergence === undefined) {
+              normalizedDivergence = calculateNormalizedDivergence(
+                row.acute_chronic_ratio,
+                row.trimp_acute_chronic_ratio
+              );
+            }
+
+            return {
+              ...row,
+              dateObj,
+              normalized_divergence: normalizedDivergence
+            };
+          });
+
+          processedData.sort((a, b) => a.date.localeCompare(b.date));
+          setData(processedData);
+
+          // ENHANCED DEBUG: Check if 7-day averages exist
+          logDataDebugInfo(processedData);
+
+          // Get stats from the API
+          try {
+            const statsResponse = await fetch(`/api/stats?t=${new Date().getTime()}`);
+
+            if (statsResponse.ok) {
+              const statsData = await statsResponse.json();
+
+              setMetrics({
+                externalAcwr: statsData.latestMetrics.externalAcwr || 0,
+                internalAcwr: statsData.latestMetrics.internalAcwr || 0,
+                sevenDayAvgLoad: statsData.latestMetrics.sevenDayAvgLoad || 0,
+                sevenDayAvgTrimp: statsData.latestMetrics.sevenDayAvgTrimp || 0,
+                daysSinceRest: statsData.daysSinceRest || 0,
+                normalizedDivergence: processedData.length > 0 ?
+                  processedData[processedData.length - 1].normalized_divergence as number : 0
+              });
+            }
+          } catch (statsError) {
+            console.warn("Failed to fetch stats, using data from main endpoint");
+          }
+
+        } catch (error) {
+          console.error("Error loading data:", error);
+          setError(`Failed to load data: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          setIsLoading(false);
+          setRenderKey(prevKey => prevKey + 1);
+        }
+      };
+
+      loadData();
+      fetchRecommendations(); // Fetch recommendations on initial load
+    }, []);

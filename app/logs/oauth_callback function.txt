@@ -1,0 +1,127 @@
+@login_required
+@app.route('/oauth-callback', methods=['GET'])
+def oauth_callback():
+    """Handle OAuth callback - supports both shared app and user-provided credentials"""
+    try:
+        import os
+
+        # Get the authorization code from URL parameters
+        auth_code = request.args.get('code')
+
+        if not auth_code:
+            return jsonify({'error': 'No authorization code received'}), 400
+
+        # Try to get credentials from session first (user-provided), then environment (shared app)
+        client_id = session.get('temp_strava_client_id') or os.environ.get('STRAVA_CLIENT_ID')
+        client_secret = session.get('temp_strava_client_secret') or os.environ.get('STRAVA_CLIENT_SECRET')
+
+        if not client_id or not client_secret:
+            return jsonify({'error': 'Missing Strava application credentials'}), 400
+
+        logger.info("Processing OAuth callback...")
+
+        from stravalib.client import Client
+        client = Client()
+
+        # Exchange code for tokens
+        token_response = client.exchange_code_for_token(
+            client_id=client_id,
+            client_secret=client_secret,
+            code=auth_code
+        )
+
+        # Get athlete info
+        temp_client = Client(access_token=token_response['access_token'])
+        athlete = temp_client.get_athlete()
+
+        # Save tokens to database
+        token_manager = SimpleTokenManager(user_id=current_user.id)
+
+        tokens = {
+            'access_token': token_response['access_token'],
+            'refresh_token': token_response['refresh_token'],
+            'expires_at': token_response['expires_at']
+        }
+
+        success = token_manager.save_tokens_to_database(tokens, athlete.id)
+
+        if session.get('temp_strava_client_id') and session.get('temp_strava_client_secret'):
+            # These are user-provided credentials, save them permanently
+            credentials_saved = token_manager.save_user_strava_credentials(
+                session.get('temp_strava_client_id'),
+                session.get('temp_strava_client_secret')
+            )
+
+            if credentials_saved:
+                logger.info(f"Saved user-specific Strava credentials for user {current_user.id}")
+            else:
+                logger.warning(f"Failed to save user-specific Strava credentials for user {current_user.id}")
+
+        # Clear temporary session data
+        session.pop('temp_strava_client_id', None)
+        session.pop('temp_strava_client_secret', None)
+
+        if success:
+            logger.info(f"OAuth tokens saved for {athlete.firstname} {athlete.lastname}")
+            return f'''
+            <html>
+            <head><title>Strava Connected</title></head>
+            <body style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center;">
+                <h2>✅ Strava Account Connected!</h2>
+                <p>Successfully connected to Strava as <strong>{athlete.firstname} {athlete.lastname}</strong></p>
+
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                    <h3>Next Step: Sync Your Training Data</h3>
+                    <p>Click below to import your recent activities:</p>
+                    <button onclick="syncData()" id="syncBtn" style="background: #007bff; color: white; padding: 12px 25px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin: 10px;">
+                        Sync Strava Activities
+                    </button>
+                    <div id="syncStatus" style="margin-top: 15px;"></div>
+                </div>
+
+                <p><a href="/static/index.html" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
+
+                <script>
+                async function syncData() {{
+                    const btn = document.getElementById('syncBtn');
+                    const status = document.getElementById('syncStatus');
+
+                    btn.disabled = true;
+                    btn.textContent = 'Syncing...';
+                    status.innerHTML = '<p>Syncing your Strava activities...</p>';
+
+                    try {{
+                        const response = await fetch('/sync-with-auto-refresh', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ days: 30 }})
+                        }});
+
+                        const result = await response.json();
+
+                        if (result.success) {{
+                            status.innerHTML = '<p style="color: green;">✅ Sync completed! ' + result.message + '</p>';
+                            btn.textContent = 'Sync Complete';
+                        }} else {{
+                            status.innerHTML = '<p style="color: red;">❌ Sync failed: ' + result.error + '</p>';
+                            btn.textContent = 'Retry Sync';
+                            btn.disabled = false;
+                        }}
+                    }} catch (error) {{
+                        status.innerHTML = '<p style="color: red;">❌ Error: ' + error.message + '</p>';
+                        btn.textContent = 'Retry Sync';
+                        btn.disabled = false;
+                    }}
+                }}
+                </script>
+            </body>
+            </html>
+            '''
+
+        else:
+            return jsonify({'error': 'Failed to save tokens to database'}), 500
+
+    except Exception as e:
+        error_msg = f"OAuth callback error: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({'error': error_msg}), 500

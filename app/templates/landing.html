@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Training Monkey - The Training Status Your Garmin Can't Show You</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Patent-pending training load divergence analysis for trail runners. Prevent injuries and optimize performance with insights your Garmin can't provide.">
+    <meta name="keywords" content="trail running, training load, injury prevention, ACWR, training analysis, divergence, performance optimization">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Your Training Monkey - Smart Training Analysis for Trail Runners">
+    <meta property="og:description" content="See your training divergence - the key insight missing from every other fitness platform">
+    <meta property="og:url" content="{{ request.url }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('serve_landing_static', filename='favicon.ico') }}">
+
+    <!-- Analytics/Tracking (add your tracking codes here) -->
+    <!-- Google Analytics, Facebook Pixel, etc. -->
+
+    <style>
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            overflow-x: hidden;
+        }
+
+        /* Compact Header - Reduced from 4rem to 2.5rem */
+        .header {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%),
+                        url('{{ url_for('serve_landing_static', filename='images/wireframe-runner.jpg') }}') center/cover;
+            color: white;
+            text-align: center;
+            padding: 2.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+            min-height: 400px; /* Reduced from 500px */
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+            opacity: 0.3;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .header h1 {
+            font-size: 3.2rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .header .subtitle {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.95;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .header .description {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* Two-Column Layout for Demo Section */
+        .demo-section {
+            background: #f8fafc;
+            padding: 2rem; /* Reduced from 4rem */
+        }
+
+        .demo-container {
+            max-width: 1400px; /* Increased for wider screens */
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr; /* Text on left, chart on right */
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .demo-content {
+            text-align: left;
+        }
+
+        .demo-title {
+            font-size: 2.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .demo-subtitle {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 1.5rem;
+            line-height: 1.7;
+        }
+
+        .demo-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .demo-features li {
+            padding: 0.5rem 0;
+            position: relative;
+            padding-left: 2rem;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .demo-features li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .chart-wrapper {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Compact Steps Section - Horizontal Layout */
+        .steps-section {
+            background: white;
+            padding: 2rem; /* Reduced from 4rem */
+        }
+
+        .steps-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .steps-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .steps-subtitle {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            text-align: left;
+        }
+
+        .step {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+            position: relative;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .step-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .step-description {
+            color: #64748b;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Compact CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            padding: 2.5rem 2rem; /* Reduced from 4rem */
+        }
+
+        .cta-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .cta-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .cta-description {
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: #FF5722;
+            color: white;
+            padding: 1rem 2.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 87, 34, 0.4);
+        }
+
+        .cta-button:hover {
+            background: #E64A19;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 87, 34, 0.6);
+        }
+
+        /* Patent Badge - More Compact */
+        .patent-section {
+            background: #1e293b;
+            color: white;
+            padding: 1.5rem 2rem; /* Reduced significantly */
+            text-align: center;
+        }
+
+        .patent-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .demo-container {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+                text-align: center;
+            }
+
+            .demo-content {
+                text-align: center;
+            }
+
+            .steps-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                min-height: 350px;
+                padding: 2rem 1rem;
+            }
+
+            .header h1 {
+                font-size: 2.5rem;
+            }
+
+            .header .subtitle {
+                font-size: 1.25rem;
+            }
+
+            .demo-section,
+            .steps-section,
+            .cta-section {
+                padding: 1.5rem 1rem;
+            }
+
+            .demo-title {
+                font-size: 1.8rem;
+            }
+
+            .cta-title {
+                font-size: 1.8rem;
+            }
+        }
+
+        /* Large Screen Optimizations */
+        @media (min-width: 1400px) {
+            .demo-container,
+            .steps-container {
+                max-width: 1600px;
+            }
+
+            .header-content {
+                max-width: 1000px;
+            }
+        }
+
+        /* Smooth Scrolling and Reduced Motion */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="above-fold">
+        <<nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10;">
+            <a href="/login" style="
+                display: inline-block;
+                background: rgba(255,255,255,0.9);
+                color: #1e293b;
+                padding: 0.75rem 1.5rem;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 600;
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.2);
+                transition: all 0.2s ease;
+            " onmouseover="this.style.background='rgba(255,255,255,1)'" onmouseout="this.style.background='rgba(255,255,255,0.9)'">
+                Sign In
+            </a>
+        </nav>
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Header Section -->
+        <section class="header">
+            <div class="header-content fade-in">
+                <h1>Your Training Monkey</h1>
+                <p class="subtitle">The Training Status Your Garmin Can't Show You</p>
+                <p class="description">Patent-pending divergence analysis reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
+            </div>
+        </section>
+
+        <!-- Demo Section -->
+        <!-- Replace the Demo Section in your landing.html with this structure -->
+
+        <!-- Demo Section - Two Column Layout -->
+        <section class="demo-section">
+            <div class="demo-container">
+                <!-- Left Column: Content -->
+                <div class="demo-content">
+                    <h2 class="demo-title">See Your Real Training Divergence</h2>
+                    <p class="demo-subtitle">This is live data from our founder's trail running training—see how the system analyzes training load balance in real-time.</p>
+
+                    <ul class="demo-features">
+                        <li>Patent-pending divergence analysis reveals training stress</li>
+                        <li>External load tracks distance + elevation impact</li>
+                        <li>Internal load monitors heart rate response</li>
+                        <li>Optimal zones prevent overtraining and injury</li>
+                        <li>Real-time insights guide daily training decisions</li>
+                    </ul>
+
+                    <div style="margin-top: 2rem;">
+                        <a href="/auth/strava" class="cta-button" style="display: inline-block; background: #3b82f6; padding: 0.75rem 2rem; border-radius: 8px; text-decoration: none; color: white; font-weight: 600;">
+                            Try With Your Data
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right Column: Chart -->
+                <div class="chart-wrapper">
+                    <iframe
+                        src="{{ url_for('serve_landing_static', filename='acwr-chart.html') }}"
+                        width="100%"
+                        height="500px"
+                        frameborder="0"
+                        style="border-radius: 8px;">
+                    </iframe>
+                </div>
+            </div>
+        </section>
+
+        <!-- Steps Section - Horizontal Layout -->
+        <section class="steps-section">
+            <div class="steps-container">
+                <h2 class="steps-title">Start Your Training Analysis</h2>
+                <p class="steps-subtitle">Connect your Strava account and get immediate insights into your training patterns</p>
+
+                <div class="steps-grid">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3 class="step-title">Connect Strava</h3>
+                        <p class="step-description">Securely link your Strava account to import your training history and ongoing activities.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3 class="step-title">Analyze Patterns</h3>
+                        <p class="step-description">Our AI analyzes your training load balance and identifies potential overtraining risks.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3 class="step-title">Train Smarter</h3>
+                        <p class="step-description">Get daily recommendations to optimize performance while avoiding injury.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Value Propositions -->
+    <section class="value-section">
+        <div class="value-container">
+            <div class="value-grid">
+                <div class="value-item fade-in">
+                    <div class="value-icon">🎯</div>
+                    <h3 class="value-title">Find Your Training Sweet Spot</h3>
+                    <p class="value-description">Stop second-guessing whether to push hard or rest. Our algorithm shows you exactly when your body and training are in perfect harmony.</p>
+                </div>
+
+                <div class="value-item fade-in">
+                    <div class="value-icon">🛡️</div>
+                    <h3 class="value-title">Prevent Injuries Before They Happen</h3>
+                    <p class="value-description">Catch dangerous training imbalances weeks before they become injuries. Train with confidence knowing your risk level in real-time.</p>
+                </div>
+
+                <div class="value-item fade-in">
+                    <div class="value-icon">🏔️</div>
+                    <h3 class="value-title">Built for Trail Runners</h3>
+                    <p class="value-description">First system designed specifically for elevation-demanding activities. Your 2,000-foot climb finally counts for what it's worth.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="cta-container">
+            <h2 class="cta-title">Ready to See YOUR Divergence?</h2>
+            <p class="cta-description">Connect your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
+
+            <!-- Use your approved Strava button -->
+            <a href="/auth/strava-signup" onclick="trackCTAClick()" style="display: inline-block;">
+                <img src="{{ url_for('serve_landing_static', filename='btn_strava_connect_with_orange_x2.svg') }}"
+                     alt="Connect with Strava"
+                     style="height: 48px; width: auto; transition: transform 0.2s ease;"
+                     onmouseover="this.style.transform='translateY(-2px)'"
+                     onmouseout="this.style.transform='translateY(0)'">
+            </a>
+
+            <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
+                Need at least 28 days of training data for reliable analysis
+            </p>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-section">
+        <div class="how-container">
+            <h2 class="section-title">How It Works</h2>
+
+            <div class="how-steps">
+                <div class="step fade-in">
+                    <span class="step-number">1</span>
+                    <h3 class="step-title">We Analyze Two Types of Data (that your smart watch has always been collecting)</h3>
+                    <p class="step-description"><strong>External Work:</strong> The work you do (distance + elevation gain)<br>
+                    <strong>Internal Load:</strong> How your body responds (heart rate patterns)</p>
+                </div>
+
+                <div class="step fade-in">
+                    <span class="step-number">2</span>
+                    <h3 class="step-title">Calculate the Divergence</h3>
+                    <p class="step-description">Our patent-pending algorithm compares these work/loads to reveal mismatches between what you're doing and how you're responding.</p>
+                </div>
+
+                <div class="step fade-in">
+                    <span class="step-number">3</span>
+                    <h3 class="step-title">Get Actionable Guidance</h3>
+                    <p class="step-description">Receive clear daily recommendations (not just more numbers): train hard when you're in the sweet spot, back off when divergence shows risk, recover when your body needs it most.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Patent Section -->
+    <section class="patent-section">
+        <div class="patent-badge">Patent Pending</div>
+        <h2>Revolutionary Technology Available Nowhere Else</h2>
+        <p>Our normalized divergence calculation is the first and only system that compares external and internal training data to specifically predict overtraining or injury risk. You literally cannot get this analysis from any other platform.</p>
+    </section>
+
+    <script>
+        // Demo Scenarios
+        const scenarios = {
+            'sweet-spot': {
+                position: 50,
+                status: 'Sweet Spot',
+                color: 'status-sweet-spot',
+                description: 'Perfect balance - train with confidence'
+            },
+            'overreaching': {
+                position: 25,
+                status: 'Caution',
+                color: 'status-risk',
+                description: 'External load too high - consider easier training'
+            },
+            'undertrained': {
+                position: 75,
+                status: 'Recovery Phase',
+                color: 'status-sweet-spot',
+                description: 'Good recovery - ready for harder training'
+            },
+            'high-risk': {
+                position: 15,
+                status: 'High Risk',
+                color: 'status-risk',
+                description: 'Dangerous imbalance - rest recommended'
+            }
+        };
+
+        function showScenario(scenarioKey) {
+            const scenario = scenarios[scenarioKey];
+            const line = document.getElementById('divergenceLine');
+            const point = document.getElementById('divergencePoint');
+            const indicator = document.getElementById('statusIndicator');
+            const buttons = document.querySelectorAll('.demo-btn');
+
+            // Update position
+            line.style.left = scenario.position + '%';
+            point.style.left = scenario.position + '%';
+
+            // Update status
+            indicator.className = `status-indicator ${scenario.color}`;
+            indicator.innerHTML = `<span>●</span> ${scenario.status}`;
+
+            // Update active button
+            buttons.forEach(btn => btn.classList.remove('active'));
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+
+            // Track analytics
+            trackDemoInteraction(scenarioKey);
+        }
+
+        // Analytics Functions
+        function trackDemoInteraction(scenario) {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'demo_interaction',
+                    event_data: {
+                        scenario: scenario,
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+        }
+
+        function trackCTAClick() {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                        button: 'strava_connect',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+
+            // Update button state
+            const btn = document.getElementById('stravaConnectBtn');
+            btn.innerHTML = `
+                <svg class="strava-logo" viewBox="0 0 24 24">
+                    <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.172"/>
+                </svg>
+                Connecting to Strava...
+            `;
+            btn.classList.add('loading');
+        }
+
+        // Scroll depth tracking
+        let maxScrollDepth = 0;
+        function trackScrollDepth() {
+            const scrollPercent = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
+
+            if (scrollPercent > maxScrollDepth && scrollPercent % 25 === 0) {
+                maxScrollDepth = scrollPercent;
+                fetch('/api/landing/analytics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        event_type: 'scroll_depth',
+                        event_data: {
+                            depth: scrollPercent,
+                            timestamp: new Date().toISOString()
+                        }
+                    })
+                }).catch(e => console.log('Analytics tracking failed:', e));
+            }
+        }
+
+        // Intersection Observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Observe all fade-in elements
+        document.querySelectorAll('.fade-in').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        });
+
+        // Auto-cycle demo scenarios
+        let currentScenario = 0;
+        const scenarioKeys = Object.keys(scenarios);
+        let autoCycleInterval;
+
+        function startAutoCycle() {
+            autoCycleInterval = setInterval(() => {
+                currentScenario = (currentScenario + 1) % scenarioKeys.length;
+                const buttons = document.querySelectorAll('.demo-btn');
+
+                // Simulate click on the next scenario button
+                buttons.forEach(btn => btn.classList.remove('active'));
+                buttons[currentScenario].classList.add('active');
+
+                showScenario(scenarioKeys[currentScenario]);
+            }, 4000); // Change every 4 seconds
+        }
+
+        function stopAutoCycle() {
+            if (autoCycleInterval) {
+                clearInterval(autoCycleInterval);
+                autoCycleInterval = null;
+            }
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Start auto-cycling the demo
+            startAutoCycle();
+
+            // Stop auto-cycle when user interacts with demo
+            document.querySelectorAll('.demo-btn').forEach(btn => {
+                btn.addEventListener('click', stopAutoCycle);
+            });
+
+            // Track scroll depth
+            window.addEventListener('scroll', trackScrollDepth);
+
+            // Auto-hide flash messages
+            setTimeout(() => {
+                const flashMessages = document.querySelectorAll('.flash-message');
+                flashMessages.forEach(msg => {
+                    msg.style.opacity = '0';
+                    msg.style.transform = 'translateY(-20px)';
+                    setTimeout(() => msg.remove(), 300);
+                });
+            }, 5000);
+        });
+
+        // Handle page visibility changes (stop auto-cycle when page is hidden)
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                stopAutoCycle();
+            } else {
+                startAutoCycle();
+            }
+        });
+    </script>
+</body>
+</html>

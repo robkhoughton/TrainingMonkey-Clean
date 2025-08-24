@@ -1,0 +1,299 @@
+column_name
+data_type
+is_nullable
+column_default
+id
+integer
+NO
+nextval('journal_entries_id_seq'::regclass)
+user_id
+integer
+NO
+date
+date
+NO
+energy_level
+integer
+YES
+rpe_score
+integer
+YES
+pain_percentage
+integer
+YES
+notes
+text
+YES
+created_at
+timestamp without time zone
+YES
+CURRENT_TIMESTAMP
+updated_at
+timestamp without time zone
+YES
+CURRENT_TIMESTAMP
+
+id
+user_id
+date
+date_column_type
+energy_level
+rpe_score
+pain_percentage
+notes
+created_at
+updated_at
+19
+1
+2025-07-26T00:00:00Z
+date
+4
+4
+0
+Fantastic run with lots of vert at elevation to inspire confidence for my upcoming 100K. Achilles/ankle complex seems to be getter progressively worse with more ankle tightness today and a couple of spikes of acute pain, but not persistant.
+2025-07-27T16:24:51.356116Z
+2025-07-27T16:24:51.356116Z
+15
+1
+2025-07-25T00:00:00Z
+date
+3
+3
+0
+some tightness in right ankle but no acute Achilles pain. I have a 100K race on August 2.
+2025-07-25T20:39:07.589659Z
+2025-07-25T20:50:18.857409Z
+10
+1
+2025-07-24T00:00:00Z
+date
+4
+3
+0
+Some tightness in right ankle but no achilles pain
+2025-07-25T02:13:01.141273Z
+2025-07-25T02:53:13.139187Z
+12
+1
+2025-07-21T00:00:00Z
+date
+5
+4
+0
+First pain free run in months.
+2025-07-25T02:14:59.583749Z
+2025-07-25T02:14:59.583749Z
+11
+1
+2025-07-20T00:00:00Z
+date
+PT today
+2025-07-25T02:14:44.373502Z
+2025-07-25T02:14:44.373502Z
+3
+1
+2025-07-14T00:00:00Z
+date
+3
+3
+20
+2025-07-14T02:54:14.636464Z
+2025-07-14T02:54:14.636464Z
+1
+1
+2025-07-13T00:00:00Z
+date
+4
+2
+20
+when it loads it should show database
+2025-07-14T01:45:36.886236Z
+2025-07-14T16:50:28.595112Z
+20
+2
+2025-07-27T00:00:00Z
+date
+3
+4
+0
+90 ft of vertical while walking in the last 10 minutes. At mile 2, did 4 x 20 second sprints up to 7.7 2 mph with complete recovery between sprints. Most of run was in high zone 1 or low zone 2. Energy felt good.
+2025-07-27T19:59:50.509799Z
+2025-07-27T19:59:50.509799Z
+18
+2
+2025-07-26T00:00:00Z
+date
+4
+5
+0
+Mostly hiking due to grade and cobbles on trail. Felt high elevation (~7500-8500 ft) less than I expected - been a couple weeks since I have been in the mountains. All felt good.
+2025-07-26T22:33:38.705835Z
+2025-07-26T22:33:38.705
+
+user_id
+date
+date_as_text
+energy_level
+rpe_score
+pain_percentage
+notes
+created_at
+1
+2025-07-26T00:00:00Z
+2025-07-26
+4
+4
+0
+Fantastic run with lots of vert at elevation to inspire confidence for my upcoming 100K. Achilles/ankle complex seems to be getter progressively worse with more ankle tightness today and a couple of spikes of acute pain, but not persistant.
+2025-07-27T16:24:51.356116Z
+1
+2025-07-25T00:00:00Z
+2025-07-25
+3
+3
+0
+some tightness in right ankle but no acute Achilles pain. I have a 100K race on August 2.
+2025-07-25T20:39:07.589659Z
+1
+2025-07-24T00:00:00Z
+2025-07-24
+4
+3
+0
+Some tightness in right ankle but no achilles pain
+2025-07-25T02:13:01.141273Z
+1
+2025-07-21T00:00:00Z
+2025-07-21
+5
+4
+0
+First pain free run in months.
+2025-07-25T02:14:59.583749Z
+1
+2025-07-20T00:00:00Z
+2025-07-20
+PT today
+2025-07-25T02:14:44.373502Z
+1
+2025-07-14T00:00:00Z
+2025-07-14
+3
+3
+20
+2025-07-14T02:54:14.636464Z
+1
+2025-07-13T00:00:00Z
+2025-07-13
+4
+2
+20
+when it loads it should show database
+2025-07-14T01:45:36.886236Z
+
+date
+energy_level
+rpe_score
+pain_percentage
+notes
+2025-07-26T00:00:00Z
+4
+4
+0
+Fantastic run with lots of vert at elevation to inspire confidence for my upcoming 100K. Achilles/ankle complex seems to be getter progressively worse with more ankle tightness today and a couple of spikes of acute pain, but not persistant.
+2025-07-25T00:00:00Z
+3
+3
+0
+some tightness in right ankle but no acute Achilles pain. I have a 100K race on August 2.
+2025-07-24T00:00:00Z
+4
+3
+0
+Some tightness in right ankle but no achilles pain
+
+test_type
+count
+Method 1: Direct date
+0
+
+test_type
+count
+Method 2: Date range
+0
+
+test_type
+count
+Method 3: Cast to text
+0
+
+total_entries
+has_energy
+has_rpe
+has_pain
+has_notes
+7
+6
+6
+6
+6
+
+info
+date
+year
+month
+day
+formatted_date
+energy_level
+rpe_score
+pain_percentage
+notes
+Sample Data
+2025-07-14T00:00:00Z
+2025
+7
+14
+2025-07-14
+3
+3
+20
+Sample Data
+2025-07-13T00:00:00Z
+2025
+7
+13
+2025-07-13
+4
+2
+20
+when it loads it should show database
+Sample Data
+2025-07-20T00:00:00Z
+2025
+7
+20
+2025-07-20
+PT today
+Sample Data
+2025-07-21T00:00:00Z
+2025
+7
+21
+2025-07-21
+5
+4
+0
+First pain free run in months.
+Sample Data
+2025-07-24T00:00:00Z
+2025
+7
+24
+2025-07-24
+4
+3
+0
+Some tightness in right ankle but no achilles pain
+
+date_types_found
+date

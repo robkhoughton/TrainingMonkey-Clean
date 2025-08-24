@@ -1,0 +1,20 @@
+DEFAULT 2025-07-30T01:28:11.388481Z [2025-07-30 01:28:11 +0000] [1] [ERROR] Shutting down: Master
+DEFAULT 2025-07-30T01:28:11.388495Z [2025-07-30 01:28:11 +0000] [1] [ERROR] Reason: Worker failed to boot.
+DEFAULT 2025-07-30T01:28:11.399556Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:28:11.399694Z 2025-07-30 01:28:11,400 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:28:11.405596Z 2025-07-30 01:28:11,406 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:28:11.405646Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:28:11.405655Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:28:11.405705Z 2025-07-30 01:28:11,406 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:28:11.405739Z 2025-07-30 01:28:11,406 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:28:11.405766Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:28:11.405801Z 2025-07-30 01:28:11,406 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:28:11.428570Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:28:11.428705Z 2025-07-30 01:28:11,429 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:28:11.434386Z 2025-07-30 01:28:11,435 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:28:11.434483Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - Calculated values for 2025-07-30:
+DEFAULT 2025-07-30T01:28:11.434506Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - 7-day avg load: 3.85 (sum: 26.95)
+DEFAULT 2025-07-30T01:28:11.434552Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - 28-day avg load: 6.64 (sum: 185.94101)
+DEFAULT 2025-07-30T01:28:11.434610Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - External ACWR: 0.58
+DEFAULT 2025-07-30T01:28:11.434656Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - Internal ACWR: 0.69
+DEFAULT 2025-07-30T01:28:11.434697Z 2025-07-30 01:28:11,435 - strava_training_load - INFO - Normalized divergence: -0.173

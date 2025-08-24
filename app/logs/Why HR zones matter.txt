@@ -1,0 +1,9 @@
+Why Heart Rate Zones Matter
+Your heart rate zones form the foundation of all training calculations in Your Training Monkey. These zones determine how your Training Impulse (TRIMP) is calculated, which directly impacts your internal Acute:Chronic Workload Ratio (ACWR), injury risk assessments, and AI recommendations.
+
+Impact on Your Training Analysis
+
+TRIMP Calculations: Higher intensity zones receive exponentially more weight in training load calculations <provide brief explanation of TRIMP>
+Historical Data: Changing these settings recalculates ALL your past training data
+AI Recommendations: Your zones influence how the AI interprets workout intensity and prescribes future training
+Injury Prevention: Accurate zones are critical for proper ACWR calculations and overtraining detection

@@ -1,0 +1,1185 @@
+/* TrainingLoadDashboard.module.css */
+
+
+
+/* Layout Styles */
+.container {
+  background-color: #f9fafb; /* gray-50 */
+  padding: 1rem;
+}
+
+/* Force left-justify all multi-line text */
+.journal-autopsy-content,
+.recommendation-text,
+.activity-notes,
+textarea,
+div[style*="whiteSpace: 'pre-line'"] {
+  text-align: left !important;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  background-color: white;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.dateSelector {
+  display: flex;
+  align-items: center;
+}
+
+.dateSelectorLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151; /* gray-700 */
+  margin-right: 0.5rem;
+}
+
+.dateSelectorInput {
+  padding: 0.25rem 0.5rem;
+  background-color: white;
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.metricCard {
+  background-color: lightgray;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  padding: 0.75rem;
+}
+
+.metricCardTitle {
+  color: #6b7280; /* gray-500 */
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.metricCardContent {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metricItem {
+  margin-bottom: 0.5rem;
+  margin-right: 1rem;
+}
+
+.metricItemLabel {
+  font-size: 0.75rem;
+  color: #6b7280; /* gray-500 */
+}
+
+.metricItemValue {
+  font-size: 1.125rem;
+  font-weight: bold;
+}
+
+.metricStatus {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid #e5e7eb; /* gray-200 */
+  font-size: 0.875rem;
+}
+
+.recoveryContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.recoveryItem {
+  text-align: center;
+}
+
+.recoveryItemLabel {
+  font-size: 0.75rem;
+  color: #6b7280; /* gray-500 */
+}
+
+.recoveryItemValue {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.recoveryItemSubtext {
+  font-size: 0.75rem;
+  color: #6b7280; /* gray-500 */
+}
+
+/* Chart Containers */
+.chartContainer {
+  background-color: white;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  margin-bottom: 1rem;
+}
+
+.chartTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.5rem;
+}
+
+.chartWrapper {
+  margin: 0 auto;
+}
+
+.chartNote {
+  font-size: 0.9rem;
+  color: #6b7280; /* gray-600 */
+  margin-top: 0.25rem;
+}
+
+/* Recommendations Section */
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.recommendationHeading {
+  font-weight: 500;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+}
+
+.recommendationText {
+  color: #4b5563; /* gray-600 */
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+/* States */
+.loading, .error, .noData {
+  padding: 1rem;
+  background-color: #f9fafb; /* gray-50 */
+}
+
+.errorTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #ef4444; /* red-600 */
+}
+
+.errorMessage {
+  margin-bottom: 1rem;
+}
+
+.errorTips {
+  background-color: #fefce8; /* yellow-50 */
+  border: 1px solid #fef08a; /* yellow-200 */
+  padding: 1rem;
+  border-radius: 0.375rem;
+}
+
+.errorTipsTitle {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.errorTipsList {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+}
+
+.retryButton {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  background-color: #2563eb; /* blue-600 */
+}
+
+/* Journal Navigation Buttons */
+.journalNavButton {
+  padding: 8px 16px;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  position: relative;
+  top: 0;
+}
+
+.journalNavButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.journalNavButton:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.navButtonBlue {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.navButtonGreen {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+/* Progressive Journal Action Buttons */
+.journalButton {
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  position: relative;
+  top: 0;
+  min-width: 80px;
+  padding: 6px 12px;
+}
+
+.journalButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.journalButton:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.journalButton:disabled {
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  opacity: 0.7;
+}
+
+/* Button State Variations */
+.buttonSave {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.buttonSaving {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+.buttonSaved {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.buttonAnalysis {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.buttonAnalysisExpanded {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+}
+
+.buttonFallback {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+/* Enhanced Retry Button (extends existing pattern) */
+.retryButtonEnhanced {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.retryButtonEnhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.retryButtonEnhanced:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhance existing refresh and generate buttons to match */
+.refreshButton, .generateButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px; /* Updated from 0.5rem to match journal buttons */
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06); /* Enhanced shadow */
+}
+
+.refreshButton {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); /* Updated to gradient */
+  color: white;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); /* Darker on hover */
+  transform: translateY(-2px); /* Enhanced lift */
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25), 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.generateButton {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%); /* Updated to gradient */
+  color: white;
+}
+
+.generateButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%); /* Darker on hover */
+  transform: translateY(-2px); /* Enhanced lift */
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.25), 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.refreshButton:disabled, .generateButton:disabled {
+  background: #9ca3af; /* gray-400 */
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.customTooltip {
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 250px;
+  font-size: 12px;
+  font-family: "Arial", sans-serif;
+}
+
+.tooltipLabel {
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #eee;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.tooltipContent {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tooltipItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tooltipKey {
+  font-weight: 500;
+  margin-right: 8px;
+}
+
+.tooltipValue {
+  font-weight: 400;
+}
+
+.customTooltip {
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.customTooltip a {
+  pointer-events: auto !important;
+}
+
+.customTooltip {
+  pointer-events: auto !important;
+  z-index: 10000 !important;
+  animation: fadeIn 0.2s ease-in-out;
+  cursor: pointer;
+}
+
+.customTooltip:hover {
+  border-color: #2563eb !important;
+}
+
+.customTooltip a {
+  pointer-events: auto !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stravaLink {
+  color: #FC5200 !important;
+  text-decoration: underline;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.stravaLink:hover {
+  color: #e03d00;
+}
+
+.minorTick {
+  stroke: #aaa;
+  stroke-width: 0.5;
+  shape-rendering: crispEdges; /* Add this for sharper lines */
+}
+
+.majorTick {
+  stroke: #666;
+  stroke-width: 1;
+  shape-rendering: crispEdges; /* Add this for sharper lines */
+}
+
+/* Recommendations Styles */
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.recommendationHeading {
+  font-weight: 500;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+}
+
+.recommendationText {
+  color: #4b5563; /* gray-600 */
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.insightsMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+}
+
+.refreshButton {
+  padding: 0.5rem 1rem;
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.refreshButton:hover {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.refreshButton:disabled {
+  background-color: #9ca3af; /* gray-400 */
+  cursor: not-allowed;
+}
+
+.generateButton {
+  padding: 0.75rem 1.5rem;
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-top: 1rem;
+}
+
+.generateButton:hover {
+  background-color: #2563eb; /* blue-600 */
+}
+
+/* Wellness Form Styles */
+.wellnessForm {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.wellnessFormTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.75rem;
+}
+
+.formRow {
+  margin-bottom: 0.75rem;
+}
+
+.formLabel {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4b5563; /* gray-600 */
+  margin-bottom: 0.25rem;
+}
+
+.formInput {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.formTextarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.submitButton {
+  padding: 0.5rem 1rem;
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  width: 100%;
+}
+
+.submitButton:hover {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.submitButton:disabled {
+  background-color: #9ca3af; /* gray-400 */
+  cursor: not-allowed;
+}
+
+.successMessage {
+  background-color: #d1fae5; /* green-100 */
+  color: #065f46; /* green-800 */
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.wellnessChartTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.5rem;
+}
+
+.recommendationTabs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.recommendationTab {
+  background-color: #f8f9fa;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  border-left: 3px solid #e9ecef;
+}
+
+.recommendationTab:first-child {
+  border-left-color: #3b82f6; /* blue-500 for AI recommendations */
+}
+
+.recommendationTab:last-child {
+  border-left-color: #10b981; /* green-500 for rule-based recommendations */
+}
+
+.tabHeading {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4b5563; /* gray-600 */
+  margin-bottom: 0.5rem;
+}
+
+/* Update the recommendations grid for vertical stacking within each column */
+@media (min-width: 768px) {
+  .recommendationTabs {
+    flex-direction: column;
+  }
+}
+
+/* Status Banner */
+.statusBanner {
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  text-align: center;
+  border-left: 4px solid currentColor;
+}
+
+/* Enhanced Recommendations Grid */
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.recommendationColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recommendationHeading {
+  font-weight: 600;
+  color: #374151; /* gray-700 */
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.priorityIndicator {
+  font-size: 1.2rem;
+}
+
+/* Enhanced Recommendation Tabs */
+.recommendationTabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recommendationTab {
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  border-left: 4px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.recommendationTab:hover {
+  background-color: #f1f3f4;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tabHeading {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4b5563; /* gray-600 */
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.aiIcon, .rulesIcon {
+  font-size: 1rem;
+}
+
+.recommendationContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.recommendationText {
+  color: #4b5563; /* gray-600 */
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.metricsContext, .planningMetrics {
+  padding: 0.5rem;
+  background-color: #f3f4f6; /* gray-100 */
+  border-radius: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.contextText {
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+  font-family: 'Courier New', monospace;
+}
+
+.loadingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: #6b7280; /* gray-500 */
+  font-style: italic;
+}
+
+/* Quick Metrics Chips */
+.quickMetrics {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.metricChip {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid currentColor;
+}
+
+/* Sport Filters */
+.sportFilters {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.sportFilter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.sportFilter:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.sportCheckbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.sportLabel {
+  font-weight: 500;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+/* Chart Notes */
+.chartNote {
+  margin-top: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-left: 3px solid #6c757d;
+  border-radius: 4px;
+}
+
+.chartNote p {
+  margin: 0;
+  color: #6c757d;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ACWR Targets */
+.acwrTargets {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #eff6ff; /* blue-50 */
+  border-radius: 0.375rem;
+  border-left: 3px solid #3b82f6; /* blue-500 */
+}
+
+.targetRange {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.targetLabel {
+  font-size: 0.8rem;
+  color: #1e40af; /* blue-800 */
+  font-weight: 500;
+}
+
+.targetValue {
+  font-size: 0.8rem;
+  color: #1e40af; /* blue-800 */
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+/* Observations List */
+.observationsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.observation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.observation strong {
+  color: #374151; /* gray-700 */
+  font-size: 0.85rem;
+}
+
+.observationText {
+  color: #6b7280;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+}
+
+/* Action Center */
+.actionCenter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f9fafb; /* gray-50 */
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb; /* gray-200 */
+}
+
+@media (max-width: 768px) {
+  .actionCenter {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+}
+
+.generationInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.timestampInfo, .noAnalysisInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+@media (min-width: 768px) {
+  .timestampInfo, .noAnalysisInfo {
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+}
+
+.generatedLabel {
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+  font-weight: 500;
+}
+
+.generatedDate {
+  font-size: 0.8rem;
+  color: #374151; /* gray-700 */
+  font-family: 'Courier New', monospace;
+}
+
+.infoText {
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+  max-width: 400px;
+  line-height: 1.4;
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .actionButtons {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+}
+
+/* Enhanced Button Styles */
+.refreshButton, .generateButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.refreshButton {
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background-color: #2563eb; /* blue-600 */
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.generateButton {
+  background-color: #10b981; /* emerald-500 */
+  color: white;
+}
+
+.generateButton:hover:not(:disabled) {
+  background-color: #059669; /* emerald-600 */
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.refreshButton:disabled, .generateButton:disabled {
+  background-color: #9ca3af; /* gray-400 */
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.refreshIcon, .spinner {
+  font-size: 1rem;
+}
+
+.spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Confidence Indicator */
+.confidenceIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .confidenceIndicator {
+    justify-content: center;
+  }
+}
+
+.confidenceLabel {
+  font-size: 0.8rem;
+  color: #6b7280; /* gray-500 */
+  font-weight: 500;
+}
+
+.confidenceBars {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.confidenceBar {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.125rem;
+  cursor: pointer;
+}
+
+.confidenceHigh {
+  background-color: #10b981; /* emerald-500 */
+}
+
+.confidenceMedium {
+  background-color: #f59e0b; /* amber-500 */
+}
+
+.confidenceLow {
+  background-color: #ef4444; /* red-500 */
+}
+
+/* Ensure consistent sans-serif font throughout */
+.chartContainer,
+.recommendationColumn,
+.recommendationTab,
+.recommendationText,
+.tabHeading,
+.observationText,
+.contextText {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+/* Fix specific elements that might be showing serif fonts */
+.recommendationText {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 400; /* Ensure normal weight */
+}
+
+.observationText {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  color: #6b7280;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* Override any inherited serif fonts */
+.chartContainer * {
+  font-family: inherit;
+}
+
+/* Specific fixes for monospace elements (these should stay monospace) */
+.contextText,
+.generatedDate,
+.targetValue {
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* Ensure buttons have consistent fonts */
+.refreshButton,
+.generateButton {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  font-weight: 500;
+}
+
+/* Status banner font */
+.statusBanner {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  font-weight: 600;
+}
+
+/* Headings */
+.recommendationHeading,
+.tabHeading {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .recommendationHeading {
+    font-size: 1rem;
+  }
+
+  .tabHeading {
+    font-size: 0.85rem;
+  }
+
+  .recommendationText {
+    font-size: 0.85rem;
+  }
+
+  .quickMetrics {
+    flex-direction: column;
+  }
+
+  .metricChip {
+    font-size: 0.75rem;
+  }
+}

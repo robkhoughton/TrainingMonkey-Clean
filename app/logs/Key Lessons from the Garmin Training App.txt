@@ -1,0 +1,57 @@
+# Key Lessons from the Garmin Training Dashboard Debugging Process
+
+## Primary Takeaway
+
+The most important lesson is that **date handling in JavaScript requires careful attention to timezone issues, especially when displaying date-specific data**. What seems like a simple task of rendering dates on a chart can quickly become complex due to the nuances of how JavaScript handles date objects and timezone conversions.
+
+## Essential Lessons Learned
+
+1. **Use consistent date representation throughout the application**
+   - Maintaining the original date string format from the backend (`YYYY-MM-DD`) as the source of truth prevented data shifting
+   - Avoiding unnecessary conversions between string and Date objects minimized opportunities for errors
+
+2. **Be wary of implicit timezone conversions**
+   - JavaScript's `new Date()` interprets dates differently depending on context
+   - Using explicit timezone notation (`T12:00:00Z`) ensures consistent date interpretation
+
+3. **String comparison for dates can be more reliable than Date objects**
+   - For filtering by date ranges, comparing ISO format strings (`2025-04-21`) avoids timezone boundary issues
+   - Using string-based sorting and filtering provides more predictable behavior
+
+4. **Systematic diagnostic approach yields better results than trial and error**
+   - Implementing proper debugging tools to visualize and verify data alignment
+   - Taking time to understand the root cause rather than making random changes
+
+5. **Different metrics require different rendering strategies**
+   - Direct workout metrics (like distance, elevation) should break lines at rest days (`connectNulls={false}`)
+   - Calculated metrics (like ACWR, moving averages) should maintain continuity (`connectNulls={true}`)
+
+## Technical Implementation Tips
+
+1. **For date alignment in React/Recharts applications:**
+   ```typescript
+   // Create a date object that preserves the exact date using noon UTC
+   const dateObj = new Date(`${dateStr}T12:00:00Z`);
+   
+   // Use string comparison for filtering
+   const filtered = data.filter(item => 
+     item.date >= cutoffDate && item.date <= maxDate
+   );
+   
+   // Use the original date string for chart rendering
+   <XAxis dataKey="date" tickFormatter={formatXAxis} />
+   ```
+
+2. **Implement robust debugging tools for data visualization issues:**
+   ```typescript
+   // Add a debug panel with interactive features
+   {debugMode && (
+     <div className="...">
+       <button onClick={() => debugDates(filtered)}>
+         Log Filtered Data
+       </button>
+     </div>
+   )}
+   ```
+
+This experience highlights the importance of understanding the entire data pipeline—from backend processing to frontend rendering—and how seemingly minor implementation details can have significant impacts on data visualization accuracy.

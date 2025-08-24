@@ -1,0 +1,77 @@
+C:\Users\robho\Documents\GarminLocal\frontend>cd..
+
+C:\Users\robho\Documents\GarminLocal>gcloud sql instances list
+NAME: train-monk-db
+DATABASE_VERSION: POSTGRES_14
+LOCATION: us-central1-b
+TIER: db-custom-4-16384
+PRIMARY_ADDRESS: -
+PRIVATE_ADDRESS: 10.109.208.9
+STATUS: RUNNABLE
+
+
+Updates are available for some Google Cloud CLI components.  To install them,
+please run:
+  $ gcloud components update
+
+
+
+To take a quick anonymous survey, run:
+  $ gcloud survey
+
+
+C:\Users\robho\Documents\GarminLocal>gcloud run services list --platform=managed
++
+SERVICE: garmin-auth-test
+REGION: us-central1
+URL: https://garmin-auth-test-382535371225.us-central1.run.app
+LAST DEPLOYED BY: rob.houghton.ca@gmail.com
+LAST DEPLOYED AT: 2025-06-16T21:51:33.932161Z
+
++
+SERVICE: garmin-sync-app
+REGION: us-central1
+URL: https://garmin-sync-app-382535371225.us-central1.run.app
+LAST DEPLOYED BY: rob.houghton.ca@gmail.com
+LAST DEPLOYED AT: 2025-06-24T21:30:57.490351Z
+
++
+SERVICE: training-monkey
+REGION: us-central1
+URL: https://training-monkey-382535371225.us-central1.run.app
+LAST DEPLOYED BY: rob.houghton.ca@gmail.com
+LAST DEPLOYED AT: 2025-06-17T01:21:12.019071Z
+
+C:\Users\robho\Documents\GarminLocal>gcloud secrets list
+NAME: anthropic-api-key
+CREATED: 2025-06-02T16:20:55
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+NAME: database-url
+CREATED: 2025-06-02T16:53:45
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+NAME: encryption-key
+CREATED: 2025-06-06T23:31:13
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+NAME: garmin-email
+CREATED: 2025-06-02T16:55:55
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+NAME: garmin-oauth-tokens
+CREATED: 2025-06-08T19:03:58
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+NAME: garmin-password
+CREATED: 2025-06-02T16:22:33
+REPLICATION_POLICY: automatic
+LOCATIONS: -
+
+C:\Users\robho\Documents\GarminLocal>gcloud config get-value project
+dev-ruler-460822-e8

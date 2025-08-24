@@ -1,0 +1,40 @@
+C:\Users\robho\Documents\GarminLocal\Headless\.venv\Scripts\python.exe C:\Users\robho\Documents\GarminLocal\strava_sync_service\debug_api_response.py 
+🔍 Testing API Endpoints
+==================================================
+
+1. Testing /api/stats endpoint...
+   Status: 500
+   Error: {"daysSinceRest":0,"lastActivity":null,"latestMetrics":{"externalAcwr":0,"internalAcwr":0,"normalizedDivergence":0,"sevenDayAvgLoad":0,"sevenDayAvgTrimp":0},"totalActivities":0}
+
+
+2. Testing /api/training-data endpoint...
+   Status: 200
+   - success: True
+   - count: 91
+   - raw_count: 92
+   - Sample recent activity:
+     * date: 2025-07-01
+     * activity_id: 14975980699
+     * name: Morning Trail Run
+     * type: run
+     * acute_chronic_ratio: 0.78
+     * trimp_acute_chronic_ratio: 0.63
+     * normalized_divergence: 0.213
+
+3. Direct database check...
+Using SQLite connection
+   Most recent activity in database:
+     * date: 2025-07-01
+     * activity_id: 14975980699
+     * name: Morning Trail Run
+     * acute_chronic_ratio: 0.78
+     * trimp_acute_chronic_ratio: 0.63
+     * normalized_divergence: 0.213
+     * seven_day_avg_load: 4.67
+
+4. REST day check...
+Using SQLite connection
+   Found 3 recent rest days:
+     * 2025-06-26: rest
+     * 2025-06-23: rest
+     * 2025-06-18: rest

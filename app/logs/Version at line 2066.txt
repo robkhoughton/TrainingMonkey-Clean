@@ -1,0 +1,76 @@
+Version at line 2066
+@app.route('/dashboard/first-time')
+@login_required
+def first_time_dashboard():
+    """Special dashboard experience for new users from landing page"""
+    if not session.get('new_user_onboarding'):
+        # Not a new user, redirect to normal dashboard
+        return redirect('/static/index.html')
+
+    # Check if user has enough data for divergence analysis
+    try:
+        twenty_eight_days_ago = (datetime.now().date() - timedelta(days=28)).strftime('%Y-%m-%d')
+        days_of_data = db_utils.execute_query(
+            "SELECT COUNT(DISTINCT date) as days FROM activities WHERE user_id = %s AND date >= %s",
+            (current_user.id, twenty_eight_days_ago),
+            fetch=True
+        )
+
+        if days_of_data and days_of_data.get('days', 0) >= 14:
+            # Enough data - show divergence analysis
+            session.pop('new_user_onboarding', None)  # Clear onboarding flag
+            return redirect('/static/index.html?highlight=divergence&new_user=true')
+        else:
+            # Not enough data - show onboarding page
+            activity_count = db_utils.execute_query(
+                "SELECT COUNT(*) as count FROM activities WHERE user_id = %s",
+                (current_user.id,),
+                fetch=True
+            )
+
+            return render_template('onboarding.html',
+                                   days_needed=max(0, 28 - days_of_data.get('days', 0)) if days_of_data else 28,
+                                   activity_count=activity_count.get('count', 0) if activity_count else 0)
+
+    except Exception as e:
+        logger.error(f"Error checking user data: {str(e)}")
+        # On error, redirect to normal dashboard
+        return redirect('/static/index.html')
+Version at line 2259
+@app.route('/dashboard/first-time')
+@login_required
+def first_time_dashboard():
+    """Special dashboard experience for new users from landing page"""
+    if not session.get('new_user_onboarding'):
+        # Not a new user, redirect to normal dashboard
+        return redirect('/static/index.html')
+
+    # Check if user has enough data for divergence analysis
+    try:
+        # Get user's training data count
+        activity_count = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM activities WHERE user_id = ?",
+            (current_user.id,),
+            fetch=True
+        )
+
+        days_of_data = db_utils.execute_query(
+            "SELECT COUNT(DISTINCT date) as days FROM activities WHERE user_id = ? AND date >= date('now', '-28 days')",
+            (current_user.id,),
+            fetch=True
+        )
+
+        if days_of_data and days_of_data.get('days', 0) >= 14:
+            # Enough data - show divergence analysis
+            session.pop('new_user_onboarding', None)  # Clear onboarding flag
+            return redirect('/static/index.html?highlight=divergence')
+        else:
+            # Not enough data - show special onboarding page
+            return render_template('onboarding.html',
+                                   days_needed=max(0, 28 - days_of_data.get('days', 0)) if days_of_data else 28,
+                                   activity_count=activity_count.get('count', 0) if activity_count else 0)
+
+    except Exception as e:
+        logger.error(f"Error checking user data: {str(e)}")
+        # On error, redirect to normal dashboard
+        return redirect('/static/index.html')

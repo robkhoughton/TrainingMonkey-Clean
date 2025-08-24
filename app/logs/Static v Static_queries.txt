@@ -1,0 +1,199 @@
+Directory of C:\Users\robho\Documents\GarminLocal\strava_sync_service
+
+08/22/2025  09:27 AM    <DIR>          .
+07/12/2025  02:48 PM    <DIR>          ..
+08/11/2025  02:37 PM            18,628 # Training Metrics Reference Guide.md
+08/11/2025  02:35 PM            16,779 # Training Metrics Reference Guide_BACKUP_20250811.md
+07/02/2025  10:28 AM               958 app-secret-key secret.bat
+06/05/2025  08:01 AM             5,004 auth.py
+07/12/2025  08:33 PM    <DIR>          build
+08/04/2025  09:24 PM             1,089 config.json
+05/01/2025  04:34 PM             1,492 create_admin.py
+05/08/2025  07:56 PM             1,856 create_dashboard_user.py
+07/27/2025  08:17 PM             3,625 date_migration.sql
+08/20/2025  10:40 AM            24,745 db_utils.py
+07/08/2025  10:18 AM             2,057 deploy_strava.bat
+07/07/2025  04:31 PM             3,871 deploy_strava_force.bat
+07/11/2025  03:00 PM             2,589 deploy_strava_simple.bat
+08/22/2025  09:27 AM             2,088 Dockerfile.strava
+08/08/2025  03:57 PM            17,125 elevation_migration_module.py
+07/29/2025  01:03 PM            11,959 enhanced_token_management.py
+08/04/2025  10:39 AM               819 feature_flags.py
+07/29/2025  08:57 AM             3,058 find_date_issues.py
+06/28/2025  01:33 PM            66,767 garmin_training_load.py
+08/11/2025  06:51 PM             3,279 generate_historical_recs.py
+07/27/2025  02:54 PM               730 generate_password_hash.py
+07/09/2025  07:17 AM             1,674 generate_user_hash.py
+08/11/2025  06:51 PM             2,118 llm_recommendations.log
+08/20/2025  10:13 AM            80,151 llm_recommendations_module.py
+07/27/2025  02:20 PM             1,574 local_debug.py
+08/21/2025  02:46 PM    <DIR>          logs
+07/28/2025  10:09 AM             3,753 README.md
+07/01/2025  03:58 PM            14,852 recommendations_component.ts
+08/08/2025  09:07 AM                 0 risk_classification.py
+07/01/2025  01:49 PM             1,076 run_full_sync.py
+08/15/2025  08:02 AM            12,235 settings_utils.py
+07/06/2025  10:34 AM             3,887 setup_strava_oauth.bat
+08/21/2025  07:01 PM    <DIR>          static
+08/21/2025  04:33 PM           191,590 strava_app.py
+07/10/2025  03:27 PM    <DIR>          Strava_brand
+06/29/2025  03:40 PM               152 strava_config.json
+07/29/2025  01:46 PM               294 strava_requirements.txt
+07/01/2025  02:34 PM               159 strava_tokens.json
+07/27/2025  02:20 PM           777,288 strava_training_load.log
+08/17/2025  10:21 AM            50,836 strava_training_load.py
+07/29/2025  05:37 PM             5,285 sync_fix.py
+08/21/2025  07:28 PM    <DIR>          templates
+07/27/2025  11:59 AM             3,046 timezone_utils.py
+08/16/2025  03:45 PM            21,826 unified_metrics_service.py
+07/07/2025  04:54 PM             3,967 verbose_deployment.bat
+08/11/2025  06:51 PM    <DIR>          __pycache__
+              40 File(s)      1,364,281 bytes
+               8 Dir(s)  96,018,202,624 bytes free
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>dir strava_sync_service\build
+The system cannot find the file specified.
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>cd build
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service\build>dir
+ Volume in drive C is OS
+ Volume Serial Number is 664E-B952
+
+ Directory of C:\Users\robho\Documents\GarminLocal\strava_sync_service\build
+
+07/12/2025  08:33 PM    <DIR>          .
+08/22/2025  09:27 AM    <DIR>          ..
+08/21/2025  07:49 PM               343 asset-manifest.json
+04/27/2025  07:26 PM             3,870 favicon.ico
+08/21/2025  07:49 PM               690 index.html
+04/27/2025  07:26 PM             5,347 logo192.png
+04/27/2025  07:26 PM             9,664 logo512.png
+08/04/2025  09:43 PM               518 manifest.json
+07/10/2025  03:27 PM             3,963 powered-by-strava.svg
+04/27/2025  07:26 PM                67 robots.txt
+08/21/2025  07:49 PM    <DIR>          static
+07/13/2025  08:28 AM            85,424 training-monkey-runner.webp
+               9 File(s)        109,886 bytes
+               3 Dir(s)  96,024,047,616 bytes free
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service\build>cd..
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>cd static
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service\static>dir
+ Volume in drive C is OS
+ Volume Serial Number is 664E-B952
+
+ Directory of C:\Users\robho\Documents\GarminLocal\strava_sync_service\static
+
+08/21/2025  07:01 PM    <DIR>          .
+08/22/2025  09:27 AM    <DIR>          ..
+08/21/2025  03:28 PM         3,375,068 20120602070426IMG0128-Mv2.psd
+08/21/2025  07:01 PM            17,510 acwr-chart.html
+07/10/2025  03:27 PM             3,945 api_logo_pwrdBy_strava_horiz_black.svg
+07/10/2025  03:27 PM             3,963 api_logo_pwrdBy_strava_horiz_orange.svg
+07/10/2025  03:27 PM             3,956 api_logo_pwrdBy_strava_horiz_white.svg
+07/10/2025  03:27 PM             3,986 api_logo_pwrdBy_strava_stack_black.svg
+07/10/2025  03:27 PM             3,980 api_logo_pwrdBy_strava_stack_orange.svg
+07/10/2025  03:27 PM             3,978 api_logo_pwrdBy_strava_stack_white.svg
+07/10/2025  07:34 PM               319 asset-manifest.json
+07/10/2025  03:27 PM             4,608 btn_strava_connect_with_orange.svg
+07/10/2025  03:27 PM             4,616 btn_strava_connect_with_orange_x2.svg
+07/10/2025  03:27 PM             4,602 btn_strava_connect_with_white.svg
+07/10/2025  03:27 PM             4,609 btn_strava_connect_with_white_x2.svg
+04/27/2025  07:26 PM             3,870 favicon.ico
+08/21/2025  06:41 PM    <DIR>          images
+07/10/2025  07:34 PM               649 index.html
+04/27/2025  07:26 PM             5,347 logo192.png
+04/27/2025  07:26 PM             9,664 logo512.png
+04/27/2025  07:26 PM               492 manifest.json
+07/10/2025  03:27 PM             3,963 powered-by-strava.svg
+04/27/2025  07:26 PM                67 robots.txt
+08/19/2025  02:42 PM    <DIR>          static
+08/21/2025  04:58 PM           506,663 Untitled.png
+              21 File(s)      3,965,855 bytes
+               4 Dir(s)  96,024,023,040 bytes free
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service\static>cd..
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>type Dockerfile.strava
+# Dockerfile for Strava Training Personal Service
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=strava_app.py
+ENV PORT=8080
+
+# Create app directory
+WORKDIR /app
+
+# Install system dependencies (minimal since we're using REST API)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY strava_requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r strava_requirements.txt
+
+# Copy application code
+COPY strava_app.py .
+COPY strava_training_load.py .
+COPY db_utils.py .
+COPY llm_recommendations_module.py .
+COPY unified_metrics_service.py .
+COPY enhanced_token_management.py .
+COPY auth.py .
+COPY timezone_utils.py .
+COPY elevation_migration_module.py .
+COPY sync_fix.py .
+COPY settings_utils.py .
+COPY templates/ /app/templates/
+
+# Copy the actual configuration files
+COPY config.json .
+COPY ["# Training Metrics Reference Guide.md", "."]
+
+# Create the static directory structure that Flask expects
+RUN mkdir -p /app/static
+
+# Copy React build files to the correct location for Flask
+COPY build/ /app/static/
+# COPY static/ /app/static/
+
+# Verify the structure is correct
+RUN echo "=== Verifying static file structure ===" && \
+    ls -la /app/static/ && \
+    echo "=== Checking for index.html ===" && \
+    ls -la /app/static/index.html || echo "index.html not found" && \
+    echo "=== Checking static subdirectory ===" && \
+    ls -la /app/static/static/ || echo "static subdirectory not found"
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash app \
+    && chown -R app:app /app
+USER app
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Run the application
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 strava_app:app
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>type strava_sync_service\build\index.html | findstr "src="
+The system cannot find the path specified.
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service>cd build
+
+C:\Users\robho\Documents\GarminLocal\strava_sync_service\build>type index.html | findstr "src="
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><link rel="icon" href="/static/favicon.ico"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#000000"/><meta name="description" content="Web site created using create-react-app"/><link rel="apple-touch-icon" href="/static/logo192.png"/><link rel="manifest" href="/static/manifest.json"/><title>Your Training Monkey</title><script defer="defer" src="/static/static/js/main.3cad50a9.js"></script><link href="/static/static/css/main.823661fd.css" rel="stylesheet"></head><body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div></body></html>

@@ -1,0 +1,103 @@
+def calculate_training_load(activity, client, hr_config=None):
+    """
+    Calculate custom training load based on Strava activity data.
+    ENHANCED DEBUG VERSION.
+    """
+    if hr_config is None:
+        hr_config = {
+            'resting_hr': DEFAULT_RESTING_HR,
+            'max_hr': DEFAULT_MAX_HR,
+            'gender': DEFAULT_GENDER
+        }
+
+    # Extract base metrics from Strava activity
+    activity_id = activity.id
+    activity_date = activity.start_date.strftime('%Y-%m-%d')
+    activity_name = activity.name
+
+    logger.info(f"DEBUG: Starting calculate_training_load for activity {activity_id}: '{activity_name}'")
+
+    # FIXED: Use the specific activity type determination instead of generic type
+    specific_activity_type = determine_specific_activity_type(activity)
+    logger.info(f"DEBUG: Activity {activity_id} type classification result: '{specific_activity_type}'")
+
+    # Get distance, elevation, and duration
+    distance_meters = float(activity.distance or 0)
+    elevation_gain_meters = float(activity.total_elevation_gain or 0)
+
+    # Handle Strava's Duration object properly
+    if activity.moving_time:
+        try:
+            duration_seconds = float(int(activity.moving_time))
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.warning(f"Could not convert moving_time {activity.moving_time} to seconds: {e}")
+            duration_seconds = 0
+    else:
+        duration_seconds = 0
+
+    # Convert units to match your Garmin format
+    distance_miles = distance_meters * METERS_TO_MILES
+    elevation_gain_feet = elevation_gain_meters * METERS_TO_FEET
+    elevation_load_miles = elevation_gain_feet / 750.0
+    total_load_miles = distance_miles + elevation_load_miles
+    duration_minutes = duration_seconds / 60.0
+
+    # Get heart rate data
+    avg_hr = float(activity.average_heartrate or 0)
+    max_hr = float(activity.max_heartrate or 0)
+
+    # Get detailed HR streams for zone calculation
+    hr_zone_times = [0, 0, 0, 0, 0]  # Default to zeros
+    try:
+        streams = get_activity_streams(client, activity_id)
+        if streams:
+            hr_zone_times = calculate_hr_zones_from_streams(
+                streams,
+                hr_config['max_hr'],
+                hr_config['resting_hr']
+            )
+    except Exception as e:
+        logger.warning(f"Could not get HR streams for activity {activity_id}: {str(e)}")
+
+    # Calculate Banister TRIMP
+    trimp = 0
+    if avg_hr > 0 and duration_minutes > 0:
+        trimp = calculate_banister_trimp(
+            duration_minutes,
+            avg_hr,
+            hr_config['resting_hr'],
+            hr_config['max_hr'],
+            hr_config['gender']
+        )
+
+    # Enhanced debug logging
+    logger.info(f"DEBUG: Activity {activity_id} final data:")
+    logger.info(f"  - Name: '{activity_name}'")
+    logger.info(f"  - Type: '{specific_activity_type}'")
+    logger.info(f"  - Distance: {distance_miles:.2f} miles")
+    logger.info(f"  - Elevation: {elevation_gain_feet:.1f} feet")
+    logger.info(f"  - Duration: {duration_minutes:.1f} minutes")
+    logger.info(f"  - TRIMP: {trimp:.2f}")
+
+    result = {
+        'activity_id': int(activity_id),
+        'date': activity_date,
+        'name': activity_name,
+        'type': specific_activity_type,  # This should now be the specific type
+        'distance_miles': float(round(distance_miles, 2)),
+        'elevation_gain_feet': float(round(elevation_gain_feet, 2)),
+        'elevation_load_miles': float(round(elevation_load_miles, 2)),
+        'total_load_miles': float(round(total_load_miles, 2)),
+        'avg_heart_rate': float(avg_hr),
+        'max_heart_rate': float(max_hr),
+        'duration_minutes': float(round(duration_minutes, 2)),
+        'trimp': float(trimp.item()) if hasattr(trimp, 'item') else float(trimp),
+        'time_in_zone1': int(hr_zone_times[0]),
+        'time_in_zone2': int(hr_zone_times[1]),
+        'time_in_zone3': int(hr_zone_times[2]),
+        'time_in_zone4': int(hr_zone_times[3]),
+        'time_in_zone5': int(hr_zone_times[4])
+    }
+
+    logger.info(f"DEBUG: Returning result for activity {activity_id} with type='{result['type']}'")
+    return result

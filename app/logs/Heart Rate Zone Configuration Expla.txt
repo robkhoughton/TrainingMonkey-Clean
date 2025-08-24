@@ -1,0 +1,36 @@
+Heart Rate Zone Configuration Explanation
+Why Heart Rate Zones Matter
+Your heart rate zones form the foundation of all training calculations in Your Training Monkey. These zones determine how your Training Impulse (TRIMP) is calculated, which directly impacts your internal Acute:Chronic Workload Ratio (ACWR), injury risk assessments, and AI recommendations.
+The Two Calculation Methods
+Percentage Method (Simple)
+
+Calculates zones as direct percentages of your maximum heart rate
+Zone 1: 50-60% of max HR (Recovery)
+Zone 2: 60-70% of max HR (Aerobic Base)
+Zone 3: 70-80% of max HR (Aerobic)
+Zone 4: 80-90% of max HR (Threshold)
+Zone 5: 90-100% of max HR (VO2 Max)
+
+Karvonen Method (Heart Rate Reserve)
+
+Uses the difference between max and resting HR (your "heart rate reserve") to calculate zones
+Zone 1: Resting + 50-60% of reserve (Recovery)
+Zone 2: Resting + 60-70% of reserve (Aerobic Base)
+Zone 3: Resting + 70-80% of reserve (Aerobic)
+Zone 4: Resting + 80-90% of reserve (Threshold)
+Zone 5: Resting + 90-100% of reserve (VO2 Max)
+
+Generally produces more personalized and physiologically accurate zones by accounting for your resting heart rate
+
+Impact on Your Training Analysis
+
+TRIMP Calculations: Higher intensity zones receive exponentially more weight in training load calculations
+Historical Data: Changing these settings recalculates ALL your past training data
+AI Recommendations: Your zones influence how the AI interprets workout intensity and prescribes future training
+Injury Prevention: Accurate zones are critical for proper ACWR calculations and overtraining detection
+
+Choosing the Right Method
+
+Use Karvonen if you know your true resting heart rate (most accurate)
+Use Percentage if you're unsure about your resting HR or prefer simplicity
+Custom Zones: Override calculated zones if you've done laboratory testing

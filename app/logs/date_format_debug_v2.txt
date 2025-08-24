@@ -1,0 +1,167 @@
+DEFAULT 2025-07-30T01:58:55.616472Z PostgreSQL connection successfulPostgreSQL connection successful
+DEFAULT 2025-07-30T01:58:55.616591Z 2025-07-30 01:58:55,617 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.616750Z 2025-07-30 01:58:55,618 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.622258Z 2025-07-30 01:58:55,623 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.622319Z 2025-07-30 01:58:55,623 - strava_app - INFO - Fetching LLM recommendations for user 1...
+DEFAULT 2025-07-30T01:58:55.622462Z 2025-07-30 01:58:55,623 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:58:55.622470Z 2025-07-30 01:58:55,623 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.622501Z 2025-07-30 01:58:55,623 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:58:55.622510Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:58:55.622523Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.622528Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:58:55.631984Z 2025-07-30 01:58:55,633 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.633596Z 2025-07-30 01:58:55,634 - strava_app - INFO - Retrieved 137 records from database (including rest days)
+DEFAULT 2025-07-30T01:58:55.653650Z 2025-07-30 01:58:55,654 - strava_app - INFO - Processed to 121 daily records for dashboard
+DEFAULT 2025-07-30T01:58:55.657130Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:58:55.657321Z 2025-07-30 01:58:55,658 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.663855Z 2025-07-30 01:58:55,665 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.663994Z 2025-07-30 01:58:55,665 - strava_app - INFO - Found recommendation for user 1 from 2025-07-29
+INFO 2025-07-30T01:58:55.682650Z [httpRequest.requestMethod: GET] [httpRequest.status: 304] [httpRequest.responseSize: 179 B] [httpRequest.latency: 3 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/static/logo192.png
+INFO 2025-07-30T01:58:55.811859Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 335 B] [httpRequest.latency: 129 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/stats?t=1753840735626
+DEFAULT 2025-07-30T01:58:55.816103Z 2025-07-30 01:58:55,817 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:58:55.816134Z 2025-07-30 01:58:55,817 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.816786Z 2025-07-30 01:58:55,817 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:58:55.841022Z 2025-07-30 01:58:55,842 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.846138Z 2025-07-30 01:58:55,847 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.846280Z 2025-07-30 01:58:55,847 - strava_app - INFO - Calculating training statistics for user 1 using unified metrics...
+DEFAULT 2025-07-30T01:58:55.846322Z 2025-07-30 01:58:55,847 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:58:55.846364Z 2025-07-30 01:58:55,847 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.846404Z 2025-07-30 01:58:55,847 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:58:55.870617Z 2025-07-30 01:58:55,871 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.876901Z 2025-07-30 01:58:55,877 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.877022Z 2025-07-30 01:58:55,878 - unified_metrics - INFO - Latest activity for user 1: 2025-07-28
+DEFAULT 2025-07-30T01:58:55.877086Z 2025-07-30 01:58:55,878 - unified_metrics - INFO - Activity details: ID=15266515428, External ACWR=0.62, Internal ACWR=0.7
+DEFAULT 2025-07-30T01:58:55.877151Z 2025-07-30 01:58:55,878 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1
+DEFAULT 2025-07-30T01:58:55.877231Z 2025-07-30 01:58:55,878 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:58:55.877288Z 2025-07-30 01:58:55,878 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.877368Z 2025-07-30 01:58:55,878 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:58:55.903716Z 2025-07-30 01:58:55,904 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.909260Z 2025-07-30 01:58:55,910 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.909451Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Last rest day for user 1: 2025-07-27. Days since: 2 (using app timezone)
+DEFAULT 2025-07-30T01:58:55.909457Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Current app date: 2025-07-29
+DEFAULT 2025-07-30T01:58:55.909461Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Unified metrics for user 1:
+DEFAULT 2025-07-30T01:58:55.909500Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - External ACWR: 0.62
+DEFAULT 2025-07-30T01:58:55.909536Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Internal ACWR: 0.7
+DEFAULT 2025-07-30T01:58:55.909571Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Normalized Divergence: -0.121
+DEFAULT 2025-07-30T01:58:55.909614Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Days since rest: 2
+DEFAULT 2025-07-30T01:58:55.909653Z 2025-07-30 01:58:55,910 - unified_metrics - INFO - Latest activity date: 2025-07-28
+DEFAULT 2025-07-30T01:58:55.909768Z 2025-07-30 01:58:55,910 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:58:55.909806Z 2025-07-30 01:58:55,910 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:58:55.909859Z 2025-07-30 01:58:55,911 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:58:55.935574Z 2025-07-30 01:58:55,936 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:58:55.941931Z 2025-07-30 01:58:55,942 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:58:55.942107Z 2025-07-30 01:58:55,943 - strava_app - INFO - Unified stats for user 1: {'totalActivities': 104, 'lastActivity': '2025-07-28', 'daysSinceRest': 2, 'latestMetrics': {'externalAcwr': 0.62, 'internalAcwr': 0.7, 'sevenDayAvgLoad': 4.3, 'sevenDayAvgTrimp': 52.6, 'normalizedDivergence': -0.121}}
+INFO 2025-07-30T01:58:56.021468Z [httpRequest.requestMethod: GET] [httpRequest.status: 304] [httpRequest.responseSize: 195 B] [httpRequest.latency: 3 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/static/training-monkey-runner.webp
+INFO 2025-07-30T01:59:00.015114Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 95.57 KiB] [httpRequest.latency: 101 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/training-data?t=1753840739800
+DEFAULT 2025-07-30T01:59:00.019498Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:00.019511Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:00.019600Z 2025-07-30 01:59:00,020 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:00.019670Z 2025-07-30 01:59:00,020 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:00.019726Z 2025-07-30 01:59:00,020 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:00.019741Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:00.045757Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:00.045859Z 2025-07-30 01:59:00,046 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:00.052012Z 2025-07-30 01:59:00,052 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:00.052087Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:00.052105Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:00.052141Z 2025-07-30 01:59:00,052 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:00.052166Z 2025-07-30 01:59:00,052 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:00.052238Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:00.052268Z 2025-07-30 01:59:00,052 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:00.078459Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:00.078561Z 2025-07-30 01:59:00,079 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:00.094379Z 2025-07-30 01:59:00,094 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:00.095470Z 2025-07-30 01:59:00,096 - strava_app - INFO - Retrieved 137 records from database (including rest days)
+DEFAULT 2025-07-30T01:59:00.113634Z 2025-07-30 01:59:00,114 - strava_app - INFO - Processed to 121 daily records for dashboard
+INFO 2025-07-30T01:59:01.960928Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 95.57 KiB] [httpRequest.latency: 162 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/training-data?t=1753840741760
+INFO 2025-07-30T01:59:01.961202Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 6.16 KiB] [httpRequest.latency: 218 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/llm-recommendations
+DEFAULT 2025-07-30T01:59:01.965945Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:01.965959Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.966114Z 2025-07-30 01:59:01,966 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:01.966208Z 2025-07-30 01:59:01,966 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.966214Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:01.966261Z 2025-07-30 01:59:01,966 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:01.967521Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:01.967535Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.967613Z 2025-07-30 01:59:01,968 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:01.967624Z 2025-07-30 01:59:01,968 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.967700Z 2025-07-30 01:59:01,968 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:01.967718Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:01.989711Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:01.989792Z 2025-07-30 01:59:01,990 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:01.994701Z 2025-07-30 01:59:01,995 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:01.994783Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:01.994792Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.994812Z 2025-07-30 01:59:01,995 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:01.994858Z 2025-07-30 01:59:01,995 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:01.994873Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:01.994888Z 2025-07-30 01:59:01,995 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:01.996409Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:01.996458Z 2025-07-30 01:59:01,997 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.001587Z 2025-07-30 01:59:02,002 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.001643Z 2025-07-30 01:59:02,002 - strava_app - INFO - Fetching LLM recommendations for user 1...
+DEFAULT 2025-07-30T01:59:02.001711Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:02.001721Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.001737Z 2025-07-30 01:59:02,002 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:02.001772Z 2025-07-30 01:59:02,002 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.001803Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:02.001826Z 2025-07-30 01:59:02,002 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:02.035785Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.035930Z 2025-07-30 01:59:02,036 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.102497Z 2025-07-30 01:59:02,102 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.103291Z 2025-07-30 01:59:02,103 - strava_app - INFO - Retrieved 137 records from database (including rest days)
+DEFAULT 2025-07-30T01:59:02.121601Z 2025-07-30 01:59:02,122 - strava_app - INFO - Processed to 121 daily records for dashboard
+DEFAULT 2025-07-30T01:59:02.136535Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.136620Z 2025-07-30 01:59:02,137 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.180144Z 2025-07-30 01:59:02,180 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.180282Z 2025-07-30 01:59:02,180 - strava_app - INFO - Found recommendation for user 1 from 2025-07-29
+INFO 2025-07-30T01:59:02.305624Z [httpRequest.requestMethod: GET] [httpRequest.status: 200] [httpRequest.responseSize: 335 B] [httpRequest.latency: 141 ms] [httpRequest.userAgent: Chrome 138.0.0.0] https://strava-training-personal-382535371225.us-central1.run.app/api/stats?t=1753840742078
+DEFAULT 2025-07-30T01:59:02.309904Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:02.309919Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.310016Z 2025-07-30 01:59:02,310 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:02.310028Z 2025-07-30 01:59:02,310 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.310071Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:02.310101Z 2025-07-30 01:59:02,310 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:02.336119Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.336268Z 2025-07-30 01:59:02,336 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.341573Z 2025-07-30 01:59:02,342 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.341663Z 2025-07-30 01:59:02,342 - strava_app - INFO - Calculating training statistics for user 1 using unified metrics...
+DEFAULT 2025-07-30T01:59:02.341718Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:02.341727Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.341751Z 2025-07-30 01:59:02,342 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:02.341788Z 2025-07-30 01:59:02,342 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.341811Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:02.341837Z 2025-07-30 01:59:02,342 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:02.368378Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.368476Z 2025-07-30 01:59:02,368 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.375011Z 2025-07-30 01:59:02,375 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.375180Z 2025-07-30 01:59:02,375 - unified_metrics - INFO - Latest activity for user 1: 2025-07-28
+DEFAULT 2025-07-30T01:59:02.375216Z 2025-07-30 01:59:02,375 - unified_metrics - INFO - Activity details: ID=15266515428, External ACWR=0.62, Internal ACWR=0.7
+DEFAULT 2025-07-30T01:59:02.375272Z 2025-07-30 01:59:02,375 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1
+DEFAULT 2025-07-30T01:59:02.375339Z 2025-07-30 01:59:02,376 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:02.375350Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:02.375361Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.375369Z 2025-07-30 01:59:02,376 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.375413Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:02.375450Z 2025-07-30 01:59:02,376 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:02.403614Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.403730Z 2025-07-30 01:59:02,404 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.410538Z 2025-07-30 01:59:02,411 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.410654Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Last rest day for user 1: 2025-07-27. Days since: 2 (using app timezone)
+DEFAULT 2025-07-30T01:59:02.410681Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Current app date: 2025-07-29
+DEFAULT 2025-07-30T01:59:02.410739Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Unified metrics for user 1:
+DEFAULT 2025-07-30T01:59:02.410770Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - External ACWR: 0.62
+DEFAULT 2025-07-30T01:59:02.410808Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Internal ACWR: 0.7
+DEFAULT 2025-07-30T01:59:02.410848Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Normalized Divergence: -0.121
+DEFAULT 2025-07-30T01:59:02.410886Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Days since rest: 2
+DEFAULT 2025-07-30T01:59:02.410920Z 2025-07-30 01:59:02,411 - unified_metrics - INFO - Latest activity date: 2025-07-28
+DEFAULT 2025-07-30T01:59:02.411066Z Attempting PostgreSQL connection...
+DEFAULT 2025-07-30T01:59:02.411071Z 2025-07-30 01:59:02,411 - db_utils - INFO - db_utils: Attempting PostgreSQL connection within context manager.
+DEFAULT 2025-07-30T01:59:02.411075Z DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.411079Z Using standard PostgreSQL connection
+DEFAULT 2025-07-30T01:59:02.411080Z 2025-07-30 01:59:02,411 - db_utils - INFO - db_utils: DATABASE_URL: postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d...
+DEFAULT 2025-07-30T01:59:02.411118Z 2025-07-30 01:59:02,411 - db_utils - INFO - db_utils: Using standard PostgreSQL connection.
+DEFAULT 2025-07-30T01:59:02.435726Z PostgreSQL connection successful
+DEFAULT 2025-07-30T01:59:02.435865Z 2025-07-30 01:59:02,436 - db_utils - INFO - db_utils: PostgreSQL connection successful!
+DEFAULT 2025-07-30T01:59:02.447502Z 2025-07-30 01:59:02,448 - db_utils - INFO - db_utils: Database connection closed.
+DEFAULT 2025-07-30T01:59:02.447734Z 2025-07-30 01:59:02,448 - strava_app - INFO - Unified stats for user 1: {'totalActivities': 104, 'lastActivity': '2025-07-28', 'daysSinceRest': 2, 'latestMetrics': {'externalAcwr': 0.62, 'internalAcwr': 0.7, 'sevenDayAvgLoad': 4.3, 'sevenDayAvgTrimp': 52.6, 'normalizedDivergence': -0.121}}
