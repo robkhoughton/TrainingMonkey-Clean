@@ -622,7 +622,7 @@ def oauth_callback():
                 </script>
             </body>
             </html>
-            '''
+            ''', 200, {'Content-Type': 'text/html'}
 
         else:
             return jsonify({'error': 'Failed to save tokens to database'}), 500
@@ -1476,7 +1476,7 @@ def strava_setup():
         </script>
     </body>
     </html>
-    '''
+    ''', 200, {'Content-Type': 'text/html'}
 
 
 @login_required
@@ -2588,7 +2588,7 @@ def elevation_migration():
         </html>
         '''
 
-        return html_response
+        return html_response, 200, {'Content-Type': 'text/html'}
 
     except Exception as e:
         logger.error(f"Migration endpoint error: {str(e)}")

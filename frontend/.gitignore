@@ -1,23 +1,132 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# === Training Monkey .gitignore ===
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# testing
-/coverage
+# === Virtual Environments ===
+venv/
+env/
+ENV/
+.venv/
+.env/
 
-# production
-/build
+# === Flask ===
+instance/
+.webassets-cache
+*.log
 
-# misc
-.DS_Store
+# === Node.js / React ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# === Frontend Build Outputs ===
+/frontend/build/
+/frontend/dist/
+/app/build/static/
+
+# === Environment Variables ===
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# === Sensitive Configuration ===
+*config.json
+*tokens.json
+*secrets.json
+strava_tokens.json
+garmin_tokens.json
+
+# === IDE / Editor Files ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS Generated Files ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# === Logs ===
+*.log
+logs/
+*.log.*
+
+# === Database Files ===
+*.db
+*.sqlite
+*.sqlite3
+
+# === Cloud/Docker ===
+.docker/
+.gcloud/
+
+# === Testing ===
+.coverage
+.pytest_cache/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# === Backup Files ===
+*.bak
+*.backup
+*.old
+*~
+
+# === Temporary Files ===
+tmp/
+temp/
+*.tmp
+*.temp
+
+# === Package Files ===
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# === Jupyter Notebooks ===
+.ipynb_checkpoints
+
+# === Legacy Files (if any remain) ===
+legacy-*
+*-legacy
+*-old
+*-backup
