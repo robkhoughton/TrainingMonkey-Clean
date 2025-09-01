@@ -6,6 +6,16 @@ Updated version of strava_app.py to use Strava instead of Garmin
 
 import os
 import logging
+
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Environment variables loaded from .env file")
+except ImportError:
+    print("⚠️  python-dotenv not installed. Install with: pip install python-dotenv")
+except FileNotFoundError:
+    print("⚠️  No .env file found. Run: python setup_environment.py")
 import time
 import json
 import db_utils
@@ -13,6 +23,7 @@ from datetime import datetime, timedelta, date
 from timezone_utils import get_app_current_date, log_timezone_debug
 from llm_recommendations_module import generate_recommendations, update_recommendations_with_autopsy_learning
 from flask import Flask, request, jsonify, redirect, url_for, render_template, send_from_directory, session, flash, Response
+from csrf_protection import csrf_protected, require_csrf_token, CSRFTokenType
 from google.cloud import secretmanager
 from enhanced_token_management import SimpleTokenManager, check_token_status
 from flask_login import LoginManager, login_required, current_user, login_user, logout_user
@@ -551,17 +562,10 @@ def oauth_callback():
 
         success = token_manager.save_tokens_to_database(tokens, athlete.id)
 
+        # For centralized OAuth, we don't need to save user-specific credentials
+        # The centralized credentials are already configured
         if session.get('temp_strava_client_id') and session.get('temp_strava_client_secret'):
-            # These are user-provided credentials, save them permanently
-            credentials_saved = token_manager.save_user_strava_credentials(
-                session.get('temp_strava_client_id'),
-                session.get('temp_strava_client_secret')
-            )
-
-            if credentials_saved:
-                logger.info(f"Saved user-specific Strava credentials for user {current_user.id}")
-            else:
-                logger.warning(f"Failed to save user-specific Strava credentials for user {current_user.id}")
+            logger.info(f"User {current_user.id} used temporary credentials for OAuth, but centralized OAuth is now active")
 
         # Clear temporary session data
         session.pop('temp_strava_client_id', None)
@@ -655,11 +659,166 @@ def get_token_status():
         }), 500
 
 
+@app.route('/oauth-usage', methods=['GET'])
+def get_oauth_usage():
+    """Check OAuth usage statistics"""
+    try:
+        # Get basic user count
+        total_users = db_utils.execute_query("SELECT COUNT(*) as user_count FROM user_settings", fetch=True)
+        total_count = total_users[0]['user_count'] if total_users and total_users[0] else 0
+        
+        # Get OAuth type breakdown
+        centralized_users = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM user_settings WHERE oauth_type = 'centralized'", 
+            fetch=True
+        )
+        centralized_count = centralized_users[0]['count'] if centralized_users and centralized_users[0] else 0
+        
+        individual_users = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM user_settings WHERE oauth_type = 'individual'", 
+            fetch=True
+        )
+        individual_count = individual_users[0]['count'] if individual_users and individual_users[0] else 0
+        
+        # Get token status
+        users_with_tokens = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM user_settings WHERE strava_access_token IS NOT NULL AND strava_access_token != ''", 
+            fetch=True
+        )
+        tokens_count = users_with_tokens[0]['count'] if users_with_tokens and users_with_tokens[0] else 0
+        
+        placeholder_tokens = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM user_settings WHERE strava_access_token LIKE 'centralized_%'", 
+            fetch=True
+        )
+        placeholder_count = placeholder_tokens[0]['count'] if placeholder_tokens and placeholder_tokens[0] else 0
+        
+        # Get user details
+        users = db_utils.execute_query(
+            "SELECT id, email, oauth_type, migration_status FROM user_settings ORDER BY id", 
+            fetch=True
+        )
+        
+        user_details = []
+        if users:
+            for user in users:
+                user_details.append({
+                    'id': user['id'],
+                    'email': user['email'],
+                    'oauth_type': user['oauth_type'],
+                    'migration_status': user['migration_status']
+                })
+        
+        return jsonify({
+            'success': True,
+            'total_users': total_count,
+            'centralized_users': centralized_count,
+            'individual_users': individual_count,
+            'users_with_tokens': tokens_count,
+            'users_with_placeholder_tokens': placeholder_count,
+            'user_details': user_details,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting OAuth usage: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@login_required
+@app.route('/migration-status', methods=['GET'])
+def get_migration_status():
+    """Check migration status for current user"""
+    try:
+        from existing_user_migration import ExistingUserMigration
+        
+        migration = ExistingUserMigration()
+        status = migration.get_migration_status(current_user.id)
+        
+        # Get user settings to check OAuth type
+        query = """
+            SELECT oauth_type, migration_status, strava_access_token, strava_refresh_token
+            FROM user_settings 
+            WHERE id = ?
+        """
+        user_settings = db_utils.execute_query(query, (current_user.id,), fetch=True)
+        
+        oauth_type = 'unknown'
+        migration_status_db = 'not_started'
+        has_individual_tokens = False
+        
+        if user_settings and len(user_settings) > 0:
+            oauth_type = user_settings[0].get('oauth_type', 'individual')
+            migration_status_db = user_settings[0].get('migration_status', 'not_started')
+            has_individual_tokens = bool(user_settings[0].get('strava_access_token'))
+        
+        return jsonify({
+            'success': True,
+            'user_id': current_user.id,
+            'oauth_type': oauth_type,
+            'migration_status': migration_status_db,
+            'has_individual_tokens': has_individual_tokens,
+            'migration_info': {
+                'status': status.status if status else 'not_started',
+                'started_at': status.started_at.isoformat() if status and status.started_at else None,
+                'completed_at': status.completed_at.isoformat() if status and status.completed_at else None,
+                'error_message': status.error_message if status else None
+            },
+            'needs_migration': oauth_type == 'individual' and has_individual_tokens,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting migration status for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@login_required
+@app.route('/migrate-user', methods=['POST', 'GET'])
+def migrate_current_user():
+    """Migrate current user to centralized OAuth"""
+    try:
+        from existing_user_migration import ExistingUserMigration
+        
+        # Handle different request methods
+        if request.method == 'GET':
+            # GET request - no JSON body
+            data = {}
+            force_migration = False
+        else:
+            # POST request - parse JSON body
+            data = request.get_json() or {}
+            force_migration = data.get('force', False)
+        
+        migration = ExistingUserMigration()
+        result = migration.migrate_user(current_user.id, force_migration)
+        
+        return jsonify({
+            'success': result['success'],
+            'migration_id': result.get('migration_id'),
+            'message': result.get('message'),
+            'error_message': result.get('error_message'),
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error migrating user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/sync-with-auto-refresh', methods=['POST'])
 def sync_with_automatic_token_management():
     """Enhanced sync endpoint that handles both user and scheduled requests"""
     try:
-        logger.info("=== SYNC STARTED - Testing basic functionality ===")
+        logger.info("=== SYNC STARTED ===")
 
         # Test basic imports
         try:
@@ -1122,7 +1281,7 @@ def health_check():
     tables_total_count = 0
 
     try:
-        logger.info("Testing basic database connection...")
+        logger.info("Testing database connection...")
         db_utils.execute_query("SELECT 1;")
         db_status = "connected"
 
@@ -4023,13 +4182,88 @@ def get_landing_chart_data():
         )
 
         if not activities:
-            logger.warning("No activities found for landing page chart")
-            return jsonify({
-                'success': False,
-                'error': 'No data available for chart'
-            }), 404
+            logger.info("No real activities found for landing page chart, using demo data")
+            
+            # Generate realistic demo data for the landing page
+            from datetime import datetime, timedelta
+            import random
+            
+            # Create 30 days of demo data
+            demo_data = []
+            base_date = datetime.now() - timedelta(days=30)
+            
+            # Realistic training patterns
+            training_patterns = [
+                # Week 1: Building up
+                {'external': 0.8, 'internal': 0.7, 'distance': 5.2, 'elevation': 800, 'type': 'Trail Run'},
+                {'external': 0.9, 'internal': 0.8, 'distance': 6.1, 'elevation': 950, 'type': 'Trail Run'},
+                {'external': 1.1, 'internal': 1.0, 'distance': 7.5, 'elevation': 1200, 'type': 'Trail Run'},
+                {'external': 0.7, 'internal': 0.8, 'distance': 3.2, 'elevation': 400, 'type': 'Easy Run'},
+                {'external': 1.2, 'internal': 1.1, 'distance': 8.2, 'elevation': 1400, 'type': 'Trail Run'},
+                {'external': 0.6, 'internal': 0.7, 'distance': 2.8, 'elevation': 200, 'type': 'Recovery'},
+                {'external': 0.8, 'internal': 0.9, 'distance': 4.1, 'elevation': 600, 'type': 'Easy Run'},
+                
+                # Week 2: Peak training
+                {'external': 1.3, 'internal': 1.2, 'distance': 9.5, 'elevation': 1800, 'type': 'Trail Run'},
+                {'external': 1.4, 'internal': 1.3, 'distance': 10.2, 'elevation': 2100, 'type': 'Trail Run'},
+                {'external': 0.9, 'internal': 1.0, 'distance': 5.8, 'elevation': 900, 'type': 'Easy Run'},
+                {'external': 1.5, 'internal': 1.4, 'distance': 11.1, 'elevation': 2400, 'type': 'Trail Run'},
+                {'external': 1.6, 'internal': 1.5, 'distance': 12.3, 'elevation': 2800, 'type': 'Trail Run'},
+                {'external': 0.7, 'internal': 0.8, 'distance': 3.5, 'elevation': 500, 'type': 'Recovery'},
+                {'external': 1.1, 'internal': 1.2, 'distance': 7.2, 'elevation': 1100, 'type': 'Trail Run'},
+                
+                # Week 3: Showing divergence (overtraining risk)
+                {'external': 1.7, 'internal': 1.6, 'distance': 13.1, 'elevation': 3200, 'type': 'Trail Run'},
+                {'external': 1.8, 'internal': 1.7, 'distance': 14.2, 'elevation': 3600, 'type': 'Trail Run'},
+                {'external': 1.9, 'internal': 1.8, 'distance': 15.5, 'elevation': 4000, 'type': 'Trail Run'},
+                {'external': 0.8, 'internal': 0.9, 'distance': 4.5, 'elevation': 700, 'type': 'Easy Run'},
+                {'external': 2.0, 'internal': 1.9, 'distance': 16.8, 'elevation': 4500, 'type': 'Trail Run'},
+                {'external': 2.1, 'internal': 2.0, 'distance': 18.1, 'elevation': 5000, 'type': 'Trail Run'},
+                {'external': 0.6, 'internal': 0.7, 'distance': 2.9, 'elevation': 300, 'type': 'Recovery'},
+                {'external': 1.2, 'internal': 1.3, 'distance': 8.5, 'elevation': 1300, 'type': 'Trail Run'},
+                
+                # Week 4: Recovery and balance
+                {'external': 0.9, 'internal': 1.0, 'distance': 6.2, 'elevation': 900, 'type': 'Trail Run'},
+                {'external': 1.0, 'internal': 1.1, 'distance': 7.1, 'elevation': 1100, 'type': 'Trail Run'},
+                {'external': 0.8, 'internal': 0.9, 'distance': 5.5, 'elevation': 800, 'type': 'Easy Run'},
+                {'external': 1.1, 'internal': 1.0, 'distance': 7.8, 'elevation': 1200, 'type': 'Trail Run'},
+                {'external': 0.7, 'internal': 0.8, 'distance': 4.2, 'elevation': 600, 'type': 'Recovery'},
+                {'external': 1.0, 'internal': 1.1, 'distance': 6.9, 'elevation': 1000, 'type': 'Trail Run'},
+                {'external': 0.9, 'internal': 0.8, 'distance': 5.8, 'elevation': 850, 'type': 'Easy Run'},
+            ]
+            
+            for i, pattern in enumerate(training_patterns):
+                date = base_date + timedelta(days=i)
+                formatted_date = f"{date.month}/{date.day}"
+                
+                # Add some realistic variation
+                external_variation = random.uniform(-0.1, 0.1)
+                internal_variation = random.uniform(-0.1, 0.1)
+                
+                demo_data.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'dateFormatted': formatted_date,
+                    'acute_chronic_ratio': round(pattern['external'] + external_variation, 2),
+                    'trimp_acute_chronic_ratio': round(pattern['internal'] + internal_variation, 2),
+                    'distance_miles': round(pattern['distance'] + random.uniform(-0.5, 0.5), 1),
+                    'elevation_gain_feet': int(pattern['elevation'] + random.uniform(-100, 100)),
+                    'trimp': int(50 + pattern['external'] * 30 + random.uniform(-10, 10)),
+                    'type': pattern['type'],
+                    'name': f"{pattern['type']} - {pattern['distance']}mi"
+                })
 
-        # Process data for chart display
+            return jsonify({
+                'success': True,
+                'data': demo_data,
+                'dataPoints': len(demo_data),
+                'dateRange': {
+                    'start': demo_data[0]['date'] if demo_data else None,
+                    'end': demo_data[-1]['date'] if demo_data else None
+                },
+                'isDemo': True
+            })
+
+        # Process real data for chart display
         chart_data = []
         for activity in activities:
             # Format date for display
@@ -4048,7 +4282,7 @@ def get_landing_chart_data():
                 'name': activity.get('name', 'Workout')
             })
 
-        logger.info(f"Serving {len(chart_data)} data points for landing page chart")
+        logger.info(f"Serving {len(chart_data)} real data points for landing page chart")
 
         return jsonify({
             'success': True,
@@ -4057,141 +4291,59 @@ def get_landing_chart_data():
             'dateRange': {
                 'start': chart_data[0]['date'] if chart_data else None,
                 'end': chart_data[-1]['date'] if chart_data else None
-            }
+            },
+            'isDemo': False
         })
 
     except Exception as e:
         logger.error(f"Error fetching landing page chart data: {str(e)}")
+        
+        # Even if there's an error, return demo data so the chart still works
+        logger.info("Returning fallback demo data due to error")
+        
+        # Simple fallback demo data
+        fallback_data = [
+            {'dateFormatted': '11/1', 'acute_chronic_ratio': 0.9, 'trimp_acute_chronic_ratio': 0.8, 'distance_miles': 5.2, 'elevation_gain_feet': 800, 'trimp': 75, 'type': 'Trail Run', 'name': 'Morning Trail'},
+            {'dateFormatted': '11/5', 'acute_chronic_ratio': 1.1, 'trimp_acute_chronic_ratio': 1.0, 'distance_miles': 7.1, 'elevation_gain_feet': 1200, 'trimp': 85, 'type': 'Trail Run', 'name': 'Hill Training'},
+            {'dateFormatted': '11/10', 'acute_chronic_ratio': 1.3, 'trimp_acute_chronic_ratio': 1.2, 'distance_miles': 9.5, 'elevation_gain_feet': 1800, 'trimp': 95, 'type': 'Trail Run', 'name': 'Long Run'},
+            {'dateFormatted': '11/15', 'acute_chronic_ratio': 1.0, 'trimp_acute_chronic_ratio': 1.1, 'distance_miles': 6.8, 'elevation_gain_feet': 1100, 'trimp': 80, 'type': 'Trail Run', 'name': 'Recovery Run'},
+            {'dateFormatted': '11/20', 'acute_chronic_ratio': 0.8, 'trimp_acute_chronic_ratio': 0.9, 'distance_miles': 4.2, 'elevation_gain_feet': 600, 'trimp': 65, 'type': 'Easy Run', 'name': 'Easy Day'},
+            {'dateFormatted': '11/25', 'acute_chronic_ratio': 1.2, 'trimp_acute_chronic_ratio': 1.3, 'distance_miles': 8.5, 'elevation_gain_feet': 1400, 'trimp': 90, 'type': 'Trail Run', 'name': 'Tempo Run'},
+            {'dateFormatted': '11/30', 'acute_chronic_ratio': 0.9, 'trimp_acute_chronic_ratio': 0.8, 'distance_miles': 5.5, 'elevation_gain_feet': 850, 'trimp': 70, 'type': 'Trail Run', 'name': 'Easy Trail'}
+        ]
+        
         return jsonify({
-            'success': False,
-            'error': 'Unable to load chart data'
-        }), 500
-
+            'success': True,
+            'data': fallback_data,
+            'dataPoints': len(fallback_data),
+            'dateRange': {'start': '2024-11-01', 'end': '2024-11-30'},
+            'isDemo': True,
+            'error': str(e)
+        })
 
 @app.route('/landing-static/<path:filename>')
 def serve_landing_static(filename):
     """Serve landing page assets - FIXED VERSION"""
     logger.info(f"Landing static request: {filename}")
 
-    # CRITICAL FIX 1: acwr-chart.html - provide the content directly
+    # CRITICAL FIX 1: acwr-chart.html - serve the updated file
     if filename == 'acwr-chart.html':
-        logger.info("Serving acwr-chart.html directly from knowledge base")
-
-        # Return the complete HTML with React chart
-        html_content = '''<!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>ACWR Demo Chart</title>
-                <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-                <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-                <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
-                <style>
-                    body { margin: 0; padding: 20px; font-family: -apple-system, sans-serif; }
-                    .chart-demo { background: white; border-radius: 12px; padding: 1.5rem; }
-                    .chart-title { font-size: 1.3rem; font-weight: 600; color: #1e293b; margin-bottom: 1rem; }
-                    .chart-container { width: 100%; height: 380px; }
-                    .chart-loading { display: flex; align-items: center; justify-content: center; height: 380px; color: #64748b; }
-                    .data-info { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b; }
-                </style>
-            </head>
-            <body>
-                <div id="chart-root"></div>
-                <script>
-                    if (typeof React === 'undefined' || typeof Recharts === 'undefined') {
-                        document.getElementById('chart-root').innerHTML = 
-                            '<div class="chart-demo"><div class="chart-loading">Loading chart libraries...</div></div>';
-                    } else {
-                        const { useState, useEffect, createElement } = React;
-                        const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea } = Recharts;
+        logger.info("Serving acwr-chart.html from static file")
+        
+        try:
+            # Try to serve the actual file first
+            return send_from_directory('static', 'acwr-chart.html')
+        except Exception as e:
+            logger.warning(f"Could not serve acwr-chart.html from file: {e}")
             
-                        const DemoChart = () => {
-                            const [data, setData] = useState([]);
-                            const [loading, setLoading] = useState(true);
-            
-                            useEffect(() => {
-                                fetch('/api/landing-chart-data')
-                                    .then(res => res.json())
-                                    .then(result => {
-                                        if (result.success && result.data) {
-                                            setData(result.data);
-                                        } else {
-                                            // Fallback demo data if API fails
-                                            setData([
-                                                {dateFormatted: '11/1', acute_chronic_ratio: 0.9, trimp_acute_chronic_ratio: 0.8},
-                                                {dateFormatted: '11/5', acute_chronic_ratio: 1.1, trimp_acute_chronic_ratio: 1.0},
-                                                {dateFormatted: '11/10', acute_chronic_ratio: 1.3, trimp_acute_chronic_ratio: 1.2},
-                                                {dateFormatted: '11/15', acute_chronic_ratio: 1.0, trimp_acute_chronic_ratio: 1.1},
-                                                {dateFormatted: '11/20', acute_chronic_ratio: 0.8, trimp_acute_chronic_ratio: 0.9}
-                                            ]);
-                                        }
-                                        setLoading(false);
-                                    })
-                                    .catch(() => {
-                                        setData([
-                                            {dateFormatted: '11/1', acute_chronic_ratio: 0.9, trimp_acute_chronic_ratio: 0.8},
-                                            {dateFormatted: '11/5', acute_chronic_ratio: 1.1, trimp_acute_chronic_ratio: 1.0},
-                                            {dateFormatted: '11/10', acute_chronic_ratio: 1.3, trimp_acute_chronic_ratio: 1.2}
-                                        ]);
-                                        setLoading(false);
-                                    });
-                            }, []);
-            
-                            if (loading) {
-                                return createElement('div', { className: 'chart-demo' },
-                                    createElement('div', { className: 'chart-loading' }, 'Loading real training data...')
-                                );
-                            }
-            
-                            return createElement('div', { className: 'chart-demo' }, [
-                                createElement('h3', { key: 'title', className: 'chart-title' }, 'Real Training Data: ACWR Analysis'),
-            
-                                createElement('div', { key: 'chart', className: 'chart-container' },
-                                    createElement(ResponsiveContainer, { width: '100%', height: '100%' },
-                                        createElement(LineChart, { data: data, margin: { top: 20, right: 30, left: 20, bottom: 20 } }, [
-                                            createElement(CartesianGrid, { key: 'grid', strokeDasharray: '3 3', stroke: '#f1f5f9' }),
-                                            createElement(XAxis, { key: 'x', dataKey: 'dateFormatted', tick: { fontSize: 12 } }),
-                                            createElement(YAxis, { key: 'y', domain: [0.5, 1.6], tick: { fontSize: 12 } }),
-                                            createElement(Tooltip, { key: 'tooltip' }),
-            
-                                            createElement(ReferenceArea, { key: 'danger', y1: 1.5, y2: 1.6, fill: '#ef4444', fillOpacity: 0.1 }),
-                                            createElement(ReferenceArea, { key: 'warning', y1: 1.3, y2: 1.5, fill: '#f59e0b', fillOpacity: 0.1 }),
-                                            createElement(ReferenceArea, { key: 'optimal', y1: 0.8, y2: 1.3, fill: '#10b981', fillOpacity: 0.1 }),
-            
-                                            createElement(Line, {
-                                                key: 'external',
-                                                type: 'monotone',
-                                                dataKey: 'acute_chronic_ratio',
-                                                stroke: '#3b82f6',
-                                                strokeWidth: 3,
-                                                name: 'External ACWR'
-                                            }),
-                                            createElement(Line, {
-                                                key: 'internal',
-                                                type: 'monotone',
-                                                dataKey: 'trimp_acute_chronic_ratio',
-                                                stroke: '#8b5cf6',
-                                                strokeWidth: 3,
-                                                name: 'Internal ACWR'
-                                            })
-                                        ])
-                                    )
-                                ),
-            
-                                createElement('div', { key: 'info', className: 'data-info' },
-                                    'Live data from our founder\\'s trail running • External = Distance + Terrain • Internal = Heart Rate Response'
-                                )
-                            ]);
-                        };
-            
-                        ReactDOM.render(createElement(DemoChart), document.getElementById('chart-root'));
-                    }
-                </script>
-            </body>
-            </html>'''
-
-        return Response(html_content, mimetype='text/html')
+            # Fallback to serving the file content directly
+            try:
+                with open('static/acwr-chart.html', 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                return Response(html_content, mimetype='text/html')
+            except Exception as e2:
+                logger.error(f"Could not read acwr-chart.html file: {e2}")
+                return "Chart not available", 404
 
     # CRITICAL FIX 2: wireframe-runner.jpg - try actual file first, then SVG fallback
     elif filename == 'images/wireframe-runner.jpg' or filename == 'wireframe-runner.jpg':
@@ -4955,6 +5107,958 @@ def save_custom_heart_rate_zones():
         logger.error(f"Error saving custom heart rate zones for user {current_user.id}: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+# Legal Document Display Routes
+@app.route('/legal/terms')
+def display_terms():
+    """Display Terms and Conditions"""
+    try:
+        from legal_document_versioning import get_current_legal_versions
+        current_versions = get_current_legal_versions()
+        return render_template('legal/terms.html', version=current_versions.get('terms', '2.0'))
+    except Exception as e:
+        logger.error(f"Error displaying terms: {str(e)}")
+        return render_template('legal/terms.html', version='2.0')
+
+
+@app.route('/legal/privacy')
+def display_privacy():
+    """Display Privacy Policy"""
+    try:
+        from legal_document_versioning import get_current_legal_versions
+        current_versions = get_current_legal_versions()
+        return render_template('legal/privacy.html', version=current_versions.get('privacy', '2.0'))
+    except Exception as e:
+        logger.error(f"Error displaying privacy policy: {str(e)}")
+        return render_template('legal/privacy.html', version='2.0')
+
+
+@app.route('/legal/disclaimer')
+def display_disclaimer():
+    """Display Medical Disclaimer"""
+    try:
+        from legal_document_versioning import get_current_legal_versions
+        current_versions = get_current_legal_versions()
+        return render_template('legal/disclaimer.html', version=current_versions.get('disclaimer', '2.0'))
+    except Exception as e:
+        logger.error(f"Error displaying disclaimer: {str(e)}")
+        return render_template('legal/disclaimer.html', version='2.0')
+
+
+@app.route('/legal/accept', methods=['POST'])
+@login_required
+def accept_legal_document():
+    """Accept a legal document"""
+    try:
+        from legal_compliance import log_user_legal_acceptance
+        from legal_document_versioning import get_current_legal_versions
+        
+        data = request.get_json()
+        document_type = data.get('document_type')
+        
+        if document_type not in ['terms', 'privacy', 'disclaimer']:
+            return jsonify({'error': 'Invalid document type'}), 400
+        
+        current_versions = get_current_legal_versions()
+        version = current_versions.get(document_type)
+        
+        if not version:
+            return jsonify({'error': 'Could not determine document version'}), 400
+        
+        success = log_user_legal_acceptance(current_user.id, document_type, version)
+        
+        if success:
+            logger.info(f"User {current_user.id} accepted {document_type} version {version}")
+            return jsonify({
+                'success': True,
+                'message': f'{document_type.title()} accepted successfully',
+                'version': version
+            })
+        else:
+            return jsonify({'error': 'Failed to log acceptance'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error accepting legal document: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/legal/status')
+@login_required
+def get_legal_status():
+    """Get user's legal compliance status"""
+    try:
+        from legal_compliance import get_legal_compliance_tracker
+        
+        tracker = get_legal_compliance_tracker()
+        status = tracker.get_user_legal_status(current_user.id)
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting legal status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/legal/validate')
+@login_required
+def validate_legal_compliance():
+    """Validate user's legal compliance"""
+    try:
+        from legal_compliance import get_legal_compliance_tracker
+        
+        tracker = get_legal_compliance_tracker()
+        is_compliant, details = tracker.validate_user_compliance(current_user.id)
+        
+        return jsonify({
+            'is_compliant': is_compliant,
+            'details': details
+        })
+        
+    except Exception as e:
+        logger.error(f"Error validating legal compliance: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# User Registration Routes
+@app.route('/signup', methods=['GET', 'POST'])
+@require_csrf_token(CSRFTokenType.FORM)
+def signup():
+    """User registration page"""
+    try:
+        from registration_validation import registration_validator
+        from legal_document_versioning import get_current_legal_versions
+        from csrf_protection import csrf_protected, CSRFTokenType
+        
+        if request.method == 'POST':
+            # Apply CSRF protection to POST requests
+            @csrf_protected(CSRFTokenType.FORM)
+            def process_registration():
+                # Validate registration data
+                is_valid, errors = registration_validator.validate_registration_data(request.form)
+                
+                if not is_valid:
+                    # Return errors for form display
+                    current_versions = get_current_legal_versions()
+                    csrf_token = registration_validator.generate_csrf_token()
+                    
+                    return render_template('signup.html', 
+                                         errors=errors, 
+                                         legal_versions=current_versions,
+                                         csrf_token=csrf_token)
+                
+                # Create user account
+                email = request.form.get('email', '').strip()
+                password = request.form.get('password', '')
+                
+                success, user_id, error_message = registration_validator.create_user_account(email, password)
+                
+                if success:
+                    # Start registration status tracking
+                    from registration_status_tracker import registration_status_tracker
+                    registration_status_tracker.track_account_creation(user_id)
+                    
+                    # Log successful registration
+                    logger.info(f"New user registration successful: {email} (ID: {user_id})")
+                    
+                    # Flash success message and redirect to login
+                    flash('Account created successfully! Please sign in to continue.', 'success')
+                    return redirect(url_for('login'))
+                else:
+                    # Return error
+                    current_versions = get_current_legal_versions()
+                    csrf_token = registration_validator.generate_csrf_token()
+                    
+                    return render_template('signup.html', 
+                                         errors={'general': [error_message]}, 
+                                         legal_versions=current_versions,
+                                         csrf_token=csrf_token)
+            
+            return process_registration()
+        
+        # GET request - show signup form
+        current_versions = get_current_legal_versions()
+        csrf_token = registration_validator.generate_csrf_token()
+        
+        return render_template('signup.html', 
+                             legal_versions=current_versions,
+                             csrf_token=csrf_token)
+        
+    except Exception as e:
+        logger.error(f"Error in signup route: {str(e)}")
+        flash('An error occurred during registration. Please try again.', 'danger')
+        return redirect(url_for('signup'))
+
+
+@app.route('/api/signup/validate', methods=['POST'])
+@csrf_protected(CSRFTokenType.API)
+def validate_signup_data():
+    """API endpoint for real-time signup validation"""
+    try:
+        from registration_validation import registration_validator
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Validate specific field
+        field_type = data.get('field_type')
+        field_value = data.get('field_value', '')
+        
+        if field_type == 'email':
+            is_valid, error_message = registration_validator.validate_email(field_value)
+            return jsonify({
+                'is_valid': is_valid,
+                'error': error_message if not is_valid else ''
+            })
+        
+        elif field_type == 'password':
+            is_valid, errors = registration_validator.validate_password(field_value)
+            return jsonify({
+                'is_valid': is_valid,
+                'errors': errors if not is_valid else []
+            })
+        
+        else:
+            return jsonify({'error': 'Invalid field type'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error in signup validation API: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/signup/generate-password', methods=['POST'])
+@csrf_protected(CSRFTokenType.API)
+def generate_password():
+    """API endpoint for generating secure passwords"""
+    try:
+        from password_generator import password_generator
+        
+        data = request.get_json() or {}
+        password_type = data.get('type', 'strong')
+        strength = data.get('strength', 'strong')
+        length = data.get('length')
+        
+        if password_type == 'memorable':
+            word_count = data.get('word_count', 4)
+            separator = data.get('separator', '-')
+            password = password_generator.generate_memorable_password(word_count, separator)
+        elif password_type == 'pronounceable':
+            password = password_generator.generate_pronounceable_password(length or 12)
+        else:  # standard
+            password = password_generator.generate_password(strength, length)
+        
+        # Validate the generated password
+        validation = password_generator.validate_generated_password(password)
+        
+        return jsonify({
+            'password': password,
+            'validation': validation,
+            'type': password_type,
+            'strength': strength
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating password: {str(e)}")
+        return jsonify({'error': 'Failed to generate password'}), 500
+
+
+@app.route('/api/signup/password-strength-info', methods=['GET'])
+def get_password_strength_info():
+    """API endpoint for getting password strength information"""
+    try:
+        from password_generator import password_generator
+        
+        strength = request.args.get('strength', 'strong')
+        
+        try:
+            info = password_generator.get_password_strength_info(strength)
+            return jsonify(info)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+            
+    except Exception as e:
+        logger.error(f"Error getting password strength info: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# User Account Management API Endpoints
+@app.route('/api/user/account-status', methods=['GET'])
+@login_required
+def get_user_account_status():
+    """Get current user's account status"""
+    try:
+        from user_account_manager import user_account_manager
+        
+        status = user_account_manager.get_user_account_status(current_user.id)
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting user account status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/user/activate-account', methods=['POST'])
+@login_required
+def activate_user_account():
+    """Activate user account"""
+    try:
+        from user_account_manager import user_account_manager
+        
+        success = user_account_manager.activate_user_account(current_user.id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Account activated successfully'})
+        else:
+            return jsonify({'error': 'Failed to activate account'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error activating user account: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/user/update-onboarding', methods=['POST'])
+@login_required
+def update_onboarding_progress():
+    """Update user's onboarding progress"""
+    try:
+        from user_account_manager import user_account_manager
+        
+        data = request.get_json()
+        step = data.get('step')
+        
+        if not step:
+            return jsonify({'error': 'Onboarding step is required'}), 400
+        
+        success = user_account_manager.update_onboarding_progress(current_user.id, step)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Onboarding progress updated'})
+        else:
+            return jsonify({'error': 'Failed to update onboarding progress'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating onboarding progress: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/user/complete-onboarding', methods=['POST'])
+@login_required
+def complete_onboarding():
+    """Complete user's onboarding process"""
+    try:
+        from user_account_manager import user_account_manager
+        
+        success = user_account_manager.complete_onboarding(current_user.id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Onboarding completed successfully'})
+        else:
+            return jsonify({'error': 'Failed to complete onboarding'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error completing onboarding: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Admin endpoints for user management
+@app.route('/api/admin/pending-registrations', methods=['GET'])
+@login_required
+def get_pending_registrations():
+    """Get list of pending registrations (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from user_account_manager import user_account_manager
+        
+        pending = user_account_manager.get_pending_registrations()
+        return jsonify({'pending_registrations': pending})
+        
+    except Exception as e:
+        logger.error(f"Error getting pending registrations: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/cleanup-expired-registrations', methods=['POST'])
+@login_required
+def cleanup_expired_registrations():
+    """Clean up expired registrations (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from user_account_manager import user_account_manager
+        
+        data = request.get_json() or {}
+        days_old = data.get('days_old', 7)
+        
+        cleaned_count = user_account_manager.cleanup_expired_registrations(days_old)
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Cleaned up {cleaned_count} expired registrations',
+            'cleaned_count': cleaned_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up expired registrations: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Registration Status Tracking API Endpoints
+@app.route('/api/registration/status', methods=['GET'])
+@login_required
+def get_registration_status():
+    """Get current user's registration status"""
+    try:
+        from registration_status_tracker import registration_status_tracker
+        
+        status = registration_status_tracker.get_registration_status(current_user.id)
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting registration status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/track-email-verification', methods=['POST'])
+@login_required
+def track_email_verification():
+    """Track email verification completion"""
+    try:
+        from registration_status_tracker import registration_status_tracker
+        
+        success = registration_status_tracker.track_email_verification_complete(current_user.id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Email verification tracked'})
+        else:
+            return jsonify({'error': 'Failed to track email verification'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error tracking email verification: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/track-strava-connection', methods=['POST'])
+@login_required
+def track_strava_connection():
+    """Track Strava connection"""
+    try:
+        from registration_status_tracker import registration_status_tracker
+        
+        data = request.get_json() or {}
+        strava_user_id = data.get('strava_user_id')
+        
+        success = registration_status_tracker.track_strava_connection(current_user.id, strava_user_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Strava connection tracked'})
+        else:
+            return jsonify({'error': 'Failed to track Strava connection'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error tracking Strava connection: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/track-onboarding-start', methods=['POST'])
+@login_required
+def track_onboarding_start():
+    """Track onboarding process start"""
+    try:
+        from registration_status_tracker import registration_status_tracker
+        
+        success = registration_status_tracker.track_onboarding_start(current_user.id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Onboarding start tracked'})
+        else:
+            return jsonify({'error': 'Failed to track onboarding start'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error tracking onboarding start: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/track-onboarding-complete', methods=['POST'])
+@login_required
+def track_onboarding_complete():
+    """Track onboarding completion"""
+    try:
+        from registration_status_tracker import registration_status_tracker
+        
+        success = registration_status_tracker.track_onboarding_complete(current_user.id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Onboarding completion tracked'})
+        else:
+            return jsonify({'error': 'Failed to track onboarding completion'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error tracking onboarding completion: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Admin endpoints for registration status tracking
+@app.route('/api/admin/registration-summary', methods=['GET'])
+@login_required
+def get_registration_summary():
+    """Get registration summary statistics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_status_tracker import registration_status_tracker
+        
+        summary = registration_status_tracker.get_pending_registrations_summary()
+        return jsonify(summary)
+        
+    except Exception as e:
+        logger.error(f"Error getting registration summary: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/registration-status/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_registration_status(user_id):
+    """Get registration status for specific user (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_status_tracker import registration_status_tracker
+        
+        status = registration_status_tracker.get_registration_status(user_id)
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting user registration status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/cleanup-registrations-with-tracking', methods=['POST'])
+@login_required
+def cleanup_registrations_with_tracking():
+    """Clean up expired registrations with tracking (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_status_tracker import registration_status_tracker
+        
+        data = request.get_json() or {}
+        days_old = data.get('days_old', 7)
+        
+        cleaned_count = registration_status_tracker.cleanup_expired_registrations(days_old)
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Cleaned up {cleaned_count} expired registrations with tracking',
+            'cleaned_count': cleaned_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up registrations with tracking: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Registration Session Management Routes
+@app.route('/signup/resume/<int:user_id>', methods=['GET'])
+def resume_registration(user_id):
+    """Resume registration process for a user"""
+    try:
+        from registration_session_manager import registration_session_manager, SessionType
+        
+        # Check if user has an active session
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return render_template('signup.html', error="No session provided")
+        
+        # Resume registration
+        success, resume_data, error = registration_session_manager.resume_registration(session_id)
+        
+        if not success:
+            return render_template('signup.html', error=error)
+        
+        # Check if session belongs to the correct user
+        if resume_data.get('user_id') != user_id:
+            return render_template('signup.html', error="Invalid session")
+        
+        # Get current legal versions
+        from legal_document_versioning import get_current_legal_versions
+        current_versions = get_current_legal_versions()
+        
+        # Generate CSRF token
+        from registration_validation import registration_validator
+        csrf_token = registration_validator.generate_csrf_token()
+        
+        return render_template('signup.html', 
+                             legal_versions=current_versions,
+                             csrf_token=csrf_token,
+                             resume_data=resume_data)
+        
+    except Exception as e:
+        logger.error(f"Error resuming registration: {str(e)}")
+        return render_template('signup.html', error="Unable to resume registration")
+
+
+@app.route('/api/registration/create-session', methods=['POST'])
+@csrf_protected(CSRFTokenType.API)
+def create_registration_session():
+    """Create a new registration session"""
+    try:
+        from registration_session_manager import registration_session_manager, SessionType
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_id = data.get('user_id')
+        session_type_str = data.get('session_type', 'registration')
+        metadata = data.get('metadata')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+        
+        # Convert session type string to enum
+        try:
+            session_type = SessionType(session_type_str)
+        except ValueError:
+            return jsonify({'error': 'Invalid session type'}), 400
+        
+        # Create session
+        success, session_id, error = registration_session_manager.create_registration_session(
+            user_id, session_type, metadata
+        )
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'session_id': session_id,
+                'message': 'Session created successfully'
+            })
+        else:
+            return jsonify({'error': error}), 400
+            
+    except Exception as e:
+        logger.error(f"Error creating registration session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/validate-session', methods=['POST'])
+def validate_registration_session():
+    """Validate a registration session"""
+    try:
+        from registration_session_manager import registration_session_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        session_id = data.get('session_id')
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        
+        # Validate session
+        is_valid, session_data, error = registration_session_manager.validate_session(session_id)
+        
+        if is_valid:
+            return jsonify({
+                'success': True,
+                'session_data': {
+                    'session_id': session_data.session_id,
+                    'user_id': session_data.user_id,
+                    'session_type': session_data.session_type.value,
+                    'expires_at': session_data.expires_at.isoformat(),
+                    'last_activity': session_data.last_activity.isoformat()
+                },
+                'message': 'Session is valid'
+            })
+        else:
+            return jsonify({'error': error}), 400
+            
+    except Exception as e:
+        logger.error(f"Error validating registration session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/resume-session', methods=['POST'])
+def resume_registration_session():
+    """Resume registration using session"""
+    try:
+        from registration_session_manager import registration_session_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        session_id = data.get('session_id')
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        
+        # Resume registration
+        success, resume_data, error = registration_session_manager.resume_registration(session_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'resume_data': resume_data,
+                'message': 'Registration resumed successfully'
+            })
+        else:
+            return jsonify({'error': error}), 400
+            
+    except Exception as e:
+        logger.error(f"Error resuming registration session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/complete-session', methods=['POST'])
+def complete_registration_session():
+    """Complete a registration session"""
+    try:
+        from registration_session_manager import registration_session_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        session_id = data.get('session_id')
+        completion_data = data.get('completion_data')
+        
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        
+        # Complete session
+        success = registration_session_manager.complete_session(session_id, completion_data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Session completed successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to complete session'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error completing registration session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/extend-session', methods=['POST'])
+def extend_registration_session():
+    """Extend a registration session"""
+    try:
+        from registration_session_manager import registration_session_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        session_id = data.get('session_id')
+        hours = data.get('hours', 24)
+        
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        
+        # Extend session
+        success = registration_session_manager.extend_session(session_id, hours)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Session extended by {hours} hours'
+            })
+        else:
+            return jsonify({'error': 'Failed to extend session'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error extending registration session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/registration/user-sessions/<int:user_id>', methods=['GET'])
+def get_user_registration_sessions(user_id):
+    """Get all registration sessions for a user"""
+    try:
+        from registration_session_manager import registration_session_manager
+        
+        sessions = registration_session_manager.get_user_sessions(user_id)
+        
+        session_data = []
+        for session_obj in sessions:
+            session_data.append({
+                'session_id': session_obj.session_id,
+                'session_type': session_obj.session_type.value,
+                'status': session_obj.status.value,
+                'created_at': session_obj.created_at.isoformat(),
+                'expires_at': session_obj.expires_at.isoformat(),
+                'last_activity': session_obj.last_activity.isoformat(),
+                'ip_address': session_obj.ip_address,
+                'metadata': session_obj.metadata
+            })
+        
+        return jsonify({
+            'success': True,
+            'sessions': session_data,
+            'count': len(session_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting user registration sessions: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Admin endpoints for session management
+@app.route('/api/admin/session-analytics', methods=['GET'])
+@login_required
+def get_session_analytics():
+    """Get session analytics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_session_manager import registration_session_manager
+        
+        analytics = registration_session_manager.get_session_analytics()
+        return jsonify(analytics)
+        
+    except Exception as e:
+        logger.error(f"Error getting session analytics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/cleanup-expired-sessions', methods=['POST'])
+@login_required
+def cleanup_expired_sessions():
+    """Clean up expired sessions (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_session_manager import registration_session_manager
+        
+        cleaned_count = registration_session_manager.cleanup_expired_sessions()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleaned up {cleaned_count} expired sessions',
+            'cleaned_count': cleaned_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up expired sessions: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/invalidate-session', methods=['POST'])
+@login_required
+def invalidate_session():
+    """Invalidate a session (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from registration_session_manager import registration_session_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        session_id = data.get('session_id')
+        reason = data.get('reason', 'admin_invalidation')
+        
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        
+        # Invalidate session
+        success = registration_session_manager.invalidate_session(session_id, reason)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Session invalidated successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to invalidate session'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error invalidating session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/goals/setup', methods=['GET', 'POST'])
+@login_required
+def goals_setup():
+    """Streamlined goals setup page - addresses 'too many options' and 'time consuming' issues"""
+    
+    if request.method == 'POST':
+        # Get form data
+        goal_type = request.form.get('goal_type')
+        target_value = request.form.get('target_value')
+        timeframe = request.form.get('timeframe')
+        
+        # Validate input
+        if not all([goal_type, target_value, timeframe]):
+            flash('Please fill in all fields', 'error')
+            return redirect(url_for('goals_setup'))
+        
+        try:
+            # Save goals to database
+            user_id = session.get('user_id')
+            
+            # Update user_settings with goals
+            db_utils.execute_query("""
+                UPDATE user_settings 
+                SET goals_configured = TRUE,
+                    goal_type = %s,
+                    goal_target = %s,
+                    goal_timeframe = %s,
+                    goals_setup_date = NOW()
+                WHERE user_id = %s
+            """, (goal_type, target_value, timeframe, user_id))
+            
+            # Mark onboarding step as complete
+            from onboarding_manager import onboarding_manager
+            onboarding_manager.complete_step(user_id, 'goals_configured')
+            
+            # Track analytics (real data this time!)
+            track_analytics_event('goals_setup_completed', {
+                'goal_type': goal_type,
+                'timeframe': timeframe,
+                'user_id': user_id
+            })
+            
+            flash('Goals set successfully! 🎯', 'success')
+            return redirect(url_for('dashboard'))
+            
+        except Exception as e:
+            flash('Error saving goals. Please try again.', 'error')
+            return redirect(url_for('goals_setup'))
+    
+    # GET request - show goals setup form
+    return render_template('goals_setup.html')
+
+def track_analytics_event(event_name, data):
+    """Track real analytics events"""
+    try:
+        # Log to database for real analytics
+        db_utils.execute_query("""
+            INSERT INTO onboarding_analytics (user_id, event_name, event_data, timestamp)
+            VALUES (%s, %s, %s, NOW())
+        """, (data.get('user_id'), event_name, json.dumps(data)))
+    except Exception as e:
+        # Fallback to logging
+        print(f"Analytics tracking error: {e}")
 
 if __name__ == '__main__':
     # For local testing

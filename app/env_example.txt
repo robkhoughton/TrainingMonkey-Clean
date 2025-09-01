@@ -1,0 +1,55 @@
+# Training Monkey Flask App - Environment Variables
+# Copy this file to .env and fill in your values
+
+# =============================================================================
+# FLASK CONFIGURATION
+# =============================================================================
+SECRET_KEY=your-secret-key-here-change-in-production
+FLASK_ENV=development
+FLASK_DEBUG=True
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# For local development (SQLite)
+DB_PATH=../training_data.db
+
+# For production (PostgreSQL) - uncomment and set if using cloud database
+# DATABASE_URL=postgresql://username:password@host:port/database
+
+# =============================================================================
+# STRAVA API CONFIGURATION
+# =============================================================================
+# Get these from https://www.strava.com/settings/api
+STRAVA_CLIENT_ID=your-strava-client-id
+STRAVA_CLIENT_SECRET=your-strava-client-secret
+
+# =============================================================================
+# GOOGLE CLOUD CONFIGURATION (for production)
+# =============================================================================
+# Only needed if using Google Cloud services
+# GOOGLE_CLOUD_PROJECT=your-google-cloud-project-id
+
+# =============================================================================
+# ANTHROPIC AI CONFIGURATION (for LLM recommendations)
+# =============================================================================
+# Get this from https://console.anthropic.com/
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# =============================================================================
+# GARMIN CONFIGURATION (legacy - not used in current version)
+# =============================================================================
+# These are for the old Garmin integration - not needed for Strava version
+# GARMIN_EMAIL=your-garmin-email
+# GARMIN_PASSWORD=your-garmin-password
+# GARMIN_RESTING_HR=60
+# GARMIN_MAX_HR=180
+# GARMIN_GENDER=male
+
+# =============================================================================
+# DEPLOYMENT CONFIGURATION
+# =============================================================================
+# Port for the Flask app (default: 8080 for production, 5000 for development)
+PORT=5000
+
+

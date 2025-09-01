@@ -873,7 +873,7 @@ const getRecommendationDateContext = (recommendation) => {
                 padding={{ left: 10, right: 10 }}
               />
               <YAxis
-                domain={[-0.2, 0.2]}
+                domain={[-0.4, 0.2]}
                 label={{ value: 'Divergence', angle: -90, position: 'insideLeft' }}
                 tickFormatter={(value) => value.toFixed(2)}
                 reversed={true}
@@ -930,7 +930,7 @@ const getRecommendationDateContext = (recommendation) => {
 
               {/* High Risk Zone (negative values - top of chart) */}
               <ReferenceArea
-                y1={-0.2} // Most negative (top)
+                y1={-0.4} // Most negative (top)
                 y2={-0.15}
                 fill={`${colors.danger}50`}
                 stroke={colors.danger}

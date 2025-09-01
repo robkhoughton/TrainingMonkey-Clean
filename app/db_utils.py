@@ -298,7 +298,20 @@ def initialize_db(force=False):
                     is_admin BOOLEAN DEFAULT FALSE,
                     garmin_email TEXT,
                     garmin_password_encrypted TEXT,
-                    garmin_last_sync TIMESTAMP
+                    garmin_last_sync TIMESTAMP,
+                    strava_access_token TEXT,
+                    strava_refresh_token TEXT,
+                    strava_token_expires_at BIGINT,
+                    strava_athlete_id BIGINT,
+                    strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_strava_client_id VARCHAR(255),
+                    user_strava_client_secret VARCHAR(255),
+                    terms_accepted_at TIMESTAMP,
+                    privacy_policy_accepted_at TIMESTAMP,
+                    disclaimer_accepted_at TIMESTAMP,
+                    onboarding_completed_at TIMESTAMP,
+                    account_status VARCHAR(20) DEFAULT 'pending_verification',
+                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 '''
             else: #
@@ -314,7 +327,20 @@ def initialize_db(force=False):
                     is_admin BOOLEAN DEFAULT FALSE,
                     garmin_email TEXT,
                     garmin_password_encrypted TEXT,
-                    garmin_last_sync TIMESTAMP
+                    garmin_last_sync TIMESTAMP,
+                    strava_access_token TEXT,
+                    strava_refresh_token TEXT,
+                    strava_token_expires_at BIGINT,
+                    strava_athlete_id BIGINT,
+                    strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_strava_client_id VARCHAR(255),
+                    user_strava_client_secret VARCHAR(255),
+                    terms_accepted_at TIMESTAMP,
+                    privacy_policy_accepted_at TIMESTAMP,
+                    disclaimer_accepted_at TIMESTAMP,
+                    onboarding_completed_at TIMESTAMP,
+                    account_status VARCHAR(20) DEFAULT 'pending_verification',
+                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 '''
 
@@ -358,12 +384,50 @@ def initialize_db(force=False):
             print("Created llm_recommendations table") #
             logger.info("db_utils: Successfully created llm_recommendations table.") # Add logger.info here
 
+            # Legal compliance table for audit trail
+            if USE_POSTGRES: #
+                legal_compliance_sql = '''
+                CREATE TABLE IF NOT EXISTS legal_compliance (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES user_settings(id),
+                    document_type VARCHAR(50) NOT NULL,
+                    version VARCHAR(20) NOT NULL,
+                    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ip_address INET,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                '''
+            else: #
+                legal_compliance_sql = '''
+                CREATE TABLE IF NOT EXISTS legal_compliance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    document_type VARCHAR(50) NOT NULL,
+                    version VARCHAR(20) NOT NULL,
+                    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES user_settings(id)
+                );
+                '''
+
+            execute_query(legal_compliance_sql) #
+            print("Created legal_compliance table") #
+            logger.info("db_utils: Successfully created legal_compliance table.") # Add logger.info here
+
             print("Database initialization complete") #
             logger.info("db_utils: Database initialization complete.") # Add logger.info here
             return True #
 
         print("db_utils: Database already initialized and 'force' not set.") # Added print for existing DB
         logger.info("db_utils: Database already initialized and 'force' not set. Skipping initialization.") # Added logging
+
+        # Always run migration to ensure schema is up to date
+        migrate_user_settings_schema()
+        migrate_legal_compliance_table()
+        
         return False #
 
     except Exception as e:
@@ -582,6 +646,94 @@ def clear_old_recommendations(keep_count=10, user_id=None):
         logger.error(f"Error cleaning up recommendations for user {user_id}: {str(e)}")
 
 
+def migrate_user_settings_schema():
+    """
+    Migrate user_settings table to add legal compliance tracking columns
+    This function safely adds new columns to existing tables
+    """
+    logger.info("db_utils: Starting user_settings schema migration")
+    
+    try:
+        # Add legal compliance tracking columns
+        migration_queries = [
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP;",
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS privacy_policy_accepted_at TIMESTAMP;",
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS disclaimer_accepted_at TIMESTAMP;",
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP;",
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'pending_verification';",
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+        ]
+        
+        for query in migration_queries:
+            try:
+                execute_query(query, fetch=False)
+                logger.info(f"db_utils: Successfully executed migration query: {query}")
+            except Exception as e:
+                logger.warning(f"db_utils: Migration query may have failed (column might already exist): {query} - {str(e)}")
+        
+        logger.info("db_utils: User settings schema migration completed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error during user_settings schema migration: {str(e)}")
+        return False
+
+
+def migrate_legal_compliance_table():
+    """
+    Migrate to add legal_compliance table for audit trail
+    This function safely creates the legal_compliance table if it doesn't exist
+    """
+    logger.info("db_utils: Starting legal_compliance table migration")
+    
+    try:
+        # Create legal_compliance table if it doesn't exist
+        if USE_POSTGRES: #
+            legal_compliance_sql = '''
+            CREATE TABLE IF NOT EXISTS legal_compliance (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES user_settings(id),
+                document_type VARCHAR(50) NOT NULL,
+                version VARCHAR(20) NOT NULL,
+                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ip_address INET,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            '''
+        else: #
+            legal_compliance_sql = '''
+            CREATE TABLE IF NOT EXISTS legal_compliance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                document_type VARCHAR(50) NOT NULL,
+                version VARCHAR(20) NOT NULL,
+                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES user_settings(id)
+            );
+            '''
+        
+        execute_query(legal_compliance_sql, fetch=False)
+        logger.info("db_utils: Successfully created legal_compliance table")
+        
+        # Create index for better query performance
+        index_sql = "CREATE INDEX IF NOT EXISTS idx_legal_compliance_user_id ON legal_compliance(user_id);"
+        execute_query(index_sql, fetch=False)
+        logger.info("db_utils: Successfully created legal_compliance index")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error during legal_compliance table migration: {str(e)}")
+        return False
+
+
+# Database schema changes should be done via SQL Editor, not in code
+# See docs/database_schema_rules.md for guidelines
+
 # Also update the __all__ list to include these new functions:
 __all__ = [
     'get_db_connection',
@@ -597,4 +749,6 @@ __all__ = [
     'recommendation_needs_update',
     'clear_old_recommendations',
     'get_last_activity_date',
+    'migrate_user_settings_schema',
+    'migrate_legal_compliance_table',
 ]

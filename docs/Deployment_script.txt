@@ -2,7 +2,7 @@ Step-by-Step Deployment from React to Cloud Run:
 
 ## 1. Rebuild React App
 cmd
-cd C:\Users\robho\Documents\GarminLocal\frontend
+cd C:\Users\robho\Documents\TrainingMonkey-Clean\frontend
 npm run build
 
 ## 2. Copy to Deployment

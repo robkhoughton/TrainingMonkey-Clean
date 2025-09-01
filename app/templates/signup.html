@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Training Monkey - Sign Up</title>
+    
+    <!-- Favicon - Monkey Mascot -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: #f9fafb; /* gray-50 */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .signup-container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 0.5rem; /* 8px - same as dashboard cards */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* Exact dashboard shadow */
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .signup-title {
+            font-size: 1.25rem; /* Same as dashboard title */
+            font-weight: bold;
+            color: #000; /* Same as dashboard title */
+            margin-bottom: 10px;
+        }
+
+        .signup-subtitle {
+            color: #6b7280; /* gray-500 */
+            font-size: 0.875rem; /* 14px */
+            margin-bottom: 25px;
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #374151; /* gray-700 */
+            font-size: 0.875rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.25rem 0.5rem; /* Same as dashboard inputs */
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.375rem; /* 6px - same as dashboard */
+            font-size: 0.875rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            outline: none;
+            box-sizing: border-box;
+            background-color: white;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #3b82f6; /* blue-500 */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-group input.error {
+            border-color: #dc2626; /* red-600 */
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+        }
+
+        .form-group input.error:focus {
+            border-color: #dc2626; /* red-600 */
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+        }
+
+        .password-input-container {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+
+        .password-input-container input {
+            flex: 1;
+        }
+
+        .generate-password-btn {
+            padding: 0.25rem 0.75rem;
+            background-color: #10b981; /* emerald-500 */
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .generate-password-btn:hover {
+            background-color: #059669; /* emerald-600 */
+        }
+
+        .password-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .password-modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .password-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .password-modal-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #000;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #6b7280;
+        }
+
+        .close-modal:hover {
+            color: #000;
+        }
+
+        .password-options {
+            margin-bottom: 1.5rem;
+        }
+
+        .password-option {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: border-color 0.2s ease;
+        }
+
+        .password-option:hover {
+            border-color: #3b82f6;
+        }
+
+        .password-option.selected {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+
+        .password-option-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .password-option-description {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+
+        .password-option-example {
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: #059669;
+            background-color: #f0fdf4;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        .generated-password {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            text-align: center;
+        }
+
+        .generated-password-text {
+            font-family: monospace;
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #059669;
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+
+        .generated-password-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .copy-btn {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .copy-btn:hover {
+            background-color: #2563eb;
+        }
+
+        .use-btn {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .use-btn:hover {
+            background-color: #059669;
+        }
+
+        .regenerate-btn {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .regenerate-btn:hover {
+            background-color: #d97706;
+        }
+
+        .legal-agreements {
+            margin: 25px 0;
+            text-align: left;
+        }
+
+        .legal-checkbox {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            padding: 12px;
+            border: 1px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.375rem;
+            background-color: #f9fafb; /* gray-50 */
+        }
+
+        .legal-checkbox input[type="checkbox"] {
+            width: auto;
+            margin-right: 12px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .legal-checkbox label {
+            margin: 0;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            color: #374151; /* gray-700 */
+            cursor: pointer;
+        }
+
+        .legal-checkbox a {
+            color: #3b82f6; /* blue-500 */
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .legal-checkbox a:hover {
+            text-decoration: underline;
+        }
+
+        .signup-btn {
+            width: 100%;
+            padding: 0.5rem 1rem; /* Same as dashboard buttons */
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+            border: none;
+            border-radius: 0.375rem; /* 6px */
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-top: 10px;
+        }
+
+        .signup-btn:hover {
+            background-color: #2563eb; /* blue-600 */
+        }
+
+        .signup-btn:disabled {
+            background-color: #9ca3af; /* gray-400 */
+            cursor: not-allowed;
+        }
+
+        .strava-branding {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb; /* gray-200 */
+            text-align: center;
+        }
+
+        .error-message {
+            background-color: #fee2e2; /* red-100 */
+            color: #991b1b; /* red-800 */
+            padding: 10px;
+            border-radius: 0.375rem;
+            margin-bottom: 20px;
+            border: 1px solid #fecaca; /* red-200 */
+            font-size: 0.875rem;
+            text-align: left;
+        }
+
+        .login-link {
+            margin-top: 20px;
+            font-size: 0.875rem;
+            color: #6b7280; /* gray-500 */
+        }
+
+        .login-link a {
+            color: #3b82f6; /* blue-500 */
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-link a:hover {
+            text-decoration: underline;
+        }
+
+        .password-requirements {
+            font-size: 0.75rem;
+            color: #6b7280; /* gray-500 */
+            margin-top: 5px;
+            text-align: left;
+        }
+
+        .password-requirements ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+
+        .password-requirements li {
+            margin: 2px 0;
+        }
+
+        .password-strength {
+            margin-top: 5px;
+            font-size: 0.75rem;
+        }
+
+        .strength-weak { color: #dc2626; } /* red-600 */
+        .strength-medium { color: #d97706; } /* amber-600 */
+        .strength-strong { color: #059669; } /* emerald-600 */
+    </style>
+</head>
+<body>
+    <div class="signup-container">
+        <h1 class="signup-title">Join Your Training Monkey</h1>
+        <p class="signup-subtitle">Create your account to start analyzing your training divergence</p>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="error-message">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="signupForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required 
+                       value="{{ request.form.get('email', '') }}"
+                       class="{{ 'error' if errors and errors.get('email') else '' }}">
+                {% if errors and errors.get('email') %}
+                    <div class="error-message">
+                        {% for error in errors['email'] %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <div class="password-input-container">
+                    <input type="password" id="password" name="password" required
+                           class="{{ 'error' if errors and errors.get('password') else '' }}">
+                    <button type="button" id="generatePasswordBtn" class="generate-password-btn">
+                        🔐 Generate
+                    </button>
+                </div>
+                <div class="password-requirements">
+                    <strong>Password must contain:</strong>
+                    <ul>
+                        <li id="req-length">At least 8 characters</li>
+                        <li id="req-uppercase">One uppercase letter</li>
+                        <li id="req-lowercase">One lowercase letter</li>
+                        <li id="req-number">One number</li>
+                        <li id="req-special">One special character</li>
+                    </ul>
+                    <div class="password-strength" id="passwordStrength"></div>
+                </div>
+                {% if errors and errors.get('password') %}
+                    <div class="error-message">
+                        {% for error in errors['password'] %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required
+                       class="{{ 'error' if errors and errors.get('confirm_password') else '' }}">
+                {% if errors and errors.get('confirm_password') %}
+                    <div class="error-message">
+                        {% for error in errors['confirm_password'] %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="legal-agreements">
+                <div class="legal-checkbox">
+                    <input type="checkbox" id="terms_accepted" name="terms_accepted" required>
+                    <label for="terms_accepted">
+                        I accept the <a href="{{ url_for('display_terms') }}" target="_blank">Terms and Conditions</a> (Version {{ legal_versions.terms }})
+                    </label>
+                </div>
+
+                <div class="legal-checkbox">
+                    <input type="checkbox" id="privacy_accepted" name="privacy_accepted" required>
+                    <label for="privacy_accepted">
+                        I accept the <a href="{{ url_for('display_privacy') }}" target="_blank">Privacy Policy</a> (Version {{ legal_versions.privacy }})
+                    </label>
+                </div>
+
+                <div class="legal-checkbox">
+                    <input type="checkbox" id="disclaimer_accepted" name="disclaimer_accepted" required>
+                    <label for="disclaimer_accepted">
+                        I accept the <a href="{{ url_for('display_disclaimer') }}" target="_blank">Medical Disclaimer</a> (Version {{ legal_versions.disclaimer }})
+                    </label>
+                </div>
+                
+                {% if errors and errors.get('legal') %}
+                    <div class="error-message">
+                        {% for error in errors['legal'] %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="signup-btn" id="signupBtn" disabled>Create Account</button>
+        </form>
+
+        <div class="login-link">
+            Already have an account? <a href="{{ url_for('login') }}">Sign In</a>
+        </div>
+
+        <div class="strava-branding">
+            <img
+                src="/static/powered-by-strava.svg"
+                alt="Powered by Strava"
+                style="height: 16px; width: auto; opacity: 0.8;"
+                onerror="this.style.display='none'; this.parentNode.innerHTML='<small style=&quot;color: #FC5200; font-weight: bold;&quot;>Powered by Strava</small>';">
+        </div>
+    </div>
+
+    <!-- Password Generation Modal -->
+    <div id="passwordModal" class="password-modal">
+        <div class="password-modal-content">
+            <div class="password-modal-header">
+                <h3 class="password-modal-title">Generate Secure Password</h3>
+                <button type="button" class="close-modal" onclick="closePasswordModal()">&times;</button>
+            </div>
+            
+            <div class="password-options">
+                <div class="password-option" data-type="strong" data-strength="strong">
+                    <div class="password-option-title">Strong Password</div>
+                    <div class="password-option-description">16 characters with mixed case, numbers, and symbols</div>
+                    <div class="password-option-example">Example: K9#mN2$pL8@vX5qR</div>
+                </div>
+                
+                <div class="password-option" data-type="very_strong" data-strength="very_strong">
+                    <div class="password-option-title">Very Strong Password</div>
+                    <div class="password-option-description">20 characters with maximum security</div>
+                    <div class="password-option-example">Example: H7#kL9$mN4@vX2pQ8&wR5</div>
+                </div>
+                
+                <div class="password-option" data-type="memorable">
+                    <div class="password-option-title">Memorable Password</div>
+                    <div class="password-option-description">Easy to remember words with numbers and symbols</div>
+                    <div class="password-option-example">Example: dragon-ocean-42#</div>
+                </div>
+                
+                <div class="password-option" data-type="pronounceable">
+                    <div class="password-option-title">Pronounceable Password</div>
+                    <div class="password-option-description">Easy to say but still secure</div>
+                    <div class="password-option-example">Example: Bi7ka#Mu3no</div>
+                </div>
+            </div>
+            
+            <div id="generatedPasswordSection" class="generated-password" style="display: none;">
+                <div class="generated-password-text" id="generatedPasswordText"></div>
+                <div class="generated-password-actions">
+                    <button type="button" class="action-btn copy-btn" onclick="copyPassword()">Copy</button>
+                    <button type="button" class="action-btn use-btn" onclick="usePassword()">Use This Password</button>
+                    <button type="button" class="action-btn regenerate-btn" onclick="regeneratePassword()">Generate New</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Password validation
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirm_password');
+        const signupBtn = document.getElementById('signupBtn');
+        const form = document.getElementById('signupForm');
+
+        // Password requirements
+        const requirements = {
+            length: str => str.length >= 8,
+            uppercase: str => /[A-Z]/.test(str),
+            lowercase: str => /[a-z]/.test(str),
+            number: str => /\d/.test(str),
+            special: str => /[!@#$%^&*(),.?":{}|<>]/.test(str)
+        };
+
+        function updatePasswordStrength(password) {
+            const strengthElement = document.getElementById('passwordStrength');
+            let score = 0;
+            
+            // Check each requirement
+            Object.keys(requirements).forEach(req => {
+                const element = document.getElementById(`req-${req}`);
+                const isValid = requirements[req](password);
+                
+                if (isValid) {
+                    element.style.color = '#059669'; // green
+                    element.style.textDecoration = 'line-through';
+                    score++;
+                } else {
+                    element.style.color = '#6b7280'; // gray
+                    element.style.textDecoration = 'none';
+                }
+            });
+
+            // Update strength indicator
+            if (score < 3) {
+                strengthElement.textContent = 'Weak password';
+                strengthElement.className = 'password-strength strength-weak';
+            } else if (score < 5) {
+                strengthElement.textContent = 'Medium strength password';
+                strengthElement.className = 'password-strength strength-medium';
+            } else {
+                strengthElement.textContent = 'Strong password';
+                strengthElement.className = 'password-strength strength-strong';
+            }
+
+            return score === 5; // All requirements met
+        }
+
+        function validateForm() {
+            const email = document.getElementById('email').value;
+            const passwordValid = updatePasswordStrength(password.value);
+            const passwordsMatch = password.value === confirmPassword.value;
+            const termsAccepted = document.getElementById('terms_accepted').checked;
+            const privacyAccepted = document.getElementById('privacy_accepted').checked;
+            const disclaimerAccepted = document.getElementById('disclaimer_accepted').checked;
+
+            const isValid = email && passwordValid && passwordsMatch && 
+                           termsAccepted && privacyAccepted && disclaimerAccepted;
+
+            signupBtn.disabled = !isValid;
+        }
+
+        // Event listeners
+        password.addEventListener('input', validateForm);
+        confirmPassword.addEventListener('input', validateForm);
+        document.getElementById('email').addEventListener('input', validateForm);
+        document.getElementById('terms_accepted').addEventListener('change', validateForm);
+        document.getElementById('privacy_accepted').addEventListener('change', validateForm);
+        document.getElementById('disclaimer_accepted').addEventListener('change', validateForm);
+
+        // Form submission
+        form.addEventListener('submit', function(e) {
+            if (password.value !== confirmPassword.value) {
+                e.preventDefault();
+                alert('Passwords do not match');
+                return false;
+            }
+        });
+
+        // Initial validation
+        validateForm();
+
+        // Password Generation Modal
+        let selectedPasswordType = 'strong';
+        let selectedStrength = 'strong';
+        let currentGeneratedPassword = '';
+
+        // Show password generation modal
+        document.getElementById('generatePasswordBtn').addEventListener('click', function() {
+            document.getElementById('passwordModal').style.display = 'block';
+            document.getElementById('generatedPasswordSection').style.display = 'none';
+            
+            // Reset selections
+            document.querySelectorAll('.password-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+        });
+
+        // Close modal
+        function closePasswordModal() {
+            document.getElementById('passwordModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('passwordModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePasswordModal();
+            }
+        });
+
+        // Password option selection
+        document.querySelectorAll('.password-option').forEach(option => {
+            option.addEventListener('click', function() {
+                // Remove previous selection
+                document.querySelectorAll('.password-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // Select current option
+                this.classList.add('selected');
+                
+                selectedPasswordType = this.dataset.type;
+                selectedStrength = this.dataset.strength;
+                
+                // Generate password immediately
+                generatePassword();
+            });
+        });
+
+        // Generate password
+        function generatePassword() {
+            const data = {
+                type: selectedPasswordType,
+                strength: selectedStrength
+            };
+
+            fetch('/api/signup/generate-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error generating password: ' + data.error);
+                    return;
+                }
+                
+                currentGeneratedPassword = data.password;
+                document.getElementById('generatedPasswordText').textContent = data.password;
+                document.getElementById('generatedPasswordSection').style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to generate password. Please try again.');
+            });
+        }
+
+        // Copy password to clipboard
+        function copyPassword() {
+            if (currentGeneratedPassword) {
+                navigator.clipboard.writeText(currentGeneratedPassword).then(function() {
+                    const copyBtn = document.querySelector('.copy-btn');
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = 'Copied!';
+                    copyBtn.style.backgroundColor = '#059669';
+                    
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                        copyBtn.style.backgroundColor = '#3b82f6';
+                    }, 2000);
+                }).catch(function(err) {
+                    console.error('Could not copy text: ', err);
+                    alert('Could not copy password to clipboard');
+                });
+            }
+        }
+
+        // Use generated password
+        function usePassword() {
+            if (currentGeneratedPassword) {
+                document.getElementById('password').value = currentGeneratedPassword;
+                document.getElementById('confirm_password').value = currentGeneratedPassword;
+                closePasswordModal();
+                validateForm();
+            }
+        }
+
+        // Regenerate password
+        function regeneratePassword() {
+            generatePassword();
+        }
+    </script>
+</body>
+</html>

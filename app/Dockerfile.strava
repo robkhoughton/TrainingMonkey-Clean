@@ -23,7 +23,7 @@ COPY strava_requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r strava_requirements.txt
 
-# Copy application code
+# Copy application code - Core modules
 COPY strava_app.py .
 COPY strava_training_load.py .
 COPY db_utils.py .
@@ -35,11 +35,47 @@ COPY timezone_utils.py .
 COPY elevation_migration_module.py .
 COPY sync_fix.py .
 COPY settings_utils.py .
+
+# Copy Phase 1 OAuth and Security modules
+COPY oauth_error_handler.py .
+COPY secure_token_storage.py .
+COPY oauth_rate_limiter.py .
+
+# Copy Phase 1 Legal and Registration modules
+COPY legal_document_versioning.py .
+COPY legal_compliance.py .
+COPY legal_validation.py .
+COPY legal_audit_trail.py .
+COPY registration_validation.py .
+COPY password_generator.py .
+COPY user_account_manager.py .
+COPY registration_status_tracker.py .
+COPY registration_session_manager.py .
+COPY csrf_protection.py .
+COPY email_validation.py .
+COPY onboarding_manager.py .
+COPY tiered_feature_unlock.py .
+COPY onboarding_progress_tracker.py .
+COPY onboarding_tutorial_system.py .
+COPY new_user_dashboard.py .
+COPY progressive_feature_triggers.py .
+COPY onboarding_completion_tracker.py .
+COPY onboarding_analytics.py .
+
+# Copy Phase 2 Existing User Migration modules
+COPY existing_user_migration.py .
+COPY migration_notification_system.py .
+
+# Copy test runner (for development use)
+COPY run_tests.py .
+
+# Copy templates directory (includes new legal and onboarding templates)
 COPY templates/ /app/templates/
 
 # Copy the actual configuration files
 COPY config.json .
-COPY ["# Training Metrics Reference Guide.md", "."]
+COPY strava_config.json .
+COPY Training_Metrics_Reference_Guide.md .
 
 # Create the static directory structure that Flask expects
 RUN mkdir -p /app/static

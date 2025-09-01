@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Training Monkey - Strava Connected</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .welcome-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .welcome-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        .strava-logo {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 20px;
+        }
+        .success-icon {
+            font-size: 4rem;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        .welcome-title {
+            color: #333;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        .welcome-subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+        .feature-list {
+            text-align: left;
+            margin: 30px 0;
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .feature-icon {
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-right: 15px;
+            width: 30px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .btn-outline-primary {
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 6px;
+            border-radius: 3px;
+            margin: 20px 0;
+        }
+        .loading-spinner {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome-container">
+        <div class="welcome-card">
+            <!-- Success Icon -->
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            
+            <!-- Strava Logo -->
+            <img src="https://d3nn82uaxijpm6.cloudfront.net/assets/logo/strava-logo-orange.svg" 
+                 alt="Strava" class="strava-logo">
+            
+            <!-- Welcome Title -->
+            <h1 class="welcome-title">Welcome to Training Monkey!</h1>
+            <p class="welcome-subtitle">
+                Your Strava account is successfully connected and ready for analysis.
+            </p>
+            
+            <!-- Progress Bar -->
+            <div class="progress">
+                <div class="progress-bar" style="width: 25%"></div>
+            </div>
+            <small class="text-muted">Step 1 of 4: Welcome</small>
+            
+            <!-- Features List -->
+            <div class="feature-list">
+                <div class="feature-item">
+                    <i class="fas fa-chart-line feature-icon"></i>
+                    <div>
+                        <strong>Training Load Analysis</strong><br>
+                        <small class="text-muted">Get insights into your training intensity and recovery needs</small>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <i class="fas fa-heartbeat feature-icon"></i>
+                    <div>
+                        <strong>Heart Rate Monitoring</strong><br>
+                        <small class="text-muted">Track your cardiovascular fitness and training zones</small>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <i class="fas fa-calendar-alt feature-icon"></i>
+                    <div>
+                        <strong>Progress Tracking</strong><br>
+                        <small class="text-muted">Monitor your fitness improvements over time</small>
+                    </div>
+                </div>
+                
+                <div class="feature-item">
+                    <i class="fas fa-lightbulb feature-icon"></i>
+                    <div>
+                        <strong>Smart Recommendations</strong><br>
+                        <small class="text-muted">Receive personalized training advice based on your data</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="mt-4">
+                <button id="continueBtn" class="btn btn-primary btn-lg">
+                    <i class="fas fa-arrow-right"></i> Continue to Dashboard
+                </button>
+                <button id="syncDataBtn" class="btn btn-outline-primary btn-lg" style="display: none;">
+                    <i class="fas fa-sync-alt"></i> Sync My Data
+                </button>
+            </div>
+            
+            <!-- Loading Spinner -->
+            <div class="loading-spinner mt-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Setting up your account...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const continueBtn = document.getElementById('continueBtn');
+            const syncDataBtn = document.getElementById('syncDataBtn');
+            const loadingSpinner = document.querySelector('.loading-spinner');
+            
+            // Check if user has activities
+            const hasActivities = {{ onboarding_data.has_activities|tojson }};
+            
+            if (hasActivities) {
+                syncDataBtn.style.display = 'inline-block';
+                continueBtn.innerHTML = '<i class="fas fa-chart-bar"></i> View My Dashboard';
+            }
+            
+            // Handle continue button click
+            continueBtn.addEventListener('click', function() {
+                loadingSpinner.style.display = 'block';
+                continueBtn.disabled = true;
+                
+                // Complete onboarding step
+                fetch('/api/onboarding/strava-welcome/complete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        next_step: hasActivities ? 'data_sync' : 'first_activity'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Redirect to dashboard
+                        window.location.href = '/dashboard';
+                    } else {
+                        console.error('Error completing onboarding:', data.error);
+                        alert('There was an error. Please try again.');
+                        loadingSpinner.style.display = 'none';
+                        continueBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('There was an error. Please try again.');
+                    loadingSpinner.style.display = 'none';
+                    continueBtn.disabled = false;
+                });
+            });
+            
+            // Handle sync data button click
+            if (syncDataBtn) {
+                syncDataBtn.addEventListener('click', function() {
+                    loadingSpinner.style.display = 'block';
+                    syncDataBtn.disabled = true;
+                    
+                    // Trigger data sync
+                    fetch('/api/sync-strava-data', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Complete onboarding and redirect
+                            return fetch('/api/onboarding/strava-welcome/complete', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    next_step: 'data_sync'
+                                })
+                            });
+                        } else {
+                            throw new Error(data.error || 'Sync failed');
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.href = '/dashboard';
+                        } else {
+                            throw new Error(data.error || 'Onboarding completion failed');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('There was an error syncing your data. You can continue to the dashboard and sync later.');
+                        loadingSpinner.style.display = 'none';
+                        syncDataBtn.disabled = false;
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+

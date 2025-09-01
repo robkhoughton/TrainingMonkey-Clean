@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strava Connected Successfully - Training Monkey</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .success-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .success-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+            text-align: center;
+        }
+        .strava-logo {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 20px;
+        }
+        .success-icon {
+            font-size: 4rem;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        .success-title {
+            color: #333;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        .success-subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+        .connection-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .connection-detail {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .connection-icon {
+            font-size: 1.2rem;
+            color: #667eea;
+            margin-right: 15px;
+            width: 25px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .btn-outline-primary {
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .btn-success {
+            background: #28a745;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .sync-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+        .sync-status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .sync-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .sync-status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .loading-spinner {
+            display: none;
+        }
+        .feature-highlight {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="success-container">
+        <div class="success-card">
+            <!-- Success Icon -->
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            
+            <!-- Strava Logo -->
+            <img src="https://d3nn82uaxijpm6.cloudfront.net/assets/logo/strava-logo-orange.svg" 
+                 alt="Strava" class="strava-logo">
+            
+            <!-- Success Title -->
+            <h1 class="success-title">Strava Connected!</h1>
+            <p class="success-subtitle">
+                Your Strava account has been successfully reconnected to Training Monkey.
+            </p>
+            
+            <!-- Connection Information -->
+            <div class="connection-info">
+                <h4><i class="fas fa-user-check"></i> Connection Details</h4>
+                <div class="connection-detail">
+                    <i class="fas fa-user connection-icon"></i>
+                    <span><strong>Athlete:</strong> {{ athlete_name }}</span>
+                </div>
+                <div class="connection-detail">
+                    <i class="fas fa-id-badge connection-icon"></i>
+                    <span><strong>Athlete ID:</strong> {{ athlete_id }}</span>
+                </div>
+                <div class="connection-detail">
+                    <i class="fas fa-clock connection-icon"></i>
+                    <span><strong>Connected:</strong> <span id="connectionTime"></span></span>
+                </div>
+                {% if has_existing_data %}
+                <div class="connection-detail">
+                    <i class="fas fa-database connection-icon"></i>
+                    <span><strong>Existing Data:</strong> <span class="text-success">Available</span></span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Feature Highlight -->
+            <div class="feature-highlight">
+                <h5><i class="fas fa-lightbulb"></i> What's New</h5>
+                <p>Your Strava connection now uses our enhanced centralized system for better reliability and performance.</p>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="mt-4">
+                {% if has_existing_data %}
+                <button id="syncDataBtn" class="btn btn-primary btn-lg">
+                    <i class="fas fa-sync-alt"></i> Sync Recent Activities
+                </button>
+                <button id="viewDashboardBtn" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-chart-bar"></i> View Dashboard
+                </button>
+                {% else %}
+                <button id="syncDataBtn" class="btn btn-primary btn-lg">
+                    <i class="fas fa-sync-alt"></i> Import My Activities
+                </button>
+                <button id="viewDashboardBtn" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-chart-bar"></i> Go to Dashboard
+                </button>
+                {% endif %}
+            </div>
+            
+            <!-- Sync Status -->
+            <div id="syncStatus" class="sync-status"></div>
+            
+            <!-- Loading Spinner -->
+            <div class="loading-spinner mt-3" id="loadingSpinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Syncing your activities...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set connection time
+            const now = new Date();
+            document.getElementById('connectionTime').textContent = now.toLocaleString();
+            
+            const syncDataBtn = document.getElementById('syncDataBtn');
+            const viewDashboardBtn = document.getElementById('viewDashboardBtn');
+            const syncStatus = document.getElementById('syncStatus');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            
+            // Handle sync data button click
+            syncDataBtn.addEventListener('click', function() {
+                loadingSpinner.style.display = 'block';
+                syncDataBtn.disabled = true;
+                syncStatus.style.display = 'none';
+                
+                // Show initial status
+                showSyncStatus('info', 'Connecting to Strava and syncing your recent activities...');
+                
+                // Trigger data sync
+                fetch('/sync-with-auto-refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        days: 30,
+                        user_id: {{ user_id }}
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loadingSpinner.style.display = 'none';
+                    
+                    if (data.success) {
+                        showSyncStatus('success', `✅ Sync completed successfully! ${data.message || 'Your activities have been imported.'}`);
+                        syncDataBtn.innerHTML = '<i class="fas fa-check"></i> Sync Complete';
+                        syncDataBtn.classList.remove('btn-primary');
+                        syncDataBtn.classList.add('btn-success');
+                    } else {
+                        showSyncStatus('error', `❌ Sync failed: ${data.error || 'Unknown error occurred'}`);
+                        syncDataBtn.disabled = false;
+                        syncDataBtn.innerHTML = '{% if has_existing_data %}<i class="fas fa-sync-alt"></i> Retry Sync{% else %}<i class="fas fa-sync-alt"></i> Retry Import{% endif %}';
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.style.display = 'none';
+                    showSyncStatus('error', `❌ Error: ${error.message}`);
+                    syncDataBtn.disabled = false;
+                    syncDataBtn.innerHTML = '{% if has_existing_data %}<i class="fas fa-sync-alt"></i> Retry Sync{% else %}<i class="fas fa-sync-alt"></i> Retry Import{% endif %}';
+                });
+            });
+            
+            // Handle view dashboard button click
+            viewDashboardBtn.addEventListener('click', function() {
+                window.location.href = '/dashboard';
+            });
+            
+            function showSyncStatus(type, message) {
+                syncStatus.className = `sync-status ${type}`;
+                syncStatus.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> ${message}`;
+                syncStatus.style.display = 'block';
+            }
+            
+            // Track page view for analytics
+            try {
+                fetch('/api/analytics/page-view', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        page: 'oauth_success',
+                        user_id: {{ user_id }},
+                        connection_type: '{{ connection_type }}',
+                        athlete_id: '{{ athlete_id }}'
+                    })
+                });
+            } catch (error) {
+                console.log('Analytics tracking failed:', error);
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Your Goals - TrainingMonkey</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .goals-container {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .goals-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .goals-header h1 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .goals-header p {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+        
+        .goal-option {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .goal-option:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+        
+        .goal-option.selected {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        
+        .goal-option h3 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .goal-option p {
+            color: #6c757d;
+            margin-bottom: 0;
+        }
+        
+        .goal-input {
+            display: none;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .goal-input.show {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #495057;
+            font-weight: 500;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+        
+        .skip-option {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .skip-option a {
+            color: #6c757d;
+            text-decoration: none;
+        }
+        
+        .skip-option a:hover {
+            color: #495057;
+            text-decoration: underline;
+        }
+        
+        .submit-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        
+        .submit-btn:hover {
+            background: #0056b3;
+        }
+        
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .progress-indicator {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="goals-container">
+        <div class="goals-header">
+            <h1>🎯 Set Your Training Goal</h1>
+            <p>Choose one goal to get started. You can always add more later.</p>
+        </div>
+        
+        <div class="progress-indicator">
+            Step 5 of 6 • Almost there!
+        </div>
+        
+        <form method="POST" id="goalsForm">
+            <!-- Goal Type Selection -->
+            <div class="goal-option" data-goal="distance">
+                <h3>🏃‍♂️ Distance Goal</h3>
+                <p>Run or cycle a specific distance</p>
+                <div class="goal-input" id="distance-input">
+                    <div class="form-group">
+                        <label for="target_value">Target Distance</label>
+                        <input type="number" id="target_value" name="target_value" min="1" max="1000" placeholder="e.g., 50">
+                    </div>
+                    <div class="form-group">
+                        <label for="timeframe">Timeframe</label>
+                        <select id="timeframe" name="timeframe">
+                            <option value="">Select timeframe</option>
+                            <option value="1_week">1 week</option>
+                            <option value="1_month">1 month</option>
+                            <option value="3_months">3 months</option>
+                            <option value="6_months">6 months</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="goal-option" data-goal="frequency">
+                <h3>📅 Activity Frequency</h3>
+                <p>Complete a certain number of activities</p>
+                <div class="goal-input" id="frequency-input">
+                    <div class="form-group">
+                        <label for="target_value">Target Activities</label>
+                        <input type="number" id="target_value" name="target_value" min="1" max="365" placeholder="e.g., 20">
+                    </div>
+                    <div class="form-group">
+                        <label for="timeframe">Timeframe</label>
+                        <select id="timeframe" name="timeframe">
+                            <option value="">Select timeframe</option>
+                            <option value="1_week">1 week</option>
+                            <option value="1_month">1 month</option>
+                            <option value="3_months">3 months</option>
+                            <option value="6_months">6 months</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="goal-option" data-goal="improvement">
+                <h3>📈 Performance Improvement</h3>
+                <p>Improve your pace or time</p>
+                <div class="goal-input" id="improvement-input">
+                    <div class="form-group">
+                        <label for="target_value">Target Improvement (%)</label>
+                        <input type="number" id="target_value" name="target_value" min="1" max="50" placeholder="e.g., 10">
+                    </div>
+                    <div class="form-group">
+                        <label for="timeframe">Timeframe</label>
+                        <select id="timeframe" name="timeframe">
+                            <option value="">Select timeframe</option>
+                            <option value="1_month">1 month</option>
+                            <option value="3_months">3 months</option>
+                            <option value="6_months">6 months</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hidden field for goal type -->
+            <input type="hidden" id="goal_type" name="goal_type" value="">
+            
+            <button type="submit" class="submit-btn" id="submitBtn" disabled>
+                Set Goal & Continue
+            </button>
+        </form>
+        
+        <div class="skip-option">
+            <a href="{{ url_for('dashboard') }}">Skip for now, I'll set goals later</a>
+        </div>
+    </div>
+    
+    <script>
+        // Goal selection logic
+        const goalOptions = document.querySelectorAll('.goal-option');
+        const goalTypeInput = document.getElementById('goal_type');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        goalOptions.forEach(option => {
+            option.addEventListener('click', function() {
+                // Remove selection from all options
+                goalOptions.forEach(opt => opt.classList.remove('selected'));
+                
+                // Select this option
+                this.classList.add('selected');
+                
+                // Show input for this goal type
+                const goalType = this.dataset.goal;
+                goalTypeInput.value = goalType;
+                
+                // Hide all inputs first
+                document.querySelectorAll('.goal-input').forEach(input => {
+                    input.classList.remove('show');
+                });
+                
+                // Show input for selected goal
+                const inputId = goalType + '-input';
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.classList.add('show');
+                }
+                
+                // Enable submit button
+                submitBtn.disabled = false;
+            });
+        });
+        
+        // Form validation
+        const form = document.getElementById('goalsForm');
+        form.addEventListener('submit', function(e) {
+            const goalType = goalTypeInput.value;
+            const targetValue = document.querySelector('input[name="target_value"]').value;
+            const timeframe = document.querySelector('select[name="timeframe"]').value;
+            
+            if (!goalType || !targetValue || !timeframe) {
+                e.preventDefault();
+                alert('Please fill in all fields');
+                return false;
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -15,8 +15,11 @@
     <meta property="og:description" content="See your training divergence - the key insight missing from every other fitness platform">
     <meta property="og:url" content="{{ request.url }}">
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="{{ url_for('serve_landing_static', filename='favicon.ico') }}">
+    <!-- Favicon - Monkey Mascot -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
 
     <!-- Analytics/Tracking (add your tracking codes here) -->
     <!-- Google Analytics, Facebook Pixel, etc. -->
@@ -34,18 +37,50 @@
             line-height: 1.6;
             color: #1f2937;
             overflow-x: hidden;
+            background-image: url("{{ url_for('serve_landing_static', filename='images/wireframe-runner.jpg') }}");
+            background-position: left center;
+            background-size: 60%;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
         }
 
         /* Compact Header - Reduced from 4rem to 2.5rem */
         .header {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%),
-                        url('{{ url_for('serve_landing_static', filename='images/wireframe-runner.jpg') }}') center/cover;
+            background: linear-gradient(315deg, rgba(59, 130, 246, 0.95) 0%, rgba(99, 102, 241, 0.9) 50%, rgba(139, 92, 246, 0.8) 100%);
             color: white;
-            text-align: center;
-            padding: 2.5rem 2rem;
+            text-align: right;
+            padding: 1.5rem 2rem;
             position: relative;
             overflow: hidden;
-            min-height: 400px; /* Reduced from 500px */
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Changed from flex-end to space-between */
+        }
+
+        /* Monkey mascot styling */
+        .monkey-mascot {
+            position: relative;
+            z-index: 2;
+            width: 120px;
+            height: 120px;
+            margin-left: 2rem;
+            filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+            transition: transform 0.3s ease;
+        }
+
+        .monkey-mascot:hover {
+            transform: scale(1.05) rotate(5deg);
+        }
+
+        .monkey-mascot img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
         }
 
         .header::before {
@@ -62,32 +97,34 @@
         .header-content {
             position: relative;
             z-index: 2;
-            max-width: 900px;
-            margin: 0 auto;
+            max-width: 500px;
+            margin: 0;
+            margin-right: calc(50% - 700px);
             display: flex;
             flex-direction: column;
             justify-content: center;
             height: 100%;
+            text-align: right;
         }
 
         .header h1 {
-            font-size: 3.2rem;
+            font-size: 2.5rem;
             font-weight: 700;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
         }
 
         .header .subtitle {
-            font-size: 1.4rem;
-            margin-bottom: 1.5rem;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
             opacity: 0.95;
             font-weight: 300;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
         }
 
         .header .description {
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
             max-width: 700px;
             margin-left: auto;
             margin-right: auto;
@@ -104,37 +141,109 @@
         .demo-container {
             max-width: 1400px; /* Increased for wider screens */
             margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1.2fr; /* Text on left, chart on right */
-            gap: 3rem;
-            align-items: center;
         }
 
         .demo-content {
             text-align: left;
         }
 
+        /* Combined TAKE ACTION + DEMO block per wireframe */
+        .hero-demo-section { 
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            padding: 2rem; 
+        }
+        .hero-demo-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 0.35fr 0.65fr; /* Exaggerated asymmetry */
+            gap: 2rem;
+            align-items: start;
+        }
+        
+        .hero-demo-container > div:first-child {
+            background: rgba(255, 255, 255, 0.6);
+            padding: 1.0rem;
+            border-radius: 12px;
+            backdrop-filter: blur(1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .steps-stack { display: flex; flex-direction: column; gap: 0.5rem; }
+        .step-card { background: rgba(248, 250, 252, 0.95); border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; border-radius: 12px; padding: 0.75rem 1rem; backdrop-filter: blur(2px); }
+        /* Tighten step header line */
+        .step-card .step-number { margin-bottom: 0; margin-right: 0.5rem; vertical-align: middle; }
+        .step-card .step-title { display: inline-block; margin: 0; vertical-align: middle; }
+        .step-card .step-description { margin-top: 0.35rem; }
+        .mini-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .mini-chart-card { background: rgba(255, 255, 255, 0.95); border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; backdrop-filter: blur(2px); }
+
+        /* Unified demo panel */
+        .demo-panel { background: rgba(255, 255, 255, 0.95); border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06); overflow: hidden; backdrop-filter: blur(2px); padding: 1.0rem; }
+        .demo-panel .mini-charts-grid { padding: 1rem; border-bottom: 1px solid #e2e8f0; }
+        .demo-panel .analysis-card { margin: 0; border: 0; border-left: 0; box-shadow: none; padding: 1rem; border-radius: 0; }
+
+        /* AI Analysis card */
+        .analysis-card {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #3b82f6;
+            border-radius: 12px;
+            box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06);
+            padding: 1.25rem 1.25rem 1rem 1.25rem;
+            backdrop-filter: blur(2px);
+        }
+
+        .analysis-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+
+        .analysis-meta {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        .analysis-body p {
+            margin: 0.5rem 0;
+            color: #334155;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        .analysis-footer {
+            margin-top: 0.75rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #e2e8f0;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
         .demo-title {
             font-size: 2.2rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
             color: #1e293b;
         }
 
         .demo-subtitle {
             font-size: 1.1rem;
             color: #64748b;
-            margin-bottom: 1.5rem;
-            line-height: 1.7;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
         }
 
         .demo-features {
             list-style: none;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
 
         .demo-features li {
-            padding: 0.5rem 0;
+            padding: 0.35rem 0;
             position: relative;
             padding-left: 2rem;
             color: #374151;
@@ -227,6 +336,233 @@
             font-size: 0.95rem;
         }
 
+        /* Dual Column Section: Start Analysis (left) + Why It Works (right) */
+        .dual-section {
+            background: white;
+            padding: 2rem;
+        }
+
+        .dual-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .column-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: #1e293b;
+        }
+
+        .column-subtitle {
+            font-size: 1.05rem;
+            color: #64748b;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .info-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #3b82f6;
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+        }
+
+        .info-card .value-icon {
+            width: 28px;
+            height: 28px;
+            font-size: 1rem;
+            background: #eef2ff;
+        }
+
+        /* Two-column: Start Analysis (left) + Why It Works (right) */
+        .analysis-why-section {
+            background: white;
+            padding: 2rem;
+        }
+
+        .analysis-why-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .analysis-panel {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .analysis-why-container .value-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* How It Works Section - Matching Steps Section Format */
+        .how-section {
+            background: white;
+            padding: 2rem;
+        }
+
+        .how-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .how-steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            text-align: left;
+            margin-top: 2rem;
+        }
+
+        .how-steps .step {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+            position: relative;
+        }
+
+        .how-steps .step-number {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .how-steps .step-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .how-steps .step-description {
+            color: #64748b;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Value Propositions Section - Integrated, non-redundant strip */
+        .value-section {
+            background: #f8fafc;
+            padding: 2rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .value-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .value-header {
+            text-align: center;
+        }
+
+        .value-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .value-subtitle {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.25rem;
+            margin-top: 1.25rem;
+        }
+
+        .value-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1rem;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .value-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06);
+        }
+
+        .value-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #eef2ff;
+            color: #3b82f6;
+            font-size: 1.2rem;
+            flex: 0 0 36px;
+        }
+
+        .value-text {
+            line-height: 1.4;
+        }
+
+        .value-text .value-title {
+            font-size: 1rem;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .value-text .value-description {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        /* Highlight card merged into Why It Works */
+        .value-item.value-full {
+            grid-column: 1 / -1;
+            background: #1e293b;
+            color: #ffffff;
+            border-left: 4px solid #60a5fa;
+        }
+        .value-item.value-full .value-text .value-title { color: #ffffff; }
+        .value-item.value-full .value-text .value-description { color: rgba(255,255,255,0.9); }
+
         /* Compact CTA Section */
         .cta-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -289,6 +625,23 @@
             backdrop-filter: blur(10px);
         }
 
+        /* Footer patent band */
+        .patent-footer {
+            background: #1e293b;
+            color: white;
+            text-align: center;
+            padding: 1rem 1rem;
+            border-top: 1px solid rgba(255,255,255,0.15);
+        }
+        .patent-footer .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+
         /* Responsive Design */
         @media (max-width: 1200px) {
             .demo-container {
@@ -301,9 +654,15 @@
                 text-align: center;
             }
 
-            .steps-grid {
+            .steps-grid,
+            .how-steps,
+            .value-grid {
                 grid-template-columns: 1fr;
                 gap: 1.5rem;
+            }
+
+            .analysis-why-container {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -339,7 +698,9 @@
         /* Large Screen Optimizations */
         @media (min-width: 1400px) {
             .demo-container,
-            .steps-container {
+            .steps-container,
+            .how-container,
+            .value-container {
                 max-width: 1600px;
             }
 
@@ -365,7 +726,7 @@
 </head>
 <body>
     <div class="above-fold">
-        <<nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10;">
+        <nav style="position: absolute; top: 2rem; left: 2rem; z-index: 10;">
             <a href="/login" style="
                 display: inline-block;
                 background: rgba(255,255,255,0.9);
@@ -394,101 +755,93 @@
 
         <!-- Header Section -->
         <section class="header">
+            <div class="monkey-mascot">
+                <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="Your Training Monkey Mascot">
+            </div>
             <div class="header-content fade-in">
                 <h1>Your Training Monkey</h1>
-                <p class="subtitle">The Training Status Your Garmin Can't Show You</p>
-                <p class="description">Patent-pending divergence analysis reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
+                <p class="subtitle">Prevent Injuries — Train Smarter</p>
+                <p class="description">The only platform with patent-pending <strong>normalized divergence analysis</strong> that reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
             </div>
         </section>
 
         <!-- Demo Section -->
-        <!-- Replace the Demo Section in your landing.html with this structure -->
-
+    
         <!-- Demo Section - Two Column Layout -->
-        <section class="demo-section">
-            <div class="demo-container">
-                <!-- Left Column: Content -->
-                <div class="demo-content">
-                    <h2 class="demo-title">See Your Real Training Divergence</h2>
-                    <p class="demo-subtitle">This is live data from our founder's trail running training—see how the system analyzes training load balance in real-time.</p>
-
-                    <ul class="demo-features">
-                        <li>Patent-pending divergence analysis reveals training stress</li>
-                        <li>External load tracks distance + elevation impact</li>
-                        <li>Internal load monitors heart rate response</li>
-                        <li>Optimal zones prevent overtraining and injury</li>
-                        <li>Real-time insights guide daily training decisions</li>
-                    </ul>
-
-                    <div style="margin-top: 2rem;">
-                        <a href="/auth/strava" class="cta-button" style="display: inline-block; background: #3b82f6; padding: 0.75rem 2rem; border-radius: 8px; text-decoration: none; color: white; font-weight: 600;">
-                            Try With Your Data
-                        </a>
+        <!-- Combined TAKE ACTION + DEMO per wireframe -->
+        <section class="hero-demo-section">
+            <div class="hero-demo-container">
+                <!-- Left: TAKE ACTION -->
+                <div>
+                    <div class="band-label band-action" style="background: rgba(139, 92, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem;">Take Action</div>
+                    <h2 class="demo-title">Are YOU At Risk? <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="🐒" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-left: 0.5rem; border: 2px solid rgba(139, 92, 246, 0.3);"></h2>
+                    <p class="demo-subtitle">Explore how <i>Your Training Monkey</i> analyzes your training balance in real-time to assess your risk of overtraining or injury.</p>
+                    <div class="steps-stack" style="margin-top: 0.75rem;">
+                        <div class="step-card"><div class="step-number">1</div><h3 class="step-title">Connect Strava</h3><p class="step-description">Securely link<i>Your Training Monkey</i> to your Strava account to import your training history and ongoing activities.</p></div>
+                        <div class="step-card"><div class="step-number">2</div><h3 class="step-title">Analyze Patterns</h3><p class="step-description">Our patent-pending algorithm compares external work and internal load to reveal <strong>mismatches</strong> between what you're doing and how you're responding — An early warning sign of overtraining or injury risk.</p></div>
+                        <div class="step-card"><div class="step-number">3</div><h3 class="step-title">Train Smarter</h3><p class="step-description">Real-time intelligence guides daily training decisions. Get daily recommendations to avoid injury and optimize performance.</p></div>
                     </div>
                 </div>
 
-                <!-- Right Column: Chart -->
-                <div class="chart-wrapper">
-                    <iframe
-                        src="{{ url_for('serve_landing_static', filename='acwr-chart.html') }}"
-                        width="100%"
-                        height="500px"
-                        frameborder="0"
-                        style="border-radius: 8px;">
-                    </iframe>
-                </div>
-            </div>
-        </section>
-
-        <!-- Steps Section - Horizontal Layout -->
-        <section class="steps-section">
-            <div class="steps-container">
-                <h2 class="steps-title">Start Your Training Analysis</h2>
-                <p class="steps-subtitle">Connect your Strava account and get immediate insights into your training patterns</p>
-
-                <div class="steps-grid">
-                    <div class="step">
-                        <div class="step-number">1</div>
-                        <h3 class="step-title">Connect Strava</h3>
-                        <p class="step-description">Securely link your Strava account to import your training history and ongoing activities.</p>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-number">2</div>
-                        <h3 class="step-title">Analyze Patterns</h3>
-                        <p class="step-description">Our AI analyzes your training load balance and identifies potential overtraining risks.</p>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-number">3</div>
-                        <h3 class="step-title">Train Smarter</h3>
-                        <p class="step-description">Get daily recommendations to optimize performance while avoiding injury.</p>
+                <!-- Right: DEMO (mini charts row + AI Analysis) -->
+                <div>
+                    <div class="demo-panel">
+                        <div class="band-label band-demo" style="background: rgba(59, 130, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem;">Patent-Pending Technology</div>
+                        <div class="mini-charts-grid">
+                            <div class="mini-chart-card">
+                                <img src="{{ url_for('serve_landing_static', filename='images/acwr-chart-screenshot.png') }}" alt="ACWR Chart" style="width: 100%; height: 240px; object-fit: cover; display: block;">
+                            </div>
+                            <div class="mini-chart-card">
+                                <img src="{{ url_for('serve_landing_static', filename='images/tim-chart-screenshot.png') }}" alt="Training Monkey Index" style="width: 100%; height: 240px; object-fit: cover; display: block;">
+                            </div>
+                        </div>
+                        <div class="analysis-card">
+                            <div class="analysis-header">🤖 AI Analysis</div>
+                            <div class="analysis-meta">For 8/25/2025 • Today’s Training Decision</div>
+                            <div class="analysis-body">
+                                <p><strong>Divergence Alert:</strong> Critical overtraining signals detected. Your internal ACWR (1.34) exceeds safe thresholds while external ACWR (0.99) remains normal—your body is stressed beyond what the external work suggests.</p>
+                                
+                                <p><strong>Today's Recommendation:</strong> Mandatory active recovery. Limit activity to 30-45 minutes Zone 1 only. Your 6-day negative divergence pattern demands immediate intervention to prevent injury.</p>
+                                
+                                <p><strong>Why This Matters:</strong> Traditional platforms would say you're fine based on distance/pace alone. Our divergence analysis reveals the hidden physiological stress that leads to injury.</p>
+                            </div>
+                            <div class="analysis-footer">Based on: Ext ACWR 0.99 • Int ACWR 1.34 • Divergence -0.30 • Review before today’s session</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
+      
     </div>
 
-    <!-- Value Propositions -->
+    <!-- Value Propositions: concise, non-redundant strip -->
     <section class="value-section">
         <div class="value-container">
+            <div class="value-header">
+                <h3 class="value-title">Why <i>Your Training Monkey</i> Works</h3>
+                <p class="value-subtitle">Three benefits you won’t get from traditional platforms</p>
+            </div>
             <div class="value-grid">
-                <div class="value-item fade-in">
+                <div class="value-item">
                     <div class="value-icon">🎯</div>
-                    <h3 class="value-title">Find Your Training Sweet Spot</h3>
-                    <p class="value-description">Stop second-guessing whether to push hard or rest. Our algorithm shows you exactly when your body and training are in perfect harmony.</p>
+                    <div class="value-text">
+                        <h4 class="value-title">Find Your Sweet Spot</h4>
+                        <p class="value-description">Know when to push harder or when to focus on recovery by seeing alignment between what you do and how your body responds.</p>
+                    </div>
                 </div>
-
-                <div class="value-item fade-in">
+                <div class="value-item">
                     <div class="value-icon">🛡️</div>
-                    <h3 class="value-title">Prevent Injuries Before They Happen</h3>
-                    <p class="value-description">Catch dangerous training imbalances weeks before they become injuries. Train with confidence knowing your risk level in real-time.</p>
+                    <div class="value-text">
+                        <h4 class="value-title">Injury Risk, Made Obvious</h4>
+                        <p class="value-description">Spot dangerous trends weeks before they become a problem with divergence—our patent-pending signal of training imbalance.</p>
+                    </div>
                 </div>
-
-                <div class="value-item fade-in">
+                <div class="value-item">
                     <div class="value-icon">🏔️</div>
-                    <h3 class="value-title">Built for Trail Runners</h3>
-                    <p class="value-description">First system designed specifically for elevation-demanding activities. Your 2,000-foot climb finally counts for what it's worth.</p>
+                    <div class="value-text">
+                        <h4 class="value-title">Built for Vert</h4>
+                        <p class="value-description">Built for trail runners, by trail runners who know how to count vert. Both distance and vertical gain are included in our algorithm to more realisticallymonitor your physical work.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -498,7 +851,7 @@
     <section class="cta-section">
         <div class="cta-container">
             <h2 class="cta-title">Ready to See YOUR Divergence?</h2>
-            <p class="cta-description">Connect your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
+            <p class="cta-description">Connect <i>Your Training Monkey</i> to your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
 
             <!-- Use your approved Strava button -->
             <a href="/auth/strava-signup" onclick="trackCTAClick()" style="display: inline-block;">
@@ -510,45 +863,16 @@
             </a>
 
             <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
-                Need at least 28 days of training data for reliable analysis
+                Requires 28+ days of training data for reliable analysis
             </p>
         </div>
     </section>
 
-    <!-- How It Works -->
-    <section class="how-section">
-        <div class="how-container">
-            <h2 class="section-title">How It Works</h2>
-
-            <div class="how-steps">
-                <div class="step fade-in">
-                    <span class="step-number">1</span>
-                    <h3 class="step-title">We Analyze Two Types of Data (that your smart watch has always been collecting)</h3>
-                    <p class="step-description"><strong>External Work:</strong> The work you do (distance + elevation gain)<br>
-                    <strong>Internal Load:</strong> How your body responds (heart rate patterns)</p>
-                </div>
-
-                <div class="step fade-in">
-                    <span class="step-number">2</span>
-                    <h3 class="step-title">Calculate the Divergence</h3>
-                    <p class="step-description">Our patent-pending algorithm compares these work/loads to reveal mismatches between what you're doing and how you're responding.</p>
-                </div>
-
-                <div class="step fade-in">
-                    <span class="step-number">3</span>
-                    <h3 class="step-title">Get Actionable Guidance</h3>
-                    <p class="step-description">Receive clear daily recommendations (not just more numbers): train hard when you're in the sweet spot, back off when divergence shows risk, recover when your body needs it most.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Patent Section -->
-    <section class="patent-section">
-        <div class="patent-badge">Patent Pending</div>
-        <h2>Revolutionary Technology Available Nowhere Else</h2>
-        <p>Our normalized divergence calculation is the first and only system that compares external and internal training data to specifically predict overtraining or injury risk. You literally cannot get this analysis from any other platform.</p>
-    </section>
+    <!-- Footer Patent Band -->
+    <footer class="patent-footer">
+        <span class="badge">Patent Pending</span>
+        Revolutionary Technology Available Nowhere Else
+    </footer>
 
     <script>
         // Demo Scenarios
@@ -703,11 +1027,14 @@
                 currentScenario = (currentScenario + 1) % scenarioKeys.length;
                 const buttons = document.querySelectorAll('.demo-btn');
 
-                // Simulate click on the next scenario button
-                buttons.forEach(btn => btn.classList.remove('active'));
-                buttons[currentScenario].classList.add('active');
-
-                showScenario(scenarioKeys[currentScenario]);
+                // Only proceed if buttons exist
+                if (buttons.length > 0) {
+                    buttons.forEach(btn => btn.classList.remove('active'));
+                    if (buttons[currentScenario]) {
+                        buttons[currentScenario].classList.add('active');
+                    }
+                    showScenario(scenarioKeys[currentScenario]);
+                }
             }, 4000); // Change every 4 seconds
         }
 
@@ -720,13 +1047,16 @@
 
         // Event Listeners
         document.addEventListener('DOMContentLoaded', function() {
-            // Start auto-cycling the demo
-            startAutoCycle();
+            // Only start auto-cycling if demo buttons exist
+            const demoButtons = document.querySelectorAll('.demo-btn');
+            if (demoButtons.length > 0) {
+                startAutoCycle();
 
-            // Stop auto-cycle when user interacts with demo
-            document.querySelectorAll('.demo-btn').forEach(btn => {
-                btn.addEventListener('click', stopAutoCycle);
-            });
+                // Stop auto-cycle when user interacts with demo
+                demoButtons.forEach(btn => {
+                    btn.addEventListener('click', stopAutoCycle);
+                });
+            }
 
             // Track scroll depth
             window.addEventListener('scroll', trackScrollDepth);

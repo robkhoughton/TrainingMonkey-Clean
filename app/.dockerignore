@@ -1,0 +1,70 @@
+# Exclude test files and directories
+tests/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
+
+# Exclude development and debug files
+debug_routes.py
+local_debug.py
+run_flask.py
+simple_test.py
+test_*.py
+*_test.py
+
+# Exclude development scripts
+start_dev_server.bat
+start_dev_server.ps1
+setup_environment.py
+env_example.txt
+*.bat
+*.ps1
+
+# Exclude documentation and guides
+*.md
+README.md
+!Training_Metrics_Reference_Guide.md
+
+# Exclude logs and temporary files
+logs/
+*.log
+llm_recommendations.log
+strava_training_load.log
+
+# Exclude development utilities
+generate_*.py
+create_*.py
+find_date_issues.py
+date_migration.sql
+feature_flags.py
+
+# Exclude old/backup files
+*_BACKUP_*
+*.backup
+*.bak
+
+# Exclude IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# Exclude git files
+.git/
+.gitignore
+
+# Exclude node modules (if any)
+node_modules/
+npm-debug.log*
+
+# Exclude temporary files
+*.tmp
+*.temp

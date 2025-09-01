@@ -104,7 +104,7 @@ def safe_datetime_parse(date_input):
 # Load the training guide content
 def load_training_guide():
     """Load the Training Metrics Reference Guide content."""
-    guide_path = os.path.join(os.path.dirname(__file__), "# Training Metrics Reference Guide.md")
+    guide_path = os.path.join(os.path.dirname(__file__), "Training_Metrics_Reference_Guide.md")
 
     try:
         with open(guide_path, 'r', encoding='utf-8') as f:
