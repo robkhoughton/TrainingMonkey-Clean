@@ -731,6 +731,407 @@ def migrate_legal_compliance_table():
         return False
 
 
+def validate_trimp_schema():
+    """
+    Validate that the new TRIMP calculation fields exist in the activities table
+    Returns True if all required fields are present, False otherwise
+    """
+    logger.info("db_utils: Validating TRIMP schema fields")
+    
+    try:
+        # Check if the new TRIMP fields exist in activities table
+        required_fields = [
+            'trimp_calculation_method',
+            'hr_stream_sample_count', 
+            'trimp_processed_at'
+        ]
+        
+        # Get table schema information
+        if USE_POSTGRES:
+            schema_query = """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'activities' 
+                AND column_name = ANY(%s)
+            """
+            result = execute_query(schema_query, (required_fields,), fetch=True)
+            existing_fields = [row['column_name'] for row in result] if result else []
+        else:
+            # SQLite schema check
+            schema_query = "PRAGMA table_info(activities)"
+            result = execute_query(schema_query, fetch=True)
+            existing_fields = [row[1] for row in result if row[1] in required_fields] if result else []
+        
+        missing_fields = [field for field in required_fields if field not in existing_fields]
+        
+        if missing_fields:
+            logger.warning(f"db_utils: Missing TRIMP schema fields: {missing_fields}")
+            return False
+        
+        logger.info("db_utils: All TRIMP schema fields validated successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error validating TRIMP schema: {str(e)}")
+        return False
+
+
+def validate_hr_streams_table():
+    """
+    Validate that the hr_streams table exists and has the correct structure
+    Returns True if table exists with correct schema, False otherwise
+    """
+    logger.info("db_utils: Validating hr_streams table")
+    
+    try:
+        # Check if hr_streams table exists
+        if USE_POSTGRES:
+            table_check = """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'hr_streams'
+                )
+            """
+        else:
+            table_check = """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='hr_streams'
+            """
+        
+        result = execute_query(table_check, fetch=True)
+        
+        if not result or (USE_POSTGRES and not result[0]['exists']) or (not USE_POSTGRES and not result):
+            logger.warning("db_utils: hr_streams table does not exist")
+            return False
+        
+        # Check required columns in hr_streams table
+        required_columns = [
+            'id', 'activity_id', 'user_id', 'hr_data', 
+            'sample_rate', 'created_at', 'updated_at'
+        ]
+        
+        if USE_POSTGRES:
+            column_check = """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'hr_streams' 
+                AND column_name = ANY(%s)
+            """
+            result = execute_query(column_check, (required_columns,), fetch=True)
+            existing_columns = [row['column_name'] for row in result] if result else []
+        else:
+            column_check = "PRAGMA table_info(hr_streams)"
+            result = execute_query(column_check, fetch=True)
+            existing_columns = [row[1] for row in result if row[1] in required_columns] if result else []
+        
+        missing_columns = [col for col in required_columns if col not in existing_columns]
+        
+        if missing_columns:
+            logger.warning(f"db_utils: Missing hr_streams table columns: {missing_columns}")
+            return False
+        
+        logger.info("db_utils: hr_streams table validated successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error validating hr_streams table: {str(e)}")
+        return False
+
+
+def get_trimp_schema_status():
+    """
+    Get comprehensive status of TRIMP schema implementation
+    Returns a dictionary with validation results for all TRIMP-related schema components
+    """
+    logger.info("db_utils: Getting TRIMP schema status")
+    
+    status = {
+        'trimp_fields_valid': False,
+        'hr_streams_table_valid': False,
+        'overall_valid': False,
+        'missing_components': []
+    }
+    
+    try:
+        # Validate TRIMP fields in activities table
+        status['trimp_fields_valid'] = validate_trimp_schema()
+        if not status['trimp_fields_valid']:
+            status['missing_components'].append('TRIMP fields in activities table')
+        
+        # Validate hr_streams table
+        status['hr_streams_table_valid'] = validate_hr_streams_table()
+        if not status['hr_streams_table_valid']:
+            status['missing_components'].append('hr_streams table')
+        
+        # Overall validation
+        status['overall_valid'] = status['trimp_fields_valid'] and status['hr_streams_table_valid']
+        
+        logger.info(f"db_utils: TRIMP schema status: {status}")
+        return status
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error getting TRIMP schema status: {str(e)}")
+        status['error'] = str(e)
+        return status
+
+
+def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0):
+    """
+    Save heart rate stream data to the hr_streams table
+    Args:
+        activity_id (int): The activity ID this HR stream belongs to
+        user_id (int): The user ID who owns this activity
+        hr_data (list): List of heart rate values
+        sample_rate (float): Sample rate in Hz (default 1.0)
+    Returns:
+        int: The ID of the inserted record, or None if failed
+    """
+    logger.info(f"db_utils: Saving HR stream data for activity {activity_id}, user {user_id}")
+    
+    try:
+        # Validate inputs
+        if not activity_id or not user_id:
+            raise ValueError("activity_id and user_id are required")
+        
+        if not hr_data or not isinstance(hr_data, list):
+            raise ValueError("hr_data must be a non-empty list")
+        
+        if not isinstance(sample_rate, (int, float)) or sample_rate <= 0:
+            raise ValueError("sample_rate must be a positive number")
+        
+        # Convert hr_data to JSON string
+        hr_data_json = json.dumps(hr_data)
+        
+        # Insert HR stream data
+        query = """
+            INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """
+        
+        params = (activity_id, user_id, hr_data_json, sample_rate)
+        result = execute_query(query, params)
+        
+        logger.info(f"db_utils: Successfully saved HR stream data for activity {activity_id} ({len(hr_data)} samples)")
+        return result
+        
+    except Exception as e:
+        logger.error(f"db_utils: Error saving HR stream data for activity {activity_id}: {str(e)}")
+        return None
+
+
+def get_hr_stream_data(activity_id, user_id=None):
+    """
+    Retrieve heart rate stream data for a specific activity
+    Args:
+        activity_id (int): The activity ID to retrieve HR data for
+        user_id (int, optional): User ID for additional security (if provided)
+    Returns:
+        dict: Dictionary containing hr_data, sample_rate, and metadata, or None if not found
+    """
+    logger.info(f"db_utils: Retrieving HR stream data for activity {activity_id}")
+    
+    try:
+        # Build query with optional user_id filter
+        if user_id:
+            query = """
+                SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
+                FROM hr_streams 
+                WHERE activity_id = ? AND user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """
+            params = (activity_id, user_id)
+        else:
+            query = """
+                SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
+                FROM hr_streams 
+                WHERE activity_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """
+            params = (activity_id,)
+        
+        result = execute_query(query, params, fetch=True)
+        
+        if result and result[0]:
+            row = result[0]
+            
+            # Parse JSON data
+            try:
+                hr_data = json.loads(row['hr_data']) if isinstance(row['hr_data'], str) else row['hr_data']
+            except (json.JSONDecodeError, TypeError):
+                logger.error(f"db_utils: Invalid JSON data in hr_streams for activity {activity_id}")
+                return None
+            
+            hr_stream_info = {
+                'id': row['id'],
+                'activity_id': row['activity_id'],
+                'user_id': row['user_id'],
+                'hr_data': hr_data,
+                'sample_rate': row['sample_rate'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+                'sample_count': len(hr_data) if isinstance(hr_data, list) else 0
+            }
+            
+            logger.info(f"db_utils: Retrieved HR stream data for activity {activity_id} ({hr_stream_info['sample_count']} samples)")
+            return hr_stream_info
+        else:
+            logger.info(f"db_utils: No HR stream data found for activity {activity_id}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"db_utils: Error retrieving HR stream data for activity {activity_id}: {str(e)}")
+        return None
+
+
+def update_activity_trimp_metadata(activity_id, user_id, calculation_method, sample_count, trimp_value):
+    """
+    Update activity with TRIMP calculation metadata
+    Args:
+        activity_id (int): The activity ID to update
+        user_id (int): The user ID who owns this activity
+        calculation_method (str): 'stream' or 'average'
+        sample_count (int): Number of HR samples used (0 for average method)
+        trimp_value (float): The calculated TRIMP value
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    logger.info(f"db_utils: Updating TRIMP metadata for activity {activity_id}")
+    
+    try:
+        # Validate inputs
+        if not activity_id or not user_id:
+            raise ValueError("activity_id and user_id are required")
+        
+        if calculation_method not in ['stream', 'average']:
+            raise ValueError("calculation_method must be 'stream' or 'average'")
+        
+        if not isinstance(sample_count, int) or sample_count < 0:
+            raise ValueError("sample_count must be a non-negative integer")
+        
+        if not isinstance(trimp_value, (int, float)) or trimp_value < 0:
+            raise ValueError("trimp_value must be a non-negative number")
+        
+        # Update activity with TRIMP metadata
+        query = """
+            UPDATE activities 
+            SET trimp = ?, 
+                trimp_calculation_method = ?, 
+                hr_stream_sample_count = ?, 
+                trimp_processed_at = CURRENT_TIMESTAMP
+            WHERE activity_id = ? AND user_id = ?
+        """
+        
+        params = (trimp_value, calculation_method, sample_count, activity_id, user_id)
+        result = execute_query(query, params)
+        
+        if result > 0:
+            logger.info(f"db_utils: Successfully updated TRIMP metadata for activity {activity_id} (method: {calculation_method}, samples: {sample_count})")
+            return True
+        else:
+            logger.warning(f"db_utils: No activity found to update for activity_id {activity_id}, user_id {user_id}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"db_utils: Error updating TRIMP metadata for activity {activity_id}: {str(e)}")
+        return False
+
+
+def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
+    """
+    Get activities that need TRIMP recalculation (either missing TRIMP or using old method)
+    Args:
+        user_id (int, optional): Filter by specific user, or None for all users
+        days_back (int): Number of days back to look for activities (default 30)
+    Returns:
+        list: List of activity records that need recalculation
+    """
+    logger.info(f"db_utils: Getting activities needing TRIMP recalculation (user_id: {user_id}, days_back: {days_back})")
+    
+    try:
+        # Build query based on parameters
+        if user_id:
+            query = """
+                SELECT activity_id, user_id, date, name, type, duration_minutes, 
+                       avg_heart_rate, max_heart_rate, trimp, trimp_calculation_method,
+                       hr_stream_sample_count, trimp_processed_at
+                FROM activities 
+                WHERE user_id = ? 
+                AND date >= date('now', '-{} days')
+                AND (
+                    trimp IS NULL 
+                    OR trimp_calculation_method = 'average'
+                    OR trimp_processed_at IS NULL
+                )
+                ORDER BY date DESC
+            """.format(days_back)
+            params = (user_id,)
+        else:
+            query = """
+                SELECT activity_id, user_id, date, name, type, duration_minutes,
+                       avg_heart_rate, max_heart_rate, trimp, trimp_calculation_method,
+                       hr_stream_sample_count, trimp_processed_at
+                FROM activities 
+                WHERE date >= date('now', '-{} days')
+                AND (
+                    trimp IS NULL 
+                    OR trimp_calculation_method = 'average'
+                    OR trimp_processed_at IS NULL
+                )
+                ORDER BY date DESC
+            """.format(days_back)
+            params = ()
+        
+        result = execute_query(query, params, fetch=True)
+        
+        if result:
+            activities = [dict(row) for row in result]
+            logger.info(f"db_utils: Found {len(activities)} activities needing TRIMP recalculation")
+            return activities
+        else:
+            logger.info("db_utils: No activities found needing TRIMP recalculation")
+            return []
+            
+    except Exception as e:
+        logger.error(f"db_utils: Error getting activities needing TRIMP recalculation: {str(e)}")
+        return []
+
+
+def delete_hr_stream_data(activity_id, user_id=None):
+    """
+    Delete heart rate stream data for a specific activity
+    Args:
+        activity_id (int): The activity ID to delete HR data for
+        user_id (int, optional): User ID for additional security (if provided)
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    logger.info(f"db_utils: Deleting HR stream data for activity {activity_id}")
+    
+    try:
+        # Build query with optional user_id filter
+        if user_id:
+            query = "DELETE FROM hr_streams WHERE activity_id = ? AND user_id = ?"
+            params = (activity_id, user_id)
+        else:
+            query = "DELETE FROM hr_streams WHERE activity_id = ?"
+            params = (activity_id,)
+        
+        result = execute_query(query, params)
+        
+        if result > 0:
+            logger.info(f"db_utils: Successfully deleted HR stream data for activity {activity_id}")
+            return True
+        else:
+            logger.info(f"db_utils: No HR stream data found to delete for activity {activity_id}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"db_utils: Error deleting HR stream data for activity {activity_id}: {str(e)}")
+        return False
+
+
 # Database schema changes should be done via SQL Editor, not in code
 # See docs/database_schema_rules.md for guidelines
 
@@ -751,4 +1152,12 @@ __all__ = [
     'get_last_activity_date',
     'migrate_user_settings_schema',
     'migrate_legal_compliance_table',
+    'validate_trimp_schema',
+    'validate_hr_streams_table',
+    'get_trimp_schema_status',
+    'save_hr_stream_data',
+    'get_hr_stream_data',
+    'update_activity_trimp_metadata',
+    'get_activities_needing_trimp_recalculation',
+    'delete_hr_stream_data',
 ]

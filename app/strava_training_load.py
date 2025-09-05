@@ -689,24 +689,359 @@ def calculate_training_load(activity, client, hr_config=None):
     return result
 
 
-def calculate_banister_trimp(duration_minutes, avg_hr, resting_hr, max_hr, gender='male'):
+def calculate_banister_trimp(duration_minutes, avg_hr, resting_hr, max_hr, gender='male', hr_stream=None):
     """
     Calculate Banister TRIMP (Training Impulse) using the exponential heart rate weighting.
-    Same formula as your Garmin version.
+    Enhanced to support heart rate stream data for improved accuracy on variable-intensity workouts.
+    
+    Args:
+        duration_minutes (float): Activity duration in minutes
+        avg_hr (float): Average heart rate for the activity
+        resting_hr (float): Resting heart rate
+        max_hr (float): Maximum heart rate
+        gender (str): Gender for coefficient calculation ('male' or 'female')
+        hr_stream (list, optional): Heart rate stream data array for enhanced calculation
+    
+    Returns:
+        float: Calculated TRIMP value rounded to 2 decimal places
     """
     try:
-        # Validate inputs
-        if avg_hr <= 0 or duration_minutes <= 0:
-            logger.warning(f"Invalid HR or duration: avg_hr={avg_hr}, duration={duration_minutes}")
-            return 0
+        # Comprehensive input validation
+        if not isinstance(duration_minutes, (int, float)) or duration_minutes <= 0:
+            logger.error(f"Invalid duration: {duration_minutes} (must be positive number)")
+            return 0.0
+
+        if not isinstance(avg_hr, (int, float)) or avg_hr <= 0:
+            logger.error(f"Invalid average HR: {avg_hr} (must be positive number)")
+            return 0.0
+
+        if not isinstance(resting_hr, (int, float)) or resting_hr <= 0:
+            logger.error(f"Invalid resting HR: {resting_hr} (must be positive number)")
+            return 0.0
+
+        if not isinstance(max_hr, (int, float)) or max_hr <= 0:
+            logger.error(f"Invalid max HR: {max_hr} (must be positive number)")
+            return 0.0
 
         if max_hr <= resting_hr:
-            logger.warning(f"Invalid HR range: max_hr={max_hr}, resting_hr={resting_hr}")
-            return 0
+            logger.error(f"Invalid HR range: max_hr={max_hr} must be greater than resting_hr={resting_hr}")
+            return 0.0
 
-        # Set gender constant
-        k = 1.92 if gender.lower() == 'male' else 1.67
+        if not isinstance(gender, str):
+            logger.error(f"Invalid gender: {gender} (must be string)")
+            return 0.0
 
+        # Validate reasonable ranges
+        if duration_minutes > 1440:  # 24 hours
+            logger.warning(f"Duration seems unusually long: {duration_minutes} minutes")
+
+        if avg_hr < 30 or avg_hr > 250:
+            logger.warning(f"Average HR outside normal range: {avg_hr} bpm")
+
+        if resting_hr < 30 or resting_hr > 100:
+            logger.warning(f"Resting HR outside normal range: {resting_hr} bpm")
+
+        if max_hr < 120 or max_hr > 250:
+            logger.warning(f"Max HR outside normal range: {max_hr} bpm")
+
+        # Set gender constant with validation
+        gender_lower = gender.lower()
+        if gender_lower not in ['male', 'female']:
+            logger.warning(f"Unknown gender '{gender}', defaulting to male")
+            gender_lower = 'male'
+        
+        k = 1.92 if gender_lower == 'male' else 1.67
+
+        # Check if heart rate stream data is available for enhanced calculation
+        if hr_stream and len(hr_stream) > 0:
+            # Enhanced calculation using heart rate stream data
+            logger.info(f"TRIMP_CALC: Using heart rate stream data (stream_length={len(hr_stream)}, duration={duration_minutes}min)")
+            result = _calculate_trimp_from_stream(duration_minutes, hr_stream, resting_hr, max_hr, k)
+            logger.info(f"TRIMP_CALC: Stream calculation completed, result={result}")
+            return result
+        else:
+            # Fallback to average heart rate calculation
+            logger.info(f"TRIMP_CALC: Using average heart rate calculation (avg_hr={avg_hr}, duration={duration_minutes}min)")
+            result = _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, k)
+            logger.info(f"TRIMP_CALC: Average calculation completed, result={result}")
+            return result
+    except Exception as e:
+        logger.error(f"Error calculating Banister TRIMP: {str(e)}")
+        return 0.0  # Return Python float, not int
+
+
+def _round_trimp_value(trimp_value):
+    """
+    Ensure mathematical precision for TRIMP values with proper rounding.
+    
+    Args:
+        trimp_value (float): Raw TRIMP calculation result
+    
+    Returns:
+        float: TRIMP value rounded to 2 decimal places with validation
+    """
+    try:
+        # Validate input
+        if not isinstance(trimp_value, (int, float)):
+            logger.error(f"TRIMP_CALC: Invalid TRIMP value type: {type(trimp_value)}")
+            return 0.0
+        
+        # Handle special cases
+        if trimp_value < 0:
+            logger.warning(f"TRIMP_CALC: Negative TRIMP value detected: {trimp_value}, returning 0.0")
+            return 0.0
+        
+        if trimp_value == float('inf') or trimp_value == float('-inf'):
+            logger.error(f"TRIMP_CALC: Infinite TRIMP value detected: {trimp_value}")
+            return 0.0
+        
+        if trimp_value != trimp_value:  # NaN check
+            logger.error(f"TRIMP_CALC: NaN TRIMP value detected: {trimp_value}")
+            return 0.0
+        
+        # Round to 2 decimal places
+        rounded_value = round(float(trimp_value), 2)
+        
+        # Validate rounded value is reasonable
+        if rounded_value > 10000:  # Unreasonably high TRIMP
+            logger.warning(f"TRIMP_CALC: Unusually high TRIMP value: {rounded_value}")
+        
+        # Ensure we return a proper float
+        return float(rounded_value)
+        
+    except Exception as e:
+        logger.error(f"TRIMP_CALC: Error rounding TRIMP value {trimp_value}: {str(e)}")
+        return 0.0
+
+
+def _validate_hr_stream_data(hr_stream, duration_minutes, resting_hr, max_hr):
+    """
+    Comprehensive validation of heart rate stream data and parameters.
+    
+    Args:
+        hr_stream (list): Heart rate stream data array
+        duration_minutes (float): Total activity duration in minutes
+        resting_hr (float): Resting heart rate
+        max_hr (float): Maximum heart rate
+    
+    Returns:
+        tuple: (is_valid, error_message, valid_samples_count)
+    """
+    try:
+        # Validate stream data type and structure
+        if hr_stream is None:
+            return False, "Heart rate stream is None", 0
+        
+        if not isinstance(hr_stream, (list, tuple)):
+            return False, f"Heart rate stream must be list or tuple, got {type(hr_stream)}", 0
+        
+        if len(hr_stream) == 0:
+            return False, "Heart rate stream is empty", 0
+        
+        # Validate duration
+        if not isinstance(duration_minutes, (int, float)):
+            return False, f"Duration must be numeric, got {type(duration_minutes)}", 0
+        
+        if duration_minutes <= 0:
+            return False, f"Duration must be positive, got {duration_minutes}", 0
+        
+        if duration_minutes > 1440:  # 24 hours
+            return False, f"Duration seems too long ({duration_minutes} minutes), possible data error", 0
+        
+        # Validate heart rate parameters
+        if not isinstance(resting_hr, (int, float)) or resting_hr <= 0:
+            return False, f"Invalid resting HR: {resting_hr}", 0
+        
+        if not isinstance(max_hr, (int, float)) or max_hr <= 0:
+            return False, f"Invalid max HR: {max_hr}", 0
+        
+        if max_hr <= resting_hr:
+            return False, f"Max HR ({max_hr}) must be greater than resting HR ({resting_hr})", 0
+        
+        # Validate heart rate range
+        if resting_hr < 30 or resting_hr > 100:
+            return False, f"Resting HR ({resting_hr}) outside reasonable range (30-100 bpm)", 0
+        
+        if max_hr < 120 or max_hr > 250:
+            return False, f"Max HR ({max_hr}) outside reasonable range (120-250 bpm)", 0
+        
+        # Validate stream data quality
+        valid_samples = 0
+        invalid_samples = 0
+        hr_values = []
+        
+        for i, hr_sample in enumerate(hr_stream):
+            if not isinstance(hr_sample, (int, float)):
+                invalid_samples += 1
+                continue
+            
+            if hr_sample <= 0:
+                invalid_samples += 1
+                continue
+            
+            if hr_sample < 30 or hr_sample > 250:
+                invalid_samples += 1
+                continue
+            
+            valid_samples += 1
+            hr_values.append(hr_sample)
+        
+        # Check data quality
+        if valid_samples == 0:
+            return False, "No valid heart rate samples found in stream", 0
+        
+        if invalid_samples > len(hr_stream) * 0.8:  # More than 80% invalid
+            return False, f"Too many invalid samples ({invalid_samples}/{len(hr_stream)})", valid_samples
+        
+        # Check for reasonable heart rate distribution
+        if hr_values:
+            avg_hr = sum(hr_values) / len(hr_values)
+            if avg_hr < resting_hr * 0.8:  # Average HR too low
+                return False, f"Average HR ({avg_hr:.1f}) suspiciously low compared to resting HR ({resting_hr})", valid_samples
+            
+            if avg_hr > max_hr * 1.1:  # Average HR too high
+                return False, f"Average HR ({avg_hr:.1f}) suspiciously high compared to max HR ({max_hr})", valid_samples
+        
+        return True, "Validation passed", valid_samples
+        
+    except Exception as e:
+        return False, f"Validation error: {str(e)}", 0
+
+
+def _calculate_trimp_from_stream(duration_minutes, hr_stream, resting_hr, max_hr, k):
+    """
+    Calculate TRIMP using heart rate stream data for enhanced accuracy.
+    Includes comprehensive validation and fallback to average calculation if stream processing fails.
+    
+    Args:
+        duration_minutes (float): Total activity duration in minutes
+        hr_stream (list): Heart rate stream data array
+        resting_hr (float): Resting heart rate
+        max_hr (float): Maximum heart rate
+        k (float): Gender coefficient (1.92 for male, 1.67 for female)
+    
+    Returns:
+        float: Calculated TRIMP value rounded to 2 decimal places
+    """
+    try:
+        # Comprehensive validation of input data
+        is_valid, error_message, valid_samples_count = _validate_hr_stream_data(
+            hr_stream, duration_minutes, resting_hr, max_hr
+        )
+        
+        if not is_valid:
+            logger.warning(f"TRIMP_CALC: HR stream validation failed: {error_message}")
+            return 0.0
+        
+        logger.info(f"TRIMP_CALC: Stream validation passed (valid_samples={valid_samples_count}, total_samples={len(hr_stream)})")
+        
+        # Calculate duration per sample (in minutes)
+        # Handle edge case where stream length is 0 (should not happen due to validation above)
+        if len(hr_stream) == 0:
+            logger.error("Stream length is 0 - cannot distribute duration")
+            return 0.0
+            
+        duration_per_sample = duration_minutes / len(hr_stream)
+        
+        # Validate duration per sample is reasonable (not too small or too large)
+        if duration_per_sample <= 0:
+            logger.error(f"Invalid duration per sample: {duration_per_sample}")
+            return 0.0
+        
+        # Log duration distribution for debugging
+        logger.info(f"TRIMP_CALC: Duration distribution: {duration_minutes} minutes across {len(hr_stream)} samples = {duration_per_sample:.4f} minutes per sample")
+        
+        total_trimp = 0.0
+        valid_samples = 0
+        hr_sum = 0.0  # For fallback average calculation
+        skipped_samples = 0
+        
+        for i, hr_sample in enumerate(hr_stream):
+            # Skip invalid heart rate samples
+            if hr_sample <= 0:
+                skipped_samples += 1
+                continue
+                
+            # Calculate heart rate reserve for this sample
+            hr_reserve = (hr_sample - resting_hr) / (max_hr - resting_hr)
+            
+            # Clamp HR reserve to valid range [0, 1]
+            hr_reserve = max(0, min(1, hr_reserve))
+            
+            # Calculate TRIMP for this sample using Banister's formula
+            # Each sample represents duration_per_sample minutes of activity
+            sample_trimp = duration_per_sample * hr_reserve * 0.64 * np.exp(k * hr_reserve)
+            total_trimp += sample_trimp
+            valid_samples += 1
+            hr_sum += hr_sample
+            
+            # Log first few samples for debugging
+            if i < 3:
+                logger.info(f"TRIMP_CALC: Sample {i}: HR={hr_sample}, HRR={hr_reserve:.3f}, TRIMP={sample_trimp:.4f}")
+        
+        # Log summary of duration distribution
+        if skipped_samples > 0:
+            logger.info(f"TRIMP_CALC: Duration distribution: {valid_samples} valid samples, {skipped_samples} skipped samples")
+        else:
+            logger.info(f"TRIMP_CALC: Duration distribution: {valid_samples} valid samples, no skipped samples")
+        
+        if valid_samples == 0:
+            logger.warning("No valid heart rate samples in stream data - cannot calculate TRIMP")
+            return 0.0
+        
+        # Check if we have enough valid samples (at least 50% of stream)
+        if valid_samples < len(hr_stream) * 0.5:
+            logger.warning(f"TRIMP_CALC: Low valid sample count ({valid_samples}/{len(hr_stream)}) - using average fallback")
+            avg_hr = hr_sum / valid_samples
+            logger.info(f"TRIMP_CALC: Falling back to average calculation (avg_hr={avg_hr:.1f})")
+            return _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, k)
+        
+        # Validate duration distribution is mathematically correct
+        expected_total_duration = valid_samples * duration_per_sample
+        duration_tolerance = 0.01  # 0.01 minutes tolerance
+        
+        if abs(expected_total_duration - duration_minutes) > duration_tolerance:
+            logger.warning(f"Duration distribution validation failed: expected {expected_total_duration:.4f}, actual {duration_minutes:.4f}")
+            # This shouldn't happen with proper math, but log for debugging
+        
+        # Ensure mathematical precision with proper rounding
+        trimp_rounded = _round_trimp_value(total_trimp)
+        logger.info(f"TRIMP_CALC: Stream calculation successful: {trimp_rounded} (samples={valid_samples}, duration={duration_minutes}, duration_per_sample={duration_per_sample:.4f})")
+        return trimp_rounded
+        
+    except Exception as e:
+        logger.error(f"Error calculating TRIMP from stream: {str(e)} - falling back to average calculation")
+        # Fallback to average calculation if stream processing fails
+        try:
+            # Calculate average HR from stream for fallback
+            valid_hrs = [hr for hr in hr_stream if hr > 0]
+            if valid_hrs:
+                avg_hr = sum(valid_hrs) / len(valid_hrs)
+                logger.info(f"TRIMP_CALC: Using fallback average calculation (avg_hr={avg_hr:.1f})")
+                return _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, k)
+            else:
+                logger.error("No valid heart rate data available for fallback calculation")
+                return 0.0
+        except Exception as fallback_error:
+            logger.error(f"Fallback calculation also failed: {str(fallback_error)}")
+            return 0.0
+
+
+def _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, k):
+    """
+    Calculate TRIMP using average heart rate (original method).
+    
+    Args:
+        duration_minutes (float): Activity duration in minutes
+        avg_hr (float): Average heart rate for the activity
+        resting_hr (float): Resting heart rate
+        max_hr (float): Maximum heart rate
+        k (float): Gender coefficient (1.92 for male, 1.67 for female)
+    
+    Returns:
+        float: Calculated TRIMP value rounded to 2 decimal places
+    """
+    try:
         # Calculate heart rate reserve (HRR) as a fraction
         hr_reserve = (avg_hr - resting_hr) / (max_hr - resting_hr)
 
@@ -716,13 +1051,14 @@ def calculate_banister_trimp(duration_minutes, avg_hr, resting_hr, max_hr, gende
         # Calculate TRIMP using Banister's formula
         trimp = duration_minutes * hr_reserve * 0.64 * np.exp(k * hr_reserve)
 
-        trimp_rounded = float(round(float(trimp), 2))  # Force Python float
-        logger.info(
-            f"Calculated Banister TRIMP: {trimp_rounded} (duration={duration_minutes}, avg_hr={avg_hr}, HRR={hr_reserve:.2f})")
+        # Ensure mathematical precision with proper rounding
+        trimp_rounded = _round_trimp_value(trimp)
+        logger.info(f"TRIMP_CALC: Average calculation successful: {trimp_rounded} (duration={duration_minutes}, avg_hr={avg_hr}, HRR={hr_reserve:.2f})")
         return trimp_rounded
+        
     except Exception as e:
-        logger.error(f"Error calculating Banister TRIMP: {str(e)}")
-        return 0.0  # Return Python float, not int
+        logger.error(f"Error calculating TRIMP from average: {str(e)}")
+        return 0.0
 
 
 def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60):
