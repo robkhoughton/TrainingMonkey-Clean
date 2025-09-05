@@ -19,6 +19,8 @@ class SimpleTokenManager:
         """Initialize for single user"""
         self.user_id = user_id
         self.token_buffer_minutes = 30  # Refresh 30 minutes before expiration
+        
+
 
     def get_centralized_strava_credentials(self):
         """Get centralized Strava credentials from strava_config.json"""
@@ -470,6 +472,8 @@ class SimpleTokenManager:
         # Default to retryable for unknown errors
         return True
 
+
+
     def get_working_strava_client(self, auto_refresh=True, validate_connection=True):
         """Get a working Strava client with enhanced refresh and validation"""
         try:
@@ -485,11 +489,13 @@ class SimpleTokenManager:
             # Check if refresh needed
             if auto_refresh and self.is_token_expired_or_expiring_soon(tokens):
                 logger.info(f"Token needs refresh for user {self.user_id} - refreshing now...")
-                tokens = self.refresh_strava_tokens()
+                refresh_result = self.refresh_strava_tokens()
 
-                if not tokens:
+                if not refresh_result:
                     logger.error(f"Token refresh failed for user {self.user_id}")
                     return None
+                
+                tokens = refresh_result
 
             # Create client with valid token
             client = Client(access_token=tokens['access_token'])
@@ -503,8 +509,9 @@ class SimpleTokenManager:
                     # Try one more refresh if validation fails
                     if auto_refresh:
                         logger.info(f"Attempting emergency refresh for user {self.user_id}...")
-                        tokens = self.refresh_strava_tokens()
-                        if tokens:
+                        emergency_refresh_result = self.refresh_strava_tokens()
+                        if emergency_refresh_result:
+                            tokens = emergency_refresh_result
                             client = Client(access_token=tokens['access_token'])
                             validation_result = self._validate_client_connection(client)
                             if not validation_result['valid']:
@@ -576,6 +583,14 @@ class SimpleTokenManager:
                     'needs_auth': True
                 }
 
+            # Check if tokens are completely invalid (NULL values)
+            if not tokens.get('strava_access_token') or not tokens.get('strava_refresh_token'):
+                return {
+                    'status': 'invalid_tokens',
+                    'message': 'Tokens are invalid - need to reconnect Strava',
+                    'needs_auth': True
+                }
+
             current_time = int(time.time())
             expires_at = tokens.get('expires_at', 0)
             time_until_expiry = expires_at - current_time
@@ -595,7 +610,7 @@ class SimpleTokenManager:
                 'message': message,
                 'expires_in_hours': round(time_until_expiry / 3600, 1),
                 'athlete_id': tokens.get('athlete_id'),
-                'needs_auth': status == 'expired'
+                'needs_auth': status in ['expired', 'invalid_tokens']
             }
 
         except Exception as e:
@@ -963,4 +978,120 @@ def bulk_refresh_tokens(user_ids=None, max_retries=3):
             'successful_refreshes': 0,
             'failed_refreshes': 0,
             'results': []
+        }
+
+def get_all_users_needing_token_refresh():
+    """Get all users who need token refresh (expired or expiring soon)"""
+    try:
+        query = """
+            SELECT id, email, strava_access_token, strava_refresh_token, strava_token_expires_at
+            FROM user_settings 
+            WHERE strava_access_token IS NOT NULL 
+              AND strava_refresh_token IS NOT NULL
+              AND strava_token_expires_at IS NOT NULL
+            ORDER BY id
+        """
+        
+        users = db_utils.execute_query(query, fetch=True)
+        users_needing_refresh = []
+        
+        current_time = int(time.time())
+        buffer_seconds = 30 * 60  # 30 minutes buffer
+        
+        for user in users:
+            user_id = user['id']
+            expires_at = user.get('strava_token_expires_at', 0)
+            
+            if expires_at > 0:
+                time_until_expiry = expires_at - current_time
+                
+                if time_until_expiry <= buffer_seconds:
+                    users_needing_refresh.append({
+                        'user_id': user_id,
+                        'email': user['email'],
+                        'expires_in_minutes': round(time_until_expiry / 60, 1),
+                        'needs_refresh': True
+                    })
+        
+        return users_needing_refresh
+        
+    except Exception as e:
+        logger.error(f"Error getting users needing token refresh: {str(e)}")
+        return []
+
+def proactive_token_refresh_for_all_users():
+    """Proactively refresh tokens for all users who need it"""
+    try:
+        users_needing_refresh = get_all_users_needing_token_refresh()
+        
+        if not users_needing_refresh:
+            logger.info("No users need token refresh")
+            return {
+                'success': True,
+                'message': 'No users need token refresh',
+                'users_checked': 0,
+                'users_refreshed': 0,
+                'users_failed': 0
+            }
+        
+        logger.info(f"Proactively refreshing tokens for {len(users_needing_refresh)} users")
+        
+        results = []
+        successful_refreshes = 0
+        failed_refreshes = 0
+        
+        for user_info in users_needing_refresh:
+            user_id = user_info['user_id']
+            try:
+                logger.info(f"Proactively refreshing tokens for user {user_id}")
+                
+                token_manager = SimpleTokenManager(user_id)
+                refresh_result = token_manager.refresh_strava_tokens()
+                
+                if refresh_result:
+                    successful_refreshes += 1
+                    results.append({
+                        'user_id': user_id,
+                        'email': user_info['email'],
+                        'status': 'success',
+                        'message': 'Tokens refreshed successfully'
+                    })
+                    logger.info(f"Successfully refreshed tokens for user {user_id}")
+                else:
+                    failed_refreshes += 1
+                    results.append({
+                        'user_id': user_id,
+                        'email': user_info['email'],
+                        'status': 'failed',
+                        'message': 'Token refresh failed'
+                    })
+                    logger.error(f"Failed to refresh tokens for user {user_id}")
+                    
+            except Exception as e:
+                failed_refreshes += 1
+                results.append({
+                    'user_id': user_id,
+                    'email': user_info['email'],
+                    'status': 'error',
+                    'message': f'Error during refresh: {str(e)}'
+                })
+                logger.error(f"Error refreshing tokens for user {user_id}: {str(e)}")
+        
+        return {
+            'success': True,
+            'message': f'Proactive token refresh completed: {successful_refreshes} successful, {failed_refreshes} failed',
+            'users_checked': len(users_needing_refresh),
+            'users_refreshed': successful_refreshes,
+            'users_failed': failed_refreshes,
+            'results': results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in proactive token refresh: {str(e)}")
+        return {
+            'success': False,
+            'message': f'Proactive refresh error: {str(e)}',
+            'users_checked': 0,
+            'users_refreshed': 0,
+            'users_failed': 0
         }

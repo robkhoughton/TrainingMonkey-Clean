@@ -515,7 +515,6 @@ def test_strava_connection():
         return jsonify({'error': error_msg}), 500
 
 
-@login_required
 @app.route('/oauth-callback', methods=['GET'])
 def oauth_callback():
     """Handle OAuth callback - supports both shared app and user-provided credentials"""
@@ -550,86 +549,86 @@ def oauth_callback():
         # Get athlete info
         temp_client = Client(access_token=token_response['access_token'])
         athlete = temp_client.get_athlete()
+        athlete_id = str(athlete.id)
 
-        # Save tokens to database
-        token_manager = SimpleTokenManager(user_id=current_user.id)
-
-        tokens = {
-            'access_token': token_response['access_token'],
-            'refresh_token': token_response['refresh_token'],
-            'expires_at': token_response['expires_at']
-        }
-
-        success = token_manager.save_tokens_to_database(tokens, athlete.id)
-
-        # For centralized OAuth, we don't need to save user-specific credentials
-        # The centralized credentials are already configured
-        if session.get('temp_strava_client_id') and session.get('temp_strava_client_secret'):
-            logger.info(f"User {current_user.id} used temporary credentials for OAuth, but centralized OAuth is now active")
-
-        # Clear temporary session data
-        session.pop('temp_strava_client_id', None)
-        session.pop('temp_strava_client_secret', None)
-
-        if success:
-            logger.info(f"OAuth tokens saved for {athlete.firstname} {athlete.lastname}")
-            return f'''
-            <html>
-            <head><title>Strava Connected</title></head>
-            <body style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center;">
-                <h2>✅ Strava Account Connected!</h2>
-                <p>Successfully connected to Strava as <strong>{athlete.firstname} {athlete.lastname}</strong></p>
-
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
-                    <h3>Next Step: Sync Your Training Data</h3>
-                    <p>Click below to import your recent activities:</p>
-                    <button onclick="syncData()" id="syncBtn" style="background: #007bff; color: white; padding: 12px 25px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin: 10px;">
-                        Sync Strava Activities
-                    </button>
-                    <div id="syncStatus" style="margin-top: 15px;"></div>
-                </div>
-
-                <p><a href="/static/index.html" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
-
-                <script>
-                async function syncData() {{
-                    const btn = document.getElementById('syncBtn');
-                    const status = document.getElementById('syncStatus');
-
-                    btn.disabled = true;
-                    btn.textContent = 'Syncing...';
-                    status.innerHTML = '<p>Syncing your Strava activities...</p>';
-
-                    try {{
-                        const response = await fetch('/sync-with-auto-refresh', {{
-                            method: 'POST',
-                            headers: {{ 'Content-Type': 'application/json' }},
-                            body: JSON.stringify({{ days: 30 }})
-                        }});
-
-                        const result = await response.json();
-
-                        if (result.success) {{
-                            status.innerHTML = '<p style="color: green;">✅ Sync completed! ' + result.message + '</p>';
-                            btn.textContent = 'Sync Complete';
-                        }} else {{
-                            status.innerHTML = '<p style="color: red;">❌ Sync failed: ' + result.error + '</p>';
-                            btn.textContent = 'Retry Sync';
-                            btn.disabled = false;
-                        }}
-                    }} catch (error) {{
-                        status.innerHTML = '<p style="color: red;">❌ Error: ' + error.message + '</p>';
-                        btn.textContent = 'Retry Sync';
-                        btn.disabled = false;
-                    }}
-                }}
-                </script>
-            </body>
-            </html>
-            ''', 200, {'Content-Type': 'text/html'}
-
-        else:
-            return jsonify({'error': 'Failed to save tokens to database'}), 500
+        # Check if user already exists by Strava athlete ID
+        existing_user = User.get_by_email(f"strava_{athlete_id}@training-monkey.com")
+        
+        if existing_user:
+            # Existing user - log them in and update tokens
+            login_user(existing_user)
+            
+            # Update their Strava tokens
+            db_utils.execute_query(
+                """UPDATE user_settings 
+                   SET strava_access_token = %s, 
+                       strava_refresh_token = %s, 
+                       strava_token_expires_at = %s,
+                       strava_athlete_id = %s
+                   WHERE id = %s""",
+                (token_response['access_token'],
+                 token_response['refresh_token'],
+                 token_response['expires_at'],
+                 int(athlete_id),
+                 existing_user.id),
+                fetch=False
+            )
+            
+            flash('Welcome back! Your Strava connection has been updated.', 'success')
+            return redirect('/static/index.html')
+        
+        # New user - create account automatically
+        logger.info(f"Creating new user account for Strava athlete {athlete_id}")
+        
+        import secrets
+        from werkzeug.security import generate_password_hash
+        
+        temp_password = secrets.token_urlsafe(16)
+        password_hash = generate_password_hash(temp_password)
+        
+        email = f"strava_{athlete_id}@training-monkey.com"
+        first_name = getattr(athlete, 'firstname', '')
+        last_name = getattr(athlete, 'lastname', '')
+        gender = getattr(athlete, 'sex', 'male')
+        resting_hr = getattr(athlete, 'resting_hr', None) or 44
+        max_hr = getattr(athlete, 'max_hr', None) or 178
+        
+        # Create new user
+        result = db_utils.execute_query(
+            """INSERT INTO user_settings (
+                email, password_hash, is_admin, 
+                resting_hr, max_hr, gender,
+                strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (
+                email, password_hash, False,
+                resting_hr, max_hr, gender,
+                int(athlete_id), token_response['access_token'],
+                token_response['refresh_token'], token_response['expires_at']
+            ),
+            fetch=True
+        )
+        
+        if not result:
+            logger.error("Failed to create new user account")
+            flash('Error creating user account. Please try again.', 'danger')
+            return redirect('/')
+        
+        new_user_id = result[0]['id']
+        new_user = User.get(new_user_id)
+        
+        if not new_user:
+            logger.error(f"Failed to load new user object for user ID {new_user_id}")
+            flash('Error logging in. Please try again.', 'danger')
+            return redirect('/')
+        
+        # Log in the new user
+        login_user(new_user)
+        session['is_first_login'] = True
+        session['signup_source'] = 'landing_page'
+        
+        flash(f'Welcome to Your Training Monkey, {first_name}! Let\'s analyze your training data.', 'success')
+        return redirect('/static/index.html')
 
     except Exception as e:
         error_msg = f"OAuth callback error: {str(e)}"
@@ -915,6 +914,36 @@ def sync_with_automatic_token_management():
                 logger.error(f"❌ SimpleTokenManager creation failed: {str(e)}")
                 return jsonify({'error': f'Token manager error: {str(e)}'}), 500
 
+            # PROACTIVE TOKEN REFRESH: Check and refresh tokens before sync if needed
+            try:
+                logger.info(f"Checking if tokens need proactive refresh for user {user_id}...")
+                token_status_before = token_manager.get_simple_token_status()
+                logger.info(f"Token status before proactive refresh: {token_status_before}")
+                
+                # If tokens are expired or expiring soon, refresh them proactively
+                if token_status_before.get('status') in ['expired', 'expiring_soon']:
+                    logger.info(f"Tokens need refresh for user {user_id} - refreshing proactively...")
+                    refresh_result = token_manager.refresh_strava_tokens()
+                    
+                    if refresh_result:
+                        logger.info(f"✅ Proactive token refresh successful for user {user_id}")
+                        token_status_after = token_manager.get_simple_token_status()
+                        logger.info(f"Token status after proactive refresh: {token_status_after}")
+                    else:
+                        logger.error(f"❌ Proactive token refresh failed for user {user_id}")
+                        return jsonify({
+                            'success': False,
+                            'error': 'Failed to refresh Strava tokens. Please re-authenticate with Strava.',
+                            'needs_reauth': True,
+                            'token_status': token_status_before
+                        }), 401
+                else:
+                    logger.info(f"✅ Tokens are still valid for user {user_id} - no refresh needed")
+                    
+            except Exception as e:
+                logger.error(f"❌ Proactive token refresh check failed: {str(e)}")
+                return jsonify({'error': f'Token status check error: {str(e)}'}), 500
+
             # Get token status before sync
             try:
                 token_status_before = token_manager.get_simple_token_status()
@@ -938,6 +967,15 @@ def sync_with_automatic_token_management():
             except Exception as e:
                 logger.error(f"❌ Strava client creation failed: {str(e)}")
                 return jsonify({'error': f'Strava client error: {str(e)}'}), 500
+
+            # If we get here, we have a valid client
+            if not client:
+                logger.error("Client validation failed after successful creation")
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to validate Strava client',
+                    'needs_reauth': False
+                }), 500
 
             # Calculate date range
             try:
@@ -2092,19 +2130,39 @@ def verify_functions():
         return {"error": str(e)}
 
 
+@app.route('/debug/oauth-config')
+def debug_oauth_config():
+    """Debug endpoint to check OAuth configuration"""
+    try:
+        redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
+        client_id = os.environ.get('STRAVA_CLIENT_ID')
+        
+        return jsonify({
+            'strava_app_domain': 'strava-training-personal-382535371225.us-central1.run.app',
+            'redirect_uri': redirect_uri,
+            'client_id': client_id,
+            'client_id_exists': bool(client_id),
+            'full_auth_url': f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/auth/strava-signup')
 def strava_auth_signup():
     """Strava OAuth initiation for new user signup from landing page"""
     try:
-        # Construct redirect URI more carefully
-        base_url = request.url_root.rstrip('/')
-        redirect_uri = f"{base_url}/oauth-callback-signup"
-        client_id = os.environ.get('STRAVA_CLIENT_ID')
+        # Use the Strava app's configured redirect URI
+        redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
+        client_id = os.environ.get('STRAVA_CLIENT_ID', '').strip()
 
         if not client_id:
             logger.error("STRAVA_CLIENT_ID not found in environment variables")
             flash('Strava integration not configured. Please contact support.', 'danger')
             return redirect('/')
+
+        # Set session flag to indicate this is a new user signup
+        session['is_new_user_signup'] = True
+        session['signup_source'] = 'landing_page'
 
         # Use urllib.parse.urlencode to properly encode parameters
         from urllib.parse import urlencode
@@ -2128,153 +2186,7 @@ def strava_auth_signup():
         return redirect('/')
 
 
-@app.route('/oauth-callback-signup', methods=['GET'])
-def oauth_callback_signup():
-    """Handle OAuth callback for NEW users from landing page - NO login required"""
-    try:
-        # Get the authorization code from URL parameters
-        auth_code = request.args.get('code')
-        error = request.args.get('error')
-
-        if error:
-            logger.error(f"Strava OAuth error: {error}")
-            flash(f'Strava authorization failed: {error}', 'danger')
-            return redirect('/')
-
-        if not auth_code:
-            logger.error("No authorization code received from Strava")
-            flash('No authorization code received from Strava', 'danger')
-            return redirect('/')
-
-        # Use global app credentials
-        client_id = os.environ.get('STRAVA_CLIENT_ID')
-        client_secret = os.environ.get('STRAVA_CLIENT_SECRET')
-
-        if not client_id or not client_secret:
-            logger.error("Strava app credentials not configured")
-            flash('Strava app credentials not configured. Please contact support.', 'danger')
-            return redirect('/')
-
-        logger.info("Processing OAuth callback for new user signup...")
-
-        # Exchange code for tokens using stravalib (following your existing pattern)
-        from stravalib.client import Client
-        client = Client()
-
-        token_response = client.exchange_code_for_token(
-            client_id=client_id,
-            client_secret=client_secret,
-            code=auth_code
-        )
-
-        # Get athlete info
-        temp_client = Client(access_token=token_response['access_token'])
-        athlete = temp_client.get_athlete()
-        athlete_id = str(athlete.id)
-
-        if not athlete_id:
-            logger.error("No athlete ID received from Strava")
-            flash('Failed to get athlete information from Strava', 'danger')
-            return redirect('/')
-
-        logger.info(f"Retrieved athlete info for Strava ID: {athlete_id}")
-
-        # Check if user already exists (by email pattern from your existing code)
-        existing_user = User.get_by_email(f"strava_{athlete_id}@training-monkey.com")
-
-        if existing_user:
-            logger.info(f"Existing user found for athlete ID {athlete_id}, logging them in")
-
-            # Update their Strava tokens in the database
-            db_utils.execute_query(
-                """UPDATE user_settings 
-                   SET strava_access_token = %s, 
-                       strava_refresh_token = %s, 
-                       strava_token_expires_at = %s,
-                       strava_athlete_id = %s
-                   WHERE id = %s""",
-                (token_response['access_token'],
-                 token_response['refresh_token'],
-                 token_response['expires_at'],
-                 int(athlete_id),
-                 existing_user.id),
-                fetch=False
-            )
-
-            # Log them in
-            login_user(existing_user)
-            flash('Welcome back! Your Strava connection has been updated.', 'success')
-            return redirect('/static/index.html')
-
-        # Create new user - using direct database insert to handle Strava fields
-        logger.info(f"Creating new user account for Strava athlete {athlete_id}")
-
-        # Generate a secure random password for the new user
-        temp_password = secrets.token_urlsafe(16)
-        password_hash = generate_password_hash(temp_password)
-
-        # Extract athlete info with defaults
-        email = f"strava_{athlete_id}@training-monkey.com"
-        first_name = getattr(athlete, 'firstname', '')
-        last_name = getattr(athlete, 'lastname', '')
-        gender = getattr(athlete, 'sex', 'male')  # Default to male as per your schema
-        resting_hr = getattr(athlete, 'resting_hr', None) or 44  # Your schema default
-        max_hr = getattr(athlete, 'max_hr', None) or 178  # Your schema default
-
-        # Create new user using direct database insert (to include Strava fields)
-        result = db_utils.execute_query(
-            """INSERT INTO user_settings (
-                email, password_hash, is_admin, 
-                resting_hr, max_hr, gender,
-                strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (
-                email,
-                password_hash,
-                False,  # is_admin
-                resting_hr,
-                max_hr,
-                gender,
-                int(athlete_id),  # strava_athlete_id
-                token_response['access_token'],  # strava_access_token
-                token_response['refresh_token'],  # strava_refresh_token
-                token_response['expires_at']  # strava_token_expires_at
-            ),
-            fetch=True
-        )
-
-        if not result:
-            logger.error("Failed to insert new user - no result returned")
-            flash('Error creating user account. Please try again.', 'danger')
-            return redirect('/')
-
-        new_user_id = result[0]['id']
-        logger.info(f"Successfully created user with ID {new_user_id}")
-
-        # Load the new user object and log them in (using your existing User.get method)
-        new_user = User.get(new_user_id)
-        if not new_user:
-            logger.error(f"Failed to load new user object for user ID {new_user_id}")
-            flash('Error logging in. Please try again.', 'danger')
-            return redirect('/')
-
-        # Log in the new user
-        login_user(new_user)
-
-        # Set onboarding flag for first-time experience
-        session['is_first_login'] = True
-        session['signup_source'] = 'landing_page'
-
-        # Flash welcome message
-        flash(f'Welcome to Your Training Monkey, {first_name}! Let\'s analyze your training data.', 'success')
-
-        # Redirect to dashboard (which will handle first-time user flow)
-        return redirect('/static/index.html')
-
-    except Exception as e:
-        logger.error(f"Unexpected error in OAuth callback signup: {str(e)}")
-        flash('An unexpected error occurred. Please try again or contact support.', 'danger')
-        return redirect('/')
+# Removed duplicate oauth-callback-signup route - functionality consolidated into oauth-callback
 
 
 @app.route('/api/landing/analytics', methods=['POST'])
@@ -2369,6 +2281,8 @@ def strava_auth():
     auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
     return redirect(auth_url)
 
+
+
 @app.route('/api/user/onboarding-status')
 @login_required
 def onboarding_status():
@@ -2400,6 +2314,8 @@ def onboarding_status():
     except Exception as e:
         logger.error(f"Error getting onboarding status: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
 
 
 @app.route('/debug/static-files')
@@ -6059,6 +5975,61 @@ def track_analytics_event(event_name, data):
     except Exception as e:
         # Fallback to logging
         print(f"Analytics tracking error: {e}")
+
+@login_required
+@app.route('/proactive-token-refresh', methods=['POST'])
+def proactive_token_refresh():
+    """Proactively refresh tokens for current user if they're expiring soon"""
+    try:
+        user_id = current_user.id
+        logger.info(f"Proactive token refresh requested for user {user_id}")
+        
+        from enhanced_token_management import SimpleTokenManager
+        token_manager = SimpleTokenManager(user_id)
+        
+        # Check current token status
+        token_status = token_manager.get_simple_token_status()
+        logger.info(f"Current token status for user {user_id}: {token_status}")
+        
+        # If tokens need refresh, refresh them proactively
+        if token_status.get('status') in ['expired', 'expiring_soon']:
+            logger.info(f"Proactively refreshing tokens for user {user_id}")
+            refresh_result = token_manager.refresh_strava_tokens()
+            
+            if refresh_result:
+                new_status = token_manager.get_simple_token_status()
+                logger.info(f"✅ Proactive token refresh successful for user {user_id}")
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Tokens refreshed proactively',
+                    'refreshed': True,
+                    'old_status': token_status,
+                    'new_status': new_status
+                })
+            else:
+                logger.error(f"❌ Proactive token refresh failed for user {user_id}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Token refresh failed - re-authentication required',
+                    'needs_reauth': True,
+                    'current_status': token_status
+                }), 401
+        else:
+            logger.info(f"✅ Tokens are still valid for user {user_id} - no refresh needed")
+            return jsonify({
+                'success': True,
+                'message': 'Tokens are still valid - no refresh needed',
+                'refreshed': False,
+                'current_status': token_status
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in proactive token refresh for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
     # For local testing

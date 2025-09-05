@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 
 interface ManualSyncProps {
@@ -10,6 +10,35 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // PROACTIVE TOKEN REFRESH: Refresh tokens when component mounts
+  useEffect(() => {
+    const refreshTokensProactively = async () => {
+      try {
+        const response = await fetch('/proactive-token-refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.refreshed) {
+          console.log('✅ Tokens refreshed proactively:', result.message);
+        } else if (result.success && !result.refreshed) {
+          console.log('✅ Tokens are still valid:', result.message);
+        } else if (result.needs_reauth) {
+          console.warn('⚠️ Re-authentication required:', result.message);
+        } else {
+          console.log('ℹ️ Token status:', result.message);
+        }
+      } catch (error) {
+        console.error('Error checking token status:', error);
+      }
+    };
+
+    // Refresh tokens proactively when component mounts
+    refreshTokensProactively();
+  }, []); // Empty dependency array means this runs once when component mounts
 
   const syncOptions = [
     { value: 7, label: '7 days (Quick sync)', estimated: '~30 seconds' },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // TypeScript interfaces for proper type safety
 interface SyncStatus {
@@ -29,6 +29,35 @@ const IntegratedDashboardBanner: React.FC<IntegratedDashboardBannerProps> = ({
   const [syncStatus, setSyncStatus] = useState<'ready' | 'syncing' | 'success' | 'error'>('ready');
   const [statusMessage, setStatusMessage] = useState<string>('');
 
+  // PROACTIVE TOKEN REFRESH: Refresh tokens when component mounts
+  useEffect(() => {
+    const refreshTokensProactively = async () => {
+      try {
+        const response = await fetch('/proactive-token-refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.refreshed) {
+          console.log('✅ Tokens refreshed proactively:', result.message);
+        } else if (result.success && !result.refreshed) {
+          console.log('✅ Tokens are still valid:', result.message);
+        } else if (result.needs_reauth) {
+          console.warn('⚠️ Re-authentication required:', result.message);
+        } else {
+          console.log('ℹ️ Token status:', result.message);
+        }
+      } catch (error) {
+        console.error('Error checking token status:', error);
+      }
+    };
+
+    // Refresh tokens proactively when component mounts
+    refreshTokensProactively();
+  }, []); // Empty dependency array means this runs once when component mounts
+
   // Strava brand color
   const stravaOrange = '#FC5200';
 
@@ -37,7 +66,6 @@ const IntegratedDashboardBanner: React.FC<IntegratedDashboardBannerProps> = ({
       setIsSyncing(true);
       setSyncStatus('syncing');
       setStatusMessage('Syncing with Strava...');
-
       const response: Response = await fetch('/sync-with-auto-refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -260,6 +288,8 @@ const IntegratedDashboardBanner: React.FC<IntegratedDashboardBannerProps> = ({
                 {statusMessage}
               </p>
             )}
+
+
           </div>
 
           {/* Powered by Strava - Compliant with Brand Guidelines */}

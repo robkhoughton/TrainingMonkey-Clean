@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // TypeScript interfaces for proper type safety
 interface CompactDashboardBannerProps {
@@ -399,6 +399,35 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState<number>(7); // Default to 7 days
 
+  // PROACTIVE TOKEN REFRESH: Refresh tokens when component mounts
+  useEffect(() => {
+    const refreshTokensProactively = async () => {
+      try {
+        const response = await fetch('/proactive-token-refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.refreshed) {
+          console.log('✅ Tokens refreshed proactively:', result.message);
+        } else if (result.success && !result.refreshed) {
+          console.log('✅ Tokens are still valid:', result.message);
+        } else if (result.needs_reauth) {
+          console.warn('⚠️ Re-authentication required:', result.message);
+        } else {
+          console.log('ℹ️ Token status:', result.message);
+        }
+      } catch (error) {
+        console.error('Error checking token status:', error);
+      }
+    };
+
+    // Refresh tokens proactively when component mounts
+    refreshTokensProactively();
+  }, []); // Empty dependency array means this runs once when component mounts
+
   // Dashboard color palette (blue-gray theme)
   const colors = {
     primary: '#3498db',
@@ -415,7 +444,6 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
       setIsSyncing(true);
       setSyncStatus('syncing');
       setStatusMessage('Syncing with Strava...');
-
       const response: Response = await fetch('/sync-with-auto-refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -834,6 +862,8 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
               {statusMessage}
             </p>
           )}
+
+
 
           {/* Powered by Strava - Compliant with Brand Guidelines */}
           <div style={{
