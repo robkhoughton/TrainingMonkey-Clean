@@ -24,7 +24,6 @@ from timezone_utils import get_app_current_date, log_timezone_debug
 from llm_recommendations_module import generate_recommendations, update_recommendations_with_autopsy_learning
 from flask import Flask, request, jsonify, redirect, url_for, render_template, send_from_directory, session, flash, Response
 from csrf_protection import csrf_protected, require_csrf_token, CSRFTokenType
-from google.cloud import secretmanager
 from enhanced_token_management import SimpleTokenManager, check_token_status
 from flask_login import LoginManager, login_required, current_user, login_user, logout_user
 from auth import User
@@ -32,6 +31,9 @@ from settings_utils import handle_settings_change, track_settings_changes
 from werkzeug.security import generate_password_hash
 import secrets
 from sync_fix import apply_sync_fix
+
+# Import utility functions
+from utils import ensure_date_serialization, aggregate_daily_activities_with_rest, is_feature_enabled, get_secret
 
 # Import Strava processing functions
 from strava_training_load import (
@@ -66,307 +68,17 @@ def load_user(user_id):
     """Required by Flask-Login to reload user from session"""
     return User.get(user_id)
 
-def get_secret(secret_name, project_id=None):
-    """Get secret from Google Secret Manager"""
-    try:
-        if not project_id:
-            project_id = os.environ.get('GOOGLE_CLOUD_PROJECT', 'dev-ruler-460822-e8')
 
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-    except Exception as e:
-        logger.error(f"Error getting secret {secret_name}: {str(e)}")
-        return None
-
-def ensure_date_serialization(data):
-    """
-    Ensure all date objects in data are properly serialized for JSON
-    Handles the conversion from PostgreSQL DATE type to frontend-compatible strings
-    CRITICAL FIX: After database DATE standardization, PostgreSQL returns date objects
-    that need to be converted to ISO strings for React compatibility
-    """
-
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key in ['date', 'created_at', 'updated_at', 'generation_date', 'latest_activity_date', 'lastActivity']:
-                if isinstance(value, date):
-                    # PostgreSQL DATE type → ISO string
-                    data[key] = value.isoformat()
-                elif isinstance(value, datetime):
-                    # PostgreSQL TIMESTAMP type → ISO string
-                    data[key] = value.isoformat()
-                elif isinstance(value, str) and value:
-                    # Validate and normalize string dates
-                    try:
-                        # Try parsing as date first
-                        parsed = datetime.strptime(value, '%Y-%m-%d')
-                        data[key] = parsed.strftime('%Y-%m-%d')
-                    except:
-                        try:
-                            # Try parsing as datetime
-                            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                            data[key] = parsed.isoformat()
-                        except:
-                            # Leave as-is if can't parse
-                            pass
-            else:
-                # Recursively handle nested objects
-                data[key] = ensure_date_serialization(value)
-    elif isinstance(data, list):
-        return [ensure_date_serialization(item) for item in data]
-
-    return data
+# =============================================================================
+# SECTION 1: DATA SYNCHRONIZATION ROUTES
+# =============================================================================
+# Routes for syncing Strava data, OAuth callbacks, and token management
 
 
-def aggregate_daily_activities_with_rest(activities):
-    """
-    ENHANCED: Aggregate activities by day but preserve rest days AND sport breakdown.
-
-    Now tracks running vs cycling breakdown for multi-sport visualization while
-    maintaining all existing logic and backward compatibility.
-    """
-    daily_aggregates = {}
-
-    for activity in activities:
-        date = activity['date']
-        activity_id = activity['activity_id']
-
-        # If it's a rest day (negative activity_id), keep it as-is
-        if activity_id <= 0:
-            if date not in daily_aggregates:
-                daily_aggregates[date] = activity.copy()
-                daily_aggregates[date]['is_rest_day'] = True
-                # Initialize sport breakdown fields for rest days
-                daily_aggregates[date]['running_load'] = 0
-                daily_aggregates[date]['cycling_load'] = 0
-                daily_aggregates[date]['running_distance'] = 0
-                daily_aggregates[date]['cycling_distance'] = 0
-                daily_aggregates[date]['sport_types'] = []
-                daily_aggregates[date]['activities'] = []
-                daily_aggregates[date]['day_type'] = 'rest'
-            # If there's already an entry for this date and it's not a rest day,
-            # the real activities take precedence
-            elif not daily_aggregates[date].get('is_rest_day', False):
-                continue  # Keep the real activity
-            else:
-                daily_aggregates[date] = activity.copy()
-                daily_aggregates[date]['is_rest_day'] = True
-                # Initialize sport breakdown fields for rest days
-                daily_aggregates[date]['running_load'] = 0
-                daily_aggregates[date]['cycling_load'] = 0
-                daily_aggregates[date]['running_distance'] = 0
-                daily_aggregates[date]['cycling_distance'] = 0
-                daily_aggregates[date]['sport_types'] = []
-                daily_aggregates[date]['activities'] = []
-                daily_aggregates[date]['day_type'] = 'rest'
-
-        else:
-            # Real activity - aggregate if there are multiple
-            if date not in daily_aggregates or daily_aggregates[date].get('is_rest_day', False):
-                # First real activity of the day, or replacing a rest day
-                daily_aggregates[date] = activity.copy()
-                daily_aggregates[date]['activity_count'] = 1
-                daily_aggregates[date]['is_rest_day'] = False
-
-                # NEW: Initialize sport breakdown fields
-                sport_type = activity.get('sport_type', 'running')
-                daily_aggregates[date]['sport_types'] = [sport_type]
-                daily_aggregates[date]['activities'] = [{
-                    'type': activity.get('type', 'Unknown'),
-                    'sport': sport_type,
-                    'distance': activity.get('distance_miles', 0),
-                    'load': activity.get('total_load_miles', 0),
-                    'cycling_equivalent': activity.get('cycling_equivalent_miles'),
-                    'average_speed': activity.get('average_speed_mph')
-                }]
-
-                # Set sport-specific loads
-                if sport_type == 'cycling':
-                    daily_aggregates[date]['cycling_load'] = activity.get('total_load_miles', 0)
-                    daily_aggregates[date]['running_load'] = 0
-                    daily_aggregates[date]['cycling_distance'] = activity.get('distance_miles', 0)
-                    daily_aggregates[date]['running_distance'] = 0
-                    daily_aggregates[date]['day_type'] = 'cycling'
-                else:  # running or other
-                    daily_aggregates[date]['running_load'] = activity.get('total_load_miles', 0)
-                    daily_aggregates[date]['cycling_load'] = 0
-                    daily_aggregates[date]['running_distance'] = activity.get('distance_miles', 0)
-                    daily_aggregates[date]['cycling_distance'] = 0
-                    daily_aggregates[date]['day_type'] = 'running'
-
-            else:
-                # Additional real activity - aggregate
-                existing = daily_aggregates[date]
-                sport_type = activity.get('sport_type', 'running')
-
-                # EXISTING AGGREGATION LOGIC (preserved exactly from your current function)
-                existing['distance_miles'] += activity['distance_miles'] or 0
-                existing['elevation_gain_feet'] += activity['elevation_gain_feet'] or 0
-                existing['elevation_load_miles'] += activity['elevation_load_miles'] or 0
-                existing['total_load_miles'] += activity['total_load_miles'] or 0
-                existing['duration_minutes'] += activity['duration_minutes'] or 0
-                existing['trimp'] += activity['trimp'] or 0
-
-                # Sum HR zone times (your existing logic)
-                for i in range(1, 6):
-                    existing[f'time_in_zone{i}'] += activity[f'time_in_zone{i}'] or 0
-
-                # Duration-weighted average of heart rates (your existing logic)
-                total_duration = existing['duration_minutes']
-                if total_duration > 0 and activity['duration_minutes'] > 0:
-                    existing_duration = total_duration - activity['duration_minutes']
-
-                    if existing['avg_heart_rate'] > 0 and activity['avg_heart_rate'] > 0:
-                        existing['avg_heart_rate'] = (
-                                (existing['avg_heart_rate'] * existing_duration +
-                                 activity['avg_heart_rate'] * activity['duration_minutes']) / total_duration
-                        )
-
-                    # Take max of max HR (your existing logic)
-                    if activity['max_heart_rate'] > existing['max_heart_rate']:
-                        existing['max_heart_rate'] = activity['max_heart_rate']
-
-                # Keep the latest calculated metrics (your existing logic)
-                existing['seven_day_avg_load'] = activity['seven_day_avg_load']
-                existing['twentyeight_day_avg_load'] = activity['twentyeight_day_avg_load']
-                existing['seven_day_avg_trimp'] = activity['seven_day_avg_trimp']
-                existing['twentyeight_day_avg_trimp'] = activity['twentyeight_day_avg_trimp']
-                existing['acute_chronic_ratio'] = activity['acute_chronic_ratio']
-                existing['trimp_acute_chronic_ratio'] = activity['trimp_acute_chronic_ratio']
-                existing['normalized_divergence'] = activity['normalized_divergence']
-
-                # Update activity count and name (your existing logic)
-                existing['activity_count'] += 1
-                if existing['activity_count'] == 2:
-                    existing['name'] = f"{existing['name']} + 1 more"
-                else:
-                    base_name = existing['name'].split(' + ')[0]
-                    existing['name'] = f"{base_name} + {existing['activity_count'] - 1} more"
-
-                existing['activity_id'] = activity['activity_id']  # Use latest
-                existing['is_aggregated'] = True
-
-                # NEW: Update sport breakdown tracking
-                if sport_type not in existing.get('sport_types', []):
-                    if 'sport_types' not in existing:
-                        existing['sport_types'] = []
-                    existing['sport_types'].append(sport_type)
-
-                # Add to sport-specific loads
-                if sport_type == 'cycling':
-                    existing['cycling_load'] = existing.get('cycling_load', 0) + activity.get('total_load_miles', 0)
-                    existing['cycling_distance'] = existing.get('cycling_distance', 0) + activity.get('distance_miles',
-                                                                                                      0)
-                else:  # running or other
-                    existing['running_load'] = existing.get('running_load', 0) + activity.get('total_load_miles', 0)
-                    existing['running_distance'] = existing.get('running_distance', 0) + activity.get('distance_miles',
-                                                                                                      0)
-
-                # Add activity details
-                if 'activities' not in existing:
-                    existing['activities'] = []
-                existing['activities'].append({
-                    'type': activity.get('type', 'Unknown'),
-                    'sport': sport_type,
-                    'distance': activity.get('distance_miles', 0),
-                    'load': activity.get('total_load_miles', 0),
-                    'cycling_equivalent': activity.get('cycling_equivalent_miles'),
-                    'average_speed': activity.get('average_speed_mph')
-                })
-
-                # Update day type based on sport types
-                if len(existing.get('sport_types', [])) > 1:
-                    existing['day_type'] = 'mixed'
-                elif 'cycling' in existing.get('sport_types', []):
-                    existing['day_type'] = 'cycling'
-                else:
-                    existing['day_type'] = 'running'
-
-    # Convert back to list, sorted by date (your existing logic)
-    result = sorted(daily_aggregates.values(), key=lambda x: x['date'])
-
-    # Ensure all entries have sport breakdown fields for backward compatibility
-    for daily_data in result:
-        if 'running_load' not in daily_data:
-            daily_data['running_load'] = daily_data.get('total_load_miles', 0) if not daily_data.get(
-                'is_rest_day') else 0
-        if 'cycling_load' not in daily_data:
-            daily_data['cycling_load'] = 0
-        if 'running_distance' not in daily_data:
-            daily_data['running_distance'] = daily_data.get('distance_miles', 0) if not daily_data.get(
-                'is_rest_day') else 0
-        if 'cycling_distance' not in daily_data:
-            daily_data['cycling_distance'] = 0
-        if 'sport_types' not in daily_data:
-            daily_data['sport_types'] = [] if daily_data.get('is_rest_day') else ['running']
-        if 'activities' not in daily_data:
-            if daily_data.get('is_rest_day'):
-                daily_data['activities'] = []
-            else:
-                daily_data['activities'] = [{
-                    'type': daily_data.get('type', 'Unknown'),
-                    'sport': 'running',
-                    'distance': daily_data.get('distance_miles', 0),
-                    'load': daily_data.get('total_load_miles', 0)
-                }]
-        if 'day_type' not in daily_data:
-            daily_data['day_type'] = 'rest' if daily_data.get('is_rest_day') else 'running'
-
-    return result
 
 
-def is_feature_enabled(feature_name, user_id=None):
-    """
-    Check if feature is enabled - allows gradual rollout to beta users
 
-    PHASE 1 ROLLOUT PLAN:
-    - Rob (user_id=1): Admin access (already enabled)
-    - tballaine (user_id=2): Beta user #1
-    - iz.houghton (user_id=3): Beta user #2
 
-    Args:
-        feature_name (str): Name of the feature to check
-        user_id (int): User ID to check feature access for
-
-    Returns:
-        bool: True if feature is enabled for the user, False otherwise
-    """
-
-    # Feature flag configuration
-    feature_flags = {
-        'settings_page_enabled': False,  # Default OFF for general users
-        'hr_zone_recalculation': False,  # Default OFF
-        'enhanced_ai_context': False,  # Default OFF
-        'settings_validation_strict': True  # Default ON for safety
-    }
-
-    # Get base enabled state
-    base_enabled = feature_flags.get(feature_name, False)
-
-    # Special handling for Settings page rollout
-    if feature_name == 'settings_page_enabled':
-
-        # PHASE 1: Admin + Beta Users (Rob, tballaine, iz.houghton)
-        beta_user_ids = [1, 2, 3]  # Rob (admin), tballaine, iz.houghton
-
-        if user_id in beta_user_ids:
-            logger.info(f"🎉 Settings page access granted to user {user_id} (beta rollout)")
-            return True
-
-        # All other users: Settings page disabled
-        logger.info(f"⏳ Settings page access denied to user {user_id} (not in beta rollout)")
-        return False
-
-    # For other features, check admin access first
-    if user_id == 1:  # Rob's admin account gets early access to all new features
-        logger.info(f"🔧 Admin early access granted for {feature_name} to user {user_id}")
-        return True
-
-    # Return base flag state for non-admin users
-    return base_enabled
 
 @app.route('/sync', methods=['POST'])
 def sync_strava_data():
@@ -483,36 +195,6 @@ def sync_strava_data():
         }), 500
 
 
-@app.route('/test-connection', methods=['POST'])
-def test_strava_connection():
-    """Test Strava connection without syncing data"""
-    try:
-        data = request.get_json() or {}
-        access_token = data.get('access_token')
-
-        if not access_token:
-            return jsonify({'error': 'Strava access token required'}), 400
-
-        logger.info("Testing Strava connection...")
-        from stravalib.client import Client
-        client = Client(access_token=access_token)
-
-        try:
-            athlete = client.get_athlete()
-            return jsonify({
-                'success': True,
-                'message': f'Successfully connected to Strava as {athlete.firstname} {athlete.lastname}',
-                'athlete_id': athlete.id,
-                'connection_test': True
-            })
-        except Exception as e:
-            logger.error(f"Strava connection failed: {str(e)}")
-            return jsonify({'error': f'Strava connection failed: {str(e)}'}), 400
-
-    except Exception as e:
-        error_msg = f"Connection test error: {str(e)}"
-        logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
 
 
 @app.route('/oauth-callback', methods=['GET'])
@@ -1221,6 +903,11 @@ def manual_refresh_tokens():
         }), 500
 
 
+# =============================================================================
+# SECTION 5: ADMIN ROUTES
+# =============================================================================
+# Administrative functions and monitoring endpoints
+
 @login_required
 @app.route('/admin/token-health-report', methods=['GET'])
 def token_health_report():
@@ -1410,271 +1097,13 @@ def strava_setup():
 
             return redirect(auth_url)
 
-    return '''
-    <html>
-    <head>
-        <title>Connect Strava - Your Training Monkey</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                max-width: 700px;
-                margin: 30px auto;
-                padding: 20px;
-                line-height: 1.6;
-                color: #333;
-            }
-            .info-box {
-                background: #e7f3ff;
-                padding: 20px;
-                border-radius: 8px;
-                margin: 20px 0;
-                border-left: 4px solid #2196F3;
-            }
-            .form-box {
-                background: #f8f9fa;
-                padding: 20px;
-                border-radius: 8px;
-                border: 1px solid #e9ecef;
-            }
-            .warning-box {
-                background: #fff3cd;
-                padding: 15px;
-                border-radius: 8px;
-                margin: 20px 0;
-                border-left: 4px solid #ffc107;
-            }
-            .form-group {
-                margin: 15px 0;
-            }
-            .form-group label {
-                display: block;
-                font-weight: 600;
-                margin-bottom: 5px;
-                color: #495057;
-            }
-            .form-group input {
-                width: 100%;
-                padding: 12px;
-                border: 1px solid #ced4da;
-                border-radius: 6px;
-                font-size: 14px;
-                transition: border-color 0.15s ease-in-out;
-                box-sizing: border-box;
-            }
-            .form-group input:focus {
-                outline: none;
-                border-color: #FC5200;
-                box-shadow: 0 0 0 2px rgba(252, 82, 0, 0.1);
-            }
-            .strava-button-container {
-                text-align: center;
-                margin: 30px 0;
-            }
-            .strava-button-wrapper {
-                display: inline-block;
-                cursor: pointer;
-                transition: transform 0.2s ease;
-            }
-            .strava-button-wrapper:hover {
-                transform: scale(1.05);
-            }
-            .strava-button-wrapper img {
-                height: 48px;
-                width: auto;
-            }
-            .back-link {
-                display: inline-block;
-                margin-top: 30px;
-                color: #6c757d;
-                text-decoration: none;
-                padding: 10px 0;
-            }
-            .back-link:hover {
-                color: #495057;
-                text-decoration: underline;
-            }
-            .strava-branding {
-                text-align: center;
-                margin: 40px 0 20px 0;
-                padding: 20px 0;
-                border-top: 1px solid #e9ecef;
-            }
-            .strava-logo {
-                height: 20px;
-                width: auto;
-            }
-            @media (max-width: 768px) {
-                body {
-                    margin: 15px;
-                    padding: 15px;
-                }
-                .info-box, .form-box, .warning-box {
-                    padding: 15px;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <h1 style="color: #2c3e50; margin-bottom: 10px;">Connect Your Strava Account</h1>
-        <p style="color: #6c757d; margin-bottom: 30px;">Set up your personal connection to sync training data with Your Training Monkey</p>
+    return render_template('strava_setup.html')
 
-        <div class="info-box">
-            <h3 style="margin-top: 0; color: #1976d2;">🔑 Step 1: Create Your Personal Strava App</h3>
-            <p>Each user needs their own Strava application (this is temporary while we wait for multi-user approval).</p>
-            <ol style="margin: 15px 0;">
-                <li>Go to <a href="https://www.strava.com/settings/api" target="_blank" style="color: #FC5200; font-weight: 500;">Strava API Settings</a></li>
-                <li>Click <strong>"Create App"</strong></li>
-                <li>Fill in the form with these exact values:
-                    <ul style="margin: 10px 0; padding-left: 20px;">
-                        <li><strong>Application Name:</strong> [Your choice, e.g. "My Training Monkey"]</li>
-                        <li><strong>Category:</strong> Training</li>
-                        <li><strong>Club:</strong> [Leave blank]</li>
-                        <li><strong>Website:</strong> <code>https://strava-training-personal-382535371225.us-central1.run.app</code></li>
-                        <li><strong>Application Description:</strong> Personal training analytics dashboard</li>
-                        <li><strong>Authorization Callback Domain:</strong> <code>strava-training-personal-382535371225.us-central1.run.app</code></li>
-                    </ul>
-                </li>
-                <li>Click <strong>"Create"</strong></li>
-                <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> from the app details page</li>
-            </ol>
-        </div>
 
-        <div class="form-box">
-            <h3 style="margin-top: 0; color: #495057;">🔗 Step 2: Enter Your App Credentials</h3>
-            <form method="POST" id="stravaForm">
-                <div class="form-group">
-                    <label for="client_id">Client ID</label>
-                    <input type="text" 
-                           id="client_id" 
-                           name="client_id" 
-                           required 
-                           placeholder="Enter your Strava app Client ID">
-                </div>
-
-                <div class="form-group">
-                    <label for="client_secret">Client Secret</label>
-                    <input type="text" 
-                           id="client_secret" 
-                           name="client_secret" 
-                           required 
-                           placeholder="Enter your Strava app Client Secret">
-                </div>
-
-                <!-- OFFICIAL STRAVA CONNECT BUTTON -->
-                <div class="strava-button-container">
-                    <div class="strava-button-wrapper" onclick="submitStravaForm()">
-                        <img 
-                            src="/static/connect-with-strava-orange.svg" 
-                            alt="Connect with Strava"
-                            class="strava-connect-button"
-                            onerror="handleButtonError(this)"
-                        >
-                    </div>
-                </div>
-            </form>
-        </div>
-
-        <div class="warning-box">
-            <h4 style="margin-top: 0; color: #856404;">ℹ️ Why do I need my own app?</h4>
-            <p style="margin-bottom: 0;">This is a temporary setup while we wait for Strava to approve our application for multiple users. Once approved, this step won't be necessary and you'll connect with a single click.</p>
-        </div>
-
-        <!-- OFFICIAL STRAVA BRANDING FOOTER -->
-        <div class="strava-branding">
-            <img 
-                src="/static/powered-by-strava-orange.svg" 
-                alt="Powered by Strava"
-                class="strava-logo"
-                onerror="handleLogoError(this)"
-            >
-        </div>
-
-        <a href="/static/index.html" class="back-link">← Back to Dashboard</a>
-
-        <script>
-        function submitStravaForm() {
-            const clientId = document.getElementById('client_id').value.trim();
-            const clientSecret = document.getElementById('client_secret').value.trim();
-
-            if (!clientId || !clientSecret) {
-                alert('Please enter both Client ID and Client Secret before connecting to Strava.');
-                return;
-            }
-
-            // Add visual feedback
-            const button = document.querySelector('.strava-button-wrapper');
-            button.style.opacity = '0.7';
-            button.style.transform = 'scale(0.95)';
-
-            // Submit the form
-            document.getElementById('stravaForm').submit();
-        }
-
-        function handleButtonError(img) {
-            // Fallback for Connect button if SVG fails to load
-            img.style.display = 'none';
-            const fallbackButton = document.createElement('button');
-            fallbackButton.innerHTML = 'CONNECT WITH STRAVA';
-            fallbackButton.type = 'button';
-            fallbackButton.onclick = submitStravaForm;
-            fallbackButton.style.cssText = `
-                background: #FC5200;
-                color: white;
-                border: none;
-                padding: 14px 28px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                cursor: pointer;
-                height: 48px;
-                transition: all 0.2s;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            `;
-            fallbackButton.onmouseover = function() {
-                this.style.backgroundColor = '#e73c00';
-                this.style.transform = 'scale(1.05)';
-            };
-            fallbackButton.onmouseout = function() {
-                this.style.backgroundColor = '#FC5200';
-                this.style.transform = 'scale(1)';
-            };
-            img.parentNode.appendChild(fallbackButton);
-        }
-
-        function handleLogoError(img) {
-            // Fallback for Powered by Strava logo if SVG fails to load
-            img.style.display = 'none';
-            const fallbackText = document.createElement('span');
-            fallbackText.innerHTML = 'POWERED BY STRAVA';
-            fallbackText.style.cssText = `
-                font-weight: bold;
-                color: #FC5200;
-                font-size: 14px;
-                letter-spacing: 0.5px;
-            `;
-            img.parentNode.appendChild(fallbackText);
-        }
-
-        // Form validation feedback
-        document.addEventListener('DOMContentLoaded', function() {
-            const inputs = document.querySelectorAll('input[required]');
-            inputs.forEach(input => {
-                input.addEventListener('blur', function() {
-                    if (this.value.trim() === '') {
-                        this.style.borderColor = '#dc3545';
-                    } else {
-                        this.style.borderColor = '#28a745';
-                    }
-                });
-            });
-        });
-        </script>
-    </body>
-    </html>
-    ''', 200, {'Content-Type': 'text/html'}
-
+# =============================================================================
+# SECTION 2: API ROUTES
+# =============================================================================
+# REST API endpoints for frontend communication
 
 @login_required
 @app.route('/api/training-data', methods=['GET'])
@@ -1874,6 +1303,11 @@ def get_stats():
         }), 500
 
 
+# =============================================================================
+# SECTION 6: MAIN APPLICATION ROUTES
+# =============================================================================
+# Home page, dashboard, and core application routes
+
 @app.route('/')
 def home():
     """Landing page for new users, dashboard for existing users"""
@@ -1889,6 +1323,11 @@ def home():
 def dashboard():
     """Serve React dashboard"""
     return send_from_directory('/app/static', 'index.html')
+
+# =============================================================================
+# SECTION 4: STATIC FILE SERVING
+# =============================================================================
+# Routes for serving static files, favicon, manifest, etc.
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
@@ -2065,6 +1504,11 @@ def generate_llm_recommendations():
         }), 500
 
 
+# =============================================================================
+# SECTION 3: AUTHENTICATION & USER MANAGEMENT ROUTES
+# =============================================================================
+# Login, logout, signup, and user account management
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """User login page"""
@@ -2113,39 +1557,6 @@ def get_current_user():
         'is_admin': current_user.is_admin
     })
 
-@app.route('/verify-functions')
-def verify_functions():
-    """Verify which functions are loaded."""
-    try:
-        import inspect
-        from strava_training_load import save_training_load
-        source = inspect.getsource(save_training_load)
-        has_diagnosis = "DIAGNOSIS:" in source
-        return {
-            "save_training_load_has_diagnosis": has_diagnosis,
-            "function_length": len(source),
-            "first_100_chars": source[:100]
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@app.route('/debug/oauth-config')
-def debug_oauth_config():
-    """Debug endpoint to check OAuth configuration"""
-    try:
-        redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
-        client_id = os.environ.get('STRAVA_CLIENT_ID')
-        
-        return jsonify({
-            'strava_app_domain': 'strava-training-personal-382535371225.us-central1.run.app',
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'client_id_exists': bool(client_id),
-            'full_auth_url': f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/auth/strava-signup')
 def strava_auth_signup():
@@ -2318,73 +1729,6 @@ def onboarding_status():
 
 
 
-@app.route('/debug/static-files')
-def list_static_files():
-    """Enhanced debug endpoint to list all static files including nested directories"""
-    try:
-        import os
-
-        static_dir = os.path.join(app.root_path, 'static')
-        files = {}
-
-        # Walk through all directories and subdirectories
-        for root, dirs, filenames in os.walk(static_dir):
-            for filename in filenames:
-                # Get the full file path
-                full_path = os.path.join(root, filename)
-                # Get the relative path from the static directory
-                rel_path = os.path.relpath(full_path, static_dir)
-                # Convert backslashes to forward slashes for web paths
-                web_path = rel_path.replace('\\', '/')
-
-                # Determine the URL path that would be used to access this file
-                if web_path.startswith('static/'):
-                    # Files in static/static/ subdirectory
-                    url_path = f"/static/{web_path}"
-                else:
-                    # Files directly in static/ directory
-                    url_path = f"/static/{web_path}"
-
-                files[web_path] = {
-                    'file_path': web_path,
-                    'url_path': url_path,
-                    'full_system_path': full_path,
-                    'size_bytes': os.path.getsize(full_path)
-                }
-
-        # Filter for Strava-related files
-        strava_files = {k: v for k, v in files.items() if 'strava' in k.lower()}
-        svg_files = {k: v for k, v in files.items() if k.endswith('.svg')}
-
-        return jsonify({
-            'success': True,
-            'static_directory': static_dir,
-            'total_files': len(files),
-            'all_files': files,
-            'strava_files': strava_files,
-            'svg_files': svg_files,
-            'strava_connect_buttons': {
-                k: v for k, v in files.items()
-                if 'btn_strava_connect' in k
-            },
-            'powered_by_strava': {
-                k: v for k, v in files.items()
-                if 'pwrdby_strava' in k or 'powered-by-strava' in k
-            },
-            'suggested_paths': {
-                'white_connect_button': '/static/static/btn_strava_connect_with_white.svg',
-                'orange_connect_button': '/static/static/btn_strava_connect_with_orange.svg',
-                'orange_powered_by': '/static/static/api_logo_pwrdBy_strava_horiz_orange.svg',
-                'white_powered_by': '/static/static/api_logo_pwrdBy_strava_horiz_white.svg'
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'static_directory': 'Could not determine'
-        }), 500
 
 @login_required
 @app.route('/api/activities-management', methods=['GET'])

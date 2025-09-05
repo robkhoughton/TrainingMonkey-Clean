@@ -72,6 +72,9 @@ COPY run_tests.py .
 # Copy templates directory (includes new legal and onboarding templates)
 COPY templates/ /app/templates/
 
+# Copy utils directory (refactored utility functions)
+COPY utils/ /app/utils/
+
 # Copy the actual configuration files
 COPY config.json .
 COPY strava_config.json .
