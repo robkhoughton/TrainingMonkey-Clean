@@ -1026,7 +1026,7 @@ class ProgressiveFeatureTriggers:
                     """, (trigger_event.user_id, json.dumps([event_data]), json.dumps([event_data])))
                 else:
                     cursor.execute("""
-                        INSERT OR REPLACE INTO user_settings (user_id, trigger_events)
+                        INSERT INTO user_settings (user_id, trigger_events)
                         VALUES (?, ?)
                     """, (trigger_event.user_id, json.dumps([event_data])))
             

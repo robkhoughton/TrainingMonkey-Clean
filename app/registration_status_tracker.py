@@ -626,7 +626,7 @@ class RegistrationStatusTracker:
                 SELECT id, email, created_at
                 FROM user_settings
                 WHERE account_status = 'pending'
-                AND created_at < datetime('now', '-{} days')
+                AND created_at < NOW() - INTERVAL '{} days'
             """.format(days_old)
             
             result = execute_query(query, fetch=True)
@@ -652,14 +652,14 @@ class RegistrationStatusTracker:
             query_total = """
                 SELECT COUNT(*) as total
                 FROM user_settings
-                WHERE created_at >= datetime('now', '-30 days')
+                WHERE created_at >= NOW() - INTERVAL '30 days'
             """
             
             # Get completed registrations in the last 30 days
             query_completed = """
                 SELECT COUNT(*) as completed
                 FROM user_settings
-                WHERE created_at >= datetime('now', '-30 days')
+                WHERE created_at >= NOW() - INTERVAL '30 days'
                 AND account_status = 'active'
             """
             

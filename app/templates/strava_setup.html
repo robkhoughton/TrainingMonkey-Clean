@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connect Strava - Your Training Monkey</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .info-box {
+            background: #e7f3ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }
+        .form-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .warning-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.15s ease-in-out;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #FC5200;
+            box-shadow: 0 0 0 2px rgba(252, 82, 0, 0.1);
+        }
+        .strava-button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .strava-button-wrapper {
+            display: inline-block;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .strava-button-wrapper:hover {
+            transform: scale(1.05);
+        }
+        .strava-button-wrapper img {
+            height: 48px;
+            width: auto;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 30px;
+            color: #6c757d;
+            text-decoration: none;
+            padding: 10px 0;
+        }
+        .back-link:hover {
+            color: #495057;
+            text-decoration: underline;
+        }
+        .strava-branding {
+            text-align: center;
+            margin: 40px 0 20px 0;
+            padding: 20px 0;
+            border-top: 1px solid #e9ecef;
+        }
+        .strava-logo {
+            height: 20px;
+            width: auto;
+        }
+        @media (max-width: 768px) {
+            body {
+                margin: 15px;
+                padding: 15px;
+            }
+            .info-box, .form-box, .warning-box {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1 style="color: #2c3e50; margin-bottom: 10px;">Connect Your Strava Account</h1>
+    <p style="color: #6c757d; margin-bottom: 30px;">Set up your personal connection to sync training data with Your Training Monkey</p>
+
+    <div class="info-box">
+        <h3 style="margin-top: 0; color: #1976d2;">🔑 Step 1: Create Your Personal Strava App</h3>
+        <p>Each user needs their own Strava application (this is temporary while we wait for multi-user approval).</p>
+        <ol style="margin: 15px 0;">
+            <li>Go to <a href="https://www.strava.com/settings/api" target="_blank" style="color: #FC5200; font-weight: 500;">Strava API Settings</a></li>
+            <li>Click <strong>"Create App"</strong></li>
+            <li>Fill in the form with these exact values:
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li><strong>Application Name:</strong> [Your choice, e.g. "My Training Monkey"]</li>
+                    <li><strong>Category:</strong> Training</li>
+                    <li><strong>Club:</strong> [Leave blank]</li>
+                    <li><strong>Website:</strong> <code>https://yourtrainingmonkey.com</code></li>
+                    <li><strong>Application Description:</strong> Personal training analytics dashboard</li>
+                    <li><strong>Authorization Callback Domain:</strong> <code>yourtrainingmonkey.com</code></li>
+                </ul>
+            </li>
+            <li>Click <strong>"Create"</strong></li>
+            <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> from the app details page</li>
+        </ol>
+    </div>
+
+    <div class="form-box">
+        <h3 style="margin-top: 0; color: #495057;">🔗 Step 2: Enter Your App Credentials</h3>
+        <form method="POST" id="stravaForm">
+            <div class="form-group">
+                <label for="client_id">Client ID</label>
+                <input type="text" 
+                       id="client_id" 
+                       name="client_id" 
+                       required 
+                       placeholder="Enter your Strava app Client ID">
+            </div>
+
+            <div class="form-group">
+                <label for="client_secret">Client Secret</label>
+                <input type="text" 
+                       id="client_secret" 
+                       name="client_secret" 
+                       required 
+                       placeholder="Enter your Strava app Client Secret">
+            </div>
+
+            <!-- OFFICIAL STRAVA CONNECT BUTTON -->
+            <div class="strava-button-container">
+                <div class="strava-button-wrapper" onclick="submitStravaForm()">
+                    <img 
+                        src="/static/connect-with-strava-orange.svg" 
+                        alt="Connect with Strava"
+                        class="strava-connect-button"
+                        onerror="handleButtonError(this)"
+                    >
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="warning-box">
+        <h4 style="margin-top: 0; color: #856404;">ℹ️ Why do I need my own app?</h4>
+        <p style="margin-bottom: 0;">This is a temporary setup while we wait for Strava to approve our application for multiple users. Once approved, this step won't be necessary and you'll connect with a single click.</p>
+    </div>
+
+    <!-- OFFICIAL STRAVA BRANDING FOOTER -->
+    <div class="strava-branding">
+        <img 
+            src="/static/powered-by-strava-orange.svg" 
+            alt="Powered by Strava"
+            class="strava-logo"
+            onerror="handleLogoError(this)"
+        >
+    </div>
+
+    <a href="/static/index.html" class="back-link">← Back to Dashboard</a>
+
+    <script>
+    function submitStravaForm() {
+        const clientId = document.getElementById('client_id').value.trim();
+        const clientSecret = document.getElementById('client_secret').value.trim();
+
+        if (!clientId || !clientSecret) {
+            alert('Please enter both Client ID and Client Secret before connecting to Strava.');
+            return;
+        }
+
+        // Add visual feedback
+        const button = document.querySelector('.strava-button-wrapper');
+        button.style.opacity = '0.7';
+        button.style.transform = 'scale(0.95)';
+
+        // Submit the form
+        document.getElementById('stravaForm').submit();
+    }
+
+    function handleButtonError(img) {
+        // Fallback for Connect button if SVG fails to load
+        img.style.display = 'none';
+        const fallbackButton = document.createElement('button');
+        fallbackButton.innerHTML = 'CONNECT WITH STRAVA';
+        fallbackButton.type = 'button';
+        fallbackButton.onclick = submitStravaForm;
+        fallbackButton.style.cssText = `
+            background: #FC5200;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            height: 48px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        `;
+        fallbackButton.onmouseover = function() {
+            this.style.backgroundColor = '#e73c00';
+            this.style.transform = 'scale(1.05)';
+        };
+        fallbackButton.onmouseout = function() {
+            this.style.backgroundColor = '#FC5200';
+            this.style.transform = 'scale(1)';
+        };
+        img.parentNode.appendChild(fallbackButton);
+    }
+
+    function handleLogoError(img) {
+        // Fallback for Powered by Strava logo if SVG fails to load
+        img.style.display = 'none';
+        const fallbackText = document.createElement('span');
+        fallbackText.innerHTML = 'POWERED BY STRAVA';
+        fallbackText.style.cssText = `
+            font-weight: bold;
+            color: #FC5200;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        `;
+        img.parentNode.appendChild(fallbackText);
+    }
+
+    // Form validation feedback
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputs = document.querySelectorAll('input[required]');
+        inputs.forEach(input => {
+            input.addEventListener('blur', function() {
+                if (this.value.trim() === '') {
+                    this.style.borderColor = '#dc3545';
+                } else {
+                    this.style.borderColor = '#28a745';
+                }
+            });
+        });
+    });
+    </script>
+</body>
+</html>

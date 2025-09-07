@@ -1058,7 +1058,7 @@ def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
                        hr_stream_sample_count, trimp_processed_at
                 FROM activities 
                 WHERE user_id = ? 
-                AND date >= date('now', '-{} days')
+                AND date >= CURRENT_DATE - INTERVAL '{} days'
                 AND (
                     trimp IS NULL 
                     OR trimp_calculation_method = 'average'
@@ -1073,7 +1073,7 @@ def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
                        avg_heart_rate, max_heart_rate, trimp, trimp_calculation_method,
                        hr_stream_sample_count, trimp_processed_at
                 FROM activities 
-                WHERE date >= date('now', '-{} days')
+                WHERE date >= CURRENT_DATE - INTERVAL '{} days'
                 AND (
                     trimp IS NULL 
                     OR trimp_calculation_method = 'average'

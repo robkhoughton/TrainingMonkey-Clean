@@ -18,6 +18,7 @@ from stravalib.client import Client
 from stravalib.exc import ActivityUploadFailed, Fault
 from timezone_utils import should_create_rest_day, get_app_current_date, log_timezone_debug
 from db_utils import get_db_connection, execute_query, initialize_db, DB_FILE
+from utils.feature_flags import is_feature_enabled
 
 # Setup logging
 logging.basicConfig(
@@ -353,11 +354,23 @@ def get_activity_streams(client, activity_id):
 
         streams = client.get_activity_streams(activity_id, types=stream_types)
 
-        logger.info(f"Successfully fetched streams for activity {activity_id}")
+        if streams:
+            logger.info(f"Successfully fetched streams for activity {activity_id}: {list(streams.keys())}")
+            if 'heartrate' in streams:
+                hr_data = streams['heartrate']
+                if hr_data and hasattr(hr_data, 'data'):
+                    logger.info(f"Heartrate stream data available: {len(hr_data.data)} samples")
+                else:
+                    logger.warning(f"Heartrate stream data is None or has no data attribute")
+            else:
+                logger.warning(f"No heartrate stream in response for activity {activity_id}")
+        else:
+            logger.warning(f"No streams data returned for activity {activity_id}")
+
         return streams
 
     except Exception as e:
-        logger.error(f"Error fetching activity streams: {str(e)}")
+        logger.error(f"Error fetching activity streams for activity {activity_id}: {str(e)}")
         return None
 
 
@@ -546,7 +559,7 @@ def calculate_cycling_external_load(distance_miles, average_speed_mph=None, elev
         return 0.0, 0.0, 0.0
 
 
-def calculate_training_load(activity, client, hr_config=None):
+def calculate_training_load(activity, client, hr_config=None, user_id=None):
     """
     Calculate custom training load based on Strava activity data.
     ENHANCED VERSION: Now supports both running and cycling activities
@@ -623,29 +636,79 @@ def calculate_training_load(activity, client, hr_config=None):
     avg_hr = float(activity.average_heartrate or 0)
     max_hr = float(activity.max_heartrate or 0)
 
-    # Get detailed HR streams for zone calculation (UNCHANGED - your existing logic)
+    # Get detailed HR streams for zone calculation and enhanced TRIMP
     hr_zone_times = [0, 0, 0, 0, 0]  # Default to zeros
+    hr_stream_data = None  # Initialize for enhanced TRIMP calculation
+    
     try:
         streams = get_activity_streams(client, activity_id)
         if streams:
+            logger.info(f"Streams retrieved for activity {activity_id}: {list(streams.keys())}")
             hr_zone_times = calculate_hr_zones_from_streams(
                 streams,
                 hr_config['max_hr'],
                 hr_config['resting_hr']
             )
+            
+            # Extract HR stream data for enhanced TRIMP calculation
+            if 'heartrate' in streams and streams['heartrate']:
+                hr_stream_data = streams['heartrate'].data
+                logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
+                
+                # Save HR stream data to database for future enhanced TRIMP calculations
+                try:
+                    from db_utils import save_hr_stream_data
+                    save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
+                    if save_result:
+                        logger.info(f"Successfully saved HR stream data for activity {activity_id}")
+                    else:
+                        logger.warning(f"Failed to save HR stream data for activity {activity_id}")
+                except Exception as save_error:
+                    logger.error(f"Error saving HR stream data for activity {activity_id}: {str(save_error)}")
+            else:
+                logger.warning(f"No heartrate stream data available for activity {activity_id}")
+        else:
+            logger.warning(f"No streams data returned for activity {activity_id}")
     except Exception as e:
         logger.warning(f"Could not get HR streams for activity {activity_id}: {str(e)}")
 
-    # Calculate Banister TRIMP (UNCHANGED - your existing logic)
+    # Calculate Banister TRIMP with feature flag support
     trimp = 0
+    trimp_calculation_method = 'average'  # Default method
+    hr_stream_sample_count = 0
+    
     if avg_hr > 0 and duration_minutes > 0:
-        trimp = calculate_banister_trimp(
-            duration_minutes,
-            avg_hr,
-            hr_config['resting_hr'],
-            hr_config['max_hr'],
-            hr_config['gender']
-        )
+        # Check if enhanced TRIMP calculation is enabled for this user
+        enhanced_trimp_enabled = is_feature_enabled('enhanced_trimp_calculation', user_id)
+        
+        if enhanced_trimp_enabled and hr_stream_data:
+            # Use enhanced TRIMP calculation with heart rate stream data
+            logger.info(f"Using enhanced TRIMP calculation for user {user_id}, activity {activity_id}")
+            trimp = calculate_banister_trimp(
+                duration_minutes,
+                avg_hr,
+                hr_config['resting_hr'],
+                hr_config['max_hr'],
+                hr_config['gender'],
+                hr_stream=hr_stream_data
+            )
+            trimp_calculation_method = 'stream'
+            hr_stream_sample_count = len(hr_stream_data)
+        else:
+            # Use standard TRIMP calculation with average HR
+            if enhanced_trimp_enabled:
+                logger.info(f"Enhanced TRIMP enabled but no HR stream data available for user {user_id}, activity {activity_id}")
+            else:
+                logger.info(f"Enhanced TRIMP not enabled for user {user_id}, using standard calculation for activity {activity_id}")
+            
+            trimp = calculate_banister_trimp(
+                duration_minutes,
+                avg_hr,
+                hr_config['resting_hr'],
+                hr_config['max_hr'],
+                hr_config['gender']
+            )
+            trimp_calculation_method = 'average'
 
     # Enhanced debug logging (UNCHANGED - your existing logic)
     logger.info(f"DEBUG: Activity {activity_id} final data:")
@@ -658,7 +721,7 @@ def calculate_training_load(activity, client, hr_config=None):
         f"  - Average Speed: {average_speed_mph:.2f} mph" if average_speed_mph else "  - Average Speed: N/A")  # NEW
     logger.info(f"  - TRIMP: {trimp:.2f}")
 
-    # Return enhanced data structure with new cycling fields
+    # Return enhanced data structure with new cycling fields and TRIMP metadata
     result = {
         'activity_id': int(activity_id),
         'date': activity_date,
@@ -681,7 +744,11 @@ def calculate_training_load(activity, client, hr_config=None):
         'time_in_zone2': int(hr_zone_times[1]),
         'time_in_zone3': int(hr_zone_times[2]),
         'time_in_zone4': int(hr_zone_times[3]),
-        'time_in_zone5': int(hr_zone_times[4])
+        'time_in_zone5': int(hr_zone_times[4]),
+        # TRIMP enhancement metadata
+        'trimp_calculation_method': trimp_calculation_method,
+        'hr_stream_sample_count': hr_stream_sample_count,
+        'trimp_processed_at': datetime.now().isoformat()
     }
 
     logger.info(
@@ -1487,7 +1554,7 @@ def process_activities_for_date_range(client, start_date, end_date=None, hr_conf
 
             # Calculate training load (only for supported activities)
             logger.info(f"PROCESSING supported activity {activity_id}: {activity_type}")
-            load_data = calculate_training_load(activity, client, hr_config)
+            load_data = calculate_training_load(activity, client, hr_config, user_id)
             load_data['user_id'] = user_id
 
             # Save to database

@@ -921,7 +921,7 @@ class OnboardingCompletionTracker:
                     """, (completion.user_id, json.dumps(completion_data), json.dumps(completion_data)))
                 else:
                     cursor.execute("""
-                        INSERT OR REPLACE INTO user_settings (user_id, completion_data)
+                        INSERT INTO user_settings (user_id, completion_data)
                         VALUES (?, ?)
                     """, (completion.user_id, json.dumps(completion_data)))
             

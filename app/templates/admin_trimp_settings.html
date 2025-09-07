@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TRIMP Settings - Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Favicon - Monkey Mascot -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #007bff;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #6c757d;
+            margin: 10px 0 0 0;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        .section h2 {
+            color: #495057;
+            margin-top: 0;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .status-card {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .status-card.success {
+            border-left-color: #28a745;
+        }
+        .status-card.warning {
+            border-left-color: #ffc107;
+        }
+        .status-card.danger {
+            border-left-color: #dc3545;
+        }
+        .status-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-indicator.enabled {
+            background-color: #28a745;
+        }
+        .status-indicator.disabled {
+            background-color: #dc3545;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            border: 1px solid transparent;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #007bff;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .user-access-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .user-access-table th,
+        .user-access-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .user-access-table th {
+            background-color: #e9ecef;
+            font-weight: 600;
+        }
+        .rollout-progress {
+            margin: 20px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+        
+        /* Calculation Statistics Styles */
+        .calculation-stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .stats-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .stats-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .stats-table-container, .user-stats-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .stats-table th, .stats-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .stats-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .stats-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .method-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .method-enhanced {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .method-average {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .method-legacy {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        @media (max-width: 768px) {
+            .stats-details {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Actions Section Styles */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .action-group {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .action-group h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .recalculation-controls, .system-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .control-row label {
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+        }
+        
+        .control-row input, .control-row select {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .control-row input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .system-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .system-controls .btn {
+            width: 100%;
+        }
+        
+        @media (max-width: 768px) {
+            .actions-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Operation Status Styles */
+        .operation-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .operation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .operation-header h4 {
+            margin: 0;
+            color: #495057;
+        }
+        
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .status-running {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-cancelled {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .operation-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+        }
+        
+        .detail-row.error {
+            color: #dc3545;
+            font-weight: 500;
+        }
+        
+        .detail-row .label {
+            font-weight: 500;
+            color: #6c757d;
+        }
+        
+        .detail-row .value {
+            color: #495057;
+        }
+        
+        /* Performance Monitoring Styles */
+        .performance-monitoring-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .performance-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .performance-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .performance-charts, .performance-metrics {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .performance-charts h3, .performance-metrics h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .metric-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+        
+        .metric-card .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+        
+        .metric-card .metric-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .metric-card.warning .metric-value {
+            color: #ffc107;
+        }
+        
+        .metric-card.danger .metric-value {
+            color: #dc3545;
+        }
+        
+        .metric-card.success .metric-value {
+            color: #28a745;
+        }
+        
+        .performance-alerts {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .performance-alerts h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .alert-item {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 4px solid;
+        }
+        
+        .alert-item.info {
+            background-color: #d1ecf1;
+            border-left-color: #17a2b8;
+            color: #0c5460;
+        }
+        
+        .alert-item.warning {
+            background-color: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        
+        .alert-item.danger {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        
+        .alert-item.success {
+            background-color: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        
+        @media (max-width: 768px) {
+            .performance-details {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Comparison Section Styles */
+        .comparison-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .comparison-controls {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .comparison-controls h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .comparison-results {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .comparison-results h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .comparison-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .comparison-table-container {
+            overflow-x: auto;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .comparison-table th, .comparison-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            white-space: nowrap;
+        }
+        
+        .comparison-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            position: sticky;
+            top: 0;
+        }
+        
+        .comparison-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .difference-positive {
+            color: #28a745;
+            font-weight: 500;
+        }
+        
+        .difference-negative {
+            color: #dc3545;
+            font-weight: 500;
+        }
+        
+        .difference-neutral {
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐒 TRIMP Calculation Management</h1>
+            <p>Admin panel for managing enhanced TRIMP calculation rollout and settings</p>
+        </div>
+
+        <div class="nav">
+            <a href="/dashboard">← Back to Dashboard</a>
+            <a href="/admin/token-health-report">Token Health</a>
+            <a href="/logout">Logout</a>
+        </div>
+
+        <div id="alerts"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading TRIMP settings...</p>
+        </div>
+
+        <!-- Feature Flag Status Section -->
+        <div class="section">
+            <h2>🎛️ Feature Flag Status</h2>
+            <div class="status-grid" id="feature-status">
+                <!-- Status cards will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- User Access Control Section -->
+        <div class="section">
+            <h2>👥 User Access Control</h2>
+            <div class="rollout-progress">
+                <h3>Rollout Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="rollout-progress" style="width: 0%"></div>
+                </div>
+                <p id="rollout-text">Loading rollout status...</p>
+            </div>
+            
+            <table class="user-access-table">
+                <thead>
+                    <tr>
+                        <th>User Type</th>
+                        <th>User ID</th>
+                        <th>Status</th>
+                        <th>Access Level</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="user-access-table">
+                    <!-- Table rows will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Feature Flag Management Section -->
+        <div class="section">
+            <h2>🎛️ Feature Flag Management</h2>
+            <div id="feature-flag-controls">
+                <!-- Feature flag controls will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Database Schema Status Section -->
+        <div class="section">
+            <h2>🗄️ Database Schema Status</h2>
+            <div class="status-grid" id="schema-status">
+                <!-- Schema status cards will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Actions Section -->
+        <div class="section">
+            <h2>⚡ Actions</h2>
+            <div class="actions-grid">
+                <div class="action-group">
+                    <h3>🔄 Historical Recalculation</h3>
+                    <div class="recalculation-controls">
+                        <div class="control-row">
+                            <label for="recalc-user-id">User ID (optional):</label>
+                            <input type="number" id="recalc-user-id" placeholder="Leave empty for all users" min="1">
+                        </div>
+                        <div class="control-row">
+                            <label for="recalc-days-back">Days Back:</label>
+                            <select id="recalc-days-back">
+                                <option value="7">Last 7 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="365">Last year</option>
+                                <option value="0">All time</option>
+                            </select>
+                        </div>
+                        <div class="control-row">
+                            <label>
+                                <input type="checkbox" id="force-recalculation"> Force recalculation (even if recently processed)
+                            </label>
+                        </div>
+                        <div class="control-buttons">
+                            <button class="btn btn-success" onclick="startHistoricalRecalculation()">
+                                🚀 Start Recalculation
+                            </button>
+                            <button class="btn btn-warning" onclick="checkRecalculationStatus()">
+                                📊 Check Status
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="action-group">
+                    <h3>🔍 System Checks</h3>
+                    <div class="system-controls">
+                        <button class="btn btn-warning" onclick="checkSchemaStatus()">
+                            🔍 Check Schema Status
+                        </button>
+                        <button class="btn btn-info" onclick="runDeploymentValidation()">
+                            ✅ Run Validation
+                        </button>
+                        <button class="btn" onclick="refreshData()">
+                            🔄 Refresh All Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recalculation Status Section -->
+        <div class="section" id="recalculation-status-section" style="display: none;">
+            <h2>📊 Recalculation Status</h2>
+            <div id="recalculation-status">
+                <!-- Status will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Statistics Section -->
+        <div class="section">
+            <h2>📊 Statistics</h2>
+            <div class="status-grid" id="statistics">
+                <!-- Statistics cards will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Calculation Method Statistics Section -->
+        <div class="section">
+            <h2>📈 Calculation Method Statistics</h2>
+            <div class="calculation-stats-container">
+                <div class="stats-overview" id="calculation-overview">
+                    <!-- Overview cards will be populated by JavaScript -->
+                </div>
+                
+                <div class="stats-details">
+                    <div class="stats-table-container">
+                        <h3>Method Breakdown</h3>
+                        <table class="stats-table" id="calculation-methods-table">
+                            <thead>
+                                <tr>
+                                    <th>Method</th>
+                                    <th>Count</th>
+                                    <th>Avg TRIMP</th>
+                                    <th>Min TRIMP</th>
+                                    <th>Max TRIMP</th>
+                                    <th>Avg HR Samples</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="user-stats-container">
+                        <h3>User Statistics</h3>
+                        <table class="stats-table" id="user-stats-table">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Method</th>
+                                    <th>Count</th>
+                                    <th>Avg TRIMP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Monitoring Section -->
+        <div class="section">
+            <h2>📊 Performance Monitoring</h2>
+            <div class="performance-monitoring-container">
+                <div class="performance-overview" id="performance-overview">
+                    <!-- Performance overview cards will be populated by JavaScript -->
+                </div>
+                
+                <div class="performance-details">
+                    <div class="performance-charts">
+                        <h3>📈 Performance Trends</h3>
+                        <div class="chart-container">
+                            <canvas id="performance-chart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="performance-metrics">
+                        <h3>⚡ Real-time Metrics</h3>
+                        <div class="metrics-grid" id="real-time-metrics">
+                            <!-- Real-time metrics will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="performance-alerts">
+                    <h3>🚨 Performance Alerts</h3>
+                    <div id="performance-alerts">
+                        <!-- Performance alerts will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calculation Method Comparison Section -->
+        <div class="section">
+            <h2>🔍 Calculation Method Comparison</h2>
+            <div class="comparison-container">
+                <div class="comparison-controls">
+                    <h3>Select Activities for Comparison</h3>
+                    <div class="control-row">
+                        <label for="compare-user-id">User ID:</label>
+                        <input type="number" id="compare-user-id" placeholder="Enter user ID" min="1">
+                    </div>
+                    <div class="control-row">
+                        <label for="compare-activity-count">Number of Activities:</label>
+                        <select id="compare-activity-count">
+                            <option value="5">5 activities</option>
+                            <option value="10" selected>10 activities</option>
+                            <option value="20">20 activities</option>
+                            <option value="50">50 activities</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label for="compare-days-back">Days Back:</label>
+                        <select id="compare-days-back">
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                    <div class="control-buttons">
+                        <button class="btn btn-primary" onclick="runCalculationComparison()">
+                            🔍 Compare Methods
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearComparisonResults()">
+                            🗑️ Clear Results
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="comparison-results" id="comparison-results" style="display: none;">
+                    <h3>Comparison Results</h3>
+                    <div class="comparison-summary" id="comparison-summary">
+                        <!-- Summary will be populated by JavaScript -->
+                    </div>
+                    <div class="comparison-table-container">
+                        <table class="comparison-table" id="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>Activity ID</th>
+                                    <th>Date</th>
+                                    <th>Duration</th>
+                                    <th>Avg HR</th>
+                                    <th>Enhanced TRIMP</th>
+                                    <th>Average HR TRIMP</th>
+                                    <th>Difference</th>
+                                    <th>% Difference</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let trimpData = null;
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTrimpSettings();
+        });
+
+        // Load TRIMP settings from API
+        async function loadTrimpSettings() {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/admin/trimp-settings');
+                const data = await response.json();
+                
+                if (data.success) {
+                    trimpData = data;
+                    updateUI(data);
+                } else {
+                    showAlert('Error loading TRIMP settings: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error loading TRIMP settings: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Update the UI with loaded data
+        function updateUI(data) {
+            updateFeatureStatus(data);
+            updateUserAccess(data);
+            updateFeatureFlagControls(data);
+            updateSchemaStatus(data);
+            updateStatistics(data);
+            updateRolloutProgress(data);
+            loadCalculationStats(); // Load calculation method statistics
+            loadPerformanceMetrics(); // Load performance monitoring data
+        }
+
+        // Update feature flag status section
+        function updateFeatureStatus(data) {
+            const container = document.getElementById('feature-status');
+            container.innerHTML = `
+                <div class="status-card ${data.enhanced_trimp_enabled ? 'success' : 'warning'}">
+                    <h3>Enhanced TRIMP Calculation</h3>
+                    <p>
+                        <span class="status-indicator ${data.enhanced_trimp_enabled ? 'enabled' : 'disabled'}"></span>
+                        ${data.enhanced_trimp_enabled ? 'Enabled' : 'Disabled'}
+                    </p>
+                    <p>Uses heart rate stream data for improved accuracy</p>
+                </div>
+                <div class="status-card ${data.schema_status.overall_valid ? 'success' : 'danger'}">
+                    <h3>Database Schema</h3>
+                    <p>
+                        <span class="status-indicator ${data.schema_status.overall_valid ? 'enabled' : 'disabled'}"></span>
+                        ${data.schema_status.overall_valid ? 'Valid' : 'Invalid'}
+                    </p>
+                    <p>TRIMP enhancement database fields</p>
+                </div>
+            `;
+        }
+
+        // Update user access section
+        function updateUserAccess(data) {
+            const tableBody = document.getElementById('user-access-table');
+            const userAccess = data.user_access;
+            
+            tableBody.innerHTML = `
+                <tr>
+                    <td>Admin</td>
+                    <td>1 (Rob)</td>
+                    <td><span class="status-indicator ${userAccess.admin ? 'enabled' : 'disabled'}"></span>${userAccess.admin ? 'Enabled' : 'Disabled'}</td>
+                    <td>Full Access</td>
+                    <td>
+                        <button class="btn btn-sm ${userAccess.admin ? 'btn-danger' : 'btn-success'}" 
+                                onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'admin', ${!userAccess.admin})">
+                            ${userAccess.admin ? 'Disable' : 'Enable'}
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Beta User</td>
+                    <td>2 (tballaine)</td>
+                    <td><span class="status-indicator ${userAccess.beta_users.user_2 ? 'enabled' : 'disabled'}"></span>${userAccess.beta_users.user_2 ? 'Enabled' : 'Disabled'}</td>
+                    <td>Beta Access</td>
+                    <td>
+                        <button class="btn btn-sm ${userAccess.beta_users.user_2 ? 'btn-danger' : 'btn-success'}" 
+                                onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'beta', ${!userAccess.beta_users.user_2})">
+                            ${userAccess.beta_users.user_2 ? 'Disable' : 'Enable'}
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Beta User</td>
+                    <td>3 (iz.houghton)</td>
+                    <td><span class="status-indicator ${userAccess.beta_users.user_3 ? 'enabled' : 'disabled'}"></span>${userAccess.beta_users.user_3 ? 'Enabled' : 'Disabled'}</td>
+                    <td>Beta Access</td>
+                    <td>
+                        <button class="btn btn-sm ${userAccess.beta_users.user_3 ? 'btn-danger' : 'btn-success'}" 
+                                onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'beta', ${!userAccess.beta_users.user_3})">
+                            ${userAccess.beta_users.user_3 ? 'Disable' : 'Enable'}
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Regular User</td>
+                    <td>4+</td>
+                    <td><span class="status-indicator ${userAccess.regular_users ? 'enabled' : 'disabled'}"></span>${userAccess.regular_users ? 'Enabled' : 'Disabled'}</td>
+                    <td>Standard Calculation</td>
+                    <td>
+                        <button class="btn btn-sm ${userAccess.regular_users ? 'btn-danger' : 'btn-success'}" 
+                                onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'regular', ${!userAccess.regular_users})">
+                            ${userAccess.regular_users ? 'Disable' : 'Enable'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Update schema status section
+        function updateSchemaStatus(data) {
+            const container = document.getElementById('schema-status');
+            const schema = data.schema_status;
+            
+            container.innerHTML = `
+                <div class="status-card ${schema.trimp_fields_valid ? 'success' : 'danger'}">
+                    <h3>TRIMP Fields</h3>
+                    <p>
+                        <span class="status-indicator ${schema.trimp_fields_valid ? 'enabled' : 'disabled'}"></span>
+                        ${schema.trimp_fields_valid ? 'Valid' : 'Invalid'}
+                    </p>
+                    <p>Activities table enhancement fields</p>
+                </div>
+                <div class="status-card ${schema.hr_streams_table_valid ? 'success' : 'danger'}">
+                    <h3>HR Streams Table</h3>
+                    <p>
+                        <span class="status-indicator ${schema.hr_streams_table_valid ? 'enabled' : 'disabled'}"></span>
+                        ${schema.hr_streams_table_valid ? 'Valid' : 'Invalid'}
+                    </p>
+                    <p>Heart rate stream data storage</p>
+                </div>
+            `;
+        }
+
+        // Update statistics section
+        function updateStatistics(data) {
+            const container = document.getElementById('statistics');
+            container.innerHTML = `
+                <div class="status-card">
+                    <h3>Activities Needing Recalculation</h3>
+                    <p style="font-size: 2em; font-weight: bold; color: #007bff;">${data.activities_needing_recalculation}</p>
+                    <p>Last 30 days</p>
+                </div>
+                <div class="status-card">
+                    <h3>Rollout Phase</h3>
+                    <p style="font-size: 1.5em; font-weight: bold; color: #28a745;">Beta Testing</p>
+                    <p>Admin + Beta Users</p>
+                </div>
+            `;
+        }
+
+        // Update rollout progress
+        function updateRolloutProgress(data) {
+            const rollout = data.rollout_status;
+            let progress = 0;
+            let text = '';
+            
+            if (rollout.admin_enabled) {
+                progress += 25;
+                text += 'Admin ✓ ';
+            }
+            if (rollout.beta_enabled) {
+                progress += 50;
+                text += 'Beta Users ✓ ';
+            }
+            if (rollout.general_release) {
+                progress += 25;
+                text += 'General Release ✓';
+            }
+            
+            if (progress === 0) {
+                text = 'Not Started';
+            } else if (progress < 100) {
+                text += ' (In Progress)';
+            } else {
+                text = 'Complete ✓';
+            }
+            
+            document.getElementById('rollout-progress').style.width = progress + '%';
+            document.getElementById('rollout-text').textContent = text;
+        }
+
+        // Update feature flag controls section
+        function updateFeatureFlagControls(data) {
+            const container = document.getElementById('feature-flag-controls');
+            const userAccess = data.user_access;
+            
+            container.innerHTML = `
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h3>Enhanced TRIMP Calculation</h3>
+                        <p>Controls access to heart rate stream-based TRIMP calculation</p>
+                        <div style="margin-top: 15px;">
+                            <button class="btn btn-sm ${userAccess.admin ? 'btn-success' : 'btn-secondary'}" 
+                                    onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'admin', ${!userAccess.admin})">
+                                Admin: ${userAccess.admin ? 'Enabled' : 'Disabled'}
+                            </button>
+                            <button class="btn btn-sm ${userAccess.beta_users.user_2 ? 'btn-success' : 'btn-secondary'}" 
+                                    onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'beta', ${!userAccess.beta_users.user_2})">
+                                Beta: ${userAccess.beta_users.user_2 ? 'Enabled' : 'Disabled'}
+                            </button>
+                            <button class="btn btn-sm ${userAccess.regular_users ? 'btn-success' : 'btn-secondary'}" 
+                                    onclick="toggleFeatureFlag('enhanced_trimp_calculation', 'regular', ${!userAccess.regular_users})">
+                                Regular: ${userAccess.regular_users ? 'Enabled' : 'Disabled'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Toggle feature flag for specific user type
+        async function toggleFeatureFlag(featureName, userType, enabled) {
+            
+            showLoading(true);
+            try {
+                const response = await fetch(`/api/admin/feature-flags/${featureName}/toggle`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_type: userType,
+                        enabled: enabled
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    // Refresh the data to show updated status
+                    setTimeout(() => {
+                        loadTrimpSettings();
+                    }, 1000);
+                } else {
+                    showAlert('Error toggling feature flag: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error toggling feature flag: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Recalculate TRIMP for activities
+        async function recalculateTrimp() {
+            
+            showLoading(true);
+            try {
+                const response = await fetch('/api/admin/trimp-recalculate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        days_back: 30
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`Successfully processed ${data.processed_count} activities. Found ${data.total_found} total activities needing recalculation.`, 'success');
+                } else {
+                    showAlert('Error recalculating TRIMP: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error recalculating TRIMP: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Check schema status
+        async function checkSchemaStatus() {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/admin/trimp-schema-status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('Schema status checked successfully. See Database Schema Status section for details.', 'info');
+                    updateSchemaStatus({ schema_status: data.schema_status });
+                } else {
+                    showAlert('Error checking schema status: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error checking schema status: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Refresh all data
+        function refreshData() {
+            loadTrimpSettings();
+        }
+
+        // Start historical recalculation with advanced controls
+        async function startHistoricalRecalculation() {
+            const userId = document.getElementById('recalc-user-id').value;
+            const daysBack = parseInt(document.getElementById('recalc-days-back').value);
+            const forceRecalculation = document.getElementById('force-recalculation').checked;
+            
+            // Validate inputs
+            if (userId && (isNaN(userId) || userId < 1)) {
+                showAlert('Please enter a valid User ID (must be 1 or greater)', 'danger');
+                return;
+            }
+            
+            if (daysBack < 0) {
+                showAlert('Days back must be 0 or greater', 'danger');
+                return;
+            }
+            
+            // Start recalculation action
+            
+            try {
+                showLoading(true);
+                
+                const response = await fetch('/api/admin/trimp-recalculate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: userId ? parseInt(userId) : null,
+                        days_back: daysBack,
+                        force_recalculation: forceRecalculation
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`Recalculation started successfully! Operation ID: ${data.operation_id}`, 'success');
+                    document.getElementById('recalculation-status-section').style.display = 'block';
+                    updateRecalculationStatus(data.operation_id);
+                } else {
+                    showAlert('Error starting recalculation: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error starting recalculation: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Check recalculation status
+        async function checkRecalculationStatus() {
+            try {
+                const response = await fetch('/api/admin/trimp-operations');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateRecalculationStatusDisplay(data.operations);
+                    document.getElementById('recalculation-status-section').style.display = 'block';
+                } else {
+                    showAlert('Error getting recalculation status: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error getting recalculation status: ' + error.message, 'danger');
+            }
+        }
+
+        // Update recalculation status for specific operation
+        async function updateRecalculationStatus(operationId) {
+            try {
+                const response = await fetch(`/api/admin/trimp-operations/${operationId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateRecalculationStatusDisplay([data.operation]);
+                }
+            } catch (error) {
+                console.error('Error updating recalculation status:', error);
+            }
+        }
+
+        // Update recalculation status display
+        function updateRecalculationStatusDisplay(operations) {
+            const container = document.getElementById('recalculation-status');
+            
+            if (!operations || operations.length === 0) {
+                container.innerHTML = '<p>No recalculation operations found.</p>';
+                return;
+            }
+            
+            container.innerHTML = operations.map(op => `
+                <div class="operation-card">
+                    <div class="operation-header">
+                        <h4>Operation ${op.operation_id}</h4>
+                        <span class="status-badge status-${op.status}">${op.status}</span>
+                    </div>
+                    <div class="operation-details">
+                        <div class="detail-row">
+                            <span class="label">User ID:</span>
+                            <span class="value">${op.user_id || 'All users'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Days Back:</span>
+                            <span class="value">${op.days_back === 0 ? 'All time' : op.days_back}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Total Activities:</span>
+                            <span class="value">${op.total_activities}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Processed:</span>
+                            <span class="value">${op.processed_count} / ${op.total_activities}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Success:</span>
+                            <span class="value">${op.success_count}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Errors:</span>
+                            <span class="value">${op.error_count}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Progress:</span>
+                            <span class="value">${op.progress_percentage.toFixed(1)}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${op.progress_percentage}%"></div>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Started:</span>
+                            <span class="value">${new Date(op.started_at).toLocaleString()}</span>
+                        </div>
+                        ${op.completed_at ? `
+                        <div class="detail-row">
+                            <span class="label">Completed:</span>
+                            <span class="value">${new Date(op.completed_at).toLocaleString()}</span>
+                        </div>
+                        ` : ''}
+                        ${op.error_message ? `
+                        <div class="detail-row error">
+                            <span class="label">Error:</span>
+                            <span class="value">${op.error_message}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Run deployment validation
+        async function runDeploymentValidation() {
+            try {
+                showLoading(true);
+                
+                const response = await fetch('/api/admin/deployment/validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        validation_type: 'pre_deployment'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const summary = data.summary;
+                    const message = `Validation completed: ${summary.passed_checks}/${summary.total_checks} checks passed`;
+                    const alertType = summary.failed_checks > 0 ? 'warning' : 'success';
+                    showAlert(message, alertType);
+                } else {
+                    showAlert('Error running validation: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error running validation: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load calculation method statistics
+        async function loadCalculationStats() {
+            try {
+                const response = await fetch('/api/admin/trimp-calculation-stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateCalculationStats(data.statistics);
+                } else {
+                    console.error('Error loading calculation stats:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading calculation stats:', error);
+            }
+        }
+
+        // Update calculation statistics display
+        function updateCalculationStats(stats) {
+            updateCalculationOverview(stats);
+            updateCalculationMethodsTable(stats.calculation_methods);
+            updateUserStatsTable(stats.user_statistics);
+        }
+
+        // Update calculation overview cards
+        function updateCalculationOverview(stats) {
+            const container = document.getElementById('calculation-overview');
+            
+            const totalActivities = stats.total_activities || 0;
+            const enhancedCount = stats.calculation_methods.find(m => m.trimp_calculation_method === 'enhanced_stream')?.count || 0;
+            const averageCount = stats.calculation_methods.find(m => m.trimp_calculation_method === 'average_hr')?.count || 0;
+            const legacyCount = stats.calculation_methods.find(m => m.trimp_calculation_method === 'legacy')?.count || 0;
+            
+            const enhancedPercentage = totalActivities > 0 ? (enhancedCount / totalActivities * 100).toFixed(1) : 0;
+            const averagePercentage = totalActivities > 0 ? (averageCount / totalActivities * 100).toFixed(1) : 0;
+            
+            container.innerHTML = `
+                <div class="status-card">
+                    <h3>Total Activities</h3>
+                    <div class="metric-value">${totalActivities.toLocaleString()}</div>
+                    <p>Activities with TRIMP data</p>
+                </div>
+                <div class="status-card">
+                    <h3>Enhanced TRIMP</h3>
+                    <div class="metric-value">${enhancedCount.toLocaleString()}</div>
+                    <p>${enhancedPercentage}% of total</p>
+                </div>
+                <div class="status-card">
+                    <h3>Average HR</h3>
+                    <div class="metric-value">${averageCount.toLocaleString()}</div>
+                    <p>${averagePercentage}% of total</p>
+                </div>
+                <div class="status-card">
+                    <h3>Legacy</h3>
+                    <div class="metric-value">${legacyCount.toLocaleString()}</div>
+                    <p>${totalActivities > 0 ? (legacyCount / totalActivities * 100).toFixed(1) : 0}% of total</p>
+                </div>
+            `;
+        }
+
+        // Update calculation methods table
+        function updateCalculationMethodsTable(methods) {
+            const tbody = document.querySelector('#calculation-methods-table tbody');
+            
+            if (!methods || methods.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">No calculation method data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = methods.map(method => {
+                const methodClass = getMethodClass(method.trimp_calculation_method);
+                const methodName = getMethodDisplayName(method.trimp_calculation_method);
+                
+                return `
+                    <tr>
+                        <td><span class="method-badge ${methodClass}">${methodName}</span></td>
+                        <td>${method.count.toLocaleString()}</td>
+                        <td>${method.avg_trimp ? method.avg_trimp.toFixed(2) : 'N/A'}</td>
+                        <td>${method.min_trimp ? method.min_trimp.toFixed(2) : 'N/A'}</td>
+                        <td>${method.max_trimp ? method.max_trimp.toFixed(2) : 'N/A'}</td>
+                        <td>${(method.avg_hr_samples != null && typeof method.avg_hr_samples === 'number') ? method.avg_hr_samples.toFixed(0) : 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Update user statistics table
+        function updateUserStatsTable(userStats) {
+            const tbody = document.querySelector('#user-stats-table tbody');
+            
+            if (!userStats || userStats.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No user statistics available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = userStats.map(stat => {
+                const methodClass = getMethodClass(stat.trimp_calculation_method);
+                const methodName = getMethodDisplayName(stat.trimp_calculation_method);
+                
+                return `
+                    <tr>
+                        <td>User ${stat.user_id}</td>
+                        <td><span class="method-badge ${methodClass}">${methodName}</span></td>
+                        <td>${stat.count.toLocaleString()}</td>
+                        <td>${stat.avg_trimp ? stat.avg_trimp.toFixed(2) : 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Get CSS class for method badge
+        function getMethodClass(method) {
+            switch (method) {
+                case 'enhanced_stream':
+                    return 'method-enhanced';
+                case 'average_hr':
+                    return 'method-average';
+                case 'legacy':
+                    return 'method-legacy';
+                default:
+                    return 'method-legacy';
+            }
+        }
+
+        // Get display name for method
+        function getMethodDisplayName(method) {
+            switch (method) {
+                case 'enhanced_stream':
+                    return 'Enhanced Stream';
+                case 'average_hr':
+                    return 'Average HR';
+                case 'legacy':
+                    return 'Legacy';
+                default:
+                    return method || 'Unknown';
+            }
+        }
+
+        // Load performance monitoring data
+        async function loadPerformanceMetrics() {
+            try {
+                const response = await fetch('/api/admin/trimp-performance-metrics');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updatePerformanceMonitoring(data.performance_metrics);
+                } else {
+                    console.error('Error loading performance metrics:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading performance metrics:', error);
+            }
+        }
+
+        // Update performance monitoring display
+        function updatePerformanceMonitoring(metrics) {
+            updatePerformanceOverview(metrics);
+            updateRealTimeMetrics(metrics.system_metrics);
+            updatePerformanceAlerts(metrics.alerts);
+            updatePerformanceChart(metrics.hourly_trends);
+        }
+
+        // Update performance overview cards
+        function updatePerformanceOverview(metrics) {
+            const container = document.getElementById('performance-overview');
+            
+            const totalCalculations = metrics.calculation_performance.reduce((sum, method) => sum + method.total_calculations, 0);
+            const avgSuccessRate = metrics.calculation_performance.length > 0 ? 
+                metrics.calculation_performance.reduce((sum, method) => sum + (method.success_rate * 100), 0) / metrics.calculation_performance.length : 0;
+            const totalErrors = metrics.error_rates.reduce((sum, method) => sum + method.error_count, 0);
+            const avgResponseTime = metrics.system_metrics.response_time_ms;
+            
+            container.innerHTML = `
+                <div class="status-card">
+                    <h3>Total Calculations</h3>
+                    <div class="metric-value">${totalCalculations.toLocaleString()}</div>
+                    <p>Last 24 hours</p>
+                </div>
+                <div class="status-card">
+                    <h3>Success Rate</h3>
+                    <div class="metric-value">${avgSuccessRate ? avgSuccessRate.toFixed(1) : 'N/A'}%</div>
+                    <p>Average across methods</p>
+                </div>
+                <div class="status-card">
+                    <h3>Error Count</h3>
+                    <div class="metric-value">${totalErrors || 0}</div>
+                    <p>Last 24 hours</p>
+                </div>
+                <div class="status-card">
+                    <h3>Response Time</h3>
+                    <div class="metric-value">${avgResponseTime ? avgResponseTime.toFixed(1) : 'N/A'}ms</div>
+                    <p>Average response time</p>
+                </div>
+            `;
+        }
+
+        // Update real-time metrics
+        function updateRealTimeMetrics(systemMetrics) {
+            const container = document.getElementById('real-time-metrics');
+            
+            container.innerHTML = `
+                <div class="metric-card ${systemMetrics.cpu_usage > 80 ? 'danger' : systemMetrics.cpu_usage > 60 ? 'warning' : 'success'}">
+                    <div class="metric-value">${systemMetrics.cpu_usage ? systemMetrics.cpu_usage.toFixed(1) : 'N/A'}%</div>
+                    <div class="metric-label">CPU Usage</div>
+                </div>
+                <div class="metric-card ${systemMetrics.memory_usage > 80 ? 'danger' : systemMetrics.memory_usage > 60 ? 'warning' : 'success'}">
+                    <div class="metric-value">${systemMetrics.memory_usage ? systemMetrics.memory_usage.toFixed(1) : 'N/A'}%</div>
+                    <div class="metric-label">Memory Usage</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${systemMetrics.database_connections || 'N/A'}</div>
+                    <div class="metric-label">DB Connections</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${systemMetrics.active_users || 'N/A'}</div>
+                    <div class="metric-label">Active Users</div>
+                </div>
+                <div class="metric-card ${systemMetrics.response_time_ms > 200 ? 'warning' : 'success'}">
+                    <div class="metric-value">${systemMetrics.response_time_ms ? systemMetrics.response_time_ms.toFixed(1) : 'N/A'}ms</div>
+                    <div class="metric-label">Response Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${systemMetrics.throughput_per_minute ? systemMetrics.throughput_per_minute.toFixed(1) : 'N/A'}</div>
+                    <div class="metric-label">Throughput/min</div>
+                </div>
+            `;
+        }
+
+        // Update performance alerts
+        function updatePerformanceAlerts(alerts) {
+            const container = document.getElementById('performance-alerts');
+            
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div class="alert-item success">✅ All systems operating normally</div>';
+                return;
+            }
+            
+            container.innerHTML = alerts.map(alert => `
+                <div class="alert-item ${alert.type}">
+                    ${alert.message}
+                </div>
+            `).join('');
+        }
+
+        // Update performance chart (simplified version)
+        function updatePerformanceChart(hourlyTrends) {
+            const canvas = document.getElementById('performance-chart');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Simple chart implementation
+            ctx.fillStyle = '#007bff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Performance Trends Chart', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('(Chart implementation would go here)', canvas.width / 2, canvas.height / 2 + 20);
+            
+            // In a real implementation, you would use a charting library like Chart.js
+            // to create actual charts with the hourly trends data
+        }
+
+        // Run calculation method comparison
+        async function runCalculationComparison() {
+            const userId = document.getElementById('compare-user-id').value;
+            const activityCount = parseInt(document.getElementById('compare-activity-count').value);
+            const daysBack = parseInt(document.getElementById('compare-days-back').value);
+            
+            // Validate inputs
+            if (!userId || isNaN(userId) || userId < 1) {
+                showAlert('Please enter a valid User ID (must be 1 or greater)', 'danger');
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                
+                const response = await fetch('/api/admin/trimp-comparison', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: parseInt(userId),
+                        activity_count: activityCount,
+                        days_back: daysBack
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateComparisonResults(data.comparison_results, data.summary);
+                    document.getElementById('comparison-results').style.display = 'block';
+                    showAlert('Comparison completed successfully!', 'success');
+                } else {
+                    showAlert('Error running comparison: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error running comparison: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Update comparison results display
+        function updateComparisonResults(results, summary) {
+            updateComparisonSummary(summary);
+            updateComparisonTable(results);
+        }
+
+        // Update comparison summary
+        function updateComparisonSummary(summary) {
+            const container = document.getElementById('comparison-summary');
+            
+            container.innerHTML = `
+                <div class="status-card">
+                    <h3>Total Activities</h3>
+                    <div class="metric-value">${summary.total_activities}</div>
+                    <p>Compared</p>
+                </div>
+                <div class="status-card">
+                    <h3>With HR Stream</h3>
+                    <div class="metric-value">${summary.activities_with_hr_stream}</div>
+                    <p>${summary.total_activities > 0 ? ((summary.activities_with_hr_stream / summary.total_activities) * 100).toFixed(1) : '0'}%</p>
+                </div>
+                <div class="status-card">
+                    <h3>Avg Enhanced TRIMP</h3>
+                    <div class="metric-value">${summary.avg_enhanced_trimp}</div>
+                    <p>Enhanced method</p>
+                </div>
+                <div class="status-card">
+                    <h3>Avg Average HR TRIMP</h3>
+                    <div class="metric-value">${summary.avg_average_trimp}</div>
+                    <p>Average HR method</p>
+                </div>
+                <div class="status-card">
+                    <h3>Avg Difference</h3>
+                    <div class="metric-value ${summary.avg_difference > 0 ? 'difference-positive' : summary.avg_difference < 0 ? 'difference-negative' : 'difference-neutral'}">${summary.avg_difference > 0 ? '+' : ''}${summary.avg_difference}</div>
+                    <p>Enhanced - Average HR</p>
+                </div>
+                <div class="status-card">
+                    <h3>Avg % Difference</h3>
+                    <div class="metric-value ${summary.avg_percentage_difference > 0 ? 'difference-positive' : summary.avg_percentage_difference < 0 ? 'difference-negative' : 'difference-neutral'}">${summary.avg_percentage_difference !== null && summary.avg_percentage_difference !== undefined ? (summary.avg_percentage_difference > 0 ? '+' : '') + summary.avg_percentage_difference.toFixed(1) + '%' : 'N/A'}</div>
+                    <p>Percentage change</p>
+                </div>
+            `;
+        }
+
+        // Update comparison table
+        function updateComparisonTable(results) {
+            const tbody = document.querySelector('#comparison-table tbody');
+            
+            tbody.innerHTML = results.map(result => {
+                const differenceClass = result.difference > 0 ? 'difference-positive' : 
+                                      result.difference < 0 ? 'difference-negative' : 'difference-neutral';
+                const percentageClass = result.percentage_difference > 0 ? 'difference-positive' : 
+                                      result.percentage_difference < 0 ? 'difference-negative' : 'difference-neutral';
+                
+                return `
+                    <tr>
+                        <td>${result.activity_id}</td>
+                        <td>${new Date(result.date).toLocaleDateString()}</td>
+                        <td>${result.duration ? result.duration.toFixed(1) : 'N/A'} min</td>
+                        <td>${result.avg_hr} bpm</td>
+                        <td>${result.enhanced_trimp}</td>
+                        <td>${result.average_trimp}</td>
+                        <td class="${differenceClass}">${result.difference > 0 ? '+' : ''}${result.difference}</td>
+                        <td class="${percentageClass}">${result.percentage_difference !== null && result.percentage_difference !== undefined ? (result.percentage_difference > 0 ? '+' : '') + result.percentage_difference.toFixed(1) + '%' : 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Clear comparison results
+        function clearComparisonResults() {
+            document.getElementById('comparison-results').style.display = 'none';
+            document.getElementById('comparison-summary').innerHTML = '';
+            document.querySelector('#comparison-table tbody').innerHTML = '';
+        }
+
+        // Show/hide loading indicator
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alertsContainer = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alertsContainer.appendChild(alert);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.parentNode.removeChild(alert);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

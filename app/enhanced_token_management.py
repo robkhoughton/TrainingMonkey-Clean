@@ -203,7 +203,7 @@ class SimpleTokenManager:
                     logger.info(f"No secure tokens found for user {self.user_id}")
                     
             except Exception as secure_error:
-                logger.warning(f"Secure storage not available, using basic storage: {str(secure_error)}")
+                logger.warning(f"Secure storage failed for user {self.user_id}, falling back to basic storage: {str(secure_error)}")
 
             # Fallback to basic storage
             query = """
@@ -571,6 +571,26 @@ class SimpleTokenManager:
                 'athlete_name': None
             }
 
+    def _validate_tokens_with_strava(self, tokens):
+        """Validate tokens by making a test API call to Strava"""
+        try:
+            from stravalib.client import Client
+            
+            # Create a client with the access token
+            client = Client(access_token=tokens.get('access_token'))
+            
+            # Make a simple API call to validate the token
+            # Using get_athlete() as it's a lightweight call
+            athlete = client.get_athlete()
+            
+            # If we get here without an exception, the token is valid
+            logger.debug(f"Token validation successful for user {self.user_id}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Token validation failed for user {self.user_id}: {str(e)}")
+            return False
+
     def get_simple_token_status(self):
         """Get simple token status for monitoring"""
         try:
@@ -584,12 +604,21 @@ class SimpleTokenManager:
                 }
 
             # Check if tokens are completely invalid (NULL values)
-            if not tokens.get('strava_access_token') or not tokens.get('strava_refresh_token'):
+            if not tokens.get('access_token') or not tokens.get('refresh_token'):
                 return {
                     'status': 'invalid_tokens',
                     'message': 'Tokens are invalid - need to reconnect Strava',
                     'needs_auth': True
                 }
+            
+            # Validate tokens with Strava API if they exist
+            # Temporarily disabled to debug token validation issues
+            # if not self._validate_tokens_with_strava(tokens):
+            #     return {
+            #         'status': 'invalid_tokens',
+            #         'message': 'Tokens are invalid with Strava API - need to reconnect Strava',
+            #         'needs_auth': True
+            #     }
 
             current_time = int(time.time())
             expires_at = tokens.get('expires_at', 0)

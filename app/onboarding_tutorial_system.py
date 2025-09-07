@@ -1075,7 +1075,7 @@ class OnboardingTutorialSystem:
                     """, (session.user_id, json.dumps([session_data]), json.dumps([session_data])))
                 else:
                     cursor.execute("""
-                        INSERT OR REPLACE INTO user_settings (user_id, tutorial_sessions)
+                        INSERT INTO user_settings (user_id, tutorial_sessions)
                         VALUES (?, ?)
                     """, (session.user_id, json.dumps([session_data])))
             

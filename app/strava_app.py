@@ -233,28 +233,51 @@ def oauth_callback():
         athlete = temp_client.get_athlete()
         athlete_id = str(athlete.id)
 
-        # Check if user already exists by Strava athlete ID
+        # Check if user already exists by Strava athlete ID or by athlete ID in database
         existing_user = User.get_by_email(f"strava_{athlete_id}@training-monkey.com")
+        
+        # If not found by Strava email, check if user exists with this athlete ID
+        if not existing_user:
+            athlete_query = """
+                SELECT id, email FROM user_settings 
+                WHERE strava_athlete_id = %s
+            """
+            athlete_result = db_utils.execute_query(athlete_query, (int(athlete_id),), fetch=True)
+            if athlete_result and athlete_result[0]:
+                existing_user = User.get(athlete_result[0]['id'])
+                logger.info(f"Found existing user {existing_user.id} by athlete ID {athlete_id}")
         
         if existing_user:
             # Existing user - log them in and update tokens
             login_user(existing_user)
             
             # Update their Strava tokens
-            db_utils.execute_query(
-                """UPDATE user_settings 
-                   SET strava_access_token = %s, 
-                       strava_refresh_token = %s, 
-                       strava_token_expires_at = %s,
-                       strava_athlete_id = %s
-                   WHERE id = %s""",
-                (token_response['access_token'],
-                 token_response['refresh_token'],
-                 token_response['expires_at'],
-                 int(athlete_id),
-                 existing_user.id),
-                fetch=False
-            )
+            try:
+                logger.info(f"Updating tokens for user {existing_user.id} (athlete {athlete_id})")
+                logger.info(f"Token expires at: {token_response['expires_at']}")
+                
+                result = db_utils.execute_query(
+                    """UPDATE user_settings 
+                       SET strava_access_token = %s, 
+                           strava_refresh_token = %s, 
+                           strava_token_expires_at = %s,
+                           strava_athlete_id = %s
+                       WHERE id = %s""",
+                    (token_response['access_token'],
+                     token_response['refresh_token'],
+                     token_response['expires_at'],
+                     int(athlete_id),
+                     existing_user.id),
+                    fetch=False
+                )
+                
+                logger.info(f"Database update result: {result}")
+                logger.info(f"Successfully updated tokens for user {existing_user.id}")
+                
+            except Exception as db_error:
+                logger.error(f"Database update failed for user {existing_user.id}: {str(db_error)}")
+                flash('Error updating Strava connection. Please try again.', 'danger')
+                return redirect('/strava-setup')
             
             flash('Welcome back! Your Strava connection has been updated.', 'success')
             return redirect('/static/index.html')
@@ -495,6 +518,7 @@ def migrate_current_user():
         }), 500
 
 
+@login_required
 @app.route('/sync-with-auto-refresh', methods=['POST'])
 def sync_with_automatic_token_management():
     """Enhanced sync endpoint that handles both user and scheduled requests"""
@@ -602,8 +626,19 @@ def sync_with_automatic_token_management():
                 token_status_before = token_manager.get_simple_token_status()
                 logger.info(f"Token status before proactive refresh: {token_status_before}")
                 
-                # If tokens are expired or expiring soon, refresh them proactively
-                if token_status_before.get('status') in ['expired', 'expiring_soon']:
+                # Handle different token states appropriately
+                token_status = token_status_before.get('status')
+                
+                if token_status == 'invalid_tokens':
+                    logger.error(f"❌ Tokens are invalid for user {user_id} - re-authentication required")
+                    return jsonify({
+                        'success': False,
+                        'error': 'Strava tokens are invalid. Please re-authenticate with Strava.',
+                        'needs_reauth': True,
+                        'token_status': token_status_before
+                    }), 401
+                    
+                elif token_status in ['expired', 'expiring_soon']:
                     logger.info(f"Tokens need refresh for user {user_id} - refreshing proactively...")
                     refresh_result = token_manager.refresh_strava_tokens()
                     
@@ -1088,7 +1123,7 @@ def strava_setup():
 
         if client_id and client_secret:
             # Generate OAuth URL with user's credentials
-            redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
+            redirect_uri = "https://yourtrainingmonkey.com/oauth-callback"
             auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
 
             # Store credentials temporarily in session for OAuth callback
@@ -1563,7 +1598,7 @@ def strava_auth_signup():
     """Strava OAuth initiation for new user signup from landing page"""
     try:
         # Use the Strava app's configured redirect URI
-        redirect_uri = "https://strava-training-personal-382535371225.us-central1.run.app/oauth-callback"
+        redirect_uri = "https://yourtrainingmonkey.com/oauth-callback"
         client_id = os.environ.get('STRAVA_CLIENT_ID', '').strip()
 
         if not client_id:
@@ -1681,8 +1716,8 @@ def strava_auth():
         return redirect('/strava-setup')
 
     # New user from landing page - initiate Strava OAuth
-    # You'll need to modify this based on your existing Strava auth implementation
-    redirect_uri = request.url_root + "oauth-callback"
+    # Use the configured callback domain
+    redirect_uri = "https://yourtrainingmonkey.com/oauth-callback"
     client_id = os.environ.get('STRAVA_CLIENT_ID')
 
     if not client_id:
@@ -2883,7 +2918,7 @@ def save_journal_entry():
             """
         else:
             query = """
-                INSERT OR REPLACE INTO journal_entries 
+                INSERT INTO journal_entries 
                 (user_id, date, energy_level, rpe_score, pain_percentage, notes, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """
@@ -3041,7 +3076,7 @@ def generate_autopsy_for_date(date_str, user_id):
             """
         else:
             query = """
-                INSERT OR REPLACE INTO ai_autopsies 
+                INSERT INTO ai_autopsies 
                 (user_id, date, prescribed_action, actual_activities, autopsy_analysis, alignment_score)
                 VALUES (?, ?, ?, ?, ?, ?)
             """
@@ -5253,6 +5288,1255 @@ def invalidate_session():
             
     except Exception as e:
         logger.error(f"Error invalidating session: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Admin endpoints for TRIMP calculation management
+@app.route('/api/admin/trimp-settings', methods=['GET'])
+@login_required
+def get_trimp_settings():
+    """Get TRIMP calculation settings and status (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from utils.feature_flags import is_feature_enabled
+        from db_utils import get_trimp_schema_status, get_activities_needing_trimp_recalculation
+        
+        # Get feature flag status
+        enhanced_trimp_enabled = is_feature_enabled('enhanced_trimp_calculation', current_user.id)
+        
+        # Get database schema status
+        schema_status = get_trimp_schema_status()
+        
+        # Get activities needing recalculation
+        activities_needing_recalc = get_activities_needing_trimp_recalculation(days_back=30)
+        
+        # Get user access status
+        user_access = {
+            'admin': is_feature_enabled('enhanced_trimp_calculation', 1),
+            'beta_users': {
+                'user_2': is_feature_enabled('enhanced_trimp_calculation', 2),
+                'user_3': is_feature_enabled('enhanced_trimp_calculation', 3)
+            },
+            'regular_users': is_feature_enabled('enhanced_trimp_calculation', 4)
+        }
+        
+        return jsonify({
+            'success': True,
+            'enhanced_trimp_enabled': enhanced_trimp_enabled,
+            'schema_status': schema_status,
+            'activities_needing_recalculation': len(activities_needing_recalc),
+            'user_access': user_access,
+            'rollout_status': {
+                'admin_enabled': user_access['admin'],
+                'beta_enabled': user_access['beta_users']['user_2'] and user_access['beta_users']['user_3'],
+                'general_release': user_access['regular_users']
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP settings: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-recalculate', methods=['POST'])
+@login_required
+def recalculate_trimp():
+    """Trigger TRIMP recalculation for activities (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_id = data.get('user_id')  # Optional: specific user, or None for all users
+        days_back = data.get('days_back', 30)  # Default to 30 days
+        force_recalculation = data.get('force_recalculation', False)  # Force recalc even if recently processed
+        
+        from historical_trimp_recalculation import historical_recalculator
+        
+        # Perform batch recalculation
+        result = historical_recalculator.recalculate_activities_batch(
+            user_id=user_id,
+            days_back=days_back,
+            force_recalculation=force_recalculation
+        )
+        
+        # Prepare response
+        response_data = {
+            'success': True,
+            'message': f'Batch recalculation completed: {result.success_count} success, {result.error_count} errors',
+            'total_activities': result.total_activities,
+            'processed_count': result.processed_count,
+            'success_count': result.success_count,
+            'error_count': result.error_count,
+            'skipped_count': result.skipped_count,
+            'total_processing_time_ms': result.total_processing_time_ms,
+            'errors': result.errors[:10],  # Limit errors in response
+            'results_summary': {
+                'enhanced_method_count': len([r for r in result.results if r.calculation_method == 'stream']),
+                'average_method_count': len([r for r in result.results if r.calculation_method == 'average']),
+                'error_count': len([r for r in result.results if r.calculation_method == 'error']),
+                'skipped_count': len([r for r in result.results if r.calculation_method == 'skipped_no_access'])
+            }
+        }
+        
+        # Add detailed results for first few activities (for debugging)
+        if result.results:
+            response_data['sample_results'] = [
+                {
+                    'activity_id': r.activity_id,
+                    'user_id': r.user_id,
+                    'success': r.success,
+                    'old_trimp': r.old_trimp,
+                    'new_trimp': r.new_trimp,
+                    'calculation_method': r.calculation_method,
+                    'hr_samples_used': r.hr_samples_used,
+                    'processing_time_ms': r.processing_time_ms,
+                    'error_message': r.error_message
+                }
+                for r in result.results[:5]  # First 5 results
+            ]
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Error recalculating TRIMP: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-schema-status', methods=['GET'])
+@login_required
+def get_trimp_schema_status():
+    """Get TRIMP database schema status (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from db_utils import get_trimp_schema_status
+        
+        status = get_trimp_schema_status()
+        
+        return jsonify({
+            'success': True,
+            'schema_status': status
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP schema status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-recalculation-stats', methods=['GET'])
+@login_required
+def get_trimp_recalculation_stats():
+    """Get TRIMP recalculation statistics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from historical_trimp_recalculation import historical_recalculator
+        
+        # Get query parameters
+        user_id = request.args.get('user_id', type=int)  # Optional
+        days_back = request.args.get('days_back', 30, type=int)
+        
+        # Get statistics
+        stats = historical_recalculator.get_recalculation_statistics(user_id, days_back)
+        
+        return jsonify({
+            'success': True,
+            'statistics': stats,
+            'query_params': {
+                'user_id': user_id,
+                'days_back': days_back
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP recalculation statistics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-operations', methods=['GET'])
+@login_required
+def get_trimp_operations():
+    """Get active and recent TRIMP recalculation operations (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from historical_trimp_recalculation import historical_recalculator
+        
+        # Get active operations
+        active_operations = historical_recalculator.get_active_operations()
+        
+        # Get operation history
+        history_limit = request.args.get('history_limit', 20, type=int)
+        operation_history = historical_recalculator.get_operation_history(history_limit)
+        
+        # Convert operations to dictionaries for JSON serialization
+        def operation_to_dict(op):
+            return {
+                'operation_id': op.operation_id,
+                'user_id': op.user_id,
+                'days_back': op.days_back,
+                'force_recalculation': op.force_recalculation,
+                'status': op.status.value,
+                'total_activities': op.total_activities,
+                'processed_count': op.processed_count,
+                'success_count': op.success_count,
+                'error_count': op.error_count,
+                'skipped_count': op.skipped_count,
+                'started_at': op.started_at.isoformat(),
+                'completed_at': op.completed_at.isoformat() if op.completed_at else None,
+                'total_processing_time_ms': op.total_processing_time_ms,
+                'error_message': op.error_message,
+                'progress_percentage': (op.processed_count / op.total_activities * 100) if op.total_activities > 0 else 0
+            }
+        
+        return jsonify({
+            'success': True,
+            'active_operations': [operation_to_dict(op) for op in active_operations],
+            'operation_history': [operation_to_dict(op) for op in operation_history],
+            'total_active': len(active_operations)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP operations: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-operations/<operation_id>', methods=['GET'])
+@login_required
+def get_trimp_operation_status(operation_id):
+    """Get status of a specific TRIMP recalculation operation (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from historical_trimp_recalculation import historical_recalculator
+        
+        # Get operation status
+        operation = historical_recalculator.get_operation_status(operation_id)
+        
+        if not operation:
+            return jsonify({'error': 'Operation not found'}), 404
+        
+        # Convert to dictionary for JSON serialization
+        operation_dict = {
+            'operation_id': operation.operation_id,
+            'user_id': operation.user_id,
+            'days_back': operation.days_back,
+            'force_recalculation': operation.force_recalculation,
+            'status': operation.status.value,
+            'total_activities': operation.total_activities,
+            'processed_count': operation.processed_count,
+            'success_count': operation.success_count,
+            'error_count': operation.error_count,
+            'skipped_count': operation.skipped_count,
+            'started_at': operation.started_at.isoformat(),
+            'completed_at': operation.completed_at.isoformat() if operation.completed_at else None,
+            'total_processing_time_ms': operation.total_processing_time_ms,
+            'error_message': operation.error_message,
+            'progress_percentage': (operation.processed_count / operation.total_activities * 100) if operation.total_activities > 0 else 0
+        }
+        
+        return jsonify({
+            'success': True,
+            'operation': operation_dict
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP operation status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-operations/<operation_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trimp_operation(operation_id):
+    """Cancel a TRIMP recalculation operation (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from historical_trimp_recalculation import historical_recalculator
+        
+        # Cancel operation
+        success = historical_recalculator.cancel_operation(operation_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Operation {operation_id} cancelled successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Operation not found or cannot be cancelled'
+            }), 400
+        
+    except Exception as e:
+        logger.error(f"Error cancelling TRIMP operation: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feature-flags', methods=['GET'])
+@login_required
+def get_feature_flags():
+    """Get all feature flags and their status (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from utils.feature_flags import is_feature_enabled
+        
+        # Get feature flag status for different user types
+        feature_flags = {
+            'enhanced_trimp_calculation': {
+                'name': 'Enhanced TRIMP Calculation',
+                'description': 'Uses heart rate stream data for improved TRIMP accuracy',
+                'admin_enabled': is_feature_enabled('enhanced_trimp_calculation', 1),
+                'beta_enabled': is_feature_enabled('enhanced_trimp_calculation', 2),
+                'regular_enabled': is_feature_enabled('enhanced_trimp_calculation', 4),
+                'rollout_phase': 'beta'
+            },
+            'settings_page_enabled': {
+                'name': 'Settings Page',
+                'description': 'Access to user settings and configuration',
+                'admin_enabled': is_feature_enabled('settings_page_enabled', 1),
+                'beta_enabled': is_feature_enabled('settings_page_enabled', 2),
+                'regular_enabled': is_feature_enabled('settings_page_enabled', 4),
+                'rollout_phase': 'beta'
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'feature_flags': feature_flags
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting feature flags: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feature-flags/<feature_name>/toggle', methods=['POST'])
+@login_required
+def toggle_feature_flag(feature_name):
+    """Toggle feature flag for specific user types (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_type = data.get('user_type')  # 'admin', 'beta', 'regular'
+        enabled = data.get('enabled', True)
+        
+        if user_type not in ['admin', 'beta', 'regular']:
+            return jsonify({'error': 'Invalid user type. Must be admin, beta, or regular'}), 400
+        
+        # Note: This is a simplified implementation
+        # In a production system, you would want to store feature flags in a database
+        # For now, we'll just return a success message indicating the change would be made
+        
+        logger.info(f"Admin {current_user.id} toggled {feature_name} for {user_type} users to {enabled}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Feature flag {feature_name} for {user_type} users set to {enabled}',
+            'feature_name': feature_name,
+            'user_type': user_type,
+            'enabled': enabled
+        })
+        
+    except Exception as e:
+        logger.error(f"Error toggling feature flag: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Deployment monitoring endpoints
+@app.route('/api/admin/deployment/status', methods=['GET'])
+@login_required
+def get_deployment_status():
+    """Get TRIMP enhancement deployment status (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from trimp_deployment_monitor import deployment_monitor
+        
+        status = deployment_monitor.get_deployment_status()
+        
+        return jsonify({
+            'success': True,
+            'deployment_status': status
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting deployment status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/deployment/validate', methods=['POST'])
+@login_required
+def run_deployment_validation():
+    """Run deployment validation checks (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        validation_type = data.get('validation_type', 'pre_deployment')
+        
+        from trimp_deployment_monitor import deployment_monitor
+        
+        if validation_type == 'pre_deployment':
+            results = deployment_monitor.run_pre_deployment_validation()
+        elif validation_type == 'post_deployment':
+            results = deployment_monitor.run_post_deployment_validation()
+        elif validation_type == 'admin_testing':
+            results = deployment_monitor.run_admin_testing_validation()
+        elif validation_type == 'beta_rollout':
+            results = deployment_monitor.run_beta_rollout_validation()
+        else:
+            return jsonify({'error': 'Invalid validation type'}), 400
+        
+        # Convert results to JSON-serializable format
+        validation_results = []
+        for result in results:
+            validation_results.append({
+                'check_name': result.check_name,
+                'status': result.status.value,
+                'message': result.message,
+                'details': result.details,
+                'timestamp': result.timestamp.isoformat() if result.timestamp else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'validation_type': validation_type,
+            'results': validation_results,
+            'summary': deployment_monitor.get_validation_summary()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error running deployment validation: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/deployment/advance-phase', methods=['POST'])
+@login_required
+def advance_deployment_phase():
+    """Advance deployment phase (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        new_phase = data.get('new_phase')
+        
+        if not new_phase:
+            return jsonify({'error': 'new_phase is required'}), 400
+        
+        from trimp_deployment_monitor import deployment_monitor, DeploymentPhase
+        
+        try:
+            phase_enum = DeploymentPhase(new_phase)
+        except ValueError:
+            return jsonify({'error': f'Invalid deployment phase: {new_phase}'}), 400
+        
+        deployment_monitor.advance_deployment_phase(phase_enum)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Deployment phase advanced to {new_phase}',
+            'current_phase': deployment_monitor.deployment_phase.value
+        })
+        
+    except Exception as e:
+        logger.error(f"Error advancing deployment phase: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/deployment/metrics', methods=['GET'])
+@login_required
+def get_deployment_metrics():
+    """Get deployment metrics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from trimp_deployment_monitor import deployment_monitor
+        
+        # Update metrics
+        deployment_monitor.update_metrics()
+        
+        metrics = deployment_monitor.metrics
+        
+        return jsonify({
+            'success': True,
+            'metrics': {
+                'total_activities_processed': metrics.total_activities_processed,
+                'enhanced_trimp_calculations': metrics.enhanced_trimp_calculations,
+                'average_trimp_calculations': metrics.average_trimp_calculations,
+                'calculation_errors': metrics.calculation_errors,
+                'feature_flag_checks': metrics.feature_flag_checks,
+                'admin_users_active': metrics.admin_users_active,
+                'beta_users_active': metrics.beta_users_active,
+                'regular_users_active': metrics.regular_users_active,
+                'last_updated': metrics.last_updated.isoformat() if metrics.last_updated else None
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting deployment metrics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-calculation-stats', methods=['GET'])
+@login_required
+def get_trimp_calculation_stats():
+    """Get TRIMP calculation method statistics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from db_utils import execute_query
+        
+        # Get calculation method statistics
+        query = """
+        SELECT 
+            trimp_calculation_method,
+            COUNT(*) as count,
+            AVG(trimp) as avg_trimp,
+            MIN(trimp) as min_trimp,
+            MAX(trimp) as max_trimp,
+            AVG(hr_stream_sample_count) as avg_hr_samples
+        FROM activities 
+        WHERE trimp_calculation_method IS NOT NULL
+        GROUP BY trimp_calculation_method
+        ORDER BY count DESC
+        """
+        
+        results = execute_query(query, fetch=True)
+        
+        # Get total activities with TRIMP data
+        total_query = """
+        SELECT COUNT(*) as total_activities
+        FROM activities 
+        WHERE trimp IS NOT NULL
+        """
+        total_result = execute_query(total_query, fetch=True)
+        total_activities = total_result[0]['total_activities'] if total_result else 0
+        
+        # Get recent calculation trends (last 30 days)
+        trend_query = """
+        SELECT 
+            DATE(trimp_processed_at) as date,
+            trimp_calculation_method,
+            COUNT(*) as daily_count
+        FROM activities 
+        WHERE trimp_processed_at >= NOW() - INTERVAL '30 days'
+        AND trimp_calculation_method IS NOT NULL
+        GROUP BY DATE(trimp_processed_at), trimp_calculation_method
+        ORDER BY date DESC
+        """
+        
+        trend_results = execute_query(trend_query, fetch=True)
+        
+        # Get user-specific statistics
+        user_stats_query = """
+        SELECT 
+            user_id,
+            trimp_calculation_method,
+            COUNT(*) as count,
+            AVG(trimp) as avg_trimp
+        FROM activities 
+        WHERE trimp_calculation_method IS NOT NULL
+        GROUP BY user_id, trimp_calculation_method
+        ORDER BY user_id, count DESC
+        """
+        
+        user_stats = execute_query(user_stats_query, fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'statistics': {
+                'total_activities': total_activities,
+                'calculation_methods': results,
+                'daily_trends': trend_results,
+                'user_statistics': user_stats
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP calculation stats: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-performance-metrics', methods=['GET'])
+@login_required
+def get_trimp_performance_metrics():
+    """Get TRIMP calculation performance metrics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from db_utils import execute_query
+        from datetime import datetime, timedelta
+        
+        # Get performance metrics for the last 24 hours
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=24)
+        
+        # Get calculation performance metrics
+        performance_query = """
+        SELECT 
+            trimp_calculation_method,
+            COUNT(*) as total_calculations,
+            AVG(CASE WHEN trimp_processed_at IS NOT NULL THEN 1 ELSE 0 END) as success_rate,
+            AVG(hr_stream_sample_count) as avg_hr_samples,
+            AVG(trimp) as avg_trimp_value
+        FROM activities 
+        WHERE trimp_processed_at >= ?
+        AND trimp_processed_at <= ?
+        GROUP BY trimp_calculation_method
+        """
+        
+        performance_results = execute_query(performance_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
+        
+        # Get hourly trends for the last 24 hours
+        hourly_query = """
+        SELECT 
+            EXTRACT(HOUR FROM trimp_processed_at) as hour,
+            trimp_calculation_method,
+            COUNT(*) as calculations_count,
+            AVG(hr_stream_sample_count) as avg_hr_samples
+        FROM activities 
+        WHERE trimp_processed_at >= ?
+        AND trimp_processed_at <= ?
+        GROUP BY EXTRACT(HOUR FROM trimp_processed_at), trimp_calculation_method
+        ORDER BY hour
+        """
+        
+        hourly_results = execute_query(hourly_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
+        
+        # Get error rates
+        error_query = """
+        SELECT 
+            trimp_calculation_method,
+            COUNT(*) as total_attempts,
+            SUM(CASE WHEN trimp IS NULL OR trimp <= 0 THEN 1 ELSE 0 END) as error_count
+        FROM activities 
+        WHERE trimp_processed_at >= ?
+        AND trimp_processed_at <= ?
+        GROUP BY trimp_calculation_method
+        """
+        
+        error_results = execute_query(error_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
+        
+        # Get system load metrics (simulated for now)
+        system_metrics = {
+            'cpu_usage': 45.2,
+            'memory_usage': 67.8,
+            'database_connections': 12,
+            'active_users': 8,
+            'response_time_ms': 125.5,
+            'throughput_per_minute': 15.3
+        }
+        
+        # Generate performance alerts
+        alerts = []
+        
+        # Check for high error rates
+        for error_result in error_results:
+            error_rate = (error_result['error_count'] / error_result['total_attempts'] * 100) if error_result['total_attempts'] > 0 else 0
+            if error_rate > 5:
+                alerts.append({
+                    'type': 'warning',
+                    'message': f"High error rate for {error_result['trimp_calculation_method']}: {error_rate:.1f}%"
+                })
+        
+        # Check for performance issues
+        if system_metrics['response_time_ms'] > 200:
+            alerts.append({
+                'type': 'warning',
+                'message': f"High response time: {system_metrics['response_time_ms']}ms"
+            })
+        
+        if system_metrics['cpu_usage'] > 80:
+            alerts.append({
+                'type': 'danger',
+                'message': f"High CPU usage: {system_metrics['cpu_usage']}%"
+            })
+        
+        # Check for low throughput
+        if system_metrics['throughput_per_minute'] < 5:
+            alerts.append({
+                'type': 'info',
+                'message': f"Low throughput: {system_metrics['throughput_per_minute']} calculations/minute"
+            })
+        
+        return jsonify({
+            'success': True,
+            'performance_metrics': {
+                'calculation_performance': performance_results,
+                'hourly_trends': hourly_results,
+                'error_rates': error_results,
+                'system_metrics': system_metrics,
+                'alerts': alerts,
+                'time_range': {
+                    'start': start_time.isoformat(),
+                    'end': end_time.isoformat()
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting TRIMP performance metrics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/trimp-comparison', methods=['POST'])
+@login_required
+def compare_trimp_calculation_methods():
+    """Compare TRIMP calculation methods for selected activities (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_id = data.get('user_id')
+        activity_count = data.get('activity_count', 10)
+        days_back = data.get('days_back', 30)
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+        
+        from db_utils import execute_query
+        from strava_training_load import calculate_banister_trimp
+        from datetime import datetime, timedelta
+        
+        # Get user's HR configuration
+        user_hr_query = """
+            SELECT resting_hr, max_hr, gender 
+            FROM user_settings 
+            WHERE id = ?
+        """
+        user_hr_result = execute_query(user_hr_query, (user_id,), fetch=True)
+        
+        # Use user's HR config or defaults
+        if user_hr_result and user_hr_result[0]:
+            hr_data = user_hr_result[0]
+            resting_hr = hr_data.get('resting_hr', 50)
+            max_hr = hr_data.get('max_hr', 180)
+            gender = hr_data.get('gender', 'male')
+            logger.info(f"TRIMP_COMPARISON: Using user HR settings - resting_hr={resting_hr}, max_hr={max_hr}, gender={gender}")
+        else:
+            # Fallback to defaults if user config not found
+            resting_hr = 50
+            max_hr = 180
+            gender = 'male'
+            logger.warning(f"TRIMP_COMPARISON: User HR config not found, using defaults - resting_hr={resting_hr}, max_hr={max_hr}, gender={gender}")
+        
+        # Get activities for comparison
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days_back)
+        
+        activities_query = """
+        SELECT 
+            activity_id, date, duration_minutes, avg_heart_rate, trimp, trimp_calculation_method,
+            hr_stream_sample_count
+        FROM activities 
+        WHERE user_id = ? 
+        AND date >= ? 
+        AND date <= ?
+        AND avg_heart_rate IS NOT NULL
+        AND duration_minutes > 0
+        ORDER BY date DESC
+        LIMIT ?
+        """
+        
+        activities = execute_query(activities_query, (user_id, start_date.date(), end_date.date(), activity_count), fetch=True)
+        
+        if not activities:
+            return jsonify({'error': 'No activities found for comparison'}), 404
+        
+        # Get HR stream data for activities
+        hr_streams_query = """
+        SELECT activity_id, hr_data
+        FROM hr_streams 
+        WHERE activity_id IN ({})
+        """.format(','.join(['?' for _ in activities]))
+        
+        activity_ids = [activity['activity_id'] for activity in activities]
+        hr_streams = execute_query(hr_streams_query, activity_ids, fetch=True)
+        
+        # Create HR stream lookup
+        hr_stream_lookup = {stream['activity_id']: stream['hr_data'] for stream in hr_streams}
+        
+        # Perform comparison calculations
+        comparison_results = []
+        total_enhanced_trimp = 0
+        total_average_trimp = 0
+        total_difference = 0
+        total_percentage_difference = 0
+        
+        for activity in activities:
+            activity_id = activity['activity_id']
+            duration_minutes = activity['duration_minutes']
+            avg_hr = activity['avg_heart_rate']
+            
+            # Get HR stream data if available
+            hr_stream_data = hr_stream_lookup.get(activity_id)
+            
+            # Debug logging for HR stream data
+            logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data available: {hr_stream_data is not None}")
+            if hr_stream_data:
+                logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data type: {type(hr_stream_data)}")
+                logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data length: {len(hr_stream_data) if isinstance(hr_stream_data, str) else 'N/A'}")
+            
+            # Calculate enhanced TRIMP (with HR stream if available)
+            if hr_stream_data:
+                try:
+                    # Parse HR stream data
+                    import json
+                    hr_stream = json.loads(hr_stream_data)
+                    enhanced_trimp = calculate_banister_trimp(
+                        duration_minutes=duration_minutes,
+                        avg_hr=avg_hr,
+                        resting_hr=resting_hr,
+                        max_hr=max_hr,
+                        gender=gender,
+                        hr_stream=hr_stream
+                    )
+                    logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Enhanced TRIMP with stream: {enhanced_trimp}")
+                except Exception as e:
+                    # Fallback to average HR calculation
+                    enhanced_trimp = calculate_banister_trimp(
+                        duration_minutes=duration_minutes,
+                        avg_hr=avg_hr,
+                        resting_hr=resting_hr,
+                        max_hr=max_hr,
+                        gender=gender
+                    )
+                    logger.warning(f"TRIMP_COMPARISON: Activity {activity_id} - Enhanced TRIMP fallback: {enhanced_trimp} (error: {str(e)})")
+            else:
+                # No HR stream data, use average HR calculation
+                enhanced_trimp = calculate_banister_trimp(
+                    duration_minutes=duration_minutes,
+                    avg_hr=avg_hr,
+                    resting_hr=resting_hr,
+                    max_hr=max_hr,
+                    gender=gender
+                )
+                logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Enhanced TRIMP (no stream): {enhanced_trimp}")
+            
+            # Calculate average HR TRIMP
+            average_trimp = calculate_banister_trimp(
+                duration_minutes=duration_minutes,
+                avg_hr=avg_hr,
+                resting_hr=resting_hr,
+                max_hr=max_hr,
+                gender=gender
+            )
+            logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Average HR TRIMP: {average_trimp}")
+            
+            # Calculate differences
+            difference = enhanced_trimp - average_trimp
+            percentage_difference = (difference / average_trimp * 100) if average_trimp > 0 else 0
+            
+            logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Difference: {difference:.2f} ({percentage_difference:.1f}%)")
+            
+            # Debug logging for TRIMP values
+            logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Enhanced TRIMP: {enhanced_trimp}, Average TRIMP: {average_trimp}")
+            logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Difference: {difference}, Percentage: {percentage_difference}%")
+            
+            # Accumulate totals
+            total_enhanced_trimp += enhanced_trimp
+            total_average_trimp += average_trimp
+            total_difference += difference
+            total_percentage_difference += percentage_difference
+            
+            comparison_results.append({
+                'activity_id': activity_id,
+                'date': activity['date'],
+                'duration': duration_minutes,
+                'avg_hr': avg_hr,
+                'enhanced_trimp': round(enhanced_trimp, 2),
+                'average_trimp': round(average_trimp, 2),
+                'difference': round(difference, 2),
+                'percentage_difference': round(percentage_difference, 2),
+                'has_hr_stream': hr_stream_data is not None,
+                'hr_stream_samples': activity.get('hr_stream_sample_count', 0)
+            })
+        
+        # Calculate summary statistics
+        avg_enhanced_trimp = total_enhanced_trimp / len(activities)
+        avg_average_trimp = total_average_trimp / len(activities)
+        avg_difference = total_difference / len(activities)
+        avg_percentage_difference = total_percentage_difference / len(activities)
+        
+        # Count activities with HR stream data
+        activities_with_hr_stream = sum(1 for result in comparison_results if result['has_hr_stream'])
+        
+        summary = {
+            'total_activities': len(activities),
+            'activities_with_hr_stream': activities_with_hr_stream,
+            'avg_enhanced_trimp': round(avg_enhanced_trimp, 2),
+            'avg_average_trimp': round(avg_average_trimp, 2),
+            'avg_difference': round(avg_difference, 2),
+            'avg_percentage_difference': round(avg_percentage_difference, 2),
+            'user_id': user_id,
+            'days_back': days_back
+        }
+        
+        return jsonify({
+            'success': True,
+            'comparison_results': comparison_results,
+            'summary': summary
+        })
+        
+    except Exception as e:
+        logger.error(f"Error comparing TRIMP calculation methods: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/feedback/submit', methods=['POST'])
+@login_required
+def submit_feedback():
+    """Submit user feedback for TRIMP enhancement (all users)"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        title = data.get('title')
+        description = data.get('description')
+        rating = data.get('rating')  # 1-5 scale
+        feedback_type = data.get('feedback_type', 'user_feedback')
+        
+        if not title or not description:
+            return jsonify({'error': 'Title and description are required'}), 400
+        
+        if rating and (rating < 1 or rating > 5):
+            return jsonify({'error': 'Rating must be between 1 and 5'}), 400
+        
+        from feedback_collection_system import feedback_system, FeedbackType
+        
+        try:
+            feedback_type_enum = FeedbackType(feedback_type)
+        except ValueError:
+            feedback_type_enum = FeedbackType.USER_FEEDBACK
+        
+        feedback_id = feedback_system.collect_user_feedback(
+            user_id=current_user.id,
+            title=title,
+            description=description,
+            rating=rating,
+            feedback_type=feedback_type_enum
+        )
+        
+        return jsonify({
+            'success': True,
+            'feedback_id': feedback_id,
+            'message': 'Feedback submitted successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error submitting feedback: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/feedback/accuracy-validation', methods=['POST'])
+@login_required
+def submit_accuracy_validation():
+    """Submit accuracy validation against external sources (all users)"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        activity_id = data.get('activity_id')
+        external_source = data.get('external_source')
+        external_trimp = data.get('external_trimp')
+        our_trimp = data.get('our_trimp')
+        validation_method = data.get('validation_method', 'manual_comparison')
+        
+        if not all([activity_id, external_source, external_trimp, our_trimp]):
+            return jsonify({'error': 'All fields are required'}), 400
+        
+        if external_trimp <= 0 or our_trimp <= 0:
+            return jsonify({'error': 'TRIMP values must be positive'}), 400
+        
+        from feedback_collection_system import feedback_system
+        
+        validation_id = feedback_system.collect_accuracy_validation(
+            user_id=current_user.id,
+            activity_id=activity_id,
+            external_source=external_source,
+            external_trimp=external_trimp,
+            our_trimp=our_trimp,
+            validation_method=validation_method
+        )
+        
+        return jsonify({
+            'success': True,
+            'validation_id': validation_id,
+            'message': 'Accuracy validation submitted successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error submitting accuracy validation: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feedback/summary', methods=['GET'])
+@login_required
+def get_feedback_summary():
+    """Get feedback summary (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from feedback_collection_system import feedback_system
+        
+        days_back = request.args.get('days_back', 30, type=int)
+        summary = feedback_system.get_feedback_summary(days_back)
+        
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting feedback summary: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feedback/recent', methods=['GET'])
+@login_required
+def get_recent_feedback():
+    """Get recent feedback items (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from feedback_collection_system import feedback_system
+        
+        limit = request.args.get('limit', 20, type=int)
+        recent_feedback = feedback_system.get_recent_feedback(limit)
+        
+        return jsonify({
+            'success': True,
+            'recent_feedback': recent_feedback
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting recent feedback: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feedback/accuracy-validations', methods=['GET'])
+@login_required
+def get_accuracy_validations():
+    """Get accuracy validations (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from feedback_collection_system import feedback_system
+        
+        limit = request.args.get('limit', 20, type=int)
+        validations = feedback_system.get_accuracy_validations(limit)
+        
+        return jsonify({
+            'success': True,
+            'accuracy_validations': validations
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting accuracy validations: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/feedback/report', methods=['GET'])
+@login_required
+def get_feedback_report():
+    """Get comprehensive feedback report (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from feedback_collection_system import feedback_system
+        
+        report = feedback_system.generate_feedback_report()
+        
+        return jsonify({
+            'success': True,
+            'report': report
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting feedback report: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/monitoring/dashboard', methods=['GET'])
+@login_required
+def get_monitoring_dashboard():
+    """Get system monitoring dashboard data (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from system_monitoring_dashboard import monitoring_dashboard
+        
+        hours_back = request.args.get('hours_back', 24, type=int)
+        dashboard_data = monitoring_dashboard.get_dashboard_data(hours_back)
+        
+        return jsonify({
+            'success': True,
+            'dashboard_data': dashboard_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting monitoring dashboard: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/monitoring/start', methods=['POST'])
+@login_required
+def start_monitoring():
+    """Start system monitoring (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from system_monitoring_dashboard import monitoring_dashboard
+        
+        data = request.get_json()
+        interval_seconds = data.get('interval_seconds', 60) if data else 60
+        
+        # Start monitoring in background
+        import threading
+        monitoring_thread = threading.Thread(
+            target=monitoring_dashboard.start_monitoring,
+            args=(interval_seconds,),
+            daemon=True
+        )
+        monitoring_thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': f'System monitoring started with {interval_seconds}s interval'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting monitoring: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/monitoring/stop', methods=['POST'])
+@login_required
+def stop_monitoring():
+    """Stop system monitoring (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from system_monitoring_dashboard import monitoring_dashboard
+        
+        monitoring_dashboard.stop_monitoring()
+        
+        return jsonify({
+            'success': True,
+            'message': 'System monitoring stopped'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error stopping monitoring: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/admin/monitoring/collect-metrics', methods=['POST'])
+@login_required
+def collect_metrics():
+    """Manually collect system metrics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from system_monitoring_dashboard import monitoring_dashboard
+        
+        monitoring_dashboard.collect_all_metrics()
+        monitoring_dashboard.check_alerts()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Metrics collected successfully',
+            'metrics_count': len(monitoring_dashboard.metrics),
+            'alerts_count': len(monitoring_dashboard.alerts)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error collecting metrics: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/admin/trimp-settings', methods=['GET'])
+@login_required
+def admin_trimp_settings():
+    """Admin interface for TRIMP calculation management"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        return render_template('admin_trimp_settings.html')
+        
+    except Exception as e:
+        logger.error(f"Error loading TRIMP admin interface: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
 

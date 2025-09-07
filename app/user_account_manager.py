@@ -369,7 +369,7 @@ class UserAccountManager:
             query = """
                 DELETE FROM user_settings 
                 WHERE account_status = 'pending' 
-                AND created_at < datetime('now', '-{} days')
+                AND created_at < NOW() - INTERVAL '{} days'
             """.format(days_old)
             
             result = execute_query(query)

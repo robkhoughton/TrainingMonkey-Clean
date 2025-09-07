@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Data aggregation utilities for Training Monkey™
+Handles activity aggregation and sport breakdown calculations
+"""
+
+
+def aggregate_daily_activities_with_rest(activities):
+    """
+    ENHANCED: Aggregate activities by day but preserve rest days AND sport breakdown.
+
+    Now tracks running vs cycling breakdown for multi-sport visualization while
+    maintaining all existing logic and backward compatibility.
+    """
+    daily_aggregates = {}
+
+    for activity in activities:
+        date = activity['date']
+        activity_id = activity['activity_id']
+
+        # If it's a rest day (negative activity_id), keep it as-is
+        if activity_id <= 0:
+            if date not in daily_aggregates:
+                daily_aggregates[date] = activity.copy()
+                daily_aggregates[date]['is_rest_day'] = True
+                # Initialize sport breakdown fields for rest days
+                daily_aggregates[date]['running_load'] = 0
+                daily_aggregates[date]['cycling_load'] = 0
+                daily_aggregates[date]['running_distance'] = 0
+                daily_aggregates[date]['cycling_distance'] = 0
+                daily_aggregates[date]['sport_types'] = []
+                daily_aggregates[date]['activities'] = []
+                daily_aggregates[date]['day_type'] = 'rest'
+            # If there's already an entry for this date and it's not a rest day,
+            # the real activities take precedence
+            elif not daily_aggregates[date].get('is_rest_day', False):
+                continue  # Keep the real activity
+            else:
+                daily_aggregates[date] = activity.copy()
+                daily_aggregates[date]['is_rest_day'] = True
+                # Initialize sport breakdown fields for rest days
+                daily_aggregates[date]['running_load'] = 0
+                daily_aggregates[date]['cycling_load'] = 0
+                daily_aggregates[date]['running_distance'] = 0
+                daily_aggregates[date]['cycling_distance'] = 0
+                daily_aggregates[date]['sport_types'] = []
+                daily_aggregates[date]['activities'] = []
+                daily_aggregates[date]['day_type'] = 'rest'
+
+        else:
+            # Real activity - aggregate if there are multiple
+            if date not in daily_aggregates or daily_aggregates[date].get('is_rest_day', False):
+                # First real activity of the day, or replacing a rest day
+                daily_aggregates[date] = activity.copy()
+                daily_aggregates[date]['activity_count'] = 1
+                daily_aggregates[date]['is_rest_day'] = False
+
+                # NEW: Initialize sport breakdown fields
+                sport_type = activity.get('sport_type', 'running')
+                daily_aggregates[date]['sport_types'] = [sport_type]
+                daily_aggregates[date]['activities'] = [{
+                    'type': activity.get('type', 'Unknown'),
+                    'sport': sport_type,
+                    'distance': activity.get('distance_miles', 0),
+                    'load': activity.get('total_load_miles', 0),
+                    'cycling_equivalent': activity.get('cycling_equivalent_miles'),
+                    'average_speed': activity.get('average_speed_mph')
+                }]
+
+                # Set sport-specific loads
+                if sport_type == 'cycling':
+                    daily_aggregates[date]['cycling_load'] = activity.get('total_load_miles', 0)
+                    daily_aggregates[date]['running_load'] = 0
+                    daily_aggregates[date]['cycling_distance'] = activity.get('distance_miles', 0)
+                    daily_aggregates[date]['running_distance'] = 0
+                    daily_aggregates[date]['day_type'] = 'cycling'
+                else:  # running or other
+                    daily_aggregates[date]['running_load'] = activity.get('total_load_miles', 0)
+                    daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['running_distance'] = activity.get('distance_miles', 0)
+                    daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['day_type'] = 'running'
+
+            else:
+                # Additional real activity - aggregate
+                existing = daily_aggregates[date]
+                sport_type = activity.get('sport_type', 'running')
+
+                # EXISTING AGGREGATION LOGIC (preserved exactly from your current function)
+                existing['distance_miles'] += activity['distance_miles'] or 0
+                existing['elevation_gain_feet'] += activity['elevation_gain_feet'] or 0
+                existing['elevation_load_miles'] += activity['elevation_load_miles'] or 0
+                existing['total_load_miles'] += activity['total_load_miles'] or 0
+                existing['duration_minutes'] += activity['duration_minutes'] or 0
+                existing['trimp'] += activity['trimp'] or 0
+
+                # Sum HR zone times (your existing logic)
+                for i in range(1, 6):
+                    existing[f'time_in_zone{i}'] += activity[f'time_in_zone{i}'] or 0
+
+                # Duration-weighted average of heart rates (your existing logic)
+                total_duration = existing['duration_minutes']
+                if total_duration > 0 and activity['duration_minutes'] > 0:
+                    existing_duration = total_duration - activity['duration_minutes']
+
+                    if existing['avg_heart_rate'] > 0 and activity['avg_heart_rate'] > 0:
+                        existing['avg_heart_rate'] = (
+                                (existing['avg_heart_rate'] * existing_duration +
+                                 activity['avg_heart_rate'] * activity['duration_minutes']) / total_duration
+                        )
+
+                    # Take max of max HR (your existing logic)
+                    if activity['max_heart_rate'] > existing['max_heart_rate']:
+                        existing['max_heart_rate'] = activity['max_heart_rate']
+
+                # Keep the latest calculated metrics (your existing logic)
+                existing['seven_day_avg_load'] = activity['seven_day_avg_load']
+                existing['twentyeight_day_avg_load'] = activity['twentyeight_day_avg_load']
+                existing['seven_day_avg_trimp'] = activity['seven_day_avg_trimp']
+                existing['twentyeight_day_avg_trimp'] = activity['twentyeight_day_avg_trimp']
+                existing['acute_chronic_ratio'] = activity['acute_chronic_ratio']
+                existing['trimp_acute_chronic_ratio'] = activity['trimp_acute_chronic_ratio']
+                existing['normalized_divergence'] = activity['normalized_divergence']
+
+                # Update activity count and name (your existing logic)
+                existing['activity_count'] += 1
+                if existing['activity_count'] == 2:
+                    existing['name'] = f"{existing['name']} + 1 more"
+                else:
+                    base_name = existing['name'].split(' + ')[0]
+                    existing['name'] = f"{base_name} + {existing['activity_count'] - 1} more"
+
+                existing['activity_id'] = activity['activity_id']  # Use latest
+                existing['is_aggregated'] = True
+
+                # NEW: Update sport breakdown tracking
+                if sport_type not in existing.get('sport_types', []):
+                    if 'sport_types' not in existing:
+                        existing['sport_types'] = []
+                    existing['sport_types'].append(sport_type)
+
+                # Add to sport-specific loads
+                if sport_type == 'cycling':
+                    existing['cycling_load'] = existing.get('cycling_load', 0) + activity.get('total_load_miles', 0)
+                    existing['cycling_distance'] = existing.get('cycling_distance', 0) + activity.get('distance_miles', 0)
+                else:  # running or other
+                    existing['running_load'] = existing.get('running_load', 0) + activity.get('total_load_miles', 0)
+                    existing['running_distance'] = existing.get('running_distance', 0) + activity.get('distance_miles', 0)
+
+                # Add activity details
+                if 'activities' not in existing:
+                    existing['activities'] = []
+                existing['activities'].append({
+                    'type': activity.get('type', 'Unknown'),
+                    'sport': sport_type,
+                    'distance': activity.get('distance_miles', 0),
+                    'load': activity.get('total_load_miles', 0),
+                    'cycling_equivalent': activity.get('cycling_equivalent_miles'),
+                    'average_speed': activity.get('average_speed_mph')
+                })
+
+                # Update day type based on sport types
+                if len(existing.get('sport_types', [])) > 1:
+                    existing['day_type'] = 'mixed'
+                elif 'cycling' in existing.get('sport_types', []):
+                    existing['day_type'] = 'cycling'
+                else:
+                    existing['day_type'] = 'running'
+
+    # Convert back to list, sorted by date (your existing logic)
+    result = sorted(daily_aggregates.values(), key=lambda x: x['date'])
+
+    # Ensure all entries have sport breakdown fields for backward compatibility
+    for daily_data in result:
+        if 'running_load' not in daily_data:
+            daily_data['running_load'] = daily_data.get('total_load_miles', 0) if not daily_data.get('is_rest_day') else 0
+        if 'cycling_load' not in daily_data:
+            daily_data['cycling_load'] = 0
+        if 'running_distance' not in daily_data:
+            daily_data['running_distance'] = daily_data.get('distance_miles', 0) if not daily_data.get('is_rest_day') else 0
+        if 'cycling_distance' not in daily_data:
+            daily_data['cycling_distance'] = 0
+        if 'sport_types' not in daily_data:
+            daily_data['sport_types'] = [] if daily_data.get('is_rest_day') else ['running']
+        if 'activities' not in daily_data:
+            if daily_data.get('is_rest_day'):
+                daily_data['activities'] = []
+            else:
+                daily_data['activities'] = [{
+                    'type': daily_data.get('type', 'Unknown'),
+                    'sport': 'running',
+                    'distance': daily_data.get('distance_miles', 0),
+                    'load': daily_data.get('total_load_miles', 0)
+                }]
+        if 'day_type' not in daily_data:
+            daily_data['day_type'] = 'rest' if daily_data.get('is_rest_day') else 'running'
+
+    return result

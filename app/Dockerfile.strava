@@ -66,6 +66,11 @@ COPY onboarding_analytics.py .
 COPY existing_user_migration.py .
 COPY migration_notification_system.py .
 
+# Copy TRIMP Enhancement modules
+COPY historical_trimp_recalculation.py .
+COPY trimp_deployment_monitor.py .
+COPY deploy_trimp_enhancement.py .
+
 # Copy test runner (for development use)
 COPY run_tests.py .
 
