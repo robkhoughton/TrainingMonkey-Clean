@@ -1045,48 +1045,32 @@ def health_check():
         db_utils.execute_query("SELECT 1;")
         db_status = "connected"
 
-        # For SQLite, we don't have current_database() function
-        if db_utils.USE_POSTGRES:
-            # Get current database name (PostgreSQL only)
-            db_name_result = db_utils.execute_query("SELECT current_database();", fetch=True)
-            if db_name_result and db_name_result[0]:
-                current_db_name = db_name_result[0].get('current_database', 'unknown')
+        # Get current database name (PostgreSQL only)
+        db_name_result = db_utils.execute_query("SELECT current_database();", fetch=True)
+        if db_name_result and db_name_result[0]:
+            current_db_name = db_name_result[0].get('current_database', 'unknown')
 
-            # Get current user (PostgreSQL only)
-            db_user_result = db_utils.execute_query("SELECT current_user;", fetch=True)
-            if db_user_result and db_user_result[0]:
-                current_db_user = db_user_result[0].get('current_user', 'unknown')
+        # Get current user (PostgreSQL only)
+        db_user_result = db_utils.execute_query("SELECT current_user;", fetch=True)
+        if db_user_result and db_user_result[0]:
+            current_db_user = db_user_result[0].get('current_user', 'unknown')
 
-            # Get all table names (PostgreSQL only)
-            tables_result = db_utils.execute_query(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';",
-                fetch=True
-            )
-            if tables_result:
-                found_tables = [table.get('table_name', 'unknown') for table in tables_result]
-                tables_total_count = len(found_tables)
-        else:
-            # SQLite - simpler approach
-            current_db_name = "SQLite database"
-            current_db_user = "local"
-            tables_result = db_utils.execute_query(
-                "SELECT name FROM sqlite_master WHERE type='table';",
-                fetch=True
-            )
-            if tables_result:
-                found_tables = [table[0] if isinstance(table, tuple) else table['name'] for table in tables_result]
-                tables_total_count = len(found_tables)
+        # Get all table names (PostgreSQL only)
+        tables_result = db_utils.execute_query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';",
+            fetch=True
+        )
+        if tables_result:
+            found_tables = [table.get('table_name', 'unknown') for table in tables_result]
+            tables_total_count = len(found_tables)
 
         # Check activity count
         try:
             activity_count_result = db_utils.execute_query("SELECT COUNT(*) FROM activities;", fetch=True)
             if activity_count_result and activity_count_result[0]:
-                # Handle both SQLite (tuple) and PostgreSQL (dict) responses
-                if hasattr(activity_count_result[0], 'keys'):
-                    activity_count_status = activity_count_result[0].get('count', 0) or activity_count_result[0].get(
-                        'COUNT(*)', 0)
-                else:
-                    activity_count_status = activity_count_result[0][0]
+                # Handle PostgreSQL (dict) response
+                activity_count_status = activity_count_result[0].get('count', 0) or activity_count_result[0].get(
+                    'COUNT(*)', 0)
             else:
                 activity_count_status = 0
         except Exception as e:
@@ -1102,7 +1086,7 @@ def health_check():
         "status": "healthy" if db_status == "connected" else "unhealthy",
         "service": "strava-sync",
         "timestamp": datetime.now().strftime("%m/%d/%Y %I:%M:%S %p"),
-        "use_postgres": db_utils.USE_POSTGRES,
+        "use_postgres": True,
         "database_connection_status": db_status,
         "current_database_name": current_db_name,
         "current_database_user": current_db_user,
@@ -1290,15 +1274,11 @@ def get_stats():
             fetch=True
         )
 
-        # Handle both PostgreSQL (dict) and SQLite (tuple) response formats
+        # Handle PostgreSQL (dict) response format
         if activity_count_result and activity_count_result[0]:
             result_row = activity_count_result[0]
-            if hasattr(result_row, 'keys'):
-                # PostgreSQL returns dict-like object
-                total_activities = result_row.get('count', 0) or result_row.get('COUNT(*)', 0)
-            else:
-                # SQLite returns tuple
-                total_activities = result_row[0]
+            # PostgreSQL returns dict-like object
+            total_activities = result_row.get('count', 0) or result_row.get('COUNT(*)', 0)
         else:
             total_activities = 0
 
@@ -2903,25 +2883,18 @@ def save_journal_entry():
         if pain_percentage is not None and pain_percentage not in [0, 20, 40, 60, 80, 100]:
             return jsonify({'success': False, 'error': 'Pain percentage must be 0, 20, 40, 60, 80, or 100'}), 400
 
-        # EXISTING DATABASE SAVE LOGIC - UNCHANGED
-        if db_utils.USE_POSTGRES:
-            query = """
-                INSERT INTO journal_entries (user_id, date, energy_level, rpe_score, pain_percentage, notes, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id, date)
-                DO UPDATE SET
-                    energy_level = EXCLUDED.energy_level,
-                    rpe_score = EXCLUDED.rpe_score,
-                    pain_percentage = EXCLUDED.pain_percentage,
-                    notes = EXCLUDED.notes,
-                    updated_at = CURRENT_TIMESTAMP
-            """
-        else:
-            query = """
-                INSERT INTO journal_entries 
-                (user_id, date, energy_level, rpe_score, pain_percentage, notes, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """
+        # Database save logic - PostgreSQL only
+        query = """
+            INSERT INTO journal_entries (user_id, date, energy_level, rpe_score, pain_percentage, notes, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, date)
+            DO UPDATE SET
+                energy_level = EXCLUDED.energy_level,
+                rpe_score = EXCLUDED.rpe_score,
+                pain_percentage = EXCLUDED.pain_percentage,
+                notes = EXCLUDED.notes,
+                updated_at = CURRENT_TIMESTAMP
+        """
 
         db_utils.execute_query(query, (
             current_user.id,
@@ -3061,25 +3034,18 @@ def generate_autopsy_for_date(date_str, user_id):
         # Save autopsy to database with alignment score
         alignment_score = extract_alignment_score(autopsy_analysis)
 
-        # Use proper SQL syntax based on database type
-        if db_utils.USE_POSTGRES:
-            query = """
-                INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, autopsy_analysis, alignment_score)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, date)
-                DO UPDATE SET
-                    prescribed_action = EXCLUDED.prescribed_action,
-                    actual_activities = EXCLUDED.actual_activities,
-                    autopsy_analysis = EXCLUDED.autopsy_analysis,
-                    alignment_score = EXCLUDED.alignment_score,
-                    generated_at = CURRENT_TIMESTAMP
-            """
-        else:
-            query = """
-                INSERT INTO ai_autopsies 
-                (user_id, date, prescribed_action, actual_activities, autopsy_analysis, alignment_score)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """
+        # Use PostgreSQL syntax
+        query = """
+            INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, autopsy_analysis, alignment_score)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, date)
+            DO UPDATE SET
+                prescribed_action = EXCLUDED.prescribed_action,
+                actual_activities = EXCLUDED.actual_activities,
+                autopsy_analysis = EXCLUDED.autopsy_analysis,
+                alignment_score = EXCLUDED.alignment_score,
+                generated_at = CURRENT_TIMESTAMP
+        """
 
         db_utils.execute_query(query, (
             user_id,

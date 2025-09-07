@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 from onboarding_manager import OnboardingManager, OnboardingStep, FeatureTier
 from onboarding_progress_tracker import OnboardingProgressTracker, ProgressEventType
 from tiered_feature_unlock import TieredFeatureUnlockManager
@@ -1066,7 +1066,7 @@ class OnboardingTutorialSystem:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         INSERT INTO user_settings (user_id, tutorial_sessions)
                         VALUES (%s, %s)

@@ -3,7 +3,7 @@
 import logging
 from flask_login import LoginManager, UserMixin, login_user, logout_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from db_utils import execute_query, get_db_connection, USE_POSTGRES  # Add USE_POSTGRES here
+from db_utils import execute_query, get_db_connection
 
 login_manager = LoginManager()
 logger = logging.getLogger(__name__)
@@ -102,11 +102,9 @@ class User(UserMixin):
                     ) VALUES (?, ?, ?, ?, ?, ?)
                 """
 
-                # For PostgreSQL, add RETURNING clause and convert syntax
-                is_postgres = os.environ.get('DATABASE_URL') is not None
-                if is_postgres:
-                    query += " RETURNING id"
-                    query = query.replace('?', '%s')
+                # Use PostgreSQL syntax with RETURNING clause
+                query += " RETURNING id"
+                query = query.replace('?', '%s')
 
                 params = (email, password_hash, resting_hr, max_hr, gender, True)
                 logger.info(f"auth: Executing query with params: {params}")

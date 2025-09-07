@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from flask import request
 import json
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 from legal_document_versioning import (
     LegalDocumentVersioning, 
     validate_legal_acceptance, 
@@ -79,19 +79,12 @@ class LegalComplianceTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Insert into legal_compliance table
-                if USE_POSTGRES:
-                    insert_sql = """
-                    INSERT INTO legal_compliance 
-                    (user_id, document_type, version, accepted_at, ip_address, user_agent, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """
-                else:
-                    insert_sql = """
-                    INSERT INTO legal_compliance 
-                    (user_id, document_type, version, accepted_at, ip_address, user_agent, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """
+                # Insert into legal_compliance table - PostgreSQL syntax
+                insert_sql = """
+                INSERT INTO legal_compliance 
+                (user_id, document_type, version, accepted_at, ip_address, user_agent, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
                 
                 current_time = datetime.now()
                 cursor.execute(insert_sql, (
@@ -107,10 +100,7 @@ class LegalComplianceTracker:
                 elif document_type == 'disclaimer':
                     update_sql = "UPDATE user_settings SET disclaimer_accepted_at = %s WHERE id = %s"
                 
-                if USE_POSTGRES:
-                    cursor.execute(update_sql, (current_time, user_id))
-                else:
-                    cursor.execute(update_sql.replace('%s', '?'), (current_time, user_id))
+                cursor.execute(update_sql, (current_time, user_id))
                 
                 conn.commit()
                 
@@ -135,21 +125,13 @@ class LegalComplianceTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Get user's legal acceptance timestamps
-                if USE_POSTGRES:
-                    select_sql = """
-                    SELECT terms_accepted_at, privacy_policy_accepted_at, disclaimer_accepted_at,
-                           account_status, registration_date
-                    FROM user_settings 
-                    WHERE id = %s
-                    """
-                else:
-                    select_sql = """
-                    SELECT terms_accepted_at, privacy_policy_accepted_at, disclaimer_accepted_at,
-                           account_status, registration_date
-                    FROM user_settings 
-                    WHERE id = ?
-                    """
+                # Get user's legal acceptance timestamps - PostgreSQL syntax
+                select_sql = """
+                SELECT terms_accepted_at, privacy_policy_accepted_at, disclaimer_accepted_at,
+                       account_status, registration_date
+                FROM user_settings 
+                WHERE id = %s
+                """
                 
                 cursor.execute(select_sql, (user_id,))
                 result = cursor.fetchone()
@@ -159,31 +141,18 @@ class LegalComplianceTracker:
                 
                 terms_accepted_at, privacy_accepted_at, disclaimer_accepted_at, account_status, registration_date = result
                 
-                # Get latest acceptance records from legal_compliance table
-                if USE_POSTGRES:
-                    compliance_sql = """
-                    SELECT document_type, version, accepted_at
+                # Get latest acceptance records from legal_compliance table - PostgreSQL syntax
+                compliance_sql = """
+                SELECT document_type, version, accepted_at
+                FROM legal_compliance 
+                WHERE user_id = %s 
+                AND (document_type, accepted_at) IN (
+                    SELECT document_type, MAX(accepted_at)
                     FROM legal_compliance 
                     WHERE user_id = %s 
-                    AND (document_type, accepted_at) IN (
-                        SELECT document_type, MAX(accepted_at)
-                        FROM legal_compliance 
-                        WHERE user_id = %s 
-                        GROUP BY document_type
-                    )
-                    """
-                else:
-                    compliance_sql = """
-                    SELECT document_type, version, accepted_at
-                    FROM legal_compliance 
-                    WHERE user_id = ? 
-                    AND (document_type, accepted_at) IN (
-                        SELECT document_type, MAX(accepted_at)
-                        FROM legal_compliance 
-                        WHERE user_id = ? 
-                        GROUP BY document_type
-                    )
-                    """
+                    GROUP BY document_type
+                )
+                """
                 
                 cursor.execute(compliance_sql, (user_id, user_id))
                 compliance_records = cursor.fetchall()
@@ -296,36 +265,20 @@ class LegalComplianceTracker:
                 cursor = conn.cursor()
                 
                 if document_type:
-                    if USE_POSTGRES:
-                        select_sql = """
-                        SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
-                        FROM legal_compliance 
-                        WHERE user_id = %s AND document_type = %s
-                        ORDER BY accepted_at DESC
-                        """
-                    else:
-                        select_sql = """
-                        SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
-                        FROM legal_compliance 
-                        WHERE user_id = ? AND document_type = ?
-                        ORDER BY accepted_at DESC
-                        """
+                    select_sql = """
+                    SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
+                    FROM legal_compliance 
+                    WHERE user_id = %s AND document_type = %s
+                    ORDER BY accepted_at DESC
+                    """
                     cursor.execute(select_sql, (user_id, document_type))
                 else:
-                    if USE_POSTGRES:
-                        select_sql = """
-                        SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
-                        FROM legal_compliance 
-                        WHERE user_id = %s
-                        ORDER BY accepted_at DESC
-                        """
-                    else:
-                        select_sql = """
-                        SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
-                        FROM legal_compliance 
-                        WHERE user_id = ?
-                        ORDER BY accepted_at DESC
-                        """
+                    select_sql = """
+                    SELECT id, document_type, version, accepted_at, ip_address, user_agent, created_at
+                    FROM legal_compliance 
+                    WHERE user_id = %s
+                    ORDER BY accepted_at DESC
+                    """
                     cursor.execute(select_sql, (user_id,))
                 
                 records = cursor.fetchall()
@@ -376,10 +329,7 @@ class LegalComplianceTracker:
                     logger.error(f"Invalid document type for revocation: {document_type}")
                     return False
                 
-                if USE_POSTGRES:
-                    cursor.execute(update_sql, (user_id,))
-                else:
-                    cursor.execute(update_sql.replace('%s', '?'), (user_id,))
+                cursor.execute(update_sql, (user_id,))
                 
                 conn.commit()
                 
@@ -401,38 +351,22 @@ class LegalComplianceTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Get total user count
-                if USE_POSTGRES:
-                    total_sql = "SELECT COUNT(*) FROM user_settings"
-                else:
-                    total_sql = "SELECT COUNT(*) FROM user_settings"
-                
+                # Get total user count - PostgreSQL syntax
+                total_sql = "SELECT COUNT(*) FROM user_settings"
                 cursor.execute(total_sql)
                 total_users = cursor.fetchone()[0]
                 
-                # Get compliance counts
-                if USE_POSTGRES:
-                    compliance_sql = """
-                    SELECT 
-                        COUNT(CASE WHEN terms_accepted_at IS NOT NULL THEN 1 END) as terms_accepted,
-                        COUNT(CASE WHEN privacy_policy_accepted_at IS NOT NULL THEN 1 END) as privacy_accepted,
-                        COUNT(CASE WHEN disclaimer_accepted_at IS NOT NULL THEN 1 END) as disclaimer_accepted,
-                        COUNT(CASE WHEN terms_accepted_at IS NOT NULL 
-                                   AND privacy_policy_accepted_at IS NOT NULL 
-                                   AND disclaimer_accepted_at IS NOT NULL THEN 1 END) as fully_compliant
-                    FROM user_settings
-                    """
-                else:
-                    compliance_sql = """
-                    SELECT 
-                        COUNT(CASE WHEN terms_accepted_at IS NOT NULL THEN 1 END) as terms_accepted,
-                        COUNT(CASE WHEN privacy_policy_accepted_at IS NOT NULL THEN 1 END) as privacy_accepted,
-                        COUNT(CASE WHEN disclaimer_accepted_at IS NOT NULL THEN 1 END) as disclaimer_accepted,
-                        COUNT(CASE WHEN terms_accepted_at IS NOT NULL 
-                                   AND privacy_policy_accepted_at IS NOT NULL 
-                                   AND disclaimer_accepted_at IS NOT NULL THEN 1 END) as fully_compliant
-                    FROM user_settings
-                    """
+                # Get compliance counts - PostgreSQL syntax
+                compliance_sql = """
+                SELECT 
+                    COUNT(CASE WHEN terms_accepted_at IS NOT NULL THEN 1 END) as terms_accepted,
+                    COUNT(CASE WHEN privacy_policy_accepted_at IS NOT NULL THEN 1 END) as privacy_accepted,
+                    COUNT(CASE WHEN disclaimer_accepted_at IS NOT NULL THEN 1 END) as disclaimer_accepted,
+                    COUNT(CASE WHEN terms_accepted_at IS NOT NULL 
+                               AND privacy_policy_accepted_at IS NOT NULL 
+                               AND disclaimer_accepted_at IS NOT NULL THEN 1 END) as fully_compliant
+                FROM user_settings
+                """
                 
                 cursor.execute(compliance_sql)
                 result = cursor.fetchone()
@@ -471,10 +405,7 @@ class LegalComplianceTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
-                    cursor.execute("SELECT COUNT(*) FROM users")
-                else:
-                    cursor.execute("SELECT COUNT(*) FROM users")
+                cursor.execute("SELECT COUNT(*) FROM users")
                 
                 result = cursor.fetchone()
                 return result[0] if result else 0
@@ -489,24 +420,14 @@ class LegalComplianceTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
-                    cursor.execute("""
-                        SELECT COUNT(DISTINCT u.id) 
-                        FROM users u
-                        JOIN user_settings us ON u.id = us.user_id
-                        WHERE us.legal_terms_accepted_at IS NOT NULL
-                        AND us.legal_privacy_accepted_at IS NOT NULL
-                        AND us.legal_disclaimer_accepted_at IS NOT NULL
-                    """)
-                else:
-                    cursor.execute("""
-                        SELECT COUNT(DISTINCT u.id) 
-                        FROM users u
-                        JOIN user_settings us ON u.id = us.user_id
-                        WHERE us.legal_terms_accepted_at IS NOT NULL
-                        AND us.legal_privacy_accepted_at IS NOT NULL
-                        AND us.legal_disclaimer_accepted_at IS NOT NULL
-                    """)
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT u.id) 
+                    FROM users u
+                    JOIN user_settings us ON u.id = us.user_id
+                    WHERE us.legal_terms_accepted_at IS NOT NULL
+                    AND us.legal_privacy_accepted_at IS NOT NULL
+                    AND us.legal_disclaimer_accepted_at IS NOT NULL
+                """)
                 
                 result = cursor.fetchone()
                 return result[0] if result else 0

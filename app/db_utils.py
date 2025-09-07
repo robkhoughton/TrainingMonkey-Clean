@@ -1,12 +1,13 @@
 # db_utils.py
 
-import sqlite3
 import os
 import json
 from datetime import datetime, timedelta
 from contextlib import contextmanager
-import logging # <--- Ensure this line is at the very top of your db_utils.py
-import re # Make sure re is imported for the regex parsing
+import logging
+import re
+import psycopg2
+import psycopg2.extras
 
 # Configure logger for db_utils.py
 logger = logging.getLogger(__name__) # <--- Ensure this line is here, after import logging
@@ -26,109 +27,87 @@ def clean_database_url(url):
 
     return cleaned
 
-# Database configuration - supports both SQLite (local) and PostgreSQL (cloud)
-DATABASE_URL = clean_database_url(os.environ.get('DATABASE_URL'))  # PostgreSQL connection string for cloud
-DB_FILE = os.environ.get('DB_PATH', '../training_data.db')  # SQLite file for local
+# Database configuration - PostgreSQL only
+DATABASE_URL = clean_database_url(os.environ.get('DATABASE_URL'))
 
-# Determine which database to use
-USE_POSTGRES = DATABASE_URL is not None
+if not DATABASE_URL:
+    raise ValueError('DATABASE_URL environment variable is required for PostgreSQL connection')
 
-# Import psycopg2 only if we're using PostgreSQL
-if USE_POSTGRES:
-    try:
-        import psycopg2
-        import psycopg2.extras
+print(f"Using PostgreSQL with connection: {DATABASE_URL[:50]}...")
+logger.info(f"db_utils: Using PostgreSQL. URL: {DATABASE_URL[:50]}...")
 
-        print(f"Using PostgreSQL with connection: {DATABASE_URL[:50]}...")
-        logger.info(f"db_utils: Attempting to use PostgreSQL. URL: {DATABASE_URL[:50]}...") # Added logging
-    except ImportError:
-        print("psycopg2 not available, falling back to SQLite")
-        logger.warning("db_utils: psycopg2 not available, falling back to SQLite.") # Added logging
-        USE_POSTGRES = False
-else:
-    logger.info("db_utils: Using SQLite database.") # Added logging for SQLite
+# Legacy compatibility variables (PostgreSQL only)
+DB_FILE = None
+USE_POSTGRES = True
 
 def configure_database(custom_path=None):
-    """Configure the database path, allowing for runtime configuration"""
-    global DB_FILE
-    old_path = DB_FILE
-    if custom_path and not USE_POSTGRES:
-        DB_FILE = custom_path
-        print(f"Database path changed from {old_path} to {DB_FILE}")
-        logger.info(f"db_utils: Database path changed from {old_path} to {DB_FILE}") # Added logging
-    return DB_FILE
+    """Configure the database path - PostgreSQL only (legacy function for compatibility)"""
+    logger.warning("db_utils: configure_database called but PostgreSQL doesn't use file paths")
+    return None
 
 
 @contextmanager
 def get_db_connection():
-    """Context manager for database connections - supports both SQLite and PostgreSQL."""
+    """Context manager for PostgreSQL database connections."""
     conn = None
     try:
-        if USE_POSTGRES:
-            print("Attempting PostgreSQL connection...")
-            print(f"DATABASE_URL: {DATABASE_URL[:80]}...") #
-            logger.info("db_utils: Attempting PostgreSQL connection within context manager.") # Added logging
-            logger.info(f"db_utils: DATABASE_URL: {DATABASE_URL[:80]}...") # Added logging
+        print("Attempting PostgreSQL connection...")
+        print(f"DATABASE_URL: {DATABASE_URL[:80]}...")
+        logger.info("db_utils: Attempting PostgreSQL connection within context manager.")
+        logger.info(f"db_utils: DATABASE_URL: {DATABASE_URL[:80]}...")
 
-            # For Cloud SQL, use a simpler approach
-            if '/cloudsql/' in DATABASE_URL: #
-                # Parse the connection string for Cloud SQL
-                # Format: postgresql://user:pass@host/db?host=/cloudsql/project:region:instance
-                pattern = r'postgresql://([^:]+):([^@]+)@[^/]*/([^?]+)\?host=([^&]+)' #
-                match = re.match(pattern, DATABASE_URL) #
+        # For Cloud SQL, use a simpler approach
+        if '/cloudsql/' in DATABASE_URL:
+            # Parse the connection string for Cloud SQL
+            # Format: postgresql://user:pass@host/db?host=/cloudsql/project:region:instance
+            pattern = r'postgresql://([^:]+):([^@]+)@[^/]*/([^?]+)\?host=([^&]+)'
+            match = re.match(pattern, DATABASE_URL)
 
-                if match: #
-                    username, password, database, socket_dir = match.groups() #
+            if match:
+                username, password, database, socket_dir = match.groups()
 
-                    print(f"Connecting to Cloud SQL:") #
-                    print(f"  Username: {username}") #
-                    print(f"  Database: {database}") #
-                    print(f"  Socket directory: {socket_dir}") #
-                    logger.info(f"db_utils: Connecting to Cloud SQL with socket: {socket_dir}") # Added logging
+                print(f"Connecting to Cloud SQL:")
+                print(f"  Username: {username}")
+                print(f"  Database: {database}")
+                print(f"  Socket directory: {socket_dir}")
+                logger.info(f"db_utils: Connecting to Cloud SQL with socket: {socket_dir}")
 
-                    # Connect using the socket directory
-                    conn = psycopg2.connect( #
-                        host=socket_dir,
-                        database=database,
-                        user=username,
-                        password=password
-                    )
-                else:
-                    print("Could not parse Cloud SQL connection string, trying direct connection") #
-                    logger.warning("db_utils: Could not parse Cloud SQL connection string, trying direct connection.") # Added logging
-                    conn = psycopg2.connect(DATABASE_URL) #
+                # Connect using the socket directory
+                conn = psycopg2.connect(
+                    host=socket_dir,
+                    database=database,
+                    user=username,
+                    password=password
+                )
             else:
-                # Standard PostgreSQL connection
-                print("Using standard PostgreSQL connection") #
-                logger.info("db_utils: Using standard PostgreSQL connection.") # Added logging
-                conn = psycopg2.connect(DATABASE_URL) #
-
-            # Use RealDictCursor to get dictionary-like row access
-            conn.cursor_factory = psycopg2.extras.RealDictCursor #
-            print("PostgreSQL connection successful") #
-            logger.info("db_utils: PostgreSQL connection successful!") # Added logging
-
+                print("Could not parse Cloud SQL connection string, trying direct connection")
+                logger.warning("db_utils: Could not parse Cloud SQL connection string, trying direct connection.")
+                conn = psycopg2.connect(DATABASE_URL)
         else:
-            # SQLite connection for local development
-            print("Using SQLite connection") #
-            logger.info(f"db_utils: Using SQLite connection to {DB_FILE}.") # Added logging
-            conn = sqlite3.connect(DB_FILE) #
-            conn.row_factory = sqlite3.Row  # Allows column access by name
+            # Standard PostgreSQL connection
+            print("Using standard PostgreSQL connection")
+            logger.info("db_utils: Using standard PostgreSQL connection.")
+            conn = psycopg2.connect(DATABASE_URL)
 
-        yield conn #
+        # Use RealDictCursor to get dictionary-like row access
+        conn.cursor_factory = psycopg2.extras.RealDictCursor
+        print("PostgreSQL connection successful")
+        logger.info("db_utils: PostgreSQL connection successful!")
+
+        yield conn
 
     except Exception as e:
         error_msg = f"Database connection error: {str(e)}"
-        print(error_msg) #
-        logger.error(f"db_utils: {error_msg}", exc_info=True) # Added detailed logging
-        if conn: #
-            conn.rollback() #
-        raise #
+        print(error_msg)
+        logger.error(f"db_utils: {error_msg}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise
 
     finally:
-        if conn: #
-            conn.close() #
-            logger.info("db_utils: Database connection closed.") # Added logging
+        if conn:
+            conn.close()
+            logger.info("db_utils: Database connection closed.")
 
 
 def execute_query(query, params=(), fetch=False):
@@ -136,17 +115,14 @@ def execute_query(query, params=(), fetch=False):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            if USE_POSTGRES:
-                cursor.execute("SET search_path TO public;")  # Explicitly set search path
+            cursor.execute("SET search_path TO public;")  # Explicitly set search path
 
-            # Convert SQLite-style queries to PostgreSQL if needed
-            if USE_POSTGRES:
             # Convert ? placeholders to %s for PostgreSQL
-                if '?' in query:
-                    # Count the number of ? to ensure we have the right number of %s
-                    param_count = query.count('?')
-                    query = query.replace('?', '%s')
-                    logger.debug(f"db_utils: Converted {param_count} placeholders for PostgreSQL")
+            if '?' in query:
+                # Count the number of ? to ensure we have the right number of %s
+                param_count = query.count('?')
+                query = query.replace('?', '%s')
+                logger.debug(f"db_utils: Converted {param_count} placeholders for PostgreSQL")
 
             logger.debug(f"db_utils: Executing: {query}")
             logger.debug(f"db_utils: Parameters: {params}")
@@ -161,11 +137,8 @@ def execute_query(query, params=(), fetch=False):
             conn.commit()
             logger.debug("db_utils: Query committed successfully")
 
-            # Return appropriate ID based on database type
-            if USE_POSTGRES:
-                return cursor.rowcount
-            else:
-                return cursor.lastrowid
+            # Return row count for PostgreSQL
+            return cursor.rowcount
 
     except Exception as e:
         logger.error(f"db_utils: Query failed: {str(e)}")
@@ -195,245 +168,154 @@ def safe_execute_query(query, params=(), fetch=False): #
 def initialize_db(force=False):
     """
     Create database tables if they don't exist
-    Supports both SQLite and PostgreSQL
+    PostgreSQL only
     """
-    print(f"Application: Database initialization attempted during startup. Force: {force}") # Modified print statement
-    logger.info(f"db_utils: Attempting database initialization. Force: {force}.") # Added logger.info here
+    print(f"Application: Database initialization attempted during startup. Force: {force}")
+    logger.info(f"db_utils: Attempting database initialization. Force: {force}.")
 
     try:
-        if not USE_POSTGRES: #
-            db_exists = os.path.exists(DB_FILE) #
-            logger.info(f"db_utils: Checking SQLite DB existence: {db_exists}") # Added logging
-        else:
-            db_exists = True  # For PostgreSQL, assume database exists
-            logger.info("db_utils: Assuming PostgreSQL database exists for initialization check.") # Added logging
+        # For PostgreSQL, assume database exists
+        db_exists = True
+        logger.info("db_utils: Assuming PostgreSQL database exists for initialization check.")
 
-        if not db_exists or force: #
-            print(f"Initializing database ({'PostgreSQL' if USE_POSTGRES else 'SQLite'})") #
-            logger.info(f"db_utils: Proceeding with database initialization ({'PostgreSQL' if USE_POSTGRES else 'SQLite'}).") # Added logging
+        if not db_exists or force:
+            print("Initializing database (PostgreSQL)")
+            logger.info("db_utils: Proceeding with database initialization (PostgreSQL).")
 
-            # Activities table - with PostgreSQL-compatible syntax
-            if USE_POSTGRES: #
-                activities_sql = '''
-                CREATE TABLE IF NOT EXISTS activities (
-                    activity_id SERIAL PRIMARY KEY,
-                    date TEXT,
-                    name TEXT,
-                    type TEXT,
-                    distance_miles REAL,
-                    elevation_gain_feet REAL,
-                    elevation_load_miles REAL,
-                    total_load_miles REAL,
-                    avg_heart_rate REAL,
-                    max_heart_rate REAL,
-                    duration_minutes REAL,
-                    trimp REAL,
-                    time_in_zone1 REAL,
-                    time_in_zone2 REAL,
-                    time_in_zone3 REAL,
-                    time_in_zone4 REAL,
-                    time_in_zone5 REAL,
-                    seven_day_avg_load REAL,
-                    twentyeight_day_avg_load REAL,
-                    seven_day_avg_trimp REAL,
-                    twentyeight_day_avg_trimp REAL,
-                    acute_chronic_ratio REAL,
-                    trimp_acute_chronic_ratio REAL,
-                    normalized_divergence REAL,
-                    weight_lbs REAL,
-                    perceived_effort INTEGER,
-                    feeling_score INTEGER,
-                    notes TEXT
-                );
-                '''
-            else: #
-                activities_sql = '''
-                CREATE TABLE IF NOT EXISTS activities (
-                    activity_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT,
-                    name TEXT,
-                    type TEXT,
-                    distance_miles REAL,
-                    elevation_gain_feet REAL,
-                    elevation_load_miles REAL,
-                    total_load_miles REAL,
-                    avg_heart_rate REAL,
-                    max_heart_rate REAL,
-                    duration_minutes REAL,
-                    trimp REAL,
-                    time_in_zone1 REAL,
-                    time_in_zone2 REAL,
-                    time_in_zone3 REAL,
-                    time_in_zone4 REAL,
-                    time_in_zone5 REAL,
-                    seven_day_avg_load REAL,
-                    twentyeight_day_avg_load REAL,
-                    seven_day_avg_trimp REAL,
-                    twentyeight_day_avg_trimp REAL,
-                    acute_chronic_ratio REAL,
-                    trimp_acute_chronic_ratio REAL,
-                    normalized_divergence REAL,
-                    weight_lbs REAL,
-                    perceived_effort INTEGER,
-                    feeling_score INTEGER,
-                    notes TEXT
-                );
-                '''
+            # Activities table - PostgreSQL syntax
+            activities_sql = '''
+            CREATE TABLE IF NOT EXISTS activities (
+                activity_id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES user_settings(id),
+                date TEXT NOT NULL,
+                name TEXT,
+                type TEXT,
+                distance_miles REAL,
+                elevation_gain_feet REAL,
+                elevation_load_miles REAL,
+                total_load_miles REAL,
+                avg_heart_rate REAL,
+                max_heart_rate REAL,
+                duration_minutes REAL,
+                trimp REAL,
+                time_in_zone1 REAL,
+                time_in_zone2 REAL,
+                time_in_zone3 REAL,
+                time_in_zone4 REAL,
+                time_in_zone5 REAL,
+                seven_day_avg_load REAL,
+                twentyeight_day_avg_load REAL,
+                seven_day_avg_trimp REAL,
+                twentyeight_day_avg_trimp REAL,
+                acute_chronic_ratio REAL,
+                trimp_acute_chronic_ratio REAL,
+                normalized_divergence REAL,
+                weight_lbs REAL,
+                perceived_effort INTEGER,
+                feeling_score INTEGER,
+                notes TEXT,
+                trimp_calculation_method VARCHAR(20) DEFAULT 'average',
+                hr_stream_sample_count INTEGER DEFAULT 0,
+                trimp_processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            '''
 
-            execute_query(activities_sql) #
-            print("Created activities table") #
-            logger.info("db_utils: Successfully created activities table.") # Add logger.info here
+            execute_query(activities_sql)
+            print("Created activities table")
+            logger.info("db_utils: Successfully created activities table.")
 
-            # User settings table
-            if USE_POSTGRES: #
-                user_settings_sql = '''
-                CREATE TABLE IF NOT EXISTS user_settings (
-                    id SERIAL PRIMARY KEY,
-                    email TEXT UNIQUE,
-                    password_hash TEXT,
-                    resting_hr INTEGER,
-                    max_hr INTEGER,
-                    gender TEXT,
-                    last_sync_date TEXT,
-                    is_admin BOOLEAN DEFAULT FALSE,
-                    garmin_email TEXT,
-                    garmin_password_encrypted TEXT,
-                    garmin_last_sync TIMESTAMP,
-                    strava_access_token TEXT,
-                    strava_refresh_token TEXT,
-                    strava_token_expires_at BIGINT,
-                    strava_athlete_id BIGINT,
-                    strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    user_strava_client_id VARCHAR(255),
-                    user_strava_client_secret VARCHAR(255),
-                    terms_accepted_at TIMESTAMP,
-                    privacy_policy_accepted_at TIMESTAMP,
-                    disclaimer_accepted_at TIMESTAMP,
-                    onboarding_completed_at TIMESTAMP,
-                    account_status VARCHAR(20) DEFAULT 'pending_verification',
-                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                '''
-            else: #
-                user_settings_sql = '''
-                CREATE TABLE IF NOT EXISTS user_settings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT UNIQUE,
-                    password_hash TEXT,
-                    resting_hr INTEGER,
-                    max_hr INTEGER,
-                    gender TEXT,
-                    last_sync_date TEXT,
-                    is_admin BOOLEAN DEFAULT FALSE,
-                    garmin_email TEXT,
-                    garmin_password_encrypted TEXT,
-                    garmin_last_sync TIMESTAMP,
-                    strava_access_token TEXT,
-                    strava_refresh_token TEXT,
-                    strava_token_expires_at BIGINT,
-                    strava_athlete_id BIGINT,
-                    strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    user_strava_client_id VARCHAR(255),
-                    user_strava_client_secret VARCHAR(255),
-                    terms_accepted_at TIMESTAMP,
-                    privacy_policy_accepted_at TIMESTAMP,
-                    disclaimer_accepted_at TIMESTAMP,
-                    onboarding_completed_at TIMESTAMP,
-                    account_status VARCHAR(20) DEFAULT 'pending_verification',
-                    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                '''
+            # User settings table - PostgreSQL syntax
+            user_settings_sql = '''
+            CREATE TABLE IF NOT EXISTS user_settings (
+                id SERIAL PRIMARY KEY,
+                email TEXT UNIQUE,
+                password_hash TEXT,
+                resting_hr INTEGER,
+                max_hr INTEGER,
+                gender TEXT,
+                last_sync_date TEXT,
+                is_admin BOOLEAN DEFAULT FALSE,
+                garmin_email TEXT,
+                garmin_password_encrypted TEXT,
+                garmin_last_sync TIMESTAMP,
+                strava_access_token TEXT,
+                strava_refresh_token TEXT,
+                strava_token_expires_at BIGINT,
+                strava_athlete_id BIGINT,
+                strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_strava_client_id VARCHAR(255),
+                user_strava_client_secret VARCHAR(255),
+                terms_accepted_at TIMESTAMP,
+                privacy_policy_accepted_at TIMESTAMP,
+                disclaimer_accepted_at TIMESTAMP,
+                onboarding_completed_at TIMESTAMP,
+                account_status VARCHAR(20) DEFAULT 'pending_verification',
+                registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            '''
 
-            execute_query(user_settings_sql) #
-            print("Created user_settings table") #
-            logger.info("db_utils: Successfully created user_settings table.") # Add logger.info here
+            execute_query(user_settings_sql)
+            print("Created user_settings table")
+            logger.info("db_utils: Successfully created user_settings table.")
 
-            # LLM recommendations table
-            if USE_POSTGRES: #
-                llm_recommendations_sql = '''
-                CREATE TABLE IF NOT EXISTS llm_recommendations (
-                    id SERIAL PRIMARY KEY,
-                    generation_date TEXT,
-                    valid_until TEXT,
-                    data_start_date TEXT,
-                    data_end_date TEXT,
-                    metrics_snapshot TEXT,
-                    daily_recommendation TEXT,
-                    weekly_recommendation TEXT,
-                    pattern_insights TEXT,
-                    raw_response TEXT
-                );
-                '''
-            else: #
-                llm_recommendations_sql = '''
-                CREATE TABLE IF NOT EXISTS llm_recommendations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    generation_date TEXT,
-                    valid_until TEXT,
-                    data_start_date TEXT,
-                    data_end_date TEXT,
-                    metrics_snapshot TEXT,
-                    daily_recommendation TEXT,
-                    weekly_recommendation TEXT,
-                    pattern_insights TEXT,
-                    raw_response TEXT
-                );
-                '''
+            # LLM recommendations table - PostgreSQL syntax
+            llm_recommendations_sql = '''
+            CREATE TABLE IF NOT EXISTS llm_recommendations (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES user_settings(id),
+                generation_date TEXT,
+                target_date TEXT,
+                valid_until TEXT,
+                data_start_date TEXT,
+                data_end_date TEXT,
+                metrics_snapshot TEXT,
+                daily_recommendation TEXT,
+                weekly_recommendation TEXT,
+                pattern_insights TEXT,
+                raw_response TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            '''
 
-            execute_query(llm_recommendations_sql) #
-            print("Created llm_recommendations table") #
-            logger.info("db_utils: Successfully created llm_recommendations table.") # Add logger.info here
+            execute_query(llm_recommendations_sql)
+            print("Created llm_recommendations table")
+            logger.info("db_utils: Successfully created llm_recommendations table.")
 
-            # Legal compliance table for audit trail
-            if USE_POSTGRES: #
-                legal_compliance_sql = '''
-                CREATE TABLE IF NOT EXISTS legal_compliance (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES user_settings(id),
-                    document_type VARCHAR(50) NOT NULL,
-                    version VARCHAR(20) NOT NULL,
-                    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    ip_address INET,
-                    user_agent TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                '''
-            else: #
-                legal_compliance_sql = '''
-                CREATE TABLE IF NOT EXISTS legal_compliance (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    document_type VARCHAR(50) NOT NULL,
-                    version VARCHAR(20) NOT NULL,
-                    accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES user_settings(id)
-                );
-                '''
+            # Legal compliance table for audit trail - PostgreSQL syntax
+            legal_compliance_sql = '''
+            CREATE TABLE IF NOT EXISTS legal_compliance (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES user_settings(id),
+                document_type VARCHAR(50) NOT NULL,
+                version VARCHAR(20) NOT NULL,
+                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ip_address INET,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            '''
 
-            execute_query(legal_compliance_sql) #
-            print("Created legal_compliance table") #
-            logger.info("db_utils: Successfully created legal_compliance table.") # Add logger.info here
+            execute_query(legal_compliance_sql)
+            print("Created legal_compliance table")
+            logger.info("db_utils: Successfully created legal_compliance table.")
 
-            print("Database initialization complete") #
-            logger.info("db_utils: Database initialization complete.") # Add logger.info here
-            return True #
+            print("Database initialization complete")
+            logger.info("db_utils: Database initialization complete.")
+            return True
 
-        print("db_utils: Database already initialized and 'force' not set.") # Added print for existing DB
-        logger.info("db_utils: Database already initialized and 'force' not set. Skipping initialization.") # Added logging
+        print("db_utils: Database already initialized and 'force' not set.")
+        logger.info("db_utils: Database already initialized and 'force' not set. Skipping initialization.")
 
         # Always run migration to ensure schema is up to date
         migrate_user_settings_schema()
         migrate_legal_compliance_table()
         
-        return False #
+        return False
 
     except Exception as e:
-        print(f"Database initialization error: {str(e)}") #
-        logger.error(f"db_utils: Database initialization failed: {e}", exc_info=True) # Add this for traceback
-        raise #
+        print(f"Database initialization error: {str(e)}")
+        logger.error(f"db_utils: Database initialization failed: {e}", exc_info=True)
+        raise
 
 def validate_database():
     """Validate database structure and return True if valid"""
@@ -687,34 +569,19 @@ def migrate_legal_compliance_table():
     logger.info("db_utils: Starting legal_compliance table migration")
     
     try:
-        # Create legal_compliance table if it doesn't exist
-        if USE_POSTGRES: #
-            legal_compliance_sql = '''
-            CREATE TABLE IF NOT EXISTS legal_compliance (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES user_settings(id),
-                document_type VARCHAR(50) NOT NULL,
-                version VARCHAR(20) NOT NULL,
-                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ip_address INET,
-                user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            '''
-        else: #
-            legal_compliance_sql = '''
-            CREATE TABLE IF NOT EXISTS legal_compliance (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                document_type VARCHAR(50) NOT NULL,
-                version VARCHAR(20) NOT NULL,
-                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ip_address TEXT,
-                user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES user_settings(id)
-            );
-            '''
+        # Create legal_compliance table if it doesn't exist - PostgreSQL syntax
+        legal_compliance_sql = '''
+        CREATE TABLE IF NOT EXISTS legal_compliance (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES user_settings(id),
+            document_type VARCHAR(50) NOT NULL,
+            version VARCHAR(20) NOT NULL,
+            accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address INET,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        '''
         
         execute_query(legal_compliance_sql, fetch=False)
         logger.info("db_utils: Successfully created legal_compliance table")
@@ -746,21 +613,15 @@ def validate_trimp_schema():
             'trimp_processed_at'
         ]
         
-        # Get table schema information
-        if USE_POSTGRES:
-            schema_query = """
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'activities' 
-                AND column_name = ANY(%s)
-            """
-            result = execute_query(schema_query, (required_fields,), fetch=True)
-            existing_fields = [row['column_name'] for row in result] if result else []
-        else:
-            # SQLite schema check
-            schema_query = "PRAGMA table_info(activities)"
-            result = execute_query(schema_query, fetch=True)
-            existing_fields = [row[1] for row in result if row[1] in required_fields] if result else []
+        # Get table schema information - PostgreSQL only
+        schema_query = """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'activities' 
+            AND column_name = ANY(%s)
+        """
+        result = execute_query(schema_query, (required_fields,), fetch=True)
+        existing_fields = [row['column_name'] for row in result] if result else []
         
         missing_fields = [field for field in required_fields if field not in existing_fields]
         
@@ -784,23 +645,17 @@ def validate_hr_streams_table():
     logger.info("db_utils: Validating hr_streams table")
     
     try:
-        # Check if hr_streams table exists
-        if USE_POSTGRES:
-            table_check = """
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_name = 'hr_streams'
-                )
-            """
-        else:
-            table_check = """
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='hr_streams'
-            """
+        # Check if hr_streams table exists - PostgreSQL only
+        table_check = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'hr_streams'
+            )
+        """
         
         result = execute_query(table_check, fetch=True)
         
-        if not result or (USE_POSTGRES and not result[0]['exists']) or (not USE_POSTGRES and not result):
+        if not result or not result[0]['exists']:
             logger.warning("db_utils: hr_streams table does not exist")
             return False
         
@@ -810,19 +665,14 @@ def validate_hr_streams_table():
             'sample_rate', 'created_at', 'updated_at'
         ]
         
-        if USE_POSTGRES:
-            column_check = """
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'hr_streams' 
-                AND column_name = ANY(%s)
-            """
-            result = execute_query(column_check, (required_columns,), fetch=True)
-            existing_columns = [row['column_name'] for row in result] if result else []
-        else:
-            column_check = "PRAGMA table_info(hr_streams)"
-            result = execute_query(column_check, fetch=True)
-            existing_columns = [row[1] for row in result if row[1] in required_columns] if result else []
+        column_check = """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'hr_streams' 
+            AND column_name = ANY(%s)
+        """
+        result = execute_query(column_check, (required_columns,), fetch=True)
+        existing_columns = [row['column_name'] for row in result] if result else []
         
         missing_columns = [col for col in required_columns if col not in existing_columns]
         
@@ -1141,10 +991,10 @@ __all__ = [
     'execute_query',
     'initialize_db',
     'validate_database',
-    'DB_FILE',
     'configure_database',
-    'USE_POSTGRES',
     'DATABASE_URL',
+    'DB_FILE',  # Legacy compatibility variable
+    'USE_POSTGRES',  # Legacy compatibility variable
     'save_llm_recommendation',
     'get_latest_recommendation',
     'recommendation_needs_update',

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 from onboarding_manager import OnboardingManager, OnboardingStep, FeatureTier, FeatureUnlock
 
 logger = logging.getLogger(__name__)
@@ -577,7 +577,7 @@ class TieredFeatureUnlockManager:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = %s", (user_id,))
                 else:
                     cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = ?", (user_id,))
@@ -591,7 +591,7 @@ class TieredFeatureUnlockManager:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT COUNT(DISTINCT date) 
                         FROM activities 
@@ -619,7 +619,7 @@ class TieredFeatureUnlockManager:
             # Assume user has been registered for at least 1 day
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT created_at FROM user_settings WHERE user_id = %s
                     """, (user_id,))

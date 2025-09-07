@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class EmailValidator:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     if exclude_user_id:
                         query = """
                         SELECT id, account_status, created_at 

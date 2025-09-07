@@ -44,10 +44,7 @@ class ElevationMigrationService:
         try:
             logger.info("Starting pre-migration validation")
 
-            # Check database type
-            if not db_utils.USE_POSTGRES:
-                self.results['errors'].append("Database is not PostgreSQL")
-                return False
+            # Database is PostgreSQL only
 
             # Check activities with elevation data by user
             result = db_utils.execute_query("""

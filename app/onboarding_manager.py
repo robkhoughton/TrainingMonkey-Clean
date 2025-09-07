@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 
 logger = logging.getLogger(__name__)
 
@@ -207,23 +207,14 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Initialize onboarding progress
-                if USE_POSTGRES:
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET onboarding_step = %s, 
-                            onboarding_completed_at = NULL,
-                            last_onboarding_activity = %s
-                        WHERE user_id = %s
-                    """, (OnboardingStep.WELCOME.value, datetime.now(), user_id))
-                else:
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET onboarding_step = ?, 
-                            onboarding_completed_at = NULL,
-                            last_onboarding_activity = ?
-                        WHERE user_id = ?
-                    """, (OnboardingStep.WELCOME.value, datetime.now(), user_id))
+                # Initialize onboarding progress - PostgreSQL syntax
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET onboarding_step = %s, 
+                        onboarding_completed_at = NULL,
+                        last_onboarding_activity = %s
+                    WHERE user_id = %s
+                """, (OnboardingStep.WELCOME.value, datetime.now(), user_id))
                 
                 # Log onboarding start
                 self._log_onboarding_event(user_id, 'onboarding_started', {
@@ -252,7 +243,7 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT onboarding_step, onboarding_completed_at, 
                                last_onboarding_activity, created_at
@@ -314,7 +305,7 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # Update onboarding step
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         UPDATE user_settings 
                         SET onboarding_step = %s, 
@@ -415,7 +406,7 @@ class OnboardingManager:
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
                     
-                    if USE_POSTGRES:
+                    # PostgreSQL syntax
                         cursor.execute("""
                             UPDATE user_settings 
                             SET features_unlocked = %s
@@ -499,7 +490,7 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT features_unlocked FROM user_settings WHERE user_id = %s
                     """, (user_id,))
@@ -541,7 +532,7 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT features_unlocked FROM user_settings WHERE user_id = %s
                     """, (user_id,))
@@ -566,7 +557,7 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT COUNT(*) FROM activities WHERE user_id = %s
                     """, (user_id,))
@@ -599,7 +590,7 @@ class OnboardingManager:
                     # Check if Strava is connected
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
-                        if USE_POSTGRES:
+                        # PostgreSQL syntax
                             cursor.execute("""
                                 SELECT strava_athlete_id FROM user_settings WHERE user_id = %s
                             """, (user_id,))
@@ -637,7 +628,7 @@ class OnboardingManager:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         UPDATE user_settings 
                         SET onboarding_completed_at = %s,

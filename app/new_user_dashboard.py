@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 from onboarding_manager import OnboardingManager, OnboardingStep, FeatureTier
 from onboarding_progress_tracker import OnboardingProgressTracker, ProgressEventType
 from onboarding_tutorial_system import OnboardingTutorialSystem

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 
-from db_utils import get_db_connection, execute_query, USE_POSTGRES
+from db_utils import get_db_connection, execute_query
 from onboarding_manager import OnboardingManager, OnboardingStep, FeatureTier
 from tiered_feature_unlock import TieredFeatureUnlockManager, UnlockCondition
 
@@ -933,7 +933,7 @@ class OnboardingProgressTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         UPDATE user_settings 
                         SET onboarding_progress = %s
@@ -955,7 +955,7 @@ class OnboardingProgressTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                if USE_POSTGRES:
+                # PostgreSQL syntax
                     cursor.execute("""
                         SELECT onboarding_progress FROM user_settings 
                         WHERE user_id = %s
