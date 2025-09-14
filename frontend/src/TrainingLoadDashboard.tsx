@@ -51,6 +51,11 @@ interface Metrics {
   sevenDayAvgTrimp: number;
   daysSinceRest: number;
   normalizedDivergence: number;
+  dashboardConfig?: {
+    chronic_period_days: number;
+    decay_rate: number;
+    is_active: boolean;
+  };
 }
 
 // LLMRecommendation interface from recommendations_component.ts
@@ -106,9 +111,11 @@ const getRecommendationDateContext = (recommendation) => {
     };
   }
 
+  // Use Pacific timezone for consistent date comparison with backend
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const tomorrow = new Date(today);
+  const pacificToday = new Date(today.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+  const todayStr = pacificToday.toISOString().split('T')[0];
+  const tomorrow = new Date(pacificToday);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
@@ -529,6 +536,13 @@ const getRecommendationDateContext = (recommendation) => {
           }
 
           console.log(`Successfully received ${result.data.length} records from Strava`);
+          
+          // Store dashboard configuration if available
+          if (result.dashboard_config) {
+            console.log('Dashboard using custom configuration:', result.dashboard_config);
+          } else {
+            console.log('Dashboard using default configuration');
+          }
 
           // Process data with proper date handling
           const processedData = result.data.map((row: TrainingDataRow) => {
@@ -573,7 +587,8 @@ const getRecommendationDateContext = (recommendation) => {
                 sevenDayAvgTrimp: statsData.latestMetrics.sevenDayAvgTrimp || 0,
                 daysSinceRest: statsData.daysSinceRest || 0,
                 normalizedDivergence: processedData.length > 0 ?
-                  processedData[processedData.length - 1].normalized_divergence as number : 0
+                  processedData[processedData.length - 1].normalized_divergence as number : 0,
+                dashboardConfig: result.dashboard_config || undefined
               });
             }
           } catch (statsError) {
@@ -749,121 +764,14 @@ const getRecommendationDateContext = (recommendation) => {
         </div>
       )}
 
-      {/* ACWR Chart */}
+      {/* Overtraining Risk Over Time Chart */}
       <div className={styles.chartContainer}>
-          <h2 className={styles.chartTitle}>Acute:Chronic Work/Load Ratio (Strain)</h2>
-          <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
-            <ResponsiveContainer width="100%" height="100%" key={`acwr-${renderKey}`}>
-              <LineChart
-                data={filtered}
-                margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  interval={chartDimensions.majorTickInterval}
-                  tickFormatter={formatXAxis}
-                  padding={{ left: 10, right: 10 }}
-                />
-                <YAxis
-                  domain={[0, 2]}  // Reasonable range for ACWR
-                  tickFormatter={(value) => Number(value).toFixed(1)}  // Force 1 decimal place
-                  tickCount={7}    // Limit number of ticks
-                  label={{ value: 'ACWR', angle: -90, position: 'insideLeft' }}
-                />
-                <Tooltip
-                  content={<CustomTooltip />}
-                  cursor={{ strokeDasharray: '3 3' }}
-                  allowEscapeViewBox={{ x: false, y: false }}
-                  wrapperStyle={{ pointerEvents: 'auto', zIndex: 10000 }}
-                />
-                <Legend />
-
-                {/* High Risk Zone (above 1.5) */}
-                <ReferenceArea
-                  y1={1.5}
-                  y2={2}
-                  fill={`${colors.danger}50`}
-                  stroke={colors.danger}
-                  strokeOpacity={0.3}
-                  strokeWidth={1}
-                  label={{ value: "High Risk (>1.5)", position: "insideTopLeft", fontSize: 11 }}
-                />
-
-                {/* Moderate Risk Zone (1.3-1.5) */}
-                <ReferenceArea
-                  y1={1.3}
-                  y2={1.5}
-                  fill={`${colors.warning}60`}
-                  stroke={colors.warning}
-                  strokeOpacity={0.3}
-                  strokeWidth={1}
-                  label={{ value: "Moderate Risk", position: "insideTopRight", fontSize: 11 }}
-                />
-
-                {/* Optimal Zone (0.8-1.3) */}
-                <ReferenceArea
-                  y1={0.8}
-                  y2={1.3}
-                  fill={`${colors.secondary}50`}
-                  stroke={colors.secondary}
-                  strokeOpacity={0.3}
-                  strokeWidth={1}
-                  label={{
-                    value: "Optimal ACWR (0.8-1.3)",
-                    position: "insideTopRight",
-                    fill: colors.secondary,
-                    fontSize: 11
-                  }}
-                />
-
-                {/* Low Risk Zone (below 0.8) */}
-                <ReferenceArea
-                  y1={0.4}
-                  y2={0.8}
-                  fill={`${colors.primary}60`}
-                  stroke={colors.primary}
-                  strokeOpacity={0.3}
-                  strokeWidth={1}
-                  label={{ value: "Low Load (<0.8)", position: "insideBottomRight", fontSize: 11 }}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="acute_chronic_ratio"
-                  stroke={colors.primary}
-                  strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
-                  dot={{ fill: colors.primary, strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 2 }}
-                  name="External ACWR (mile equiv)"
-                  connectNulls={false}
-                  isAnimationActive={false}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="trimp_acute_chronic_ratio"
-                  stroke={colors.trimp}
-                  strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
-                  dot={{ fill: colors.trimp, strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 2 }}
-                  name="Internal ACWR (TRIMP)"
-                  connectNulls={false}
-                  isAnimationActive={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-      {/* Overtraining Risk Assessment */}
-      <div className={styles.chartContainer}>
-        <h2 className={styles.chartTitle}>Training Monkey Index</h2>
+        <h2 className={styles.chartTitle}>Overtraining Risk</h2>
         <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
-          <ResponsiveContainer width="100%" height="100%" key={`divergence-${renderKey}`}>
-            <LineChart
+          <ResponsiveContainer width="100%" height="100%" key={`overtraining-risk-${renderKey}`}>
+            <ComposedChart
               data={filtered}
-              margin={{ top: 20, right: 30, left: 20, bottom: 25 }}
+              margin={{ top: 5, right: 50, left: 20, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -873,10 +781,29 @@ const getRecommendationDateContext = (recommendation) => {
                 padding={{ left: 10, right: 10 }}
               />
               <YAxis
-                domain={[-0.4, 0.2]}
-                label={{ value: 'Divergence', angle: -90, position: 'insideLeft' }}
-                tickFormatter={(value) => value.toFixed(2)}
+                domain={[0, 2.5]}
+                label={{
+                  value: 'ACWR',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { textAnchor: 'middle', fontSize: '12px', fontWeight: '500' }
+                }}
+                tickFormatter={(value) => value.toFixed(1)}
+                width={60}
+              />
+              <YAxis
+                yAxisId="divergence"
+                orientation="right"
+                domain={[-0.5, 0.2]}
                 reversed={true}
+                label={{
+                  value: 'Normalized Divergence',
+                  angle: 90,
+                  position: 'insideRight',
+                  style: { textAnchor: 'middle', fontSize: '12px', fontWeight: '500' }
+                }}
+                tickFormatter={(value) => value.toFixed(2)}
+                width={60}
               />
               <Tooltip
                 content={<CustomTooltip />}
@@ -884,85 +811,118 @@ const getRecommendationDateContext = (recommendation) => {
                 wrapperStyle={{ pointerEvents: 'auto' }}
               />
               <Legend />
-              {/* Zones shown in reverse order of display */}
-              {/* Efficient Zone (positive values - bottom of inverted chart) */}
+
+              {/* Risk zones with improved color contrast */}
+              {/* Low Risk: < 0.8 */}
               <ReferenceArea
-                y1={0.05}
-                y2={0.2} // Most positive (bottom)
-                fill={`${colors.primary}60`}
-                stroke={colors.primary}
-                strokeOpacity={0.3}
+                y1={0}
+                y2={0.8}
+                fill="rgba(40, 167, 69, 0.15)"
+                stroke="rgba(40, 167, 69, 0.3)"
                 strokeWidth={1}
-                label={{ value: "Efficient Adaptation", position: "insideBottomRight", fontSize: 11 }}
+                label={{ value: "Low Risk", position: "insideTopLeft", fontSize: 10, fill: "green" }}
               />
-
-              {/* Balanced Zone (-0.05 to +0.05) */}
+              
+              {/* Balanced: 0.8-1.3 */}
               <ReferenceArea
-                y1={-0.05}
-                y2={0.05}
-                fill={`${colors.secondary}50`}
-                stroke={colors.secondary}
-                strokeOpacity={0.3}
+                y1={0.8}
+                y2={1.3}
+                fill="rgba(255, 193, 7, 0.2)"
+                stroke="rgba(255, 193, 7, 0.3)"
                 strokeWidth={1}
-                label={{
-                  value: "Balanced",
-                  position: "insideBottom",
-                  fontSize: defaultTheme.referenceAreas.optimal.fontSize,
-                  fill: colors.secondary
-                }}
+                label={{ value: "Balanced", position: "insideTopLeft", fontSize: 10, fill: "#b8860b" }}
               />
-
-              {/* Moderate Risk Zone (-0.15 to -0.05) */}
+              
+              {/* Moderate Risk: 1.3-1.5 */}
               <ReferenceArea
-                y1={-0.15}
-                y2={-0.05}
-                fill={`${colors.warning}60`}
-                stroke={colors.warning}
-                strokeOpacity={0.3}
+                y1={1.3}
+                y2={1.5}
+                fill="rgba(255, 87, 34, 0.25)"
+                stroke="rgba(255, 87, 34, 0.3)"
                 strokeWidth={1}
-                label={{
-                  value: "Moderate Injury Risk",
-                  position: "insideBottom",
-                  fontSize: defaultTheme.referenceAreas.moderate.fontSize,
-                  fill: colors.warning
-                }}
+                label={{ value: "Moderate Risk", position: "insideTopLeft", fontSize: 10, fill: "#ff5722" }}
               />
-
-              {/* High Risk Zone (negative values - top of chart) */}
+              
+              {/* High Risk: >1.5 */}
               <ReferenceArea
-                y1={-0.4} // Most negative (top)
-                y2={-0.15}
-                fill={`${colors.danger}50`}
-                stroke={colors.danger}
-                strokeOpacity={0.3}
+                y1={1.5}
+                y2={2.5}
+                fill="rgba(199, 21, 133, 0.25)"
+                stroke="rgba(199, 21, 133, 0.3)"
                 strokeWidth={1}
-                label={{ value: "High Injury Risk", position: "insideTopLeft", fontSize: 11 }}
+                label={{ value: "High Risk", position: "insideTopLeft", fontSize: 10, fill: "#c71585" }}
               />
 
-              {/* Zero reference line */}
-              <ReferenceLine
-                y={0}
-                stroke="#374151"
-                strokeWidth={2}
-                strokeDasharray="4 4"
-              />
-
+              {/* Internal Load (TRIMP) Line */}
               <Line
                 type="monotone"
-                dataKey="normalized_divergence"
-                stroke="#8b5cf6"
-                strokeWidth={3}
-                dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 7, strokeWidth: 2 }}
-                name="Normalized Divergence"
+                dataKey="trimp_acute_chronic_ratio"
+                name="Internal Load (TRIMP)"
+                stroke="#007bff"
+                strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
+                dot={(props) => {
+                  if (!props || !props.cx || !props.cy || !props.payload) return null;
+                  const { cx, cy, payload } = props;
+                  if (payload.activity_id === 0) return null;
+                  if (payload.trimp_acute_chronic_ratio === null || payload.trimp_acute_chronic_ratio === undefined) return null;
+                  return <circle cx={cx} cy={cy} r={3} fill="#007bff" />;
+                }}
+                activeDot={{ r: 5 }}
                 connectNulls={false}
                 isAnimationActive={false}
               />
-            </LineChart>
+
+              {/* External Work Line */}
+              <Line
+                type="monotone"
+                dataKey="acute_chronic_ratio"
+                name="External Work"
+                stroke="#28a745"
+                strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
+                dot={(props) => {
+                  if (!props || !props.cx || !props.cy || !props.payload) return null;
+                  const { cx, cy, payload } = props;
+                  if (payload.activity_id === 0) return null;
+                  if (payload.acute_chronic_ratio === null || payload.acute_chronic_ratio === undefined) return null;
+                  return <circle cx={cx} cy={cy} r={3} fill="#28a745" />;
+                }}
+                activeDot={{ r: 5 }}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+
+              {/* Normalized Divergence Line */}
+              <Line
+                yAxisId="divergence"
+                type="monotone"
+                dataKey="normalized_divergence"
+                name="Normalized Divergence"
+                stroke="#dc3545"
+                strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
+                strokeDasharray="5 5"
+                dot={(props) => {
+                  if (!props || !props.cx || !props.cy || !props.payload) return null;
+                  const { cx, cy, payload } = props;
+                  if (payload.activity_id === 0) return null;
+                  if (payload.normalized_divergence === null || payload.normalized_divergence === undefined) return null;
+                  return <circle cx={cx} cy={cy} r={2} fill="#dc3545" />;
+                }}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+
+              {/* Zero reference line for divergence */}
+              <ReferenceLine yAxisId="divergence" y={0} stroke="#666" strokeWidth={1} strokeDasharray="3 3" />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
         <p className={styles.chartNote}>
-          Risk analysis: positive values (bottom) = efficient adaptation, negative values (top) = high overtraining risk.
+          Negative divergence indicates internal stress (TRIMP) is higher than external load, suggesting potential overtraining.
+          <br/><strong>ACWR Calculation:</strong> {metrics.dashboardConfig ? 
+            `Acute (7-day average) ÷ Chronic (${metrics.dashboardConfig.chronic_period_days}-day exponential decay, rate: ${metrics.dashboardConfig.decay_rate})` :
+            'Acute (7-day average) ÷ Chronic (28-day simple average). No exponential decay weighting applied.'
+          }
         </p>
       </div>
 

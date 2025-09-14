@@ -646,6 +646,53 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             }}>
               Train that monkey on your back
             </p>
+            
+            {/* Getting Started Link */}
+            <a 
+              href="/getting-started?source=dashboard" 
+              onClick={() => {
+                // Track analytics
+                fetch('/api/landing/analytics', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                      button: 'getting_started_guide',
+                      source: 'dashboard',
+                      timestamp: new Date().toISOString()
+                    }
+                  })
+                }).catch(e => console.log('Analytics tracking failed:', e));
+              }}
+              style={{
+                display: 'inline-block',
+                marginTop: '0.5rem',
+                padding: '0.25rem 0.5rem',
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '0.25rem',
+                fontSize: '0.6rem',
+                fontWeight: '500',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                transition: 'all 0.2s ease',
+                backdropFilter: 'blur(10px)',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              New to TrainingMonkey? Get started here
+            </a>
           </div>
         </div>
 

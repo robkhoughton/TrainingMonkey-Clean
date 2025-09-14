@@ -853,13 +853,21 @@
             <h2 class="cta-title">Ready to See YOUR Divergence?</h2>
             <p class="cta-description">Connect <i>Your Training Monkey</i> to your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
 
-            <!-- Use your approved Strava button -->
-            <a href="/auth/strava-signup" onclick="trackCTAClick()" style="display: inline-block;">
+            <!-- Primary CTA: Strava Connect -->
+            <a href="/auth/strava-signup" onclick="trackCTAClick()" style="display: inline-block; margin-right: 1rem;">
                 <img src="{{ url_for('serve_landing_static', filename='btn_strava_connect_with_orange_x2.svg') }}"
                      alt="Connect with Strava"
                      style="height: 48px; width: auto; transition: transform 0.2s ease;"
                      onmouseover="this.style.transform='translateY(-2px)'"
                      onmouseout="this.style.transform='translateY(0)'">
+            </a>
+
+            <!-- Secondary CTA: See How It Works -->
+            <a href="/getting-started?source=landing" onclick="trackGettingStartedClick()" 
+               style="display: inline-block; background: rgba(255,255,255,0.2); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; border: 2px solid rgba(255,255,255,0.3); transition: all 0.3s ease; backdrop-filter: blur(10px);"
+               onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.borderColor='rgba(255,255,255,0.5)'; this.style.transform='translateY(-2px)'"
+               onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.borderColor='rgba(255,255,255,0.3)'; this.style.transform='translateY(0)'">
+                See How It Works
             </a>
 
             <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
@@ -969,6 +977,23 @@
                 Connecting to Strava...
             `;
             btn.classList.add('loading');
+        }
+
+        function trackGettingStartedClick() {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                        button: 'see_how_it_works',
+                        source: 'landing',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
         }
 
         // Scroll depth tracking

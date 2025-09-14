@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Migration - ACWR Migration Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-badge {
+            font-size: 0.9em;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .metric-card.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        .metric-card.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .metric-card.danger {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        }
+        .log-entry {
+            border-left: 4px solid #dee2e6;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .log-entry.warning {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+        }
+        .log-entry.info {
+            border-left-color: #0dcaf0;
+            background-color: #d1ecf1;
+        }
+        .log-entry.debug {
+            border-left-color: #6c757d;
+            background-color: #f8f9fa;
+        }
+        .alert-item {
+            border-left: 4px solid;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .alert-item.critical {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .alert-item.high {
+            border-left-color: #fd7e14;
+            background-color: #fff3cd;
+        }
+        .alert-item.medium {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+        }
+        .alert-item.low {
+            border-left-color: #28a745;
+            background-color: #d1ecf1;
+        }
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            transform-origin: 50% 50%;
+        }
+        .control-buttons {
+            position: sticky;
+            top: 20px;
+            z-index: 1000;
+        }
+        .auto-refresh-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('acwr_migration_admin.migration_dashboard') }}">
+                <i class="fas fa-database"></i> ACWR Migration Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.migration_dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.create_migration') }}">
+                    <i class="fas fa-plus"></i> Create Migration
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Auto-refresh indicator -->
+    <div class="auto-refresh-indicator">
+        <div class="badge bg-success" id="refreshIndicator">
+            <i class="fas fa-sync-alt"></i> Auto-refresh: ON
+        </div>
+    </div>
+
+    <div class="container-fluid mt-4">
+        <!-- Migration Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">
+                            <i class="fas fa-eye"></i> Migration Monitor: {{ migration_id }}
+                        </h4>
+                        <div class="control-buttons">
+                            <button class="btn btn-outline-primary" onclick="refreshData()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="toggleAutoRefresh()">
+                                <i class="fas fa-pause" id="autoRefreshIcon"></i> Auto-refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% if migration_details %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>User:</strong> {{ migration_details.username or 'N/A' }}</p>
+                                    <p><strong>Configuration:</strong> {{ migration_details.config_name or 'N/A' }}</p>
+                                    <p><strong>Status:</strong> 
+                                        <span class="badge bg-{{ 'success' if migration_details.status == 'completed' else 'danger' if migration_details.status == 'failed' else 'primary' if migration_details.status == 'running' else 'warning' if migration_details.status == 'paused' else 'secondary' }} status-badge">
+                                            {{ migration_details.status }}
+                                        </span>
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Created:</strong> {{ migration_details.created_at.strftime('%Y-%m-%d %H:%M:%S') if migration_details.created_at else 'N/A' }}</p>
+                                    <p><strong>Completed:</strong> {{ migration_details.completed_at.strftime('%Y-%m-%d %H:%M:%S') if migration_details.completed_at else 'N/A' }}</p>
+                                    <p><strong>Total Activities:</strong> {{ migration_details.total_activities or 'N/A' }}</p>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Progress and Health Metrics -->
+            <div class="col-md-4">
+                <!-- Progress Card -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line"></i> Progress
+                        </h5>
+                    </div>
+                    <div class="card-body text-center">
+                        {% if progress_data %}
+                            <div class="progress mb-3" style="height: 30px;">
+                                <div class="progress-bar" role="progressbar" 
+                                     style="width: {{ progress_data.progress_percentage }}%">
+                                    {{ "%.1f"|format(progress_data.progress_percentage) }}%
+                                </div>
+                            </div>
+                            <p><strong>Processed:</strong> {{ progress_data.processed_activities }} / {{ progress_data.total_activities }}</p>
+                            <p><strong>Current Batch:</strong> {{ progress_data.current_batch }} / {{ progress_data.total_batches }}</p>
+                            {% if progress_data.estimated_completion_time %}
+                                <p><strong>ETA:</strong> {{ progress_data.estimated_completion_time.strftime('%H:%M:%S') }}</p>
+                            {% endif %}
+                        {% else %}
+                            <div class="text-muted">
+                                <i class="fas fa-info-circle fa-2x mb-3"></i>
+                                <p>No progress data available</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Health Metrics -->
+                {% if health_metrics %}
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-heartbeat"></i> Health Metrics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <div class="metric-card p-3 mb-2">
+                                        <h4>{{ health_metrics.error_count }}</h4>
+                                        <p class="mb-0">Errors</p>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="metric-card p-3 mb-2">
+                                        <h4>{{ health_metrics.warning_count }}</h4>
+                                        <p class="mb-0">Warnings</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <div class="metric-card p-3 mb-2">
+                                        <h4>{{ "%.1f"|format(health_metrics.performance_score) }}</h4>
+                                        <p class="mb-0">Performance</p>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="metric-card p-3 mb-2">
+                                        <h4>{{ "%.1f"|format(health_metrics.success_rate * 100) }}</h4>
+                                        <p class="mb-0">Success Rate</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Migration Controls -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cogs"></i> Controls
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if migration_details and migration_details.status == 'running' %}
+                            <button class="btn btn-warning btn-sm w-100 mb-2" onclick="pauseMigration()">
+                                <i class="fas fa-pause"></i> Pause Migration
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100 mb-2" onclick="cancelMigration()">
+                                <i class="fas fa-stop"></i> Cancel Migration
+                            </button>
+                        {% elif migration_details and migration_details.status == 'paused' %}
+                            <button class="btn btn-success btn-sm w-100 mb-2" onclick="resumeMigration()">
+                                <i class="fas fa-play"></i> Resume Migration
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100 mb-2" onclick="cancelMigration()">
+                                <i class="fas fa-stop"></i> Cancel Migration
+                            </button>
+                        {% elif migration_details and migration_details.status == 'failed' %}
+                            <button class="btn btn-warning btn-sm w-100 mb-2" onclick="rollbackMigration()">
+                                <i class="fas fa-undo"></i> Rollback Migration
+                            </button>
+                        {% endif %}
+                        <button class="btn btn-outline-secondary btn-sm w-100" onclick="exportLogs()">
+                            <i class="fas fa-download"></i> Export Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs and Alerts -->
+            <div class="col-md-8">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs" id="monitorTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs" type="button" role="tab">
+                            <i class="fas fa-list"></i> Logs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="alerts-tab" data-bs-toggle="tab" data-bs-target="#alerts" type="button" role="tab">
+                            <i class="fas fa-bell"></i> Alerts
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="monitorTabContent">
+                    <!-- Logs Tab -->
+                    <div class="tab-pane fade show active" id="logs" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Migration Logs</h5>
+                                <div>
+                                    <select class="form-select form-select-sm" id="logLevelFilter" onchange="filterLogs()">
+                                        <option value="">All Levels</option>
+                                        <option value="DEBUG">Debug</option>
+                                        <option value="INFO">Info</option>
+                                        <option value="WARNING">Warning</option>
+                                        <option value="ERROR">Error</option>
+                                        <option value="CRITICAL">Critical</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                                <div id="logsContainer">
+                                    {% if migration_logs %}
+                                        {% for log in migration_logs %}
+                                            <div class="log-entry {{ log.level.value.lower() }}">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div>
+                                                        <strong>{{ log.level.value }}</strong> - {{ log.message }}
+                                                        <br>
+                                                        <small class="text-muted">
+                                                            {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} | 
+                                                            {{ log.source }} | 
+                                                            {% if log.execution_time %}
+                                                                {{ "%.3f"|format(log.execution_time) }}s
+                                                            {% endif %}
+                                                        </small>
+                                                        {% if log.details %}
+                                                            <br>
+                                                            <small class="text-muted">
+                                                                <details>
+                                                                    <summary>Details</summary>
+                                                                    <pre class="mt-2">{{ log.details | tojson(indent=2) }}</pre>
+                                                                </details>
+                                                            </small>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center text-muted py-4">
+                                            <i class="fas fa-inbox fa-2x mb-3"></i>
+                                            <p>No logs available</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alerts Tab -->
+                    <div class="tab-pane fade" id="alerts" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Migration Alerts</h5>
+                                <div>
+                                    <select class="form-select form-select-sm" id="alertSeverityFilter" onchange="filterAlerts()">
+                                        <option value="">All Severities</option>
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="critical">Critical</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                                <div id="alertsContainer">
+                                    {% if migration_alerts %}
+                                        {% for alert in migration_alerts %}
+                                            <div class="alert-item {{ alert.severity.value.lower() }}">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div>
+                                                        <h6 class="mb-1">{{ alert.title }}</h6>
+                                                        <p class="mb-1">{{ alert.message }}</p>
+                                                        <small class="text-muted">
+                                                            {{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} | 
+                                                            {{ alert.alert_type }}
+                                                            {% if alert.acknowledged %}
+                                                                | Acknowledged
+                                                            {% endif %}
+                                                        </small>
+                                                    </div>
+                                                    <div class="text-end">
+                                                        <span class="badge bg-{{ 'danger' if alert.severity.value == 'critical' else 'warning' if alert.severity.value == 'high' else 'info' if alert.severity.value == 'medium' else 'success' }} status-badge">
+                                                            {{ alert.severity.value }}
+                                                        </span>
+                                                        {% if not alert.acknowledged %}
+                                                            <div class="mt-2">
+                                                                <button class="btn btn-sm btn-outline-success" 
+                                                                        onclick="acknowledgeAlert('{{ alert.alert_id }}')">
+                                                                    <i class="fas fa-check"></i>
+                                                                </button>
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center text-muted py-4">
+                                            <i class="fas fa-check-circle fa-2x mb-3"></i>
+                                            <p>No alerts</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let autoRefreshInterval;
+        let autoRefreshEnabled = true;
+
+        // Auto-refresh functionality
+        function startAutoRefresh() {
+            if (autoRefreshEnabled) {
+                autoRefreshInterval = setInterval(refreshData, 10000); // Refresh every 10 seconds
+                document.getElementById('refreshIndicator').innerHTML = '<i class="fas fa-sync-alt"></i> Auto-refresh: ON';
+                document.getElementById('refreshIndicator').className = 'badge bg-success';
+            }
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            document.getElementById('refreshIndicator').innerHTML = '<i class="fas fa-pause"></i> Auto-refresh: OFF';
+            document.getElementById('refreshIndicator').className = 'badge bg-secondary';
+        }
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            if (autoRefreshEnabled) {
+                startAutoRefresh();
+                document.getElementById('autoRefreshIcon').className = 'fas fa-pause';
+            } else {
+                stopAutoRefresh();
+                document.getElementById('autoRefreshIcon').className = 'fas fa-play';
+            }
+        }
+
+        // Refresh data
+        function refreshData() {
+            location.reload();
+        }
+
+        // Migration control functions
+        function pauseMigration() {
+            if (confirm('Are you sure you want to pause this migration?')) {
+                fetch(`/admin/migration/api/pause/{{ migration_id }}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Migration paused successfully', 'success');
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        showAlert('Failed to pause migration: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error pausing migration: ' + error, 'danger');
+                });
+            }
+        }
+
+        function resumeMigration() {
+            fetch(`/admin/migration/api/resume/{{ migration_id }}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Migration resumed successfully', 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showAlert('Failed to resume migration: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('Error resuming migration: ' + error, 'danger');
+            });
+        }
+
+        function cancelMigration() {
+            if (confirm('Are you sure you want to cancel this migration? This action cannot be undone.')) {
+                fetch(`/admin/migration/api/cancel/{{ migration_id }}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Migration cancelled successfully', 'success');
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        showAlert('Failed to cancel migration: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error cancelling migration: ' + error, 'danger');
+                });
+            }
+        }
+
+        function rollbackMigration() {
+            if (confirm('Are you sure you want to rollback this migration? This will undo all changes made by the migration.')) {
+                fetch(`/admin/migration/api/rollback/{{ migration_id }}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ force_execution: false })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Migration rollback initiated successfully', 'success');
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        showAlert('Failed to rollback migration: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error rolling back migration: ' + error, 'danger');
+                });
+            }
+        }
+
+        function acknowledgeAlert(alertId) {
+            fetch(`/admin/migration/api/acknowledge-alert/${alertId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Alert acknowledged successfully', 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showAlert('Failed to acknowledge alert: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('Error acknowledging alert: ' + error, 'danger');
+            });
+        }
+
+        function filterLogs() {
+            const level = document.getElementById('logLevelFilter').value;
+            const logEntries = document.querySelectorAll('.log-entry');
+            
+            logEntries.forEach(entry => {
+                if (!level || entry.classList.contains(level.toLowerCase())) {
+                    entry.style.display = 'block';
+                } else {
+                    entry.style.display = 'none';
+                }
+            });
+        }
+
+        function filterAlerts() {
+            const severity = document.getElementById('alertSeverityFilter').value;
+            const alertItems = document.querySelectorAll('.alert-item');
+            
+            alertItems.forEach(item => {
+                if (!severity || item.classList.contains(severity.toLowerCase())) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function exportLogs() {
+            // Simple CSV export of logs
+            const logEntries = document.querySelectorAll('.log-entry');
+            let csvContent = 'Timestamp,Level,Message,Source,Execution Time\n';
+            
+            logEntries.forEach(entry => {
+                const level = entry.classList.contains('error') ? 'ERROR' : 
+                             entry.classList.contains('warning') ? 'WARNING' : 
+                             entry.classList.contains('info') ? 'INFO' : 'DEBUG';
+                const message = entry.querySelector('strong').nextSibling.textContent.trim();
+                const timestamp = entry.querySelector('small').textContent.split(' | ')[0];
+                const source = entry.querySelector('small').textContent.split(' | ')[1];
+                const executionTime = entry.querySelector('small').textContent.includes('s') ? 
+                                    entry.querySelector('small').textContent.split(' | ')[2] : '';
+                
+                csvContent += `"${timestamp}","${level}","${message}","${source}","${executionTime}"\n`;
+            });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'migration_logs_{{ migration_id }}.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+
+        // Initialize auto-refresh
+        startAutoRefresh();
+    </script>
+</body>
+</html>
+

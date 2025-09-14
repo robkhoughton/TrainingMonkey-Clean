@@ -1076,7 +1076,7 @@ class OnboardingTutorialSystem:
                 else:
                     cursor.execute("""
                         INSERT INTO user_settings (user_id, tutorial_sessions)
-                        VALUES (?, ?)
+                        VALUES (%s)
                     """, (session.user_id, json.dumps([session_data])))
             
         except Exception as e:

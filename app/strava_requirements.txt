@@ -37,3 +37,8 @@ gunicorn>=21.0.0
 # - Flask-Login>=0.6.0 (for user authentication)
 # - psycopg2-binary>=2.9.0 (for database operations)
 # - python-dotenv>=1.0.0 (for environment variable management)
+
+# ACWR Migration System Dependencies
+psutil>=5.8.0                   # Performance monitoring and system resource tracking
+flask-socketio>=5.0.0           # Real-time updates and WebSocket communication
+plotly>=5.0.0                   # Data visualizations and interactive charts

@@ -1,0 +1,3051 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ACWR Configuration - Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Favicon - Monkey Mascot -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 2px solid #17a2b8;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #17a2b8;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #6c757d;
+            margin: 10px 0 0 0;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        .section h2 {
+            color: #495057;
+            margin-top: 0;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #495057;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #17a2b8;
+            box-shadow: 0 0 0 2px rgba(23, 162, 184, 0.25);
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #138496;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .table th, .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .table th {
+            background-color: #e9ecef;
+            font-weight: bold;
+            color: #495057;
+        }
+        .table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-default {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .alert {
+            padding: 15px;
+            margin: 20px 0;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        .alert-warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        .validation-message {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .help-text {
+            color: #6c757d;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 600px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #17a2b8;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .impact-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .impact-warning h4 {
+            color: #856404;
+            margin-top: 0;
+        }
+        .impact-warning ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .impact-warning li {
+            color: #856404;
+            margin: 5px 0;
+        }
+        .bulk-tools {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .bulk-tools .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .selected-count {
+            font-weight: bold;
+            color: #17a2b8;
+            margin-left: 10px;
+        }
+        .user-list-container {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+        }
+        .bulk-users-list {
+            padding: 10px;
+        }
+        .user-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #f8f9fa;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .user-item:hover {
+            background-color: #f8f9fa;
+        }
+        .user-item.selected {
+            background-color: #e3f2fd;
+            border-left: 3px solid #17a2b8;
+        }
+        .user-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .user-email {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        .user-assignment {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 12px;
+            margin-left: 10px;
+        }
+        .assignment-assigned {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .assignment-unassigned {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .assignment-default {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .assignment-preview {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .assignment-preview h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .preview-details p {
+            margin: 5px 0;
+        }
+        .preview-warnings {
+            margin-top: 10px;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .operation-status {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .operation-status h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #17a2b8;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .operation-log {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-success {
+            color: #28a745;
+        }
+        .log-error {
+            color: #dc3545;
+        }
+        .log-warning {
+            color: #ffc107;
+        }
+        .log-info {
+            color: #17a2b8;
+        }
+        .history-container {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: white;
+        }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .history-table th,
+        .history-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .history-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .history-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .history-entry {
+            transition: background-color 0.2s;
+        }
+        .action-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .action-assigned {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .action-unassigned {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .action-bulk-assigned {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .action-bulk-unassigned {
+            background-color: #ffeaa7;
+            color: #856404;
+        }
+        .history-pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding: 10px 0;
+        }
+        .history-count {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        .admin-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .admin-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .admin-email {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .user-email {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .config-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .config-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .config-change {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .timestamp {
+            font-family: monospace;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .reason-text {
+            font-style: italic;
+            color: #6c757d;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .rollback-options {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #f8f9fa;
+        }
+        .rollback-option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .rollback-option:hover {
+            background-color: #e9ecef;
+        }
+        .rollback-option.selected {
+            background-color: #cce5ff;
+            border-color: #007bff;
+        }
+        .rollback-option-info {
+            flex: 1;
+        }
+        .rollback-option-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .rollback-option-details {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .rollback-option-date {
+            font-size: 11px;
+            color: #6c757d;
+            font-style: italic;
+        }
+        .rollback-impact {
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #fff3cd;
+        }
+        .rollback-warnings {
+            margin-top: 10px;
+        }
+        .rollback-warnings .alert {
+            margin: 5px 0;
+        }
+        .rollback-actions {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .rollback-status {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #f8f9fa;
+        }
+        .action-rollback {
+            background-color: #ffeaa7;
+            color: #856404;
+        }
+        .field-error {
+            font-size: 12px;
+            margin-top: 5px;
+            min-height: 18px;
+        }
+        .is-valid {
+            border-color: #28a745;
+            box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+        }
+        .is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+        .validation-summary {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .validation-summary h5 {
+            color: #721c24;
+            margin-bottom: 10px;
+        }
+        .validation-summary ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .validation-summary li {
+            color: #721c24;
+            margin-bottom: 5px;
+        }
+        .form-help {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .character-count {
+            font-size: 11px;
+            color: #6c757d;
+            text-align: right;
+            margin-top: 2px;
+        }
+        .character-count.warning {
+            color: #ffc107;
+        }
+        .character-count.danger {
+            color: #dc3545;
+        }
+        .text-success {
+            color: #28a745 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐒 ACWR Configuration Management</h1>
+            <p>Manage configurable ACWR settings with exponential decay weighting</p>
+        </div>
+
+        <!-- Success/Error Messages -->
+        <div id="message-container"></div>
+
+        <!-- Configuration List Section -->
+        <div class="section">
+            <h2>📋 Existing Configurations</h2>
+            <div class="loading" id="config-loading">
+                <div class="spinner"></div>
+                <p>Loading configurations...</p>
+            </div>
+            <div id="config-list">
+                <!-- Configurations will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Create New Configuration Section -->
+        <div class="section">
+            <h2>➕ Create New Configuration</h2>
+            <form id="create-config-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="config-name">Configuration Name *</label>
+                        <input type="text" id="config-name" name="name" required maxlength="100" placeholder="Enter a unique configuration name">
+                        <div class="form-help">Choose a descriptive name that clearly identifies this configuration (e.g., "Standard Runner", "Elite Athlete")</div>
+                        <div class="character-count" id="config-name-count">0/100</div>
+                        <div class="validation-message" id="name-error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="config-description">Description</label>
+                        <input type="text" id="config-description" name="description" maxlength="255" placeholder="Optional description">
+                        <div class="form-help">Optional description of this configuration's purpose and use cases</div>
+                        <div class="character-count" id="config-description-count">0/255</div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="chronic-period">Chronic Period (Days) *</label>
+                        <input type="number" id="chronic-period" name="chronic_period_days" required min="28" max="90" value="42" placeholder="28-90">
+                        <div class="form-help">Number of days for chronic load calculation. Longer periods provide more stable baselines but may be less responsive to training changes.</div>
+                        <div class="validation-message" id="chronic-period-error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="decay-rate">Decay Rate *</label>
+                        <input type="number" id="decay-rate" name="decay_rate" required min="0.01" max="0.20" step="0.001" value="0.05" placeholder="0.01-0.20">
+                        <div class="form-help">Exponential decay rate for weighting recent activities. Higher values give more weight to recent activities, lower values provide more stable averages.</div>
+                        <div class="validation-message" id="decay-rate-error"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="config-notes">Notes</label>
+                    <textarea id="config-notes" name="notes" rows="3" maxlength="500"></textarea>
+                    <div class="help-text">Optional notes about this configuration</div>
+                </div>
+
+                <div class="impact-warning">
+                    <h4>⚠️ Configuration Impact</h4>
+                    <p>Creating a new configuration will:</p>
+                    <ul>
+                        <li>Make it available for user assignment</li>
+                        <li>Not affect existing users until explicitly assigned</li>
+                        <li>Require manual assignment to users who need it</li>
+                    </ul>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Create Configuration</button>
+                <button type="reset" class="btn btn-secondary">Reset Form</button>
+            </form>
+        </div>
+
+        <!-- User Assignment Section -->
+        <div class="section">
+            <h2>👥 User Assignment</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assignment-config">Select Configuration</label>
+                    <select id="assignment-config" name="config_id">
+                        <option value="">Choose a configuration...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assignment-user">Select User</label>
+                    <select id="assignment-user" name="user_id">
+                        <option value="">Choose a user...</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="btn btn-success" onclick="assignConfiguration()">Assign Configuration</button>
+            <button type="button" class="btn btn-warning" onclick="removeAssignment()">Remove Assignment</button>
+        </div>
+
+        <!-- Bulk Assignment Section -->
+        <div class="section">
+            <h2>📊 Bulk Assignment</h2>
+            
+            <!-- Configuration Selection -->
+            <div class="form-group">
+                <label for="bulk-config">Select Configuration</label>
+                <select id="bulk-config" name="bulk_config_id" onchange="loadBulkAssignmentPreview()">
+                    <option value="">Choose a configuration...</option>
+                </select>
+            </div>
+            
+            <!-- User Search and Filter -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="user-search">Search Users</label>
+                    <input type="text" id="user-search" placeholder="Search by username or email..." onkeyup="filterUsers()">
+                </div>
+                <div class="form-group">
+                    <label for="assignment-filter">Filter by Current Assignment</label>
+                    <select id="assignment-filter" onchange="filterUsers()">
+                        <option value="all">All Users</option>
+                        <option value="assigned">Currently Assigned</option>
+                        <option value="unassigned">Not Assigned</option>
+                        <option value="default">Using Default Config</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Bulk Selection Tools -->
+            <div class="form-group">
+                <div class="bulk-tools" id="bulk-tools">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="selectAllUsers()">Select All</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="selectNoneUsers()">Select None</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="selectUnassignedUsers()">Select Unassigned</button>
+                    <span id="selected-count" class="selected-count">0 users selected</span>
+                </div>
+            </div>
+            
+            <!-- User Selection List -->
+            <div class="form-group">
+                <label for="bulk-users">Select Users</label>
+                <div id="user-list-container" class="user-list-container">
+                    <div id="user-list-loading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Loading users...</p>
+                    </div>
+                    <div id="bulk-users-list" class="bulk-users-list">
+                        <!-- Users will be loaded here -->
+                    </div>
+                </div>
+                <div class="help-text">Click to select/deselect users. Use search and filters to find specific users.</div>
+            </div>
+            
+            <!-- Assignment Preview -->
+            <div id="bulk-assignment-preview" class="assignment-preview" style="display: none;">
+                <h4>📋 Assignment Preview</h4>
+                <div id="preview-details">
+                    <p><strong>Configuration:</strong> <span id="preview-config-name"></span></p>
+                    <p><strong>Selected Users:</strong> <span id="preview-user-count"></span></p>
+                    <p><strong>Current Assignments:</strong> <span id="preview-current-assignments"></span></p>
+                    <p><strong>New Assignments:</strong> <span id="preview-new-assignments"></span></p>
+                    <p><strong>Conflicts:</strong> <span id="preview-conflicts"></span></p>
+                </div>
+                <div id="preview-warnings" class="preview-warnings"></div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="bulk-actions">
+                <button type="button" class="btn btn-success" onclick="bulkAssignConfiguration()" id="bulk-assign-btn" disabled>
+                    <span id="bulk-assign-text">Bulk Assign</span>
+                </button>
+                <button type="button" class="btn btn-warning" onclick="bulkRemoveAssignment()" id="bulk-remove-btn" disabled>
+                    <span id="bulk-remove-text">Bulk Remove</span>
+                </button>
+                <button type="button" class="btn btn-info" onclick="previewBulkAssignment()" id="preview-btn" disabled>
+                    Preview Changes
+                </button>
+            </div>
+            
+            <!-- Operation Status -->
+            <div id="bulk-operation-status" class="operation-status" style="display: none;">
+                <h4>🔄 Operation Status</h4>
+                <div id="operation-progress" class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div id="operation-log" class="operation-log"></div>
+            </div>
+        </div>
+
+        <!-- Rollback Section -->
+        <div class="section">
+            <h2>🔄 Rollback Assignments</h2>
+            
+            <!-- Rollback Filters -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="rollback-filter-type">Rollback Type</label>
+                    <select id="rollback-filter-type" onchange="updateRollbackInterface()">
+                        <option value="single">Single User Rollback</option>
+                        <option value="bulk">Bulk Rollback</option>
+                        <option value="time-based">Time-based Rollback</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rollback-user-select">Select User</label>
+                    <select id="rollback-user-select" onchange="loadRollbackOptions()">
+                        <option value="">Choose a user...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rollback-target-config">Rollback To Configuration</label>
+                    <select id="rollback-target-config">
+                        <option value="">Choose target configuration...</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Rollback Options Display -->
+            <div id="rollback-options-container" class="rollback-options" style="display: none;">
+                <h4>Available Rollback Options</h4>
+                <div id="rollback-options-list">
+                    <!-- Rollback options will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- Rollback Impact Analysis -->
+            <div id="rollback-impact-container" class="rollback-impact" style="display: none;">
+                <h4>⚠️ Rollback Impact Analysis</h4>
+                <div id="rollback-impact-details">
+                    <p><strong>Users Affected:</strong> <span id="rollback-affected-users">0</span></p>
+                    <p><strong>Impact Level:</strong> <span id="rollback-impact-level">Analyzing...</span></p>
+                    <div id="rollback-warnings" class="rollback-warnings"></div>
+                </div>
+            </div>
+            
+            <!-- Rollback Reason -->
+            <div class="form-group">
+                <label for="rollback-reason">Reason for Rollback (Optional)</label>
+                <textarea id="rollback-reason" name="reason" rows="3" maxlength="500" placeholder="Enter reason for rollback..."></textarea>
+            </div>
+            
+            <!-- Rollback Actions -->
+            <div class="rollback-actions" id="rollback-actions">
+                <button type="button" class="btn btn-warning" onclick="previewRollback()" id="preview-rollback-btn" disabled>
+                    Preview Rollback
+                </button>
+                <button type="button" class="btn btn-danger" onclick="executeRollback()" id="execute-rollback-btn" disabled>
+                    Execute Rollback
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="clearRollback()">
+                    Clear
+                </button>
+            </div>
+            
+            <!-- Rollback Status -->
+            <div id="rollback-status" class="rollback-status" style="display: none;">
+                <div class="operation-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="rollback-progress-fill"></div>
+                    </div>
+                    <div class="operation-log" id="rollback-operation-log"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assignment History Section -->
+        <div class="section">
+            <h2>📋 Assignment History</h2>
+            
+            <!-- History Filters -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="history-filter-type">Filter by Type</label>
+                    <select id="history-filter-type" onchange="filterAssignmentHistory()">
+                        <option value="all">All Actions</option>
+                        <option value="ASSIGNED">Assignments</option>
+                        <option value="UNASSIGNED">Unassignments</option>
+                        <option value="BULK_ASSIGNED">Bulk Assignments</option>
+                        <option value="BULK_UNASSIGNED">Bulk Unassignments</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="history-filter-user">Filter by User</label>
+                    <select id="history-filter-user" onchange="filterAssignmentHistory()">
+                        <option value="">All Users</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="history-filter-config">Filter by Configuration</label>
+                    <select id="history-filter-config" onchange="filterAssignmentHistory()">
+                        <option value="">All Configurations</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="history-filter-admin">Filter by Admin</label>
+                    <select id="history-filter-admin" onchange="filterAssignmentHistory()">
+                        <option value="">All Admins</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- History Table -->
+            <div class="history-container" id="history-container">
+                <div id="history-loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading assignment history...</p>
+                </div>
+                <div id="assignment-history-table" class="history-table">
+                    <!-- History will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- History Pagination -->
+            <div class="history-pagination" id="history-pagination">
+                <button type="button" class="btn btn-secondary" onclick="loadMoreHistory()" id="load-more-btn">
+                    Load More History
+                </button>
+                <span id="history-count" class="history-count">0 entries loaded</span>
+            </div>
+        </div>
+
+        <!-- Configuration Statistics Section -->
+        <div class="section">
+            <h2>📈 Configuration Statistics</h2>
+            <div id="config-stats">
+                <!-- Statistics will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Configuration Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h2>Edit Configuration</h2>
+            <form id="edit-config-form">
+                <input type="hidden" id="edit-config-id" name="id">
+                <div class="form-group">
+                    <label for="edit-config-name">Configuration Name *</label>
+                    <input type="text" id="edit-config-name" name="name" required maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="edit-config-description">Description</label>
+                    <input type="text" id="edit-config-description" name="description" maxlength="255">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-chronic-period">Chronic Period (Days) *</label>
+                        <input type="number" id="edit-chronic-period" name="chronic_period_days" required min="28" max="90">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-decay-rate">Decay Rate *</label>
+                        <input type="number" id="edit-decay-rate" name="decay_rate" required min="0.01" max="0.20" step="0.001">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-config-notes">Notes</label>
+                    <textarea id="edit-config-notes" name="notes" rows="3" maxlength="500"></textarea>
+                </div>
+                <div class="impact-warning" id="edit-impact-warning">
+                    <h4>⚠️ Edit Impact Analysis</h4>
+                    <div id="impact-details">
+                        <p><strong>Affected Users:</strong> <span id="affected-users-count">Loading...</span></p>
+                        <p><strong>Impact Level:</strong> <span id="impact-level">Analyzing...</span></p>
+                        <div id="parameter-changes" style="display: none;">
+                            <h5>Parameter Changes Detected:</h5>
+                            <ul id="changes-list"></ul>
+                        </div>
+                        <div id="high-impact-warning" style="display: none;" class="alert alert-danger">
+                            <strong>⚠️ High Impact Warning:</strong> These changes will significantly affect ACWR calculations for all assigned users. Consider the implications carefully.
+                        </div>
+                        <div id="medium-impact-warning" style="display: none;" class="alert alert-warning">
+                            <strong>⚠️ MEDIUM IMPACT WARNING:</strong> These changes will affect ACWR calculations. Review the impact before proceeding.
+                        </div>
+                        <div id="low-impact-warning" style="display: none;" class="alert alert-info">
+                            <strong>ℹ️ Low Impact:</strong> These changes will have minimal impact on ACWR calculations.
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Deactivate Configuration Modal -->
+    <div id="deactivate-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDeactivateModal()">&times;</span>
+            <h2>Deactivate Configuration</h2>
+            <div id="deactivate-config-details"></div>
+            <div class="impact-warning">
+                <h4>⚠️ Deactivation Impact</h4>
+                <div id="deactivation-impact-details">
+                    <p><strong>Configuration:</strong> <span id="deactivate-config-name"></span></p>
+                    <p><strong>Affected Users:</strong> <span id="deactivate-affected-users">Loading...</span></p>
+                    <p><strong>Impact Level:</strong> <span id="deactivate-impact-level">Analyzing...</span></p>
+                    <div id="deactivation-warnings" class="deactivation-warnings"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="deactivation-reason">Reason for Deactivation (Optional)</label>
+                <textarea id="deactivation-reason" name="reason" rows="3" maxlength="500" placeholder="Enter reason for deactivation..."></textarea>
+            </div>
+            <button type="button" class="btn btn-warning" onclick="confirmDeactivation()">Deactivate Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDeactivateModal()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Reactivate Configuration Modal -->
+    <div id="reactivate-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeReactivateModal()">&times;</span>
+            <h2>Reactivate Configuration</h2>
+            <div id="reactivate-config-details"></div>
+            <div class="impact-warning">
+                <h4>ℹ️ Reactivation Impact</h4>
+                <div id="reactivation-impact-details">
+                    <p><strong>Configuration:</strong> <span id="reactivate-config-name"></span></p>
+                    <p><strong>Previous Users:</strong> <span id="reactivate-previous-users">Loading...</span></p>
+                    <p><strong>Note:</strong> Reactivation will not automatically reassign users. You'll need to manually reassign users if needed.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-success" onclick="confirmReactivation()">Reactivate Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="closeReactivateModal()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDeleteModal()">&times;</span>
+            <h2>Delete Configuration</h2>
+            <p>Are you sure you want to delete this configuration?</p>
+            <div class="alert alert-warning">
+                <strong>Warning:</strong> This action cannot be undone. Users assigned to this configuration will fall back to the default configuration.
+            </div>
+            <div id="delete-config-details"></div>
+            <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let configurations = [];
+        let users = [];
+        let currentEditId = null;
+        let currentDeactivateId = null;
+        let currentReactivateId = null;
+        let currentDeleteId = null;
+        let assignmentHistory = [];
+        let historyOffset = 0;
+        let historyLimit = 50;
+        let rollbackOptions = [];
+        let selectedRollbackOption = null;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConfigurations();
+            loadUsers();
+            loadAssignmentHistory();
+            setupFormValidation();
+        });
+
+        // Load configurations
+        async function loadConfigurations() {
+            try {
+                document.getElementById('config-loading').style.display = 'block';
+                const response = await fetch('/api/admin/acwr-configurations');
+                const data = await response.json();
+                
+                if (data.success) {
+                    configurations = data.configurations;
+                    displayConfigurations();
+                    updateConfigurationSelects();
+                } else {
+                    showMessage('Error loading configurations: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error loading configurations: ' + error.message, 'danger');
+            } finally {
+                document.getElementById('config-loading').style.display = 'none';
+            }
+        }
+
+        // Display configurations in table
+        function displayConfigurations() {
+            const container = document.getElementById('config-list');
+            
+            if (configurations.length === 0) {
+                container.innerHTML = '<p>No configurations found. Create your first configuration above.</p>';
+                return;
+            }
+
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Chronic Period</th>
+                            <th>Decay Rate</th>
+                            <th>Status</th>
+                            <th>Users</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            configurations.forEach(config => {
+                const statusClass = config.is_default ? 'status-default' : 
+                                  config.is_active ? 'status-active' : 'status-inactive';
+                const statusText = config.is_default ? 'Default' : 
+                                 config.is_active ? 'Active' : 'Inactive';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(config.name)}</strong>
+                            ${config.description ? `<br><small>${escapeHtml(config.description)}</small>` : ''}
+                        </td>
+                        <td>${config.chronic_period_days} days</td>
+                        <td>${config.decay_rate}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${config.user_count || 0}</td>
+                        <td>${new Date(config.created_at).toLocaleDateString()}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="editConfiguration(${config.id})">Edit</button>
+                            ${config.is_active ? `<button class="btn btn-warning" onclick="deactivateConfiguration(${config.id})">Deactivate</button>` : `<button class="btn btn-success" onclick="reactivateConfiguration(${config.id})">Reactivate</button>`}
+                            ${!config.is_default ? `<button class="btn btn-danger" onclick="deleteConfiguration(${config.id})">Delete</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Update configuration select dropdowns
+        function updateConfigurationSelects() {
+            const selects = ['assignment-config', 'bulk-config'];
+            selects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                select.innerHTML = '<option value="">Choose a configuration...</option>';
+                
+                configurations.forEach(config => {
+                    if (config.is_active) {
+                        const option = document.createElement('option');
+                        option.value = config.id;
+                        option.textContent = config.name;
+                        select.appendChild(option);
+                    }
+                });
+            });
+        }
+
+        // Load users
+        async function loadUsers() {
+            try {
+                const response = await fetch('/api/admin/users');
+                const data = await response.json();
+                
+                if (data.success) {
+                    users = data.users;
+                    updateUserSelects();
+                } else {
+                    showMessage('Error loading users: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error loading users: ' + error.message, 'danger');
+            }
+        }
+
+        // Update user select dropdowns
+        function updateUserSelects() {
+            const singleSelect = document.getElementById('assignment-user');
+            
+            // Single user select
+            singleSelect.innerHTML = '<option value="">Choose a user...</option>';
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = `${user.username} (${user.email})`;
+                singleSelect.appendChild(option);
+            });
+
+            // Load bulk user list
+            loadBulkUserList();
+        }
+
+        // Load bulk user list with enhanced interface
+        function loadBulkUserList() {
+            const container = document.getElementById('bulk-users-list');
+            container.innerHTML = '';
+            
+            users.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = 'user-item';
+                userItem.setAttribute('data-user-id', user.id);
+                userItem.setAttribute('data-username', user.username.toLowerCase());
+                userItem.setAttribute('data-email', user.email.toLowerCase());
+                
+                // Get current assignment status
+                const assignmentStatus = getUserAssignmentStatus(user.id);
+                const assignmentClass = `assignment-${assignmentStatus}`;
+                const assignmentText = getAssignmentText(assignmentStatus);
+                
+                userItem.innerHTML = `
+                    <input type="checkbox" id="user-${user.id}" value="${user.id}" onchange="updateUserSelection()">
+                    <div class="user-info">
+                        <div class="user-name">${escapeHtml(user.username)}</div>
+                        <div class="user-email">${escapeHtml(user.email)}</div>
+                    </div>
+                    <span class="user-assignment ${assignmentClass}">${assignmentText}</span>
+                `;
+                
+                // Add click handler for the entire row
+                userItem.addEventListener('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        const checkbox = userItem.querySelector('input[type="checkbox"]');
+                        checkbox.checked = !checkbox.checked;
+                        updateUserSelection();
+                    }
+                });
+                
+                container.appendChild(userItem);
+            });
+            
+            updateUserSelection();
+        }
+
+        // Get user assignment status
+        function getUserAssignmentStatus(userId) {
+            // This would typically come from the API
+            // For now, return mock data
+            const assignedUsers = [1, 3, 5]; // Mock assigned user IDs
+            if (assignedUsers.includes(userId)) {
+                return 'assigned';
+            }
+            return 'unassigned';
+        }
+
+        // Get assignment status text
+        function getAssignmentText(status) {
+            switch (status) {
+                case 'assigned': return 'Assigned';
+                case 'unassigned': return 'Unassigned';
+                case 'default': return 'Default';
+                default: return 'Unknown';
+            }
+        }
+
+        // Update user selection count and button states
+        function updateUserSelection() {
+            const selectedUsers = getSelectedUsers();
+            const selectedCount = selectedUsers.length;
+            
+            document.getElementById('selected-count').textContent = `${selectedCount} users selected`;
+            
+            // Update button states
+            const configId = document.getElementById('bulk-config').value;
+            const hasConfig = configId && configId !== '';
+            const hasSelection = selectedCount > 0;
+            
+            document.getElementById('bulk-assign-btn').disabled = !hasConfig || !hasSelection;
+            document.getElementById('bulk-remove-btn').disabled = !hasConfig || !hasSelection;
+            document.getElementById('preview-btn').disabled = !hasConfig || !hasSelection;
+            
+            // Update button text
+            if (hasSelection) {
+                document.getElementById('bulk-assign-text').textContent = `Bulk Assign (${selectedCount})`;
+                document.getElementById('bulk-remove-text').textContent = `Bulk Remove (${selectedCount})`;
+            } else {
+                document.getElementById('bulk-assign-text').textContent = 'Bulk Assign';
+                document.getElementById('bulk-remove-text').textContent = 'Bulk Remove';
+            }
+        }
+
+        // Get selected users
+        function getSelectedUsers() {
+            const checkboxes = document.querySelectorAll('#bulk-users-list input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => parseInt(cb.value));
+        }
+
+        // Filter users based on search and filter criteria
+        function filterUsers() {
+            const searchTerm = document.getElementById('user-search').value.toLowerCase();
+            const filterType = document.getElementById('assignment-filter').value;
+            const userItems = document.querySelectorAll('.user-item');
+            
+            userItems.forEach(item => {
+                const username = item.getAttribute('data-username');
+                const email = item.getAttribute('data-email');
+                const userId = parseInt(item.getAttribute('data-user-id'));
+                const assignmentStatus = getUserAssignmentStatus(userId);
+                
+                // Check search term
+                const matchesSearch = !searchTerm || 
+                    username.includes(searchTerm) || 
+                    email.includes(searchTerm);
+                
+                // Check filter type
+                let matchesFilter = true;
+                if (filterType === 'assigned') {
+                    matchesFilter = assignmentStatus === 'assigned';
+                } else if (filterType === 'unassigned') {
+                    matchesFilter = assignmentStatus === 'unassigned';
+                } else if (filterType === 'default') {
+                    matchesFilter = assignmentStatus === 'default';
+                }
+                
+                // Show/hide item
+                if (matchesSearch && matchesFilter) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Bulk selection functions
+        function selectAllUsers() {
+            const visibleCheckboxes = document.querySelectorAll('.user-item[style*="flex"] input[type="checkbox"], .user-item:not([style*="none"]) input[type="checkbox"]');
+            visibleCheckboxes.forEach(cb => cb.checked = true);
+            updateUserSelection();
+        }
+
+        function selectNoneUsers() {
+            const checkboxes = document.querySelectorAll('#bulk-users-list input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = false);
+            updateUserSelection();
+        }
+
+        function selectUnassignedUsers() {
+            const checkboxes = document.querySelectorAll('#bulk-users-list input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                const userId = parseInt(cb.value);
+                const status = getUserAssignmentStatus(userId);
+                cb.checked = status === 'unassigned';
+            });
+            updateUserSelection();
+        }
+
+        // Load bulk assignment preview
+        function loadBulkAssignmentPreview() {
+            const configId = document.getElementById('bulk-config').value;
+            if (!configId) {
+                document.getElementById('bulk-assignment-preview').style.display = 'none';
+                return;
+            }
+            
+            const config = configurations.find(c => c.id == configId);
+            if (config) {
+                document.getElementById('preview-config-name').textContent = config.name;
+            }
+            
+            updateUserSelection();
+        }
+
+        // Preview bulk assignment
+        function previewBulkAssignment() {
+            const configId = document.getElementById('bulk-config').value;
+            const selectedUsers = getSelectedUsers();
+            
+            if (!configId || selectedUsers.length === 0) {
+                return;
+            }
+            
+            const config = configurations.find(c => c.id == configId);
+            if (!config) return;
+            
+            // Analyze current assignments
+            let currentAssignments = 0;
+            let newAssignments = 0;
+            let conflicts = 0;
+            
+            selectedUsers.forEach(userId => {
+                const status = getUserAssignmentStatus(userId);
+                if (status === 'assigned') {
+                    currentAssignments++;
+                } else {
+                    newAssignments++;
+                }
+            });
+            
+            // Update preview details
+            document.getElementById('preview-user-count').textContent = selectedUsers.length;
+            document.getElementById('preview-current-assignments').textContent = currentAssignments;
+            document.getElementById('preview-new-assignments').textContent = newAssignments;
+            document.getElementById('preview-conflicts').textContent = conflicts;
+            
+            // Show warnings
+            const warningsContainer = document.getElementById('preview-warnings');
+            warningsContainer.innerHTML = '';
+            
+            if (currentAssignments > 0) {
+                const warning = document.createElement('div');
+                warning.className = 'alert alert-warning';
+                warning.innerHTML = `<strong>Warning:</strong> ${currentAssignments} users are already assigned to configurations. This will change their assignments.`;
+                warningsContainer.appendChild(warning);
+            }
+            
+            if (newAssignments > 0) {
+                const info = document.createElement('div');
+                info.className = 'alert alert-info';
+                info.innerHTML = `<strong>Info:</strong> ${newAssignments} users will receive new configuration assignments.`;
+                warningsContainer.appendChild(info);
+            }
+            
+            document.getElementById('bulk-assignment-preview').style.display = 'block';
+        }
+
+        // Setup form validation
+        function setupFormValidation() {
+            const form = document.getElementById('create-config-form');
+            form.addEventListener('submit', handleCreateConfiguration);
+            
+            const editForm = document.getElementById('edit-config-form');
+            editForm.addEventListener('submit', handleEditConfiguration);
+            
+            // Add real-time validation for create form
+            setupCreateFormValidation();
+            
+            // Add real-time validation for edit form
+            setupEditFormValidation();
+        }
+        
+        // Setup create form validation
+        function setupCreateFormValidation() {
+            const nameInput = document.getElementById('config-name');
+            const chronicInput = document.getElementById('chronic-period');
+            const decayInput = document.getElementById('decay-rate');
+            const descriptionInput = document.getElementById('config-description');
+            const notesInput = document.getElementById('config-notes');
+            
+            if (nameInput) {
+                nameInput.addEventListener('input', validateCreateName);
+                nameInput.addEventListener('blur', validateCreateName);
+                nameInput.addEventListener('input', updateCharacterCount);
+            }
+            if (chronicInput) {
+                chronicInput.addEventListener('input', validateCreateChronicPeriod);
+                chronicInput.addEventListener('blur', validateCreateChronicPeriod);
+            }
+            if (decayInput) {
+                decayInput.addEventListener('input', validateCreateDecayRate);
+                decayInput.addEventListener('blur', validateCreateDecayRate);
+            }
+            if (descriptionInput) {
+                descriptionInput.addEventListener('input', validateCreateDescription);
+                descriptionInput.addEventListener('blur', validateCreateDescription);
+                descriptionInput.addEventListener('input', updateCharacterCount);
+            }
+            if (notesInput) {
+                notesInput.addEventListener('input', validateCreateNotes);
+                notesInput.addEventListener('blur', validateCreateNotes);
+            }
+        }
+        
+        // Setup edit form validation
+        function setupEditFormValidation() {
+            const editNameInput = document.getElementById('edit-config-name');
+            const editChronicInput = document.getElementById('edit-chronic-period');
+            const editDecayInput = document.getElementById('edit-decay-rate');
+            const editDescriptionInput = document.getElementById('edit-config-description');
+            const editNotesInput = document.getElementById('edit-config-notes');
+            
+            if (editNameInput) {
+                editNameInput.addEventListener('input', validateEditName);
+                editNameInput.addEventListener('blur', validateEditName);
+            }
+            if (editChronicInput) {
+                editChronicInput.addEventListener('input', validateEditChronicPeriod);
+                editChronicInput.addEventListener('blur', validateEditChronicPeriod);
+            }
+            if (editDecayInput) {
+                editDecayInput.addEventListener('input', validateEditDecayRate);
+                editDecayInput.addEventListener('blur', validateEditDecayRate);
+            }
+            if (editDescriptionInput) {
+                editDescriptionInput.addEventListener('input', validateEditDescription);
+                editDescriptionInput.addEventListener('blur', validateEditDescription);
+            }
+            if (editNotesInput) {
+                editNotesInput.addEventListener('input', validateEditNotes);
+                editNotesInput.addEventListener('blur', validateEditNotes);
+            }
+        }
+
+        // Handle create configuration
+        async function handleCreateConfiguration(event) {
+            event.preventDefault();
+            
+            if (!validateCreateForm()) {
+                return;
+            }
+
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/api/admin/acwr-configurations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration created successfully!', 'success');
+                    event.target.reset();
+                    loadConfigurations();
+                } else {
+                    showMessage('Error creating configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error creating configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Handle edit configuration
+        async function handleEditConfiguration(event) {
+            event.preventDefault();
+            
+            if (!validateEditForm()) {
+                return;
+            }
+
+            // Check for high-impact changes and require confirmation
+            const impactLevel = document.getElementById('impact-level').textContent;
+            if (impactLevel === 'HIGH IMPACT') {
+                const confirmed = confirm(
+                    '⚠️ HIGH IMPACT WARNING\n\n' +
+                    'These changes will significantly affect ACWR calculations for all assigned users.\n\n' +
+                    'Are you sure you want to proceed with these changes?\n\n' +
+                    'Consider:\n' +
+                    '• The impact on user training load analysis\n' +
+                    '• Historical data consistency\n' +
+                    '• User notification requirements'
+                );
+                
+                if (!confirmed) {
+                    return;
+                }
+            }
+
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/${currentEditId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    const impactMessage = impactLevel === 'HIGH IMPACT' ? 
+                        'Configuration updated successfully! High-impact changes have been applied.' :
+                        'Configuration updated successfully!';
+                    showMessage(impactMessage, 'success');
+                    closeEditModal();
+                    loadConfigurations();
+                } else {
+                    showMessage('Error updating configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error updating configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Validate create form
+        function validateCreateForm() {
+            let isValid = true;
+            
+            // Clear previous errors
+            document.querySelectorAll('.validation-message').forEach(el => el.textContent = '');
+            
+            // Validate name
+            const name = document.getElementById('config-name').value.trim();
+            if (!name) {
+                document.getElementById('name-error').textContent = 'Configuration name is required';
+                isValid = false;
+            }
+            
+            // Validate chronic period
+            const chronicPeriod = parseInt(document.getElementById('chronic-period').value);
+            if (chronicPeriod < 28 || chronicPeriod > 90) {
+                document.getElementById('chronic-period-error').textContent = 'Chronic period must be between 28 and 90 days';
+                isValid = false;
+            }
+            
+            // Validate decay rate
+            const decayRate = parseFloat(document.getElementById('decay-rate').value);
+            if (decayRate < 0.01 || decayRate > 0.20) {
+                document.getElementById('decay-rate-error').textContent = 'Decay rate must be between 0.01 and 0.20';
+                isValid = false;
+            }
+            
+            return isValid;
+        }
+
+        // Validate edit form
+        function validateEditForm() {
+            let isValid = true;
+            
+            // Validate chronic period
+            const chronicPeriod = parseInt(document.getElementById('edit-chronic-period').value);
+            if (chronicPeriod < 28 || chronicPeriod > 90) {
+                isValid = false;
+            }
+            
+            // Validate decay rate
+            const decayRate = parseFloat(document.getElementById('edit-decay-rate').value);
+            if (decayRate < 0.01 || decayRate > 0.20) {
+                isValid = false;
+            }
+            
+            return isValid;
+        }
+
+        // Edit configuration
+        function editConfiguration(configId) {
+            const config = configurations.find(c => c.id === configId);
+            if (!config) return;
+
+            currentEditId = configId;
+            
+            document.getElementById('edit-config-id').value = config.id;
+            document.getElementById('edit-config-name').value = config.name;
+            document.getElementById('edit-config-description').value = config.description || '';
+            document.getElementById('edit-chronic-period').value = config.chronic_period_days;
+            document.getElementById('edit-decay-rate').value = config.decay_rate;
+            document.getElementById('edit-config-notes').value = config.notes || '';
+            
+            // Store original values for comparison
+            document.getElementById('edit-chronic-period').setAttribute('data-original', config.chronic_period_days);
+            document.getElementById('edit-decay-rate').setAttribute('data-original', config.decay_rate);
+            
+            // Load impact analysis
+            loadEditImpactAnalysis(configId);
+            
+            // Add event listeners for real-time impact analysis
+            document.getElementById('edit-chronic-period').addEventListener('input', analyzeEditImpact);
+            document.getElementById('edit-decay-rate').addEventListener('input', analyzeEditImpact);
+            
+            document.getElementById('edit-modal').style.display = 'block';
+        }
+
+        // Deactivate configuration
+        function deactivateConfiguration(configId) {
+            const config = configurations.find(c => c.id === configId);
+            if (!config) return;
+
+            currentDeactivateId = configId;
+            
+            const details = `
+                <p><strong>Name:</strong> ${escapeHtml(config.name)}</p>
+                <p><strong>Description:</strong> ${escapeHtml(config.description || 'No description')}</p>
+                <p><strong>Chronic Period:</strong> ${config.chronic_period_days} days</p>
+                <p><strong>Decay Rate:</strong> ${config.decay_rate}</p>
+                <p><strong>Users Assigned:</strong> ${config.user_count || 0}</p>
+            `;
+            
+            document.getElementById('deactivate-config-details').innerHTML = details;
+            document.getElementById('deactivate-config-name').textContent = config.name;
+            
+            // Load deactivation impact analysis
+            loadDeactivationImpact(configId);
+            
+            document.getElementById('deactivate-modal').style.display = 'block';
+        }
+
+        // Reactivate configuration
+        function reactivateConfiguration(configId) {
+            const config = configurations.find(c => c.id === configId);
+            if (!config) return;
+
+            currentReactivateId = configId;
+            
+            const details = `
+                <p><strong>Name:</strong> ${escapeHtml(config.name)}</p>
+                <p><strong>Description:</strong> ${escapeHtml(config.description || 'No description')}</p>
+                <p><strong>Chronic Period:</strong> ${config.chronic_period_days} days</p>
+                <p><strong>Decay Rate:</strong> ${config.decay_rate}</p>
+                <p><strong>Status:</strong> Currently Inactive</p>
+            `;
+            
+            document.getElementById('reactivate-config-details').innerHTML = details;
+            document.getElementById('reactivate-config-name').textContent = config.name;
+            
+            // Load reactivation impact analysis
+            loadReactivationImpact(configId);
+            
+            document.getElementById('reactivate-modal').style.display = 'block';
+        }
+
+        // Delete configuration
+        function deleteConfiguration(configId) {
+            const config = configurations.find(c => c.id === configId);
+            if (!config) return;
+
+            currentDeleteId = configId;
+            
+            document.getElementById('delete-config-details').innerHTML = `
+                <p><strong>Name:</strong> ${escapeHtml(config.name)}</p>
+                <p><strong>Chronic Period:</strong> ${config.chronic_period_days} days</p>
+                <p><strong>Decay Rate:</strong> ${config.decay_rate}</p>
+                <p><strong>Assigned Users:</strong> ${config.user_count || 0}</p>
+            `;
+            
+            document.getElementById('delete-modal').style.display = 'block';
+        }
+
+        // Load deactivation impact analysis
+        async function loadDeactivationImpact(configId) {
+            try {
+                // Get user count for this configuration
+                const response = await fetch(`/api/admin/acwr-configurations/${configId}/users`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const userCount = data.users.length;
+                    document.getElementById('deactivate-affected-users').textContent = userCount;
+                    
+                    // Determine impact level
+                    let impactLevel = 'LOW IMPACT';
+                    let impactColor = '#17a2b8';
+                    
+                    if (userCount > 50) {
+                        impactLevel = 'HIGH IMPACT';
+                        impactColor = '#dc3545';
+                    } else if (userCount > 10) {
+                        impactLevel = 'MEDIUM IMPACT';
+                        impactColor = '#ffc107';
+                    }
+                    
+                    document.getElementById('deactivate-impact-level').textContent = impactLevel;
+                    document.getElementById('deactivate-impact-level').style.color = impactColor;
+                    
+                    // Show warnings
+                    const warningsContainer = document.getElementById('deactivation-warnings');
+                    warningsContainer.innerHTML = '';
+                    
+                    if (userCount > 0) {
+                        const warning = document.createElement('div');
+                        warning.className = 'alert alert-warning';
+                        warning.innerHTML = `<strong>Warning:</strong> ${userCount} users are currently assigned to this configuration. They will fall back to the default configuration.`;
+                        warningsContainer.appendChild(warning);
+                    }
+                    
+                    if (userCount > 50) {
+                        const highWarning = document.createElement('div');
+                        highWarning.className = 'alert alert-danger';
+                        highWarning.innerHTML = `<strong>High Impact:</strong> This configuration has many users assigned. Consider the impact on their training load analysis.`;
+                        warningsContainer.appendChild(highWarning);
+                    }
+                } else {
+                    document.getElementById('deactivate-affected-users').textContent = 'Unknown';
+                    document.getElementById('deactivate-impact-level').textContent = 'Error loading data';
+                }
+            } catch (error) {
+                document.getElementById('deactivate-affected-users').textContent = 'Error';
+                document.getElementById('deactivate-impact-level').textContent = 'Error loading data';
+            }
+        }
+
+        // Load reactivation impact analysis
+        async function loadReactivationImpact(configId) {
+            try {
+                // Get previous user count for this configuration
+                const response = await fetch(`/api/admin/acwr-configurations/${configId}/users`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const userCount = data.users.length;
+                    document.getElementById('reactivate-previous-users').textContent = userCount;
+                } else {
+                    document.getElementById('reactivate-previous-users').textContent = 'Unknown';
+                }
+            } catch (error) {
+                document.getElementById('reactivate-previous-users').textContent = 'Error';
+            }
+        }
+
+        // Confirm deactivation
+        async function confirmDeactivation() {
+            if (!currentDeactivateId) return;
+
+            const reason = document.getElementById('deactivation-reason').value.trim();
+            
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/${currentDeactivateId}/deactivate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ reason: reason })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration deactivated successfully!', 'success');
+                    closeDeactivateModal();
+                    loadConfigurations();
+                } else {
+                    showMessage('Error deactivating configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error deactivating configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Confirm reactivation
+        async function confirmReactivation() {
+            if (!currentReactivateId) return;
+
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/${currentReactivateId}/reactivate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration reactivated successfully!', 'success');
+                    closeReactivateModal();
+                    loadConfigurations();
+                } else {
+                    showMessage('Error reactivating configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error reactivating configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Confirm delete
+        async function confirmDelete() {
+            if (!currentDeleteId) return;
+
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/${currentDeleteId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration deleted successfully!', 'success');
+                    closeDeleteModal();
+                    loadConfigurations();
+                } else {
+                    showMessage('Error deleting configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error deleting configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Assign configuration to user
+        async function assignConfiguration() {
+            const configId = document.getElementById('assignment-config').value;
+            const userId = document.getElementById('assignment-user').value;
+
+            if (!configId || !userId) {
+                showMessage('Please select both a configuration and a user', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/acwr-configurations/assign', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ config_id: configId, user_id: userId })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration assigned successfully!', 'success');
+                    loadConfigurations();
+                } else {
+                    showMessage('Error assigning configuration: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error assigning configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Remove configuration assignment
+        async function removeAssignment() {
+            const configId = document.getElementById('assignment-config').value;
+            const userId = document.getElementById('assignment-user').value;
+
+            if (!configId || !userId) {
+                showMessage('Please select both a configuration and a user', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/acwr-configurations/unassign', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ config_id: configId, user_id: userId })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Configuration assignment removed successfully!', 'success');
+                    loadConfigurations();
+                } else {
+                    showMessage('Error removing assignment: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error removing assignment: ' + error.message, 'danger');
+            }
+        }
+
+        // Bulk assign configuration with progress tracking
+        async function bulkAssignConfiguration() {
+            const configId = document.getElementById('bulk-config').value;
+            const userIds = getSelectedUsers();
+
+            if (!configId || userIds.length === 0) {
+                showMessage('Please select a configuration and at least one user', 'warning');
+                return;
+            }
+
+            // Show operation status
+            showOperationStatus();
+            updateOperationProgress(0, `Starting bulk assignment for ${userIds.length} users...`);
+
+            try {
+                // Process users in batches for better progress tracking
+                const batchSize = 5;
+                let successCount = 0;
+                let errorCount = 0;
+                const errors = [];
+
+                for (let i = 0; i < userIds.length; i += batchSize) {
+                    const batch = userIds.slice(i, i + batchSize);
+                    const progress = Math.round((i / userIds.length) * 100);
+                    
+                    updateOperationProgress(progress, `Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(userIds.length/batchSize)}...`);
+                    
+                    try {
+                        const response = await fetch('/api/admin/acwr-configurations/bulk-assign', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ config_id: configId, user_ids: batch })
+                        });
+
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            successCount += batch.length;
+                            logOperation(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} users assigned successfully`, 'success');
+                        } else {
+                            errorCount += batch.length;
+                            errors.push(`Batch ${Math.floor(i/batchSize) + 1}: ${result.error}`);
+                            logOperation(`❌ Batch ${Math.floor(i/batchSize) + 1}: ${result.error}`, 'error');
+                        }
+                    } catch (error) {
+                        errorCount += batch.length;
+                        errors.push(`Batch ${Math.floor(i/batchSize) + 1}: ${error.message}`);
+                        logOperation(`❌ Batch ${Math.floor(i/batchSize) + 1}: ${error.message}`, 'error');
+                    }
+                    
+                    // Small delay to show progress
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // Final progress update
+                updateOperationProgress(100, 'Bulk assignment completed!');
+                
+                if (successCount > 0) {
+                    logOperation(`🎉 Successfully assigned configuration to ${successCount} users`, 'success');
+                }
+                
+                if (errorCount > 0) {
+                    logOperation(`⚠️ Failed to assign configuration to ${errorCount} users`, 'warning');
+                }
+
+                // Show final message
+                if (errorCount === 0) {
+                    showMessage(`Configuration assigned to ${successCount} users successfully!`, 'success');
+                } else if (successCount > 0) {
+                    showMessage(`Configuration assigned to ${successCount} users. ${errorCount} users failed. Check operation log for details.`, 'warning');
+                } else {
+                    showMessage('Failed to assign configuration to any users. Check operation log for details.', 'danger');
+                }
+
+                // Refresh data
+                loadConfigurations();
+                loadBulkUserList();
+                
+            } catch (error) {
+                updateOperationProgress(0, 'Bulk assignment failed!');
+                logOperation(`❌ Fatal error: ${error.message}`, 'error');
+                showMessage('Error bulk assigning configuration: ' + error.message, 'danger');
+            }
+        }
+
+        // Bulk remove configuration assignment
+        async function bulkRemoveAssignment() {
+            const configId = document.getElementById('bulk-config').value;
+            const userIds = Array.from(document.getElementById('bulk-users').selectedOptions).map(option => option.value);
+
+            if (!configId || userIds.length === 0) {
+                showMessage('Please select a configuration and at least one user', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/acwr-configurations/bulk-unassign', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ config_id: configId, user_ids: userIds })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage(`Configuration assignment removed from ${userIds.length} users successfully!`, 'success');
+                    loadConfigurations();
+                } else {
+                    showMessage('Error bulk removing assignment: ' + result.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error bulk removing assignment: ' + error.message, 'danger');
+            }
+        }
+
+        // Load edit impact analysis
+        async function loadEditImpactAnalysis(configId) {
+            try {
+                // Get user count for this configuration
+                const response = await fetch(`/api/admin/acwr-configurations/${configId}/users`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const userCount = data.users.length;
+                    document.getElementById('affected-users-count').textContent = userCount;
+                    
+                    // Initial impact analysis
+                    analyzeEditImpact();
+                } else {
+                    document.getElementById('affected-users-count').textContent = 'Unknown';
+                    document.getElementById('impact-level').textContent = 'Error loading data';
+                }
+            } catch (error) {
+                document.getElementById('affected-users-count').textContent = 'Error';
+                document.getElementById('impact-level').textContent = 'Error loading data';
+            }
+        }
+
+        // Analyze edit impact in real-time
+        function analyzeEditImpact() {
+            const originalChronic = parseInt(document.getElementById('edit-chronic-period').getAttribute('data-original'));
+            const originalDecay = parseFloat(document.getElementById('edit-decay-rate').getAttribute('data-original'));
+            
+            const newChronic = parseInt(document.getElementById('edit-chronic-period').value) || originalChronic;
+            const newDecay = parseFloat(document.getElementById('edit-decay-rate').value) || originalDecay;
+            
+            const changes = [];
+            let impactScore = 0;
+            
+            // Analyze chronic period changes
+            if (newChronic !== originalChronic) {
+                const chronicChange = Math.abs(newChronic - originalChronic);
+                const chronicPercent = (chronicChange / originalChronic) * 100;
+                changes.push(`Chronic period: ${originalChronic} → ${newChronic} days (${chronicPercent.toFixed(1)}% change)`);
+                
+                if (chronicPercent > 50) {
+                    impactScore += 3; // High impact
+                } else if (chronicPercent > 20) {
+                    impactScore += 2; // Medium impact
+                } else {
+                    impactScore += 1; // Low impact
+                }
+            }
+            
+            // Analyze decay rate changes
+            if (newDecay !== originalDecay) {
+                const decayChange = Math.abs(newDecay - originalDecay);
+                const decayPercent = (decayChange / originalDecay) * 100;
+                changes.push(`Decay rate: ${originalDecay} → ${newDecay} (${decayPercent.toFixed(1)}% change)`);
+                
+                if (decayPercent > 100) {
+                    impactScore += 3; // High impact
+                } else if (decayPercent > 50) {
+                    impactScore += 2; // Medium impact
+                } else {
+                    impactScore += 1; // Low impact
+                }
+            }
+            
+            // Update UI based on changes
+            const changesContainer = document.getElementById('parameter-changes');
+            const changesList = document.getElementById('changes-list');
+            
+            if (changes.length > 0) {
+                changesContainer.style.display = 'block';
+                changesList.innerHTML = changes.map(change => `<li>${change}</li>`).join('');
+            } else {
+                changesContainer.style.display = 'none';
+            }
+            
+            // Determine impact level and show appropriate warning
+            const highWarning = document.getElementById('high-impact-warning');
+            const mediumWarning = document.getElementById('medium-impact-warning');
+            const lowWarning = document.getElementById('low-impact-warning');
+            
+            // Hide all warnings first
+            highWarning.style.display = 'none';
+            mediumWarning.style.display = 'none';
+            lowWarning.style.display = 'none';
+            
+            if (impactScore >= 4) {
+                document.getElementById('impact-level').textContent = 'HIGH IMPACT';
+                document.getElementById('impact-level').style.color = '#dc3545';
+                highWarning.style.display = 'block';
+            } else if (impactScore >= 2) {
+                document.getElementById('impact-level').textContent = 'MEDIUM IMPACT';
+                document.getElementById('impact-level').style.color = '#ffc107';
+                mediumWarning.style.display = 'block';
+            } else if (impactScore > 0) {
+                document.getElementById('impact-level').textContent = 'LOW IMPACT';
+                document.getElementById('impact-level').style.color = '#17a2b8';
+                lowWarning.style.display = 'block';
+            } else {
+                document.getElementById('impact-level').textContent = 'NO CHANGES';
+                document.getElementById('impact-level').style.color = '#28a745';
+            }
+        }
+
+        // Close edit modal
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+            currentEditId = null;
+            
+            // Remove event listeners
+            document.getElementById('edit-chronic-period').removeEventListener('input', analyzeEditImpact);
+            document.getElementById('edit-decay-rate').removeEventListener('input', analyzeEditImpact);
+        }
+
+        // Close deactivate modal
+        function closeDeactivateModal() {
+            document.getElementById('deactivate-modal').style.display = 'none';
+            currentDeactivateId = null;
+            document.getElementById('deactivation-reason').value = '';
+        }
+
+        // Close reactivate modal
+        function closeReactivateModal() {
+            document.getElementById('reactivate-modal').style.display = 'none';
+            currentReactivateId = null;
+        }
+
+        // Close delete modal
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+            currentDeleteId = null;
+        }
+
+        // Show message
+        function showMessage(message, type) {
+            const container = document.getElementById('message-container');
+            const alertClass = `alert-${type}`;
+            
+            container.innerHTML = `
+                <div class="alert ${alertClass}">
+                    ${escapeHtml(message)}
+                </div>
+            `;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // Operation status functions
+        function showOperationStatus() {
+            document.getElementById('bulk-operation-status').style.display = 'block';
+            document.getElementById('operation-log').innerHTML = '';
+        }
+
+        function hideOperationStatus() {
+            document.getElementById('bulk-operation-status').style.display = 'none';
+        }
+
+        function updateOperationProgress(percent, message) {
+            document.getElementById('progress-fill').style.width = percent + '%';
+            logOperation(message, 'info');
+        }
+
+        function logOperation(message, type = 'info') {
+            const logContainer = document.getElementById('operation-log');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Load assignment history
+        async function loadAssignmentHistory() {
+            try {
+                document.getElementById('history-loading').style.display = 'block';
+                
+                const response = await fetch('/api/admin/acwr-configurations/assignment-history');
+                const data = await response.json();
+                
+                if (data.success) {
+                    assignmentHistory = data.history;
+                    historyOffset = assignmentHistory.length;
+                    renderAssignmentHistory();
+                    updateHistoryFilters();
+                    updateHistoryCount();
+                } else {
+                    showMessage('Error loading assignment history: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error loading assignment history: ' + error.message, 'danger');
+            } finally {
+                document.getElementById('history-loading').style.display = 'none';
+            }
+        }
+
+        // Load more assignment history
+        async function loadMoreHistory() {
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/assignment-history?offset=${historyOffset}&limit=${historyLimit}`);
+                const data = await response.json();
+                
+                if (data.success && data.history.length > 0) {
+                    assignmentHistory = assignmentHistory.concat(data.history);
+                    historyOffset += data.history.length;
+                    renderAssignmentHistory();
+                    updateHistoryCount();
+                    
+                    if (data.history.length < historyLimit) {
+                        document.getElementById('load-more-btn').style.display = 'none';
+                    }
+                } else {
+                    document.getElementById('load-more-btn').style.display = 'none';
+                }
+            } catch (error) {
+                showMessage('Error loading more history: ' + error.message, 'danger');
+            }
+        }
+
+        // Render assignment history table
+        function renderAssignmentHistory() {
+            const container = document.getElementById('assignment-history-table');
+            
+            if (assignmentHistory.length === 0) {
+                container.innerHTML = '<p class="text-center text-muted">No assignment history found.</p>';
+                return;
+            }
+            
+            let html = `
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>User</th>
+                            <th>Configuration</th>
+                            <th>Admin</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            assignmentHistory.forEach(entry => {
+                const actionClass = getActionClass(entry.action);
+                const timestamp = new Date(entry.timestamp).toLocaleString();
+                
+                html += `
+                    <tr class="history-entry">
+                        <td class="timestamp">${timestamp}</td>
+                        <td><span class="action-badge ${actionClass}">${entry.action}</span></td>
+                        <td class="user-info">
+                            <div class="user-name">${escapeHtml(entry.user_name || 'Unknown')}</div>
+                            <div class="user-email">${escapeHtml(entry.user_email || '')}</div>
+                        </td>
+                        <td class="config-info">
+                            <div class="config-name">${escapeHtml(entry.configuration_name || 'Unknown')}</div>
+                            ${entry.previous_configuration_name ? `<div class="config-change">From: ${escapeHtml(entry.previous_configuration_name)}</div>` : ''}
+                        </td>
+                        <td class="admin-info">
+                            <div class="admin-name">${escapeHtml(entry.admin_name || 'System')}</div>
+                            <div class="admin-email">${escapeHtml(entry.admin_email || '')}</div>
+                        </td>
+                        <td class="reason-text" title="${escapeHtml(entry.reason || '')}">${escapeHtml(entry.reason || '')}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Get action class for styling
+        function getActionClass(action) {
+            switch (action) {
+                case 'ASSIGNED': return 'action-assigned';
+                case 'UNASSIGNED': return 'action-unassigned';
+                case 'BULK_ASSIGNED': return 'action-bulk-assigned';
+                case 'BULK_UNASSIGNED': return 'action-bulk-unassigned';
+                case 'ROLLBACK': return 'action-rollback';
+                default: return 'action-assigned';
+            }
+        }
+
+        // Update history filters
+        function updateHistoryFilters() {
+            // Update user filter
+            const userFilter = document.getElementById('history-filter-user');
+            userFilter.innerHTML = '<option value="">All Users</option>';
+            
+            const uniqueUsers = [...new Set(assignmentHistory.map(h => h.user_id))];
+            uniqueUsers.forEach(userId => {
+                const user = assignmentHistory.find(h => h.user_id === userId);
+                if (user) {
+                    const option = document.createElement('option');
+                    option.value = userId;
+                    option.textContent = `${user.user_name} (${user.user_email})`;
+                    userFilter.appendChild(option);
+                }
+            });
+            
+            // Update configuration filter
+            const configFilter = document.getElementById('history-filter-config');
+            configFilter.innerHTML = '<option value="">All Configurations</option>';
+            
+            const uniqueConfigs = [...new Set(assignmentHistory.map(h => h.configuration_id))];
+            uniqueConfigs.forEach(configId => {
+                const config = assignmentHistory.find(h => h.configuration_id === configId);
+                if (config) {
+                    const option = document.createElement('option');
+                    option.value = configId;
+                    option.textContent = config.configuration_name;
+                    configFilter.appendChild(option);
+                }
+            });
+            
+            // Update admin filter
+            const adminFilter = document.getElementById('history-filter-admin');
+            adminFilter.innerHTML = '<option value="">All Admins</option>';
+            
+            const uniqueAdmins = [...new Set(assignmentHistory.map(h => h.assigned_by))];
+            uniqueAdmins.forEach(adminId => {
+                const admin = assignmentHistory.find(h => h.assigned_by === adminId);
+                if (admin) {
+                    const option = document.createElement('option');
+                    option.value = adminId;
+                    option.textContent = `${admin.admin_name} (${admin.admin_email})`;
+                    adminFilter.appendChild(option);
+                }
+            });
+        }
+
+        // Filter assignment history
+        function filterAssignmentHistory() {
+            const typeFilter = document.getElementById('history-filter-type').value;
+            const userFilter = document.getElementById('history-filter-user').value;
+            const configFilter = document.getElementById('history-filter-config').value;
+            const adminFilter = document.getElementById('history-filter-admin').value;
+            
+            let filteredHistory = assignmentHistory;
+            
+            if (typeFilter !== 'all') {
+                filteredHistory = filteredHistory.filter(h => h.action === typeFilter);
+            }
+            
+            if (userFilter) {
+                filteredHistory = filteredHistory.filter(h => h.user_id == userFilter);
+            }
+            
+            if (configFilter) {
+                filteredHistory = filteredHistory.filter(h => h.configuration_id == configFilter);
+            }
+            
+            if (adminFilter) {
+                filteredHistory = filteredHistory.filter(h => h.assigned_by == adminFilter);
+            }
+            
+            // Temporarily replace history for rendering
+            const originalHistory = assignmentHistory;
+            assignmentHistory = filteredHistory;
+            renderAssignmentHistory();
+            assignmentHistory = originalHistory;
+        }
+
+        // Update history count
+        function updateHistoryCount() {
+            const count = assignmentHistory.length;
+            document.getElementById('history-count').textContent = `${count} entries loaded`;
+        }
+
+        // Update rollback interface based on type
+        function updateRollbackInterface() {
+            const rollbackType = document.getElementById('rollback-filter-type').value;
+            
+            // Reset interface
+            document.getElementById('rollback-options-container').style.display = 'none';
+            document.getElementById('rollback-impact-container').style.display = 'none';
+            document.getElementById('rollback-status').style.display = 'none';
+            document.getElementById('preview-rollback-btn').disabled = true;
+            document.getElementById('execute-rollback-btn').disabled = true;
+            
+            // Update user select based on type
+            const userSelect = document.getElementById('rollback-user-select');
+            userSelect.innerHTML = '<option value="">Choose a user...</option>';
+            
+            if (rollbackType === 'single') {
+                // Populate with all users
+                users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = `${user.username} (${user.email})`;
+                    userSelect.appendChild(option);
+                });
+            } else if (rollbackType === 'bulk') {
+                // Populate with users who have assignments
+                const usersWithAssignments = users.filter(user => 
+                    configurations.some(config => config.user_count > 0)
+                );
+                usersWithAssignments.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = `${user.username} (${user.email})`;
+                    userSelect.appendChild(option);
+                });
+            }
+        }
+
+        // Load rollback options for selected user
+        async function loadRollbackOptions() {
+            const userId = document.getElementById('rollback-user-select').value;
+            if (!userId) {
+                document.getElementById('rollback-options-container').style.display = 'none';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/acwr-configurations/rollback-options/${userId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    rollbackOptions = data.options;
+                    renderRollbackOptions();
+                    document.getElementById('rollback-options-container').style.display = 'block';
+                } else {
+                    showMessage('Error loading rollback options: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error loading rollback options: ' + error.message, 'danger');
+            }
+        }
+
+        // Render rollback options
+        function renderRollbackOptions() {
+            const container = document.getElementById('rollback-options-list');
+            
+            if (rollbackOptions.length === 0) {
+                container.innerHTML = '<p class="text-muted">No rollback options available for this user.</p>';
+                return;
+            }
+            
+            let html = '';
+            rollbackOptions.forEach(option => {
+                const lastAssigned = new Date(option.last_assigned).toLocaleDateString();
+                
+                html += `
+                    <div class="rollback-option" onclick="selectRollbackOption(${option.configuration_id})">
+                        <div class="rollback-option-info">
+                            <div class="rollback-option-name">${escapeHtml(option.configuration_name)}</div>
+                            <div class="rollback-option-details">
+                                Chronic Period: ${option.chronic_period_days} days, Decay Rate: ${option.decay_rate}
+                            </div>
+                            <div class="rollback-option-date">Last assigned: ${lastAssigned}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Select rollback option
+        function selectRollbackOption(configId) {
+            // Remove previous selection
+            document.querySelectorAll('.rollback-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            // Add selection to clicked option
+            event.target.closest('.rollback-option').classList.add('selected');
+            
+            selectedRollbackOption = configId;
+            
+            // Update target config select
+            const targetSelect = document.getElementById('rollback-target-config');
+            targetSelect.value = configId;
+            
+            // Enable preview button
+            document.getElementById('preview-rollback-btn').disabled = false;
+        }
+
+        // Preview rollback
+        async function previewRollback() {
+            const userId = document.getElementById('rollback-user-select').value;
+            const targetConfigId = document.getElementById('rollback-target-config').value;
+            
+            if (!userId || !targetConfigId) {
+                showMessage('Please select a user and target configuration', 'warning');
+                return;
+            }
+            
+            try {
+                const rollbackRequest = {
+                    user_id: parseInt(userId),
+                    configuration_id: null, // Will be determined from current assignment
+                    rollback_to_config_id: parseInt(targetConfigId)
+                };
+                
+                const response = await fetch('/api/admin/acwr-configurations/rollback-impact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ rollback_requests: [rollbackRequest] })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayRollbackImpact(data.impact);
+                    document.getElementById('execute-rollback-btn').disabled = false;
+                } else {
+                    showMessage('Error analyzing rollback impact: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showMessage('Error analyzing rollback impact: ' + error.message, 'danger');
+            }
+        }
+
+        // Display rollback impact
+        function displayRollbackImpact(impact) {
+            document.getElementById('rollback-affected-users').textContent = impact.total_users;
+            
+            let impactLevel = impact.impact_level;
+            let impactColor = '#17a2b8';
+            
+            if (impactLevel === 'HIGH') {
+                impactColor = '#dc3545';
+            } else if (impactLevel === 'MEDIUM') {
+                impactColor = '#ffc107';
+            }
+            
+            document.getElementById('rollback-impact-level').textContent = impactLevel;
+            document.getElementById('rollback-impact-level').style.color = impactColor;
+            
+            // Show warnings
+            const warningsContainer = document.getElementById('rollback-warnings');
+            warningsContainer.innerHTML = '';
+            
+            if (impact.warnings && impact.warnings.length > 0) {
+                impact.warnings.forEach(warning => {
+                    const warningDiv = document.createElement('div');
+                    warningDiv.className = 'alert alert-warning';
+                    warningDiv.textContent = warning;
+                    warningsContainer.appendChild(warningDiv);
+                });
+            }
+            
+            document.getElementById('rollback-impact-container').style.display = 'block';
+        }
+
+        // Execute rollback
+        async function executeRollback() {
+            const userId = document.getElementById('rollback-user-select').value;
+            const targetConfigId = document.getElementById('rollback-target-config').value;
+            const reason = document.getElementById('rollback-reason').value.trim();
+            
+            if (!userId || !targetConfigId) {
+                showMessage('Please select a user and target configuration', 'warning');
+                return;
+            }
+            
+            // Confirm rollback
+            if (!confirm('Are you sure you want to execute this rollback? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                document.getElementById('rollback-status').style.display = 'block';
+                updateRollbackProgress(0, 'Starting rollback...');
+                
+                const rollbackRequest = {
+                    user_id: parseInt(userId),
+                    configuration_id: null, // Will be determined from current assignment
+                    rollback_to_config_id: parseInt(targetConfigId)
+                };
+                
+                const response = await fetch('/api/admin/acwr-configurations/rollback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        rollback_requests: [rollbackRequest],
+                        reason: reason
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateRollbackProgress(100, 'Rollback completed successfully!');
+                    showMessage('Rollback executed successfully!', 'success');
+                    clearRollback();
+                    loadAssignmentHistory(); // Refresh history
+                } else {
+                    updateRollbackProgress(0, 'Rollback failed: ' + data.error);
+                    showMessage('Error executing rollback: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                updateRollbackProgress(0, 'Rollback failed: ' + error.message);
+                showMessage('Error executing rollback: ' + error.message, 'danger');
+            }
+        }
+
+        // Update rollback progress
+        function updateRollbackProgress(percent, message) {
+            document.getElementById('rollback-progress-fill').style.width = percent + '%';
+            logRollbackOperation(message);
+        }
+
+        // Log rollback operation
+        function logRollbackOperation(message) {
+            const logContainer = document.getElementById('rollback-operation-log');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry log-info';
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Clear rollback interface
+        function clearRollback() {
+            document.getElementById('rollback-user-select').value = '';
+            document.getElementById('rollback-target-config').value = '';
+            document.getElementById('rollback-reason').value = '';
+            document.getElementById('rollback-options-container').style.display = 'none';
+            document.getElementById('rollback-impact-container').style.display = 'none';
+            document.getElementById('rollback-status').style.display = 'none';
+            document.getElementById('preview-rollback-btn').disabled = true;
+            document.getElementById('execute-rollback-btn').disabled = true;
+            selectedRollbackOption = null;
+            rollbackOptions = [];
+        }
+
+        // Create form validation functions
+        function validateCreateName() {
+            const input = document.getElementById('config-name');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (!value) {
+                showFieldError(input, errorElement, 'Configuration name is required');
+                return false;
+            }
+            
+            if (value.length > 100) {
+                showFieldError(input, errorElement, 'Configuration name must be 100 characters or less');
+                return false;
+            }
+            
+            // Check for duplicate names
+            const isDuplicate = configurations.some(config => 
+                config.name.toLowerCase() === value.toLowerCase()
+            );
+            
+            if (isDuplicate) {
+                showFieldError(input, errorElement, 'A configuration with this name already exists');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateCreateChronicPeriod() {
+            const input = document.getElementById('chronic-period');
+            const value = parseInt(input.value);
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (isNaN(value)) {
+                showFieldError(input, errorElement, 'Chronic period must be a number');
+                return false;
+            }
+            
+            if (value < 28) {
+                showFieldError(input, errorElement, 'Chronic period must be at least 28 days');
+                return false;
+            }
+            
+            if (value > 90) {
+                showFieldError(input, errorElement, 'Chronic period must be 90 days or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateCreateDecayRate() {
+            const input = document.getElementById('decay-rate');
+            const value = parseFloat(input.value);
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (isNaN(value)) {
+                showFieldError(input, errorElement, 'Decay rate must be a number');
+                return false;
+            }
+            
+            if (value < 0.01) {
+                showFieldError(input, errorElement, 'Decay rate must be at least 0.01');
+                return false;
+            }
+            
+            if (value > 0.20) {
+                showFieldError(input, errorElement, 'Decay rate must be 0.20 or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateCreateDescription() {
+            const input = document.getElementById('config-description');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (value && value.length > 255) {
+                showFieldError(input, errorElement, 'Description must be 255 characters or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateCreateNotes() {
+            const input = document.getElementById('config-notes');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (value && value.length > 500) {
+                showFieldError(input, errorElement, 'Notes must be 500 characters or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        // Edit form validation functions
+        function validateEditName() {
+            const input = document.getElementById('edit-config-name');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (!value) {
+                showFieldError(input, errorElement, 'Configuration name is required');
+                return false;
+            }
+            
+            if (value.length > 100) {
+                showFieldError(input, errorElement, 'Configuration name must be 100 characters or less');
+                return false;
+            }
+            
+            // Check for duplicate names (excluding current configuration)
+            const currentConfigId = currentEditId;
+            const isDuplicate = configurations.some(config => 
+                config.id !== currentConfigId && 
+                config.name.toLowerCase() === value.toLowerCase()
+            );
+            
+            if (isDuplicate) {
+                showFieldError(input, errorElement, 'A configuration with this name already exists');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateEditChronicPeriod() {
+            const input = document.getElementById('edit-chronic-period');
+            const value = parseInt(input.value);
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (isNaN(value)) {
+                showFieldError(input, errorElement, 'Chronic period must be a number');
+                return false;
+            }
+            
+            if (value < 28) {
+                showFieldError(input, errorElement, 'Chronic period must be at least 28 days');
+                return false;
+            }
+            
+            if (value > 90) {
+                showFieldError(input, errorElement, 'Chronic period must be 90 days or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateEditDecayRate() {
+            const input = document.getElementById('edit-decay-rate');
+            const value = parseFloat(input.value);
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (isNaN(value)) {
+                showFieldError(input, errorElement, 'Decay rate must be a number');
+                return false;
+            }
+            
+            if (value < 0.01) {
+                showFieldError(input, errorElement, 'Decay rate must be at least 0.01');
+                return false;
+            }
+            
+            if (value > 0.20) {
+                showFieldError(input, errorElement, 'Decay rate must be 0.20 or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateEditDescription() {
+            const input = document.getElementById('edit-config-description');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (value && value.length > 255) {
+                showFieldError(input, errorElement, 'Description must be 255 characters or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        function validateEditNotes() {
+            const input = document.getElementById('edit-config-notes');
+            const value = input.value.trim();
+            const errorElement = getOrCreateErrorElement(input);
+            
+            if (value && value.length > 500) {
+                showFieldError(input, errorElement, 'Notes must be 500 characters or less');
+                return false;
+            }
+            
+            showFieldSuccess(input, errorElement);
+            return true;
+        }
+
+        // Validation helper functions
+        function getOrCreateErrorElement(input) {
+            let errorElement = input.parentNode.querySelector('.field-error');
+            if (!errorElement) {
+                errorElement = document.createElement('div');
+                errorElement.className = 'field-error';
+                input.parentNode.appendChild(errorElement);
+            }
+            return errorElement;
+        }
+
+        function showFieldError(input, errorElement, message) {
+            input.classList.remove('is-valid');
+            input.classList.add('is-invalid');
+            errorElement.textContent = message;
+            errorElement.className = 'field-error text-danger';
+        }
+
+        function showFieldSuccess(input, errorElement) {
+            input.classList.remove('is-invalid');
+            input.classList.add('is-valid');
+            errorElement.textContent = '';
+            errorElement.className = 'field-error';
+        }
+
+        function validateCreateForm() {
+            const nameValid = validateCreateName();
+            const chronicValid = validateCreateChronicPeriod();
+            const decayValid = validateCreateDecayRate();
+            const descriptionValid = validateCreateDescription();
+            const notesValid = validateCreateNotes();
+            
+            return nameValid && chronicValid && decayValid && descriptionValid && notesValid;
+        }
+
+        function validateEditForm() {
+            const nameValid = validateEditName();
+            const chronicValid = validateEditChronicPeriod();
+            const decayValid = validateEditDecayRate();
+            const descriptionValid = validateEditDescription();
+            const notesValid = validateEditNotes();
+            
+            return nameValid && chronicValid && decayValid && descriptionValid && notesValid;
+        }
+
+        // Character count functionality
+        function updateCharacterCount(event) {
+            const input = event.target;
+            const value = input.value;
+            const maxLength = parseInt(input.getAttribute('maxlength'));
+            
+            if (!maxLength) return;
+            
+            const countElement = document.getElementById(input.id + '-count');
+            if (!countElement) return;
+            
+            const currentLength = value.length;
+            const percentage = (currentLength / maxLength) * 100;
+            
+            countElement.textContent = `${currentLength}/${maxLength}`;
+            
+            // Update color based on usage
+            countElement.classList.remove('warning', 'danger');
+            if (percentage >= 90) {
+                countElement.classList.add('danger');
+            } else if (percentage >= 75) {
+                countElement.classList.add('warning');
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const editModal = document.getElementById('edit-modal');
+            const deactivateModal = document.getElementById('deactivate-modal');
+            const reactivateModal = document.getElementById('reactivate-modal');
+            const deleteModal = document.getElementById('delete-modal');
+            
+            if (event.target === editModal) {
+                closeEditModal();
+            }
+            if (event.target === deactivateModal) {
+                closeDeactivateModal();
+            }
+            if (event.target === reactivateModal) {
+                closeReactivateModal();
+            }
+            if (event.target === deleteModal) {
+                closeDeleteModal();
+            }
+        }
+    </script>
+</body>
+</html>

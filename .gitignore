@@ -6,3 +6,5 @@ build/
 logs/ 
 docs/
 tasks/
+tests/
+sql/

@@ -127,7 +127,7 @@ class SystemMonitoringDashboard:
                 COUNT(CASE WHEN trimp_calculation_method = 'enhanced_stream' THEN 1 END) as enhanced_calculations,
                 COUNT(CASE WHEN trimp_calculation_method = 'average_hr' THEN 1 END) as average_calculations
             FROM activities 
-            WHERE trimp_processed_at >= ? AND trimp_processed_at <= ?
+            WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
             """
             
             results = execute_query(query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
@@ -186,7 +186,7 @@ class SystemMonitoringDashboard:
             active_users_query = """
             SELECT COUNT(DISTINCT user_id) as active_users
             FROM activities 
-            WHERE trimp_processed_at >= ? AND trimp_processed_at <= ?
+            WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
             """
             
             active_users_result = execute_query(active_users_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
@@ -217,7 +217,7 @@ class SystemMonitoringDashboard:
             total_activities_query = """
             SELECT COUNT(*) as total_activities
             FROM activities 
-            WHERE trimp_processed_at >= ? AND trimp_processed_at <= ?
+            WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
             """
             
             total_activities_result = execute_query(total_activities_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
@@ -260,7 +260,7 @@ class SystemMonitoringDashboard:
             error_query = """
             SELECT COUNT(*) as error_count
             FROM activities 
-            WHERE trimp_processed_at >= ? AND trimp_processed_at <= ?
+            WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
             AND (trimp IS NULL OR trimp <= 0)
             """
             
@@ -271,7 +271,7 @@ class SystemMonitoringDashboard:
             total_query = """
             SELECT COUNT(*) as total_count
             FROM activities 
-            WHERE trimp_processed_at >= ? AND trimp_processed_at <= ?
+            WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
             """
             
             total_result = execute_query(total_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)

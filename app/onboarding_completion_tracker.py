@@ -922,7 +922,7 @@ class OnboardingCompletionTracker:
                 else:
                     cursor.execute("""
                         INSERT INTO user_settings (user_id, completion_data)
-                        VALUES (?, ?)
+                        VALUES (%s)
                     """, (completion.user_id, json.dumps(completion_data)))
             
         except Exception as e:
@@ -942,7 +942,7 @@ class OnboardingCompletionTracker:
                 else:
                     cursor.execute("""
                         SELECT completion_data FROM user_settings 
-                        WHERE user_id = ? AND completion_data IS NOT NULL
+                        WHERE user_id = %s AND completion_data IS NOT NULL
                     """, (user_id,))
                 
                 result = cursor.fetchone()

@@ -1,0 +1,44 @@
+2025-09-08 19:33:10,635 - __main__ - INFO - Starting ACWR Migration Simulation for Admin User
+2025-09-08 19:33:10,635 - __main__ - INFO - Initialized Migration Simulation for user_id=1
+2025-09-08 19:33:10,635 - __main__ - INFO - Migration ID: migration_sim_20250908_193310
+2025-09-08 19:33:10,635 - __main__ - INFO - ============================================================
+2025-09-08 19:33:10,635 - __main__ - INFO - STARTING ACWR MIGRATION SIMULATION - ADMIN USER
+2025-09-08 19:33:10,635 - __main__ - INFO - ============================================================
+2025-09-08 19:33:10,635 - __main__ - INFO - Step 1: Getting migration configuration
+2025-09-08 19:33:10,635 - __main__ - INFO - Simulating migration configuration retrieval...
+2025-09-08 19:33:10,635 - __main__ - INFO - Using configuration: Migration Default (ID: 1)
+2025-09-08 19:33:10,635 - __main__ - INFO - Chronic period: 42 days
+2025-09-08 19:33:10,635 - __main__ - INFO - Decay rate: 0.05
+2025-09-08 19:33:10,635 - __main__ - INFO - Step 2: Validating user data
+2025-09-08 19:33:10,635 - __main__ - INFO - Simulating data validation for user_id=1
+2025-09-08 19:33:10,635 - __main__ - INFO - User data validation completed successfully
+2025-09-08 19:33:10,635 - __main__ - INFO - Activities found: 150
+2025-09-08 19:33:10,635 - __main__ - INFO - Date range: 2024-01-01 to 2024-12-31
+2025-09-08 19:33:10,635 - __main__ - INFO - Step 3: Executing migration
+2025-09-08 19:33:10,635 - __main__ - INFO - Starting migration execution simulation...
+2025-09-08 19:33:10,635 - __main__ - INFO - Processing 150 activities in 6 batches
+2025-09-08 19:33:10,635 - __main__ - INFO - Processing batch 1/6: activities 1-25
+2025-09-08 19:33:10,742 - __main__ - INFO - Batch 1: All activities processed successfully
+2025-09-08 19:33:10,742 - __main__ - INFO - Processing batch 2/6: activities 26-50
+2025-09-08 19:33:10,842 - __main__ - INFO - Batch 2: All activities processed successfully
+2025-09-08 19:33:10,842 - __main__ - INFO - Processing batch 3/6: activities 51-75
+2025-09-08 19:33:10,943 - __main__ - INFO - Batch 3: All activities processed successfully
+2025-09-08 19:33:10,943 - __main__ - INFO - Processing batch 4/6: activities 76-100
+2025-09-08 19:33:11,043 - __main__ - INFO - Batch 4: All activities processed successfully
+2025-09-08 19:33:11,043 - __main__ - INFO - Processing batch 5/6: activities 101-125
+2025-09-08 19:33:11,145 - __main__ - INFO - Batch 5: All activities processed successfully
+2025-09-08 19:33:11,145 - __main__ - INFO - Processing batch 6/6: activities 126-150
+2025-09-08 19:33:11,245 - __main__ - WARNING - Batch 6: 5 activities failed validation
+2025-09-08 19:33:11,245 - __main__ - INFO - Migration execution simulation completed successfully
+2025-09-08 19:33:11,245 - __main__ - INFO - Success rate: 96.67%
+2025-09-08 19:33:11,245 - __main__ - INFO - Step 4: Validating migration results
+2025-09-08 19:33:11,245 - __main__ - INFO - Simulating migration result validation...
+2025-09-08 19:33:11,245 - __main__ - INFO - Migration validation PASSED
+2025-09-08 19:33:11,261 - __main__ - INFO - Step 5: Generating simulation report
+2025-09-08 19:33:11,261 - __main__ - INFO - ============================================================
+2025-09-08 19:33:11,261 - __main__ - INFO - MIGRATION SIMULATION COMPLETED SUCCESSFULLY
+2025-09-08 19:33:11,261 - __main__ - INFO - ============================================================
+2025-09-08 19:33:11,261 - __main__ - INFO - Report saved to: migration_simulation_report_20250908_193311.md
+2025-09-08 19:33:11,261 - __main__ - INFO - Migration ID: migration_sim_20250908_193310
+2025-09-08 19:33:11,261 - __main__ - INFO - Success Rate: 96.67%
+2025-09-08 19:33:11,261 - __main__ - INFO - Migration simulation completed successfully

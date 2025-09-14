@@ -450,7 +450,7 @@ class RegistrationStatusTracker:
             query = """
                 INSERT INTO registration_events (
                     user_id, step, status, timestamp, ip_address, user_agent, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s)
             """
             
             params = (
@@ -482,7 +482,7 @@ class RegistrationStatusTracker:
             query = """
                 SELECT step, status, timestamp, ip_address, user_agent, metadata
                 FROM registration_events
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY timestamp ASC
             """
             

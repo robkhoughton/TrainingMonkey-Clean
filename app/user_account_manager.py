@@ -102,7 +102,7 @@ class UserAccountManager:
                     terms_accepted_version, privacy_accepted_version, disclaimer_accepted_version,
                     terms_accepted_date, privacy_accepted_date, disclaimer_accepted_date,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s)
                 RETURNING id
             """
             
@@ -160,8 +160,8 @@ class UserAccountManager:
             # Set initial onboarding step
             query = """
                 UPDATE user_settings 
-                SET onboarding_step = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """
             
             current_time = datetime.now()
@@ -185,8 +185,8 @@ class UserAccountManager:
         try:
             query = """
                 UPDATE user_settings 
-                SET account_status = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """
             
             current_time = datetime.now()
@@ -213,8 +213,8 @@ class UserAccountManager:
         try:
             query = """
                 UPDATE user_settings 
-                SET account_status = ?, deactivation_reason = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """
             
             current_time = datetime.now()
@@ -245,7 +245,7 @@ class UserAccountManager:
                     terms_accepted_date, privacy_accepted_date, disclaimer_accepted_date,
                     created_at, updated_at
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
             
             result = execute_query(query, (user_id,), fetch=True)
@@ -286,8 +286,8 @@ class UserAccountManager:
         try:
             query = """
                 UPDATE user_settings 
-                SET onboarding_step = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """
             
             current_time = datetime.now()
@@ -314,8 +314,8 @@ class UserAccountManager:
             # Update onboarding step and activate account
             query = """
                 UPDATE user_settings 
-                SET onboarding_step = ?, account_status = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """
             
             current_time = datetime.now()

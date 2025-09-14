@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ACWR Feature Flags - Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Favicon - Monkey Mascot -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 2px solid #28a745;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #28a745;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #6c757d;
+            margin: 10px 0 0 0;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        .section h2 {
+            color: #495057;
+            margin-top: 0;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            display: inline-block;
+            margin-right: 15px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .nav a:hover {
+            background: #0056b3;
+        }
+        .status-card {
+            display: inline-block;
+            margin: 10px;
+            padding: 15px;
+            border-radius: 6px;
+            min-width: 200px;
+            text-align: center;
+        }
+        .status-enabled {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status-disabled {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #28a745;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .user-access-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .user-access-table th,
+        .user-access-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .user-access-table th {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-badge-enabled {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-badge-disabled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-enabled-badge {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-disabled-badge {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #28a745;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .alert-error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 5px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .feature-description {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .rollout-phase {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .rollout-phase h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎛️ ACWR Feature Flags</h1>
+            <p>Admin panel for managing enhanced ACWR calculation rollout and feature flags</p>
+        </div>
+
+        <div class="nav">
+            <a href="/dashboard">← Back to Dashboard</a>
+            <a href="/admin/trimp-settings">TRIMP Settings</a>
+            <a href="/logout">Logout</a>
+        </div>
+
+        <div id="alerts"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading ACWR feature flag settings...</p>
+        </div>
+
+        <!-- Feature Flag Status Section -->
+        <div class="section">
+            <h2>🎛️ Feature Flag Status</h2>
+            <div class="status-grid" id="feature-status">
+                <!-- Status cards will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Feature Description Section -->
+        <div class="section">
+            <h2>📋 Enhanced ACWR Calculation</h2>
+            <div class="feature-description">
+                <h4>What is Enhanced ACWR Calculation?</h4>
+                <p>The enhanced ACWR calculation uses exponential decay weighting instead of simple averaging for chronic load calculation. This provides more accurate training load monitoring by giving more weight to recent activities.</p>
+                <ul>
+                    <li><strong>Standard ACWR:</strong> Uses 28-day simple average for chronic load</li>
+                    <li><strong>Enhanced ACWR:</strong> Uses configurable period (28-90 days) with exponential decay weighting</li>
+                    <li><strong>Benefits:</strong> More accurate training load monitoring, better injury prevention</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- User Access Control Section -->
+        <div class="section">
+            <h2>👥 User Access Control</h2>
+            <div class="rollout-progress">
+                <h3>Rollout Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="rollout-progress" style="width: 0%"></div>
+                </div>
+                <p id="rollout-text">Loading rollout status...</p>
+            </div>
+            
+            <table class="user-access-table">
+                <thead>
+                    <tr>
+                        <th>User Type</th>
+                        <th>User ID</th>
+                        <th>Status</th>
+                        <th>Access Level</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="user-access-table">
+                    <!-- Table rows will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Rollout Phases Section -->
+        <div class="section">
+            <h2>🚀 Rollout Phases</h2>
+            <div class="rollout-phase">
+                <h4>Phase 1: Admin + Beta Users (Current)</h4>
+                <p>Admin user (ID: 1) and beta users (IDs: 2, 3) have access to enhanced ACWR calculation.</p>
+                <p><strong>Status:</strong> <span id="phase1-status">Loading...</span></p>
+            </div>
+            <div class="rollout-phase">
+                <h4>Phase 2: Expanded Beta (Future)</h4>
+                <p>Additional beta users will be added for broader testing.</p>
+                <p><strong>Status:</strong> <span class="status-disabled-badge">Not Started</span></p>
+            </div>
+            <div class="rollout-phase">
+                <h4>Phase 3: General Release (Future)</h4>
+                <p>All users will have access to enhanced ACWR calculation.</p>
+                <p><strong>Status:</strong> <span class="status-disabled-badge">Not Started</span></p>
+            </div>
+        </div>
+
+        <!-- Feature Flag Management Section -->
+        <div class="section">
+            <h2>⚙️ Feature Flag Management</h2>
+            <p>Use the toggle switches below to manage feature flag access. Changes take effect immediately.</p>
+            
+            <div id="feature-toggle-controls">
+                <!-- Toggle controls will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentSettings = null;
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadACWRSettings();
+        });
+
+        // Load ACWR settings from the API
+        async function loadACWRSettings() {
+            try {
+                const response = await fetch('/api/admin/acwr-feature-flags');
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentSettings = data;
+                    updateUI(data);
+                    document.getElementById('loading').style.display = 'none';
+                } else {
+                    showAlert('Error loading ACWR settings: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading ACWR settings:', error);
+                showAlert('Error loading ACWR settings: ' + error.message, 'error');
+            }
+        }
+
+        // Update the UI with current settings
+        function updateUI(settings) {
+            updateFeatureStatus(settings);
+            updateUserAccessTable(settings);
+            updateRolloutProgress(settings);
+            updateFeatureToggleControls(settings);
+        }
+
+        // Update feature status cards
+        function updateFeatureStatus(settings) {
+            const statusGrid = document.getElementById('feature-status');
+            statusGrid.innerHTML = '';
+
+            const features = [
+                {
+                    name: 'Enhanced ACWR Calculation',
+                    enabled: settings.enhanced_acwr_enabled,
+                    description: 'Exponential decay weighting for chronic load'
+                }
+            ];
+
+            features.forEach(feature => {
+                const card = document.createElement('div');
+                card.className = `status-card ${feature.enabled ? 'status-enabled' : 'status-disabled'}`;
+                card.innerHTML = `
+                    <h3>${feature.name}</h3>
+                    <p>${feature.description}</p>
+                    <p><strong>Status:</strong> ${feature.enabled ? 'Enabled' : 'Disabled'}</p>
+                `;
+                statusGrid.appendChild(card);
+            });
+        }
+
+        // Update user access table
+        function updateUserAccessTable(settings) {
+            const tableBody = document.getElementById('user-access-table');
+            tableBody.innerHTML = '';
+
+            const users = [
+                { type: 'Admin', id: 1, access: settings.user_access.admin },
+                { type: 'Beta User', id: 2, access: settings.user_access.beta_users.user_2 },
+                { type: 'Beta User', id: 3, access: settings.user_access.beta_users.user_3 },
+                { type: 'Regular User', id: 4, access: settings.user_access.regular_users }
+            ];
+
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${user.type}</td>
+                    <td>${user.id}</td>
+                    <td><span class="status-badge ${user.access ? 'status-enabled-badge' : 'status-disabled-badge'}">${user.access ? 'Enabled' : 'Disabled'}</span></td>
+                    <td>${user.access ? 'Enhanced ACWR' : 'Standard ACWR'}</td>
+                    <td>
+                        ${user.id <= 3 ? 
+                            `<button class="btn ${user.access ? 'btn-danger' : 'btn-success'}" onclick="toggleUserAccess(${user.id}, ${!user.access})">
+                                ${user.access ? 'Disable' : 'Enable'}
+                            </button>` : 
+                            '<span style="color: #6c757d;">Auto-managed</span>'
+                        }
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Update rollout progress
+        function updateRolloutProgress(settings) {
+            const progressFill = document.getElementById('rollout-progress');
+            const progressText = document.getElementById('rollout-text');
+            const phase1Status = document.getElementById('phase1-status');
+
+            const enabledUsers = [
+                settings.user_access.admin,
+                settings.user_access.beta_users.user_2,
+                settings.user_access.beta_users.user_3
+            ].filter(Boolean).length;
+
+            const totalBetaUsers = 3;
+            const progressPercent = (enabledUsers / totalBetaUsers) * 100;
+
+            progressFill.style.width = progressPercent + '%';
+            progressText.textContent = `Phase 1: ${enabledUsers}/${totalBetaUsers} beta users enabled (${Math.round(progressPercent)}%)`;
+            
+            phase1Status.innerHTML = enabledUsers === totalBetaUsers ? 
+                '<span class="status-enabled-badge">Complete</span>' : 
+                '<span class="status-disabled-badge">In Progress</span>';
+        }
+
+        // Update feature toggle controls
+        function updateFeatureToggleControls(settings) {
+            const controlsDiv = document.getElementById('feature-toggle-controls');
+            controlsDiv.innerHTML = `
+                <div style="margin: 20px 0;">
+                    <h4>Enhanced ACWR Calculation</h4>
+                    <p>Toggle enhanced ACWR calculation for beta users:</p>
+                    <label class="toggle-switch">
+                        <input type="checkbox" ${settings.enhanced_acwr_enabled ? 'checked' : ''} onchange="toggleFeatureFlag('enhanced_acwr_calculation', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                    <span style="margin-left: 10px;">${settings.enhanced_acwr_enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+            `;
+        }
+
+        // Toggle feature flag
+        async function toggleFeatureFlag(featureName, enabled) {
+            try {
+                const response = await fetch('/api/admin/acwr-feature-flags/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        feature_name: featureName,
+                        enabled: enabled
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`Feature flag ${featureName} ${enabled ? 'enabled' : 'disabled'} successfully`, 'success');
+                    loadACWRSettings(); // Reload settings
+                } else {
+                    showAlert('Error toggling feature flag: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error toggling feature flag:', error);
+                showAlert('Error toggling feature flag: ' + error.message, 'error');
+            }
+        }
+
+        // Toggle user access (placeholder - would need backend implementation)
+        function toggleUserAccess(userId, enabled) {
+            showAlert(`User access toggle for user ${userId} would be implemented here`, 'info');
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alertsDiv = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alertsDiv.appendChild(alert);
+
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -31,7 +31,7 @@ def generate_missing_historical_recommendations(user_id=1):
             """
             SELECT COUNT(*) as count 
             FROM llm_recommendations 
-            WHERE user_id = ? AND target_date = ?
+            WHERE user_id = %s AND target_date = %s
             """,
             (user_id, date_str),
             fetch=True
@@ -62,7 +62,7 @@ def generate_missing_historical_recommendations(user_id=1):
             """
             SELECT COUNT(*) as count 
             FROM llm_recommendations 
-            WHERE user_id = ? AND target_date = ?
+            WHERE user_id = %s AND target_date = %s
             """,
             (user_id, date_str),
             fetch=True

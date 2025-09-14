@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Migration - ACWR Migration Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .form-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .form-section h5 {
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .user-selection {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .user-item {
+            padding: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .user-item:hover {
+            background-color: #e9ecef;
+        }
+        .user-item.selected {
+            background-color: #007bff;
+            color: white;
+        }
+        .strategy-card {
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .strategy-card:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .strategy-card.selected {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        .strategy-card i {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .preview-section {
+            background: #e8f5e8;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('acwr_migration_admin.migration_dashboard') }}">
+                <i class="fas fa-database"></i> ACWR Migration Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.migration_dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.migration_history') }}">
+                    <i class="fas fa-history"></i> History
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="mb-0">
+                            <i class="fas fa-plus-circle"></i> Create New Migration
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="createMigrationForm">
+                            <!-- Configuration Selection -->
+                            <div class="form-section">
+                                <h5><i class="fas fa-cog"></i> Configuration</h5>
+                                <div class="mb-3">
+                                    <label for="configuration" class="form-label">ACWR Configuration</label>
+                                    <select class="form-select" id="configuration" name="configuration_id" required>
+                                        <option value="">Select a configuration...</option>
+                                        {% for config in configurations %}
+                                            <option value="{{ config.id }}">
+                                                {{ config.name }} - {{ config.description }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text">Choose the ACWR configuration to use for this migration.</div>
+                                </div>
+                            </div>
+
+                            <!-- User Selection -->
+                            <div class="form-section">
+                                <h5><i class="fas fa-users"></i> Target Users</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Select Users</label>
+                                    <div class="user-selection" id="userSelection">
+                                        {% for user in users %}
+                                            <div class="user-item" data-user-id="{{ user.user_id }}">
+                                                <input type="checkbox" class="form-check-input me-2" 
+                                                       id="user_{{ user.user_id }}" 
+                                                       value="{{ user.user_id }}">
+                                                <label for="user_{{ user.user_id }}" class="form-check-label">
+                                                    {{ user.username }} ({{ user.email }})
+                                                </label>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="form-text">Select one or more users for migration.</div>
+                                </div>
+                            </div>
+
+                            <!-- Processing Strategy -->
+                            <div class="form-section">
+                                <h5><i class="fas fa-tasks"></i> Processing Strategy</h5>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="strategy-card" data-strategy="sequential">
+                                            <i class="fas fa-list-ol text-primary"></i>
+                                            <h6>Sequential</h6>
+                                            <p class="small text-muted">Process batches one by one for maximum stability</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="strategy-card" data-strategy="parallel">
+                                            <i class="fas fa-layer-group text-success"></i>
+                                            <h6>Parallel</h6>
+                                            <p class="small text-muted">Process multiple batches concurrently for speed</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="strategy-card selected" data-strategy="adaptive">
+                                            <i class="fas fa-brain text-warning"></i>
+                                            <h6>Adaptive</h6>
+                                            <p class="small text-muted">Automatically adjust based on system resources</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <div class="strategy-card" data-strategy="memory_optimized">
+                                            <i class="fas fa-memory text-info"></i>
+                                            <h6>Memory Optimized</h6>
+                                            <p class="small text-muted">Prioritize memory usage with smaller batches</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="strategy-card" data-strategy="performance_optimized">
+                                            <i class="fas fa-tachometer-alt text-danger"></i>
+                                            <h6>Performance Optimized</h6>
+                                            <p class="small text-muted">Prioritize speed with larger batches</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="processingStrategy" name="processing_strategy" value="adaptive">
+                            </div>
+
+                            <!-- Batch Configuration -->
+                            <div class="form-section">
+                                <h5><i class="fas fa-sliders-h"></i> Batch Configuration</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="batchSize" class="form-label">Batch Size</label>
+                                            <input type="number" class="form-control" id="batchSize" 
+                                                   name="batch_size" value="1000" min="100" max="10000" required>
+                                            <div class="form-text">Number of activities to process in each batch (100-10,000)</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="maxParallelBatches" class="form-label">Max Parallel Batches</label>
+                                            <input type="number" class="form-control" id="maxParallelBatches" 
+                                                   name="max_parallel_batches" value="4" min="1" max="16">
+                                            <div class="form-text">Maximum number of parallel batches (for parallel strategies)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Advanced Options -->
+                            <div class="form-section">
+                                <h5><i class="fas fa-cogs"></i> Advanced Options</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enableMonitoring" 
+                                                   name="enable_monitoring" checked>
+                                            <label class="form-check-label" for="enableMonitoring">
+                                                Enable Real-time Monitoring
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enableAlerts" 
+                                                   name="enable_alerts" checked>
+                                            <label class="form-check-label" for="enableAlerts">
+                                                Enable Alert Notifications
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enableRollback" 
+                                                   name="enable_rollback" checked>
+                                            <label class="form-check-label" for="enableRollback">
+                                                Enable Rollback Capability
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enableValidation" 
+                                                   name="enable_validation" checked>
+                                            <label class="form-check-label" for="enableValidation">
+                                                Enable Data Validation
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="button" class="btn btn-outline-secondary me-md-2" 
+                                        onclick="window.history.back()">
+                                    <i class="fas fa-arrow-left"></i> Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-play"></i> Create Migration
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview Panel -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-eye"></i> Migration Preview
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="migrationPreview">
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle fa-2x mb-3"></i>
+                                <p>Configure the migration to see a preview</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading Indicator -->
+                <div class="loading" id="loadingIndicator">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3">Creating migration...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Strategy selection
+        document.querySelectorAll('.strategy-card').forEach(card => {
+            card.addEventListener('click', function() {
+                // Remove selected class from all cards
+                document.querySelectorAll('.strategy-card').forEach(c => c.classList.remove('selected'));
+                
+                // Add selected class to clicked card
+                this.classList.add('selected');
+                
+                // Update hidden input
+                document.getElementById('processingStrategy').value = this.dataset.strategy;
+                
+                // Update preview
+                updatePreview();
+            });
+        });
+
+        // User selection
+        document.querySelectorAll('.user-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                checkbox.checked = !checkbox.checked;
+                
+                if (checkbox.checked) {
+                    this.classList.add('selected');
+                } else {
+                    this.classList.remove('selected');
+                }
+                
+                updatePreview();
+            });
+        });
+
+        // Form change handlers
+        document.getElementById('configuration').addEventListener('change', updatePreview);
+        document.getElementById('batchSize').addEventListener('input', updatePreview);
+        document.getElementById('maxParallelBatches').addEventListener('input', updatePreview);
+
+        // Update preview
+        function updatePreview() {
+            const configSelect = document.getElementById('configuration');
+            const batchSize = document.getElementById('batchSize').value;
+            const maxParallelBatches = document.getElementById('maxParallelBatches').value;
+            const strategy = document.getElementById('processingStrategy').value;
+            const selectedUsers = Array.from(document.querySelectorAll('.user-item input:checked')).map(cb => cb.value);
+            
+            let previewHtml = '<div class="preview-section">';
+            
+            if (configSelect.value) {
+                const configText = configSelect.options[configSelect.selectedIndex].text;
+                previewHtml += `<p><strong>Configuration:</strong> ${configText}</p>`;
+            }
+            
+            if (selectedUsers.length > 0) {
+                previewHtml += `<p><strong>Target Users:</strong> ${selectedUsers.length} user(s)</p>`;
+            }
+            
+            previewHtml += `<p><strong>Strategy:</strong> ${strategy.charAt(0).toUpperCase() + strategy.slice(1).replace('_', ' ')}</p>`;
+            previewHtml += `<p><strong>Batch Size:</strong> ${batchSize} activities</p>`;
+            previewHtml += `<p><strong>Max Parallel Batches:</strong> ${maxParallelBatches}</p>`;
+            
+            // Estimate processing time
+            if (selectedUsers.length > 0 && batchSize) {
+                const estimatedBatches = Math.ceil(selectedUsers.length * 1000 / batchSize); // Assume 1000 activities per user
+                const estimatedTime = Math.ceil(estimatedBatches * 2 / (strategy === 'parallel' ? maxParallelBatches : 1)); // 2 minutes per batch
+                previewHtml += `<p><strong>Estimated Time:</strong> ${estimatedTime} minutes</p>`;
+            }
+            
+            previewHtml += '</div>';
+            
+            document.getElementById('migrationPreview').innerHTML = previewHtml;
+        }
+
+        // Form submission
+        document.getElementById('createMigrationForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Validate form
+            const configId = document.getElementById('configuration').value;
+            const selectedUsers = Array.from(document.querySelectorAll('.user-item input:checked')).map(cb => cb.value);
+            
+            if (!configId) {
+                showAlert('Please select a configuration', 'warning');
+                return;
+            }
+            
+            if (selectedUsers.length === 0) {
+                showAlert('Please select at least one user', 'warning');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').classList.add('show');
+            document.querySelector('.col-md-8').style.display = 'none';
+            
+            // Prepare form data
+            const formData = {
+                configuration_id: parseInt(configId),
+                user_ids: selectedUsers.map(id => parseInt(id)),
+                batch_size: parseInt(document.getElementById('batchSize').value),
+                processing_strategy: document.getElementById('processingStrategy').value,
+                max_parallel_batches: parseInt(document.getElementById('maxParallelBatches').value),
+                enable_monitoring: document.getElementById('enableMonitoring').checked,
+                enable_alerts: document.getElementById('enableAlerts').checked,
+                enable_rollback: document.getElementById('enableRollback').checked,
+                enable_validation: document.getElementById('enableValidation').checked
+            };
+            
+            // Submit form
+            fetch('/admin/migration/api/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Migration created successfully!', 'success');
+                    setTimeout(() => {
+                        window.location.href = `/admin/migration/monitor/${data.migration_id}`;
+                    }, 2000);
+                } else {
+                    showAlert('Failed to create migration: ' + data.error, 'danger');
+                    document.getElementById('loadingIndicator').classList.remove('show');
+                    document.querySelector('.col-md-8').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                showAlert('Error creating migration: ' + error, 'danger');
+                document.getElementById('loadingIndicator').classList.remove('show');
+                document.querySelector('.col-md-8').style.display = 'block';
+            });
+        });
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+
+        // Initialize preview
+        updatePreview();
+    </script>
+</body>
+</html>
+

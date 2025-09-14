@@ -46,7 +46,7 @@ class User(UserMixin):
 
         # Use ? syntax - db_utils will convert to %s for PostgreSQL
         user_data = execute_query(
-            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin FROM user_settings WHERE email = ?",
+            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin FROM user_settings WHERE email = %s",
             (email,),
             fetch=True
         )
@@ -99,7 +99,7 @@ class User(UserMixin):
                 query = """
                     INSERT INTO user_settings (
                         email, password_hash, resting_hr, max_hr, gender, is_admin
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s)
                 """
 
                 # Use PostgreSQL syntax with RETURNING clause

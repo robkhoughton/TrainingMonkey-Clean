@@ -942,8 +942,8 @@ class OnboardingProgressTracker:
                 else:
                     cursor.execute("""
                         UPDATE user_settings 
-                        SET onboarding_progress = ?
-                        WHERE user_id = ?
+                        SET %s = %s
+                        WHERE user_id = %s
                     """, (json.dumps(progress_data), progress.user_id))
             
         except Exception as e:
@@ -963,7 +963,7 @@ class OnboardingProgressTracker:
                 else:
                     cursor.execute("""
                         SELECT onboarding_progress FROM user_settings 
-                        WHERE user_id = ?
+                        WHERE user_id = %s
                     """, (user_id,))
                 
                 result = cursor.fetchone()

@@ -389,7 +389,7 @@ class HistoricalTrimpRecalculator:
             query = """
                 SELECT resting_hr, max_hr, gender 
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
             result = execute_query(query, (user_id,), fetch=True)
             
@@ -552,7 +552,7 @@ class HistoricalTrimpRecalculator:
             query = """
                 SELECT trimp, trimp_calculation_method, hr_stream_sample_count, trimp_processed_at
                 FROM activities 
-                WHERE activity_id = ? AND user_id = ?
+                WHERE activity_id = %s AND user_id = %s
             """
             result = execute_query(query, (activity_id, user_id), fetch=True)
             

@@ -157,12 +157,11 @@ class SimpleTokenManager:
             # Fallback to basic storage
             query = """
                 UPDATE user_settings 
-                SET strava_access_token = ?,
-                    strava_refresh_token = ?,
-                    strava_token_expires_at = ?,
-                    strava_athlete_id = ?,
+                SET strava_access_token = %s, strava_refresh_token = %s,
+                    strava_token_expires_at = %s,
+                    strava_athlete_id = %s,
                     strava_token_created_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                WHERE id = %s
             """
 
             db_utils.execute_query(query, (
@@ -210,7 +209,7 @@ class SimpleTokenManager:
                 SELECT strava_access_token, strava_refresh_token, strava_token_expires_at,
                        strava_athlete_id
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
 
             result = db_utils.execute_query(query, (self.user_id,), fetch=True)

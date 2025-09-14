@@ -25,7 +25,7 @@ def check_activity_exists_safely(activity_id, user_id):
     try:
         # Use only activity_id + user_id (most reliable, avoids date comparison)
         existing = execute_query(
-            "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+            "SELECT 1 FROM activities WHERE activity_id = %s AND user_id = %s",
             (activity_id, user_id),
             fetch=True
         )

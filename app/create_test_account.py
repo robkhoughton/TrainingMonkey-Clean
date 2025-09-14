@@ -123,7 +123,7 @@ class TestAccountCreator:
     def _get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get user by email address"""
         try:
-            query = "SELECT * FROM user_settings WHERE email = ?"
+            query = "SELECT * FROM user_settings WHERE email = %s"
             result = execute_query(query, (email,), fetch=True)
             return result[0] if result else None
         except Exception as e:
@@ -144,10 +144,10 @@ class TestAccountCreator:
             
             query = """
                 UPDATE user_settings 
-                SET onboarding_step = ?, onboarding_progress = ?, 
-                    onboarding_started_date = ?, onboarding_completed_date = ?,
-                    last_onboarding_activity = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s, 
+                    onboarding_started_date = %s, onboarding_completed_date = %s,
+                    last_onboarding_activity = %s, updated_at = %s
+                WHERE id = %s
             """
             
             execute_query(query, (
@@ -178,9 +178,9 @@ class TestAccountCreator:
             
             query = """
                 UPDATE user_settings 
-                SET goals_configured = ?, goal_type = ?, goal_target = ?,
-                    goal_timeframe = ?, goals_setup_date = ?, updated_at = ?
-                WHERE id = ?
+                SET %s = %s,
+                    goal_timeframe = %s, goals_setup_date = %s, updated_at = %s
+                WHERE id = %s
             """
             
             execute_query(query, (
@@ -273,7 +273,7 @@ class TestAccountCreator:
                 query = """
                     INSERT INTO activities (
                         user_id, activity_type, distance, duration, date, strava_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s)
                 """
                 
                 execute_query(query, (
@@ -302,10 +302,10 @@ class TestAccountCreator:
                 query = """
                     INSERT INTO training_load (
                         user_id, date, training_load, created_at
-                    ) VALUES (?, ?, ?, ?)
+                    ) VALUES (%s)
                     ON CONFLICT (user_id, date) DO UPDATE SET
                         training_load = EXCLUDED.training_load,
-                        updated_at = ?
+                        updated_at = %s
                 """
                 
                 execute_query(query, (
@@ -352,13 +352,13 @@ class TestAccountCreator:
             
             for table in tables_to_clean:
                 try:
-                    query = f"DELETE FROM {table} WHERE user_id = ?"
+                    query = f"DELETE FROM {table} WHERE user_id = %s"
                     execute_query(query, (user_id,))
                 except Exception as e:
                     logger.warning(f"Could not clean {table} for user {user_id}: {str(e)}")
             
             # Delete the user account
-            query = "DELETE FROM user_settings WHERE id = ?"
+            query = "DELETE FROM user_settings WHERE id = %s"
             execute_query(query, (user_id,))
             
             logger.info(f"Deleted test account: {user_id}")

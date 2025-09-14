@@ -277,8 +277,7 @@ class RegistrationSessionManager:
         try:
             query = """
                 UPDATE registration_sessions 
-                SET status = ?, updated_at = ?
-                WHERE status = ? AND expires_at < ?
+                SET %s = %s WHERE status = %s AND expires_at < %s
             """
             
             current_time = datetime.now()
@@ -293,7 +292,7 @@ class RegistrationSessionManager:
             count_query = """
                 SELECT COUNT(*) as count
                 FROM registration_sessions
-                WHERE status = ? AND updated_at = ?
+                WHERE status = %s AND updated_at = %s
             """
             
             result = execute_query(count_query, (SessionStatus.EXPIRED.value, current_time), fetch=True)
@@ -332,8 +331,7 @@ class RegistrationSessionManager:
             # Update session
             query = """
                 UPDATE registration_sessions 
-                SET expires_at = ?, updated_at = ?
-                WHERE session_id = ?
+                SET %s = %s WHERE session_id = %s
             """
             
             current_time = datetime.now()
@@ -360,17 +358,17 @@ class RegistrationSessionManager:
             total_sessions = total_result[0]['count'] if total_result else 0
             
             # Get active sessions
-            active_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = ?"
+            active_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = %s"
             active_result = execute_query(active_query, (SessionStatus.ACTIVE.value,), fetch=True)
             active_sessions = active_result[0]['count'] if active_result else 0
             
             # Get completed sessions
-            completed_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = ?"
+            completed_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = %s"
             completed_result = execute_query(completed_query, (SessionStatus.COMPLETED.value,), fetch=True)
             completed_sessions = completed_result[0]['count'] if completed_result else 0
             
             # Get expired sessions
-            expired_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = ?"
+            expired_query = "SELECT COUNT(*) as count FROM registration_sessions WHERE status = %s"
             expired_result = execute_query(expired_query, (SessionStatus.EXPIRED.value,), fetch=True)
             expired_sessions = expired_result[0]['count'] if expired_result else 0
             
@@ -409,7 +407,7 @@ class RegistrationSessionManager:
                 INSERT INTO registration_sessions (
                     session_id, user_id, session_type, status, created_at, expires_at,
                     last_activity, ip_address, user_agent, metadata, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s)
             """
             
             current_time = datetime.now()
@@ -433,7 +431,7 @@ class RegistrationSessionManager:
                 SELECT session_id, user_id, session_type, status, created_at, expires_at,
                        last_activity, ip_address, user_agent, metadata
                 FROM registration_sessions
-                WHERE session_id = ?
+                WHERE session_id = %s
             """
             
             result = execute_query(query, (session_id,), fetch=True)
@@ -466,7 +464,7 @@ class RegistrationSessionManager:
                 SELECT session_id, user_id, session_type, status, created_at, expires_at,
                        last_activity, ip_address, user_agent, metadata
                 FROM registration_sessions
-                WHERE user_id = ? AND status = ?
+                WHERE user_id = %s AND status = %s
                 ORDER BY created_at DESC
             """
             
@@ -499,8 +497,7 @@ class RegistrationSessionManager:
         try:
             query = """
                 UPDATE registration_sessions 
-                SET status = ?, updated_at = ?, metadata = ?
-                WHERE session_id = ?
+                SET %s = %s WHERE session_id = %s
             """
             
             current_time = datetime.now()
@@ -518,8 +515,7 @@ class RegistrationSessionManager:
         try:
             query = """
                 UPDATE registration_sessions 
-                SET last_activity = ?, updated_at = ?
-                WHERE session_id = ?
+                SET %s = %s WHERE session_id = %s
             """
             
             current_time = datetime.now()
@@ -535,8 +531,7 @@ class RegistrationSessionManager:
         try:
             query = """
                 UPDATE registration_sessions 
-                SET status = ?, updated_at = ?, metadata = ?
-                WHERE session_id = ?
+                SET %s = %s WHERE session_id = %s
             """
             
             current_time = datetime.now()

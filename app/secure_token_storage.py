@@ -35,7 +35,7 @@ class SecureTokenStorage:
         try:
             # Try to get existing key from database
             result = db_utils.execute_query(
-                "SELECT encryption_key FROM user_settings WHERE id = ?",
+                "SELECT encryption_key FROM user_settings WHERE id = %s",
                 (self.user_id,),
                 fetch=True
             )
@@ -49,7 +49,7 @@ class SecureTokenStorage:
                 
                 # Store in database
                 db_utils.execute_query(
-                    "UPDATE user_settings SET encryption_key = ? WHERE id = ?",
+                    "UPDATE user_settings SET encryption_key = %s WHERE id = %s",
                     (base64.urlsafe_b64encode(new_key).decode(), self.user_id),
                     fetch=False
                 )
@@ -140,7 +140,7 @@ class SecureTokenStorage:
             db_utils.execute_query(
                 """INSERT INTO token_audit_log 
                    (user_id, operation, success, timestamp, ip_address, user_agent, details)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (%s)""",
                 (
                     audit_data['user_id'],
                     audit_data['operation'],
@@ -191,15 +191,14 @@ class SecureTokenStorage:
             # Save to database
             query = """
                 UPDATE user_settings 
-                SET strava_access_token = ?,
-                    strava_refresh_token = ?,
-                    strava_token_expires_at = ?,
-                    strava_athlete_id = ?,
+                SET strava_access_token = %s, strava_refresh_token = %s,
+                    strava_token_expires_at = %s,
+                    strava_athlete_id = %s,
                     strava_token_created_at = CURRENT_TIMESTAMP,
-                    access_token_hash = ?,
-                    refresh_token_hash = ?,
-                    token_metadata = ?
-                WHERE id = ?
+                    access_token_hash = %s,
+                    refresh_token_hash = %s,
+                    token_metadata = %s
+                WHERE id = %s
             """
             
             db_utils.execute_query(query, (
@@ -233,7 +232,7 @@ class SecureTokenStorage:
                 SELECT strava_access_token, strava_refresh_token, strava_token_expires_at,
                        strava_athlete_id, access_token_hash, refresh_token_hash, token_metadata
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
             
             result = db_utils.execute_query(query, (self.user_id,), fetch=True)
@@ -322,11 +321,10 @@ class SecureTokenStorage:
             # Update database with new key and re-encrypted tokens
             db_utils.execute_query(
                 """UPDATE user_settings 
-                   SET encryption_key = ?,
-                       strava_access_token = ?,
-                       strava_refresh_token = ?,
-                       token_metadata = ?
-                   WHERE id = ?""",
+                   SET encryption_key = %s, strava_access_token = %s,
+                       strava_refresh_token = %s,
+                       token_metadata = %s
+                   WHERE id = %s""",
                 (
                     base64.urlsafe_b64encode(new_key).decode(),
                     new_encrypted_access_token,
@@ -363,7 +361,7 @@ class SecureTokenStorage:
                 SELECT encryption_key, access_token_hash, refresh_token_hash, 
                        token_metadata, strava_token_created_at
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
             
             result = db_utils.execute_query(query, (self.user_id,), fetch=True)
@@ -424,7 +422,7 @@ class SecureTokenStorage:
             cutoff_date = datetime.now() - timedelta(days=days_to_keep)
             
             result = db_utils.execute_query(
-                "DELETE FROM token_audit_log WHERE timestamp < ?",
+                "DELETE FROM token_audit_log WHERE timestamp < %s",
                 (cutoff_date.isoformat(),),
                 fetch=False
             )

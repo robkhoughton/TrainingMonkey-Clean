@@ -42,8 +42,8 @@ const ActivitiesPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Use the same endpoint as the dashboard to ensure data consistency
-      const response = await fetch(`/api/training-data?t=${Date.now()}`);
+      // Use the dedicated activities management endpoint that returns individual activities
+      const response = await fetch(`/api/activities-management?days=${days}&page=${page}&t=${Date.now()}`);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch activities: ${response.status}`);
@@ -52,29 +52,12 @@ const ActivitiesPage: React.FC = () => {
       const result = await response.json();
 
       if (result.success) {
-        // Filter and process the data similar to dashboard
-        const daysNum = parseInt(days, 10);
-        const allData = result.data || [];
-
-        // Get date range for filtering (same logic as dashboard)
-        const allDates = allData.map((item: any) => item.date).sort();
-        const maxDate = allDates[allDates.length - 1];
-        const maxDateObj = new Date(`${maxDate}T12:00:00Z`);
-        const cutoffDateObj = new Date(maxDateObj);
-        cutoffDateObj.setDate(cutoffDateObj.getDate() - daysNum + 1);
-        const cutoffDate = cutoffDateObj.toISOString().split('T')[0];
-
-        // Filter data but list ALL individual activities (no aggregation)
-        const filteredData = allData.filter((item: any) =>
-          item.date >= cutoffDate && item.date <= maxDate
-        );
-
-        // Convert to activities format - INDIVIDUAL activities only
-        const activitiesData = filteredData.map((item: any) => ({
+        // The activities-management endpoint already returns individual activities with proper pagination
+        const activitiesData = result.data.map((item: any) => ({
           activity_id: item.activity_id,
           date: item.date,
           name: item.name,
-          type: item.type, // This should now show specific types like "Trail Run", "Treadmill Run", etc.
+          type: item.type,
           distance_miles: item.distance_miles || 0,
           elevation_gain_feet: item.elevation_gain_feet,
           total_load_miles: item.total_load_miles || 0,
@@ -87,29 +70,8 @@ const ActivitiesPage: React.FC = () => {
           user_edited_elevation: false // Initialize as false, will be updated after edits
         }));
 
-        // IMPROVEMENT 1: Sort by date in reverse chronological order (newest first)
-        activitiesData.sort((a, b) => {
-          const dateA = new Date(a.date).getTime();
-          const dateB = new Date(b.date).getTime();
-          return dateB - dateA; // Newest first
-        });
-
-        // Pagination simulation (since we're using dashboard data)
-        const per_page = 50;
-        const total_items = activitiesData.length;
-        const start_index = (page - 1) * per_page;
-        const end_index = start_index + per_page;
-        const paginatedData = activitiesData.slice(start_index, end_index);
-
-        setActivities(paginatedData);
-        setPagination({
-          current_page: page,
-          per_page,
-          total_items,
-          total_pages: Math.ceil(total_items / per_page),
-          has_next: end_index < total_items,
-          has_prev: page > 1
-        });
+        setActivities(activitiesData);
+        setPagination(result.pagination);
         setCurrentPage(page);
       } else {
         throw new Error(result.error || 'Unknown error');

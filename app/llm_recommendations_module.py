@@ -252,7 +252,7 @@ def create_enhanced_prompt(current_metrics, activities, pattern_analysis, traini
     pattern_flags = analyze_pattern_flags(activities, current_metrics)
 
     # Get date information
-    current_date = datetime.now().strftime(DEFAULT_DATE_FORMAT)
+    current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
     start_date = activities[0]['date'] if activities else "unknown"
     end_date = activities[-1]['date'] if activities else "unknown"
     days_analyzed = len(set(activity['date'] for activity in activities))
@@ -639,8 +639,8 @@ def generate_recommendations(force=False, user_id=None):
 
         logger.info(f"Generating new enhanced training recommendations for user {user_id}")
 
-        # Get current date information FIRST
-        current_date = datetime.now()
+        # Get current date information FIRST - USE PACIFIC TIMEZONE
+        current_date = get_app_current_date()
         current_date_str = current_date.strftime('%Y-%m-%d')
 
         # CRITICAL FIX: Force metrics recalculation before generating recommendations
@@ -667,8 +667,8 @@ def generate_recommendations(force=False, user_id=None):
             logger.error("Training guide not available - falling back to basic recommendations")
             return None
 
-        # Get current date information
-        current_date = datetime.now()
+        # Get current date information - USE PACIFIC TIMEZONE
+        current_date = get_app_current_date()
         current_date_str = current_date.strftime('%Y-%m-%d')
 
         # CRITICAL FIX: Proper target_date logic based on activity status
@@ -767,7 +767,7 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     pattern_flags = analyze_pattern_flags(activities, current_metrics)
 
     # Get date information
-    current_date = datetime.now().strftime(DEFAULT_DATE_FORMAT)
+    current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
     start_date = activities[0]['date'] if activities else "unknown"
     end_date = activities[-1]['date'] if activities else "unknown"
     days_analyzed = len(set(activity['date'] for activity in activities))
@@ -890,7 +890,7 @@ def check_activity_for_date(user_id, date_str):
             """
             SELECT COUNT(*) as count 
             FROM activities 
-            WHERE user_id = ? AND date = ?
+            WHERE user_id = %s AND date = %s
             """,
             (user_id, date_str),
             fetch=True
@@ -967,9 +967,9 @@ def classify_athlete_profile(user_id=None):
                    COUNT(*) as activity_days,
                    AVG(trimp) as avg_trimp
             FROM activities 
-            WHERE date >= ? AND activity_id != 0 AND user_id = ?
+            WHERE date >= %s AND activity_id != 0 AND user_id = %s
             """,
-            ((datetime.now() - timedelta(days=28)).strftime(DEFAULT_DATE_FORMAT), user_id),
+            ((get_app_current_date() - timedelta(days=28)).strftime(DEFAULT_DATE_FORMAT), user_id),
             fetch=True
         )
 
@@ -1049,14 +1049,38 @@ def analyze_training_patterns(activities):
     intensity_zones = {'easy': 0, 'moderate': 0, 'hard': 0}
 
     for activity in activities:
-        trimp = activity.get('trimp', 0)
-
-        if trimp <= 30:
-            intensity_zones['easy'] += 1
-        elif trimp <= 70:
-            intensity_zones['moderate'] += 1
+        # Use HR zones instead of TRIMP for more accurate intensity classification
+        zone1_time = activity.get('time_in_zone1', 0)
+        zone2_time = activity.get('time_in_zone2', 0)
+        zone3_time = activity.get('time_in_zone3', 0)
+        zone4_time = activity.get('time_in_zone4', 0)
+        zone5_time = activity.get('time_in_zone5', 0)
+        
+        total_zone_time = zone1_time + zone2_time + zone3_time + zone4_time + zone5_time
+        
+        if total_zone_time == 0:
+            # Fallback to TRIMP if no HR zone data
+            trimp = activity.get('trimp', 0)
+            if trimp <= 30:
+                intensity_zones['easy'] += 1
+            elif trimp <= 70:
+                intensity_zones['moderate'] += 1
+            else:
+                intensity_zones['hard'] += 1
         else:
-            intensity_zones['hard'] += 1
+            # Classify based on HR zone distribution
+            zone1_pct = zone1_time / total_zone_time * 100
+            zone2_pct = zone2_time / total_zone_time * 100
+            zone3_pct = zone3_time / total_zone_time * 100
+            zone4_pct = zone4_time / total_zone_time * 100
+            zone5_pct = zone5_time / total_zone_time * 100
+            
+            if zone1_pct > 50 or (zone1_pct + zone2_pct) > 70:
+                intensity_zones['easy'] += 1
+            elif zone4_pct > 30 or zone5_pct > 20 or (zone4_pct + zone5_pct) > 40:
+                intensity_zones['hard'] += 1
+            else:
+                intensity_zones['moderate'] += 1
 
     total_workouts = sum(intensity_zones.values())
     intensity_distribution = "unknown"
@@ -1243,7 +1267,7 @@ def get_user_coaching_spectrum(user_id):
         result = execute_query("""
             SELECT coaching_style_spectrum, coaching_tone 
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
         """, (user_id,), fetch=True)
 
         if result and len(result) > 0:
@@ -1485,7 +1509,7 @@ LEARNING INSIGHTS & TOMORROW'S IMPLICATIONS:
 Fallback autopsy generated due to system limitations. For detailed learning insights, ensure Training Reference Guide is available and AI service is operational. Future training should consider reported energy and pain levels.
 
 Activity Summary: {activity_summary}
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
 
         return {
             'analysis': analysis,
@@ -1506,13 +1530,13 @@ def get_recent_autopsy_insights(user_id, days=3):
     This is the key function that creates the learning loop.
     """
     try:
-        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        cutoff_date = (get_app_current_date() - timedelta(days=days)).strftime('%Y-%m-%d')
 
         recent_autopsies = execute_query(
             """
             SELECT date, autopsy_analysis, alignment_score, generated_at
             FROM ai_autopsies
-            WHERE user_id = ? AND date >= ?
+            WHERE user_id = %s AND date >= %s
             ORDER BY date DESC
             LIMIT 5
             """,
@@ -1605,7 +1629,7 @@ def get_user_coaching_spectrum(user_id):
         result = execute_query("""
             SELECT coaching_style_spectrum 
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
         """, (user_id,), fetch=True)
 
         if result and len(result) > 0:
@@ -1761,7 +1785,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
 
             # Get user observations
             journal_entry = execute_query(
-                "SELECT * FROM journal_entries WHERE user_id = ? AND date = ?",
+                "SELECT * FROM journal_entries WHERE user_id = %s AND date = %s",
                 (user_id, journal_date),
                 fetch=True
             )
@@ -1784,7 +1808,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         """
                         INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, 
                                                 autopsy_analysis, alignment_score, generated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, NOW())
+                        VALUES (%s, NOW())
                         ON CONFLICT (user_id, date)
                         DO UPDATE SET
                             prescribed_action = EXCLUDED.prescribed_action,

@@ -7759,3 +7759,171 @@ sqlite3.OperationalError: no such column: activity_id
 2025-09-06 16:32:14,492 - __main__ - INFO - HR stream collection test: \u274c FAILED
 2025-09-06 16:32:14,492 - __main__ - INFO - HR stream retrieval test: \u274c FAILED
 2025-09-06 16:32:14,492 - __main__ - WARNING - \u26a0\ufe0f  Some tests failed. Check the logs above for details.
+2025-09-07 12:18:58,036 - __main__ - INFO - ============================================================
+2025-09-07 12:18:58,037 - __main__ - INFO - Strava Enhanced ACWR Integration Test Suite
+2025-09-07 12:18:58,037 - __main__ - INFO - ============================================================
+2025-09-07 12:18:58,037 - __main__ - INFO - 
+--- Feature Flag Integration ---
+2025-09-07 12:18:58,037 - __main__ - INFO - Testing feature flag integration...
+2025-09-07 12:18:58,037 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:18:58,037 - strava_training_load - INFO - Enhanced ACWR calculation enabled for user 1
+2025-09-07 12:18:58,038 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:18:58,038 - strava_training_load - INFO - Using standard ACWR calculation for user 1
+2025-09-07 12:18:58,038 - __main__ - INFO - \u2705 Feature flag integration test passed
+2025-09-07 12:18:58,039 - __main__ - INFO - \u2705 Feature Flag Integration PASSED
+2025-09-07 12:18:58,039 - __main__ - INFO - 
+--- Enhanced Calculation Integration ---
+2025-09-07 12:18:58,039 - __main__ - INFO - Testing enhanced ACWR calculation integration...
+2025-09-07 12:18:58,041 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:18:58,041 - strava_training_load - INFO - Enhanced calculated values for 2025-09-07:
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   7-day avg load: 11.14
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   28-day avg load: 10.0
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   7-day avg trimp: 8.86
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   28-day avg trimp: 8.0
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   Enhanced External ACWR: 1.11
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   Enhanced Internal ACWR: 1.11
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   Enhanced Normalized divergence: 0.0
+2025-09-07 12:18:58,041 - strava_training_load - INFO -   Calculation method: exponential_decay
+2025-09-07 12:18:58,041 - __main__ - INFO - \u2705 Enhanced ACWR calculation integration test passed
+2025-09-07 12:18:58,041 - __main__ - INFO - \u2705 Enhanced Calculation Integration PASSED
+2025-09-07 12:18:58,041 - __main__ - INFO - 
+--- Enhanced Calculation Fallback ---
+2025-09-07 12:18:58,041 - __main__ - INFO - Testing enhanced ACWR calculation fallback...
+2025-09-07 12:18:58,041 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:18:58,041 - strava_training_load - ERROR - Enhanced ACWR calculation failed: Insufficient data
+2025-09-07 12:18:58,041 - strava_training_load - INFO - Falling back to standard ACWR calculation
+2025-09-07 12:18:58,041 - __main__ - INFO - \u2705 Enhanced ACWR calculation fallback test passed
+2025-09-07 12:18:58,041 - __main__ - INFO - \u2705 Enhanced Calculation Fallback PASSED
+2025-09-07 12:18:58,042 - __main__ - INFO - 
+--- Standard Calculation Preservation ---
+2025-09-07 12:18:58,042 - __main__ - INFO - Testing standard ACWR calculation preservation...
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Standard calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Standard calculated values for 2025-09-07:
+2025-09-07 12:18:58,042 - strava_training_load - INFO -   7-day avg load: 0.0 (sum: 0)
+2025-09-07 12:18:58,042 - strava_training_load - INFO -   28-day avg load: 0.0 (sum: 0)
+2025-09-07 12:18:58,042 - strava_training_load - INFO -   Standard External ACWR: 0
+2025-09-07 12:18:58,042 - strava_training_load - INFO -   Standard Internal ACWR: 0
+2025-09-07 12:18:58,042 - strava_training_load - INFO -   Standard Normalized divergence: 0
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Successfully updated moving averages for 2025-09-07
+2025-09-07 12:18:58,042 - __main__ - ERROR - \u274c Standard Calculation Preservation FAILED with exception: 
+2025-09-07 12:18:58,042 - __main__ - INFO - 
+--- Error Handling ---
+2025-09-07 12:18:58,042 - __main__ - INFO - Testing error handling...
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in enhanced ACWR calculation: Database error
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Falling back to standard ACWR calculation due to error
+2025-09-07 12:18:58,042 - strava_training_load - INFO - Standard calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:18:58,042 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:18:58,043 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:18:58,043 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:18:58,043 - strava_training_load - INFO - Standard calculated values for 2025-09-07:
+2025-09-07 12:18:58,043 - strava_training_load - INFO -   7-day avg load: 0.0 (sum: 0)
+2025-09-07 12:18:58,043 - strava_training_load - INFO -   28-day avg load: 0.0 (sum: 0)
+2025-09-07 12:18:58,043 - strava_training_load - INFO -   Standard External ACWR: 0
+2025-09-07 12:18:58,043 - strava_training_load - INFO -   Standard Internal ACWR: 0
+2025-09-07 12:18:58,043 - strava_training_load - INFO -   Standard Normalized divergence: 0
+2025-09-07 12:18:58,043 - strava_training_load - ERROR - Error updating moving averages for 2025-09-07: Database error
+2025-09-07 12:18:58,043 - __main__ - INFO - \u2705 Error handling test passed
+2025-09-07 12:18:58,043 - __main__ - INFO - \u2705 Error Handling PASSED
+2025-09-07 12:18:58,043 - __main__ - INFO - 
+--- User ID Validation ---
+2025-09-07 12:18:58,043 - __main__ - INFO - Testing user_id validation...
+2025-09-07 12:18:58,043 - strava_training_load - ERROR - Error updating moving averages for 2025-09-07, user None: user_id is required for multi-user support
+2025-09-07 12:18:58,043 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:18:58,043 - strava_training_load - INFO - Using standard ACWR calculation for user 1
+2025-09-07 12:18:58,043 - __main__ - INFO - \u2705 User ID validation test passed
+2025-09-07 12:18:58,043 - __main__ - INFO - \u2705 User ID Validation PASSED
+2025-09-07 12:18:58,043 - __main__ - INFO - 
+============================================================
+2025-09-07 12:18:58,043 - __main__ - INFO - Test Results: 5/6 tests passed
+2025-09-07 12:18:58,043 - __main__ - INFO - ============================================================
+2025-09-07 12:18:58,043 - __main__ - ERROR - \u26a0\ufe0f  1 tests failed. Please check the errors above.
+2025-09-07 12:34:55,788 - __main__ - INFO - ============================================================
+2025-09-07 12:34:55,788 - __main__ - INFO - Strava Enhanced ACWR Integration Test Suite
+2025-09-07 12:34:55,788 - __main__ - INFO - ============================================================
+2025-09-07 12:34:55,788 - __main__ - INFO - 
+--- Feature Flag Integration ---
+2025-09-07 12:34:55,788 - __main__ - INFO - Testing feature flag integration...
+2025-09-07 12:34:55,788 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:34:55,788 - strava_training_load - INFO - Enhanced ACWR calculation enabled for user 1
+2025-09-07 12:34:55,788 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:34:55,788 - strava_training_load - INFO - Using standard ACWR calculation for user 1
+2025-09-07 12:34:55,788 - __main__ - INFO - \u2705 Feature flag integration test passed
+2025-09-07 12:34:55,788 - __main__ - INFO - \u2705 Feature Flag Integration PASSED
+2025-09-07 12:34:55,788 - __main__ - INFO - 
+--- Enhanced Calculation Integration ---
+2025-09-07 12:34:55,788 - __main__ - INFO - Testing enhanced ACWR calculation integration...
+2025-09-07 12:34:55,788 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Enhanced calculated values for 2025-09-07:
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   7-day avg load: 11.14
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   28-day avg load: 10.0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   7-day avg trimp: 8.86
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   28-day avg trimp: 8.0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Enhanced External ACWR: 1.11
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Enhanced Internal ACWR: 1.11
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Enhanced Normalized divergence: 0.0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Calculation method: exponential_decay
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Enhanced ACWR calculation integration test passed
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Enhanced Calculation Integration PASSED
+2025-09-07 12:34:55,791 - __main__ - INFO - 
+--- Enhanced Calculation Fallback ---
+2025-09-07 12:34:55,791 - __main__ - INFO - Testing enhanced ACWR calculation fallback...
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Enhanced ACWR calculation failed: Insufficient data
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Falling back to standard ACWR calculation
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Enhanced ACWR calculation fallback test passed
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Enhanced Calculation Fallback PASSED
+2025-09-07 12:34:55,791 - __main__ - INFO - 
+--- Standard Calculation Preservation ---
+2025-09-07 12:34:55,791 - __main__ - INFO - Testing standard ACWR calculation preservation...
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Standard calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: object of type 'float' has no len()
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Standard calculated values for 2025-09-07:
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   7-day avg load: 0.0 (sum: 0)
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   28-day avg load: 0.0 (sum: 0)
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard External ACWR: 0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard Internal ACWR: 0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard Normalized divergence: 0
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Successfully updated moving averages for 2025-09-07
+2025-09-07 12:34:55,791 - __main__ - ERROR - \u274c Standard Calculation Preservation FAILED with exception: 
+2025-09-07 12:34:55,791 - __main__ - INFO - 
+--- Error Handling ---
+2025-09-07 12:34:55,791 - __main__ - INFO - Testing error handling...
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Enhanced calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in enhanced ACWR calculation: Database error
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Falling back to standard ACWR calculation due to error
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Standard calculation - Date ranges: 7-day (2025-09-01 to 2025-09-07), 28-day (2025-08-11 to 2025-09-07)
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error in get_sum_result: Database error
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Standard calculated values for 2025-09-07:
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   7-day avg load: 0.0 (sum: 0)
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   28-day avg load: 0.0 (sum: 0)
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard External ACWR: 0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard Internal ACWR: 0
+2025-09-07 12:34:55,791 - strava_training_load - INFO -   Standard Normalized divergence: 0
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error updating moving averages for 2025-09-07: Database error
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Error handling test passed
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 Error Handling PASSED
+2025-09-07 12:34:55,791 - __main__ - INFO - 
+--- User ID Validation ---
+2025-09-07 12:34:55,791 - __main__ - INFO - Testing user_id validation...
+2025-09-07 12:34:55,791 - strava_training_load - ERROR - Error updating moving averages for 2025-09-07, user None: user_id is required for multi-user support
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Updating moving averages for 2025-09-07, user 1
+2025-09-07 12:34:55,791 - strava_training_load - INFO - Using standard ACWR calculation for user 1
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 User ID validation test passed
+2025-09-07 12:34:55,791 - __main__ - INFO - \u2705 User ID Validation PASSED
+2025-09-07 12:34:55,791 - __main__ - INFO - 
+============================================================
+2025-09-07 12:34:55,791 - __main__ - INFO - Test Results: 5/6 tests passed
+2025-09-07 12:34:55,791 - __main__ - INFO - ============================================================
+2025-09-07 12:34:55,791 - __main__ - ERROR - \u26a0\ufe0f  1 tests failed. Please check the errors above.

@@ -159,9 +159,9 @@ class ElevationMigrationService:
                         db_utils.execute_query("""
                             UPDATE activities 
                             SET 
-                                elevation_load_miles = ?,
-                                total_load_miles = ?
-                            WHERE activity_id = ? AND user_id = ?
+                                elevation_load_miles = %s,
+                                total_load_miles = %s
+                            WHERE activity_id = %s AND user_id = %s
                         """, (new_elevation_load, new_total_load, activity['activity_id'], activity['user_id']))
 
                     updated_count += 1
@@ -223,7 +223,7 @@ class ElevationMigrationService:
             activities = db_utils.execute_query("""
                 SELECT activity_id, date, total_load_miles, trimp
                 FROM activities 
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY date ASC
             """, (user_id,), fetch=True)
 
@@ -273,14 +273,14 @@ class ElevationMigrationService:
                     db_utils.execute_query("""
                         UPDATE activities 
                         SET 
-                            seven_day_avg_load = ?,
-                            twentyeight_day_avg_load = ?,
-                            seven_day_avg_trimp = ?,
-                            twentyeight_day_avg_trimp = ?,
-                            acute_chronic_ratio = ?,
-                            trimp_acute_chronic_ratio = ?,
-                            normalized_divergence = ?
-                        WHERE activity_id = ? AND user_id = ?
+                            seven_day_avg_load = %s,
+                            twentyeight_day_avg_load = %s,
+                            seven_day_avg_trimp = %s,
+                            twentyeight_day_avg_trimp = %s,
+                            acute_chronic_ratio = %s,
+                            trimp_acute_chronic_ratio = %s,
+                            normalized_divergence = %s
+                        WHERE activity_id = %s AND user_id = %s
                     """, (
                         acute_external_load, chronic_external_load,
                         acute_internal_load, chronic_internal_load,

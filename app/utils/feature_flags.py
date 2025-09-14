@@ -8,6 +8,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Import monitoring functions
+try:
+    from acwr_feature_flag_monitor import log_acwr_feature_access, log_acwr_feature_error
+except ImportError:
+    # Fallback if monitoring is not available
+    def log_acwr_feature_access(feature_name, user_id, granted, details=None):
+        pass
+    def log_acwr_feature_error(feature_name, user_id, error_message, details=None):
+        pass
+
 
 def is_feature_enabled(feature_name, user_id=None):
     """
@@ -32,7 +42,8 @@ def is_feature_enabled(feature_name, user_id=None):
         'hr_zone_recalculation': False,  # Default OFF
         'enhanced_ai_context': False,  # Default OFF
         'settings_validation_strict': True,  # Default ON for safety
-        'enhanced_trimp_calculation': False  # Default OFF - uses heart rate stream data
+        'enhanced_trimp_calculation': False,  # Default OFF - uses heart rate stream data
+        'enhanced_acwr_calculation': False  # Default OFF - uses exponential decay weighting
     }
 
     # Get base enabled state
@@ -64,6 +75,30 @@ def is_feature_enabled(feature_name, user_id=None):
 
         # All other users: Enhanced TRIMP calculation disabled (uses average HR method)
         logger.info(f"⏳ Enhanced TRIMP calculation access denied to user {user_id} (not in beta rollout)")
+        return False
+
+    # Special handling for Enhanced ACWR Calculation rollout
+    if feature_name == 'enhanced_acwr_calculation':
+
+        # PHASE 1: Admin + Beta Users (Rob, tballaine, iz.houghton)
+        beta_user_ids = [1, 2, 3]  # Rob (admin), tballaine, iz.houghton
+
+        if user_id in beta_user_ids:
+            logger.info(f"🎉 Enhanced ACWR calculation access granted to user {user_id} (beta rollout)")
+            # Log access for monitoring
+            log_acwr_feature_access('enhanced_acwr_calculation', user_id, True, {
+                'rollout_phase': 'beta',
+                'user_type': 'beta_user' if user_id != 1 else 'admin'
+            })
+            return True
+
+        # All other users: Enhanced ACWR calculation disabled (uses standard 28-day calculation)
+        logger.info(f"⏳ Enhanced ACWR calculation access denied to user {user_id} (not in beta rollout)")
+        # Log access denial for monitoring
+        log_acwr_feature_access('enhanced_acwr_calculation', user_id, False, {
+            'rollout_phase': 'beta',
+            'user_type': 'regular_user'
+        })
         return False
 
     # For other features, check admin access first

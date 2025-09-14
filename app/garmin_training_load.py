@@ -528,7 +528,7 @@ def save_training_load(load_data, filename=None):
         # Check if this activity is already in the database
         activity_id = load_data['activity_id']
         existing = execute_query(
-            "SELECT 1 FROM activities WHERE activity_id = ?",
+            "SELECT 1 FROM activities WHERE activity_id = %s",
             (activity_id,),
             fetch=True
         )
@@ -589,7 +589,7 @@ def ensure_daily_records(start_date_str, end_date_str):
         # This query is sufficient as we only need to know if a record exists for the date,
         # regardless of whether it's an actual activity or a previously inserted rest day.
         existing_record_for_date = execute_query(
-            "SELECT 1 FROM activities WHERE date = ?",
+            "SELECT 1 FROM activities WHERE date = %s",
             (date_str,),
             fetch=True
         )
@@ -674,26 +674,26 @@ def update_moving_averages(date):
 
         # Time-based aggregation for load (missing days automatically count as zero)
         seven_day_sum = execute_query(
-            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN %s AND %s",
             (seven_days_ago, date),
             fetch=True
         )[0][0]
 
         twentyeight_day_sum = execute_query(
-            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN %s AND %s",
             (twentyeight_days_ago, date),
             fetch=True
         )[0][0]
 
         # Time-based aggregation for TRIMP
         seven_day_trimp_sum = execute_query(
-            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN %s AND %s",
             (seven_days_ago, date),
             fetch=True
         )[0][0]
 
         twentyeight_day_trimp_sum = execute_query(
-            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN %s AND %s",
             (twentyeight_days_ago, date),
             fetch=True
         )[0][0]
@@ -742,12 +742,12 @@ def update_moving_averages(date):
 
         # Check how many activities are found
         count_7day = execute_query(
-            "SELECT COUNT(*) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COUNT(*) FROM activities WHERE date BETWEEN %s AND %s",
             (seven_days_ago, date), fetch=True
         )[0][0]
 
         count_28day = execute_query(
-            "SELECT COUNT(*) FROM activities WHERE date BETWEEN ? AND ?",
+            "SELECT COUNT(*) FROM activities WHERE date BETWEEN %s AND %s",
             (twentyeight_days_ago, date), fetch=True
         )[0][0]
 
@@ -761,14 +761,14 @@ def update_moving_averages(date):
         execute_query(
             """
             UPDATE activities SET 
-                seven_day_avg_load = ?,
-                twentyeight_day_avg_load = ?,
-                seven_day_avg_trimp = ?,
-                twentyeight_day_avg_trimp = ?,
-                acute_chronic_ratio = ?,
-                trimp_acute_chronic_ratio = ?,
-                normalized_divergence = ?
-            WHERE date = ?
+                seven_day_avg_load = %s,
+                twentyeight_day_avg_load = %s,
+                seven_day_avg_trimp = %s,
+                twentyeight_day_avg_trimp = %s,
+                acute_chronic_ratio = %s,
+                trimp_acute_chronic_ratio = %s,
+                normalized_divergence = %s
+            WHERE date = %s
             """,
             (seven_day_avg_load, twentyeight_day_avg_load, seven_day_avg_trimp, twentyeight_day_avg_trimp,
              acute_chronic_ratio, trimp_acute_chronic_ratio, normalized_divergence, date)
@@ -800,7 +800,7 @@ def process_activities_for_date_range(api, start_date, end_date=None, hr_config=
 
         # Check if activity already exists in database
         existing = execute_query(
-            "SELECT 1 FROM activities WHERE activity_id = ?",
+            "SELECT 1 FROM activities WHERE activity_id = %s",
             (activity_id,),
             fetch=True
         )
@@ -1183,7 +1183,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
 
             # Find existing activities on this date to update
             activities = execute_query(
-                "SELECT activity_id FROM activities WHERE date = ?",
+                "SELECT activity_id FROM activities WHERE date = %s",
                 (record_date,),
                 fetch=True
             )
@@ -1192,7 +1192,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
                 # Update existing activities with weight data
                 for activity in activities:
                     execute_query(
-                        "UPDATE activities SET weight_lbs = ? WHERE activity_id = ?",
+                        "UPDATE activities SET %s = %s WHERE activity_id = %s",
                         (weight_lbs, activity['activity_id'])
                     )
                     logger.info(f"Updated activity {activity['activity_id']} with weight: {weight_lbs:.1f} lbs")
@@ -1205,7 +1205,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
 
                 # Check if rest day record already exists
                 existing_rest = execute_query(
-                    "SELECT 1 FROM activities WHERE date = ? AND activity_id = 0",
+                    "SELECT 1 FROM activities WHERE date = %s AND activity_id = 0",
                     (record_date,),
                     fetch=True
                 )
@@ -1213,7 +1213,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
                 if existing_rest:
                     # Update existing rest day
                     execute_query(
-                        "UPDATE activities SET weight_lbs = ? WHERE date = ? AND activity_id = 0",
+                        "UPDATE activities SET %s = %s WHERE date = %s AND activity_id = 0",
                         (weight_lbs, record_date)
                     )
                     logger.info(f"Updated existing rest day for {record_date} with weight data")
@@ -1296,7 +1296,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
             if updates:
                 params.append(activity_id)
                 execute_query(
-                    f"UPDATE activities SET {', '.join(updates)} WHERE activity_id = ?",
+                    f"UPDATE activities SET {', '.join(updates)} WHERE activity_id = %s",
                     tuple(params)
                 )
                 logger.info(f"Updated activity {activity_id} with wellness metrics from activity details")
@@ -1347,7 +1347,7 @@ def process_wellness_data(api, start_date, end_date=None, hr_config=None):
             if updates:
                 params.append(activity_id)
                 execute_query(
-                    f"UPDATE activities SET {', '.join(updates)} WHERE activity_id = ?",
+                    f"UPDATE activities SET {', '.join(updates)} WHERE activity_id = %s",
                     tuple(params)
                 )
                 logger.info(f"Updated activity {activity_id} with additional wellness metrics")
@@ -1510,7 +1510,7 @@ def main():
         execute_query(
             """
             INSERT INTO user_settings (email, resting_hr, max_hr, gender) 
-            VALUES (?, ?, ?, ?)
+            VALUES (%s)
             """,
             (email, hr_config['resting_hr'], hr_config['max_hr'], hr_config['gender'])
         )
@@ -1532,8 +1532,7 @@ def main():
             execute_query(
                 """
                 UPDATE user_settings 
-                SET resting_hr = ?, max_hr = ?, gender = ? 
-                WHERE email = ?
+                SET %s = %s WHERE email = %s
                 """,
                 (hr_config['resting_hr'], hr_config['max_hr'], hr_config['gender'], email)
             )

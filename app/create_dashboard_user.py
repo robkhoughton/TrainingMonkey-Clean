@@ -43,7 +43,7 @@ def create_user():
             cursor.execute(
                 """
                 INSERT INTO user_settings (email, password_hash, resting_hr, max_hr, gender) 
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s)
                 """,
                 (email, password_hash, resting_hr, max_hr, gender)
             )

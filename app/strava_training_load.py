@@ -19,6 +19,8 @@ from stravalib.exc import ActivityUploadFailed, Fault
 from timezone_utils import should_create_rest_day, get_app_current_date, log_timezone_debug
 from db_utils import get_db_connection, execute_query, initialize_db, DB_FILE
 from utils.feature_flags import is_feature_enabled
+from acwr_calculation_service import ACWRCalculationService
+from exponential_decay_engine import ActivityData
 
 # Setup logging
 logging.basicConfig(
@@ -385,6 +387,14 @@ def determine_specific_activity_type(activity):
 
         logger.info(f"Determining activity type for {activity_id}: '{activity_name}'")
 
+        # DEBUG: Log all available activity attributes for troubleshooting
+        logger.info(f"DEBUG: Activity {activity_id} attributes:")
+        logger.info(f"  - sport_type: {getattr(activity, 'sport_type', 'None')}")
+        logger.info(f"  - type: {getattr(activity, 'type', 'None')}")
+        logger.info(f"  - trainer: {getattr(activity, 'trainer', 'None')}")
+        logger.info(f"  - indoor: {getattr(activity, 'indoor', 'None')}")
+        logger.info(f"  - name: {getattr(activity, 'name', 'None')}")
+
         # FIXED: Handle both sport_type and type fields properly
         specific_type = None
         basic_type = None
@@ -427,11 +437,15 @@ def determine_specific_activity_type(activity):
             'Treadmill': 'Treadmill Run',
             'Track': 'Track Run',
             'RoadRun': 'Road Run',
+            'IndoorRunning': 'Treadmill Run',
+            'IndoorRun': 'Treadmill Run',
 
             # Other activities
             'Ride': 'Road Bike',
             'MountainBikeRide': 'Mountain Bike',
             'VirtualRide': 'Indoor Bike',
+            'IndoorCycling': 'Indoor Bike',
+            'IndoorRide': 'Indoor Bike',
             'Walk': 'Walk',
             'Hike': 'Hike',
             'WeightTraining': 'Weight Training',
@@ -445,6 +459,16 @@ def determine_specific_activity_type(activity):
         if raw_type:
             # Apply mapping or use cleaned raw value
             final_type = type_mapping.get(raw_type, raw_type)
+            
+            # ENHANCED: Check for indoor activity indicators
+            # If it's a "Run" but has trainer flag or is marked as indoor, treat as treadmill
+            if final_type == 'Road Run' and hasattr(activity, 'trainer') and activity.trainer:
+                final_type = 'Treadmill Run'
+                logger.info(f"Activity {activity_id} marked as trainer/indoor - converting to Treadmill Run")
+            elif final_type == 'Road Run' and hasattr(activity, 'indoor') and activity.indoor:
+                final_type = 'Treadmill Run'
+                logger.info(f"Activity {activity_id} marked as indoor - converting to Treadmill Run")
+            
             logger.info(f"Final activity type for {activity_id}: '{final_type}'")
             return final_type
         else:
@@ -640,9 +664,11 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     hr_zone_times = [0, 0, 0, 0, 0]  # Default to zeros
     hr_stream_data = None  # Initialize for enhanced TRIMP calculation
     
+    # Try to get HR zone data from multiple sources
     try:
+        # Method 1: Try to get streams data (most accurate)
         streams = get_activity_streams(client, activity_id)
-        if streams:
+        if streams and 'heartrate' in streams and streams['heartrate']:
             logger.info(f"Streams retrieved for activity {activity_id}: {list(streams.keys())}")
             hr_zone_times = calculate_hr_zones_from_streams(
                 streams,
@@ -651,26 +677,34 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             )
             
             # Extract HR stream data for enhanced TRIMP calculation
-            if 'heartrate' in streams and streams['heartrate']:
-                hr_stream_data = streams['heartrate'].data
-                logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
-                
-                # Save HR stream data to database for future enhanced TRIMP calculations
-                try:
-                    from db_utils import save_hr_stream_data
-                    save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
-                    if save_result:
-                        logger.info(f"Successfully saved HR stream data for activity {activity_id}")
-                    else:
-                        logger.warning(f"Failed to save HR stream data for activity {activity_id}")
-                except Exception as save_error:
-                    logger.error(f"Error saving HR stream data for activity {activity_id}: {str(save_error)}")
-            else:
-                logger.warning(f"No heartrate stream data available for activity {activity_id}")
+            hr_stream_data = streams['heartrate'].data
+            logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
+            
+            # Save HR stream data to database for future enhanced TRIMP calculations
+            try:
+                from db_utils import save_hr_stream_data
+                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
+                if save_result:
+                    logger.info(f"Successfully saved HR stream data for activity {activity_id}")
+                else:
+                    logger.warning(f"Failed to save HR stream data for activity {activity_id}")
+            except Exception as save_error:
+                logger.error(f"Error saving HR stream data for activity {activity_id}: {str(save_error)}")
         else:
-            logger.warning(f"No streams data returned for activity {activity_id}")
+            logger.warning(f"No heartrate stream data available for activity {activity_id}")
+            
+            # Method 2: Fallback - estimate HR zones from average HR if we have it
+            if avg_hr > 0 and hr_config:
+                logger.info(f"Estimating HR zones from average HR {avg_hr} for activity {activity_id}")
+                hr_zone_times = estimate_hr_zones_from_average_hr(
+                    avg_hr, 
+                    duration_minutes, 
+                    hr_config['max_hr'], 
+                    hr_config['resting_hr']
+                )
+                logger.info(f"Estimated HR zone times: {hr_zone_times}")
     except Exception as e:
-        logger.warning(f"Could not get HR streams for activity {activity_id}: {str(e)}")
+        logger.warning(f"Could not get HR data for activity {activity_id}: {str(e)}")
 
     # Calculate Banister TRIMP with feature flag support
     trimp = 0
@@ -1171,6 +1205,76 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60):
         return [0, 0, 0, 0, 0]
 
 
+def estimate_hr_zones_from_average_hr(avg_hr, duration_minutes, max_hr=180, resting_hr=60):
+    """
+    Estimate HR zone distribution from average HR when stream data is not available.
+    This is a fallback method that provides reasonable estimates based on average HR.
+    """
+    try:
+        if avg_hr <= 0 or duration_minutes <= 0:
+            return [0, 0, 0, 0, 0]
+        
+        # Calculate HR zones using same logic as stream calculation
+        hr_reserve = max_hr - resting_hr
+        zones = [
+            (resting_hr + 0.5 * hr_reserve, resting_hr + 0.6 * hr_reserve),  # Zone 1
+            (resting_hr + 0.6 * hr_reserve, resting_hr + 0.7 * hr_reserve),  # Zone 2
+            (resting_hr + 0.7 * hr_reserve, resting_hr + 0.8 * hr_reserve),  # Zone 3
+            (resting_hr + 0.8 * hr_reserve, resting_hr + 0.9 * hr_reserve),  # Zone 4
+            (resting_hr + 0.9 * hr_reserve, max_hr),  # Zone 5
+        ]
+        
+        # Determine which zone the average HR falls into
+        primary_zone = 0
+        for i, (zone_min, zone_max) in enumerate(zones):
+            if zone_min <= avg_hr < zone_max:
+                primary_zone = i
+                break
+        
+        # If average HR is above all zones, put it in zone 5
+        if avg_hr >= zones[4][1]:
+            primary_zone = 4
+        
+        # Estimate zone distribution based on average HR
+        # Most time spent in primary zone, with some distribution to adjacent zones
+        total_seconds = int(duration_minutes * 60)
+        zone_times = [0, 0, 0, 0, 0]
+        
+        # Allocate time based on which zone the average HR falls into
+        if primary_zone == 0:  # Zone 1
+            zone_times[0] = int(total_seconds * 0.8)  # 80% in zone 1
+            zone_times[1] = int(total_seconds * 0.2)  # 20% in zone 2
+        elif primary_zone == 1:  # Zone 2
+            zone_times[0] = int(total_seconds * 0.2)  # 20% in zone 1
+            zone_times[1] = int(total_seconds * 0.6)  # 60% in zone 2
+            zone_times[2] = int(total_seconds * 0.2)  # 20% in zone 3
+        elif primary_zone == 2:  # Zone 3
+            zone_times[1] = int(total_seconds * 0.2)  # 20% in zone 2
+            zone_times[2] = int(total_seconds * 0.6)  # 60% in zone 3
+            zone_times[3] = int(total_seconds * 0.2)  # 20% in zone 4
+        elif primary_zone == 3:  # Zone 4
+            zone_times[2] = int(total_seconds * 0.2)  # 20% in zone 3
+            zone_times[3] = int(total_seconds * 0.6)  # 60% in zone 4
+            zone_times[4] = int(total_seconds * 0.2)  # 20% in zone 5
+        else:  # Zone 5
+            zone_times[3] = int(total_seconds * 0.2)  # 20% in zone 4
+            zone_times[4] = int(total_seconds * 0.8)  # 80% in zone 5
+        
+        # Ensure we don't exceed total time
+        allocated_time = sum(zone_times)
+        if allocated_time > total_seconds:
+            # Scale down proportionally
+            scale_factor = total_seconds / allocated_time
+            zone_times = [int(t * scale_factor) for t in zone_times]
+        
+        logger.info(f"Estimated HR zone times from avg HR {avg_hr}: {zone_times}")
+        return zone_times
+        
+    except Exception as e:
+        logger.error(f"Error estimating HR zones from average HR: {str(e)}")
+        return [0, 0, 0, 0, 0]
+
+
 def save_training_load(load_data, filename=None):
     """Save training load data to database."""
     try:
@@ -1237,7 +1341,7 @@ def save_training_load(load_data, filename=None):
         activity_id = load_data['activity_id']
         user_id = load_data['user_id']
         existing = execute_query(
-            "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+            "SELECT 1 FROM activities WHERE activity_id = %s AND user_id = %s",
             (activity_id, user_id),
             fetch=True
         )
@@ -1317,7 +1421,7 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
 
         # Check if any record exists for this date for this user
         existing_record_for_date = execute_query(
-            "SELECT 1 FROM activities WHERE date = ? AND user_id = ?",
+            "SELECT 1 FROM activities WHERE date = %s AND user_id = %s",
             (date_str, user_id),
             fetch=True
         )
@@ -1327,7 +1431,7 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
             if should_create_rest_day(date_str):
                 # Double-check that no rest day already exists for this user and date
                 existing_rest_day = execute_query(
-                    "SELECT 1 FROM activities WHERE date = ? AND user_id = ? AND activity_id < 0",
+                    "SELECT 1 FROM activities WHERE date = %s AND user_id = %s AND activity_id < 0",
                     (date_str, user_id),
                     fetch=True
                 )
@@ -1399,20 +1503,121 @@ def calculate_normalized_divergence(external_acwr, internal_acwr):
 def update_moving_averages(date, user_id):
     """
     Update moving averages using time-based aggregation.
+    Uses enhanced ACWR calculation when feature flag is enabled.
     Handles SQLite row objects correctly.
     """
     try:
         if user_id is None:
             raise ValueError("user_id is required for multi-user support")
 
-        logger.info(f"Updating moving averages for {date}, user {user_id} using time-based aggregation")
+        logger.info(f"Updating moving averages for {date}, user {user_id}")
 
+        # Check if enhanced ACWR calculation is enabled for this user
+        enhanced_acwr_enabled = is_feature_enabled('enhanced_acwr_calculation', user_id)
+        
+        if enhanced_acwr_enabled:
+            logger.info(f"Enhanced ACWR calculation enabled for user {user_id}")
+            return update_moving_averages_enhanced(date, user_id)
+        else:
+            logger.info(f"Using standard ACWR calculation for user {user_id}")
+            return update_moving_averages_standard(date, user_id)
+
+    except Exception as e:
+        logger.error(f"Error updating moving averages for {date}, user {user_id}: {str(e)}")
+        raise
+
+
+def update_moving_averages_enhanced(date, user_id):
+    """
+    Update moving averages using enhanced ACWR calculation with exponential decay.
+    """
+    try:
+        # Use the enhanced ACWR configuration service instead of hardcoded values
+        from acwr_configuration_service import ACWRConfigurationService
+        config_service = ACWRConfigurationService()
+        
+        # Get user's enhanced ACWR configuration
+        configuration = config_service.get_user_configuration(user_id)
+        if configuration is None:
+            logger.error(f"No enhanced ACWR configuration found for user {user_id}, falling back to standard calculation")
+            return update_moving_averages_standard(date, user_id)
+        
+        # Use the configurable chronic period from the user's configuration
+        chronic_period_days = configuration['chronic_period_days']
+        decay_rate = configuration['decay_rate']
+        
+        # Calculate date ranges using the configurable chronic period
+        date_obj = safe_date_parse(date)
+        seven_days_ago = (date_obj - timedelta(days=6)).strftime('%Y-%m-%d')
+        chronic_days_ago = (date_obj - timedelta(days=chronic_period_days-1)).strftime('%Y-%m-%d')
+
+        logger.info(f"Enhanced calculation - Date ranges: 7-day ({seven_days_ago} to {date}), {chronic_period_days}-day ({chronic_days_ago} to {date})")
+
+        # Use the enhanced ACWR configuration service directly
+        result = config_service.calculate_enhanced_acwr(user_id, date, configuration)
+
+        if result['success']:
+            # Extract enhanced calculation results
+            seven_day_avg_load = result['enhanced_acute_load']
+            twentyeight_day_avg_load = result['enhanced_chronic_load']
+            seven_day_avg_trimp = result.get('enhanced_acute_trimp', 0.0)
+            twentyeight_day_avg_trimp = result.get('enhanced_chronic_trimp', 0.0)
+            acute_chronic_ratio = result['enhanced_acute_chronic_ratio']
+            trimp_acute_chronic_ratio = result.get('enhanced_trimp_acute_chronic_ratio', 0.0)
+            normalized_divergence = result.get('enhanced_normalized_divergence', 0.0)
+
+            # Log the enhanced calculated values
+            logger.info(f"Enhanced calculated values for {date} (chronic period: {chronic_period_days} days, decay rate: {decay_rate}):")
+            logger.info(f"  7-day avg load: {seven_day_avg_load}")
+            logger.info(f"  {chronic_period_days}-day avg load: {twentyeight_day_avg_load}")
+            logger.info(f"  7-day avg trimp: {seven_day_avg_trimp}")
+            logger.info(f"  {chronic_period_days}-day avg trimp: {twentyeight_day_avg_trimp}")
+            logger.info(f"  Enhanced External ACWR: {acute_chronic_ratio}")
+            logger.info(f"  Enhanced Internal ACWR: {trimp_acute_chronic_ratio}")
+            logger.info(f"  Enhanced Normalized divergence: {normalized_divergence}")
+            logger.info(f"  Calculation method: enhanced with exponential decay")
+
+            # Update the record with enhanced values
+            execute_query(
+                """
+                UPDATE activities SET 
+                    seven_day_avg_load = %s,
+                    twentyeight_day_avg_load = %s,
+                    seven_day_avg_trimp = %s,
+                    twentyeight_day_avg_trimp = %s,
+                    acute_chronic_ratio = %s,
+                    trimp_acute_chronic_ratio = %s,
+                    normalized_divergence = %s
+                WHERE date = %s AND user_id = %s
+                """,
+                (seven_day_avg_load, twentyeight_day_avg_load, seven_day_avg_trimp, twentyeight_day_avg_trimp,
+                 acute_chronic_ratio, trimp_acute_chronic_ratio, normalized_divergence, date, user_id)
+            )
+        else:
+            logger.error(f"Enhanced ACWR calculation failed: {result.get('error', 'Unknown error')}")
+            # Fall back to standard calculation
+            logger.info("Falling back to standard ACWR calculation")
+            return update_moving_averages_standard(date, user_id)
+
+    except Exception as e:
+        logger.error(f"Error in enhanced ACWR calculation: {str(e)}")
+        # Fall back to standard calculation
+        logger.info("Falling back to standard ACWR calculation due to error")
+        return update_moving_averages_standard(date, user_id)
+
+
+def update_moving_averages_standard(date, user_id):
+    """
+    Update moving averages using standard time-based aggregation.
+    This is the original implementation for fallback and non-enhanced users.
+    """
+    try:
         # Calculate date ranges
         date_obj = safe_date_parse(date)
         seven_days_ago = (date_obj - timedelta(days=6)).strftime('%Y-%m-%d')
         twentyeight_days_ago = (date_obj - timedelta(days=27)).strftime('%Y-%m-%d')
 
-        logger.info(f"Date ranges: 7-day ({seven_days_ago} to {date}), 28-day ({twentyeight_days_ago} to {date})")
+        logger.info(f"Standard calculation - Date ranges: 7-day ({seven_days_ago} to {date}), 28-day ({twentyeight_days_ago} to {date})")
 
         # Helper function to safely get sum result
         def get_sum_result(query, params):
@@ -1438,23 +1643,23 @@ def update_moving_averages(date, user_id):
 
         # Time-based aggregation for load
         seven_day_sum = get_sum_result(
-            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN ? AND ? AND user_id = ?",
+            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN %s AND %s AND user_id = %s",
             (seven_days_ago, date, user_id)
         )
 
         twentyeight_day_sum = get_sum_result(
-            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN ? AND ? AND user_id = ?",
+            "SELECT COALESCE(SUM(total_load_miles), 0) FROM activities WHERE date BETWEEN %s AND %s AND user_id = %s",
             (twentyeight_days_ago, date, user_id)
         )
 
         # Time-based aggregation for TRIMP
         seven_day_trimp_sum = get_sum_result(
-            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN ? AND ? AND user_id = ?",
+            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN %s AND %s AND user_id = %s",
             (seven_days_ago, date, user_id)
         )
 
         twentyeight_day_trimp_sum = get_sum_result(
-            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN ? AND ? AND user_id = ?",
+            "SELECT COALESCE(SUM(trimp), 0) FROM activities WHERE date BETWEEN %s AND %s AND user_id = %s",
             (twentyeight_days_ago, date, user_id)
         )
 
@@ -1477,25 +1682,25 @@ def update_moving_averages(date, user_id):
         normalized_divergence = calculate_normalized_divergence(acute_chronic_ratio, trimp_acute_chronic_ratio)
 
         # Log the calculated values
-        logger.info(f"Calculated values for {date}:")
+        logger.info(f"Standard calculated values for {date}:")
         logger.info(f"  7-day avg load: {seven_day_avg_load} (sum: {seven_day_sum})")
         logger.info(f"  28-day avg load: {twentyeight_day_avg_load} (sum: {twentyeight_day_sum})")
-        logger.info(f"  External ACWR: {acute_chronic_ratio}")
-        logger.info(f"  Internal ACWR: {trimp_acute_chronic_ratio}")
-        logger.info(f"  Normalized divergence: {normalized_divergence}")
+        logger.info(f"  Standard External ACWR: {acute_chronic_ratio}")
+        logger.info(f"  Standard Internal ACWR: {trimp_acute_chronic_ratio}")
+        logger.info(f"  Standard Normalized divergence: {normalized_divergence}")
 
         # Update the record
         execute_query(
             """
             UPDATE activities SET 
-                seven_day_avg_load = ?,
-                twentyeight_day_avg_load = ?,
-                seven_day_avg_trimp = ?,
-                twentyeight_day_avg_trimp = ?,
-                acute_chronic_ratio = ?,
-                trimp_acute_chronic_ratio = ?,
-                normalized_divergence = ?
-            WHERE date = ? AND user_id = ?
+                seven_day_avg_load = %s,
+                twentyeight_day_avg_load = %s,
+                seven_day_avg_trimp = %s,
+                twentyeight_day_avg_trimp = %s,
+                acute_chronic_ratio = %s,
+                trimp_acute_chronic_ratio = %s,
+                normalized_divergence = %s
+            WHERE date = %s AND user_id = %s
             """,
             (seven_day_avg_load, twentyeight_day_avg_load, seven_day_avg_trimp, twentyeight_day_avg_trimp,
              acute_chronic_ratio, trimp_acute_chronic_ratio, normalized_divergence, date, user_id)
@@ -1543,7 +1748,7 @@ def process_activities_for_date_range(client, start_date, end_date=None, hr_conf
 
             # Check if activity already exists in database
             existing = execute_query(
-                "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+                "SELECT 1 FROM activities WHERE activity_id = %s AND user_id = %s",
                 (activity_id, user_id),
                 fetch=True
             )

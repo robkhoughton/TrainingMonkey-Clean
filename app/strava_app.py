@@ -68,6 +68,16 @@ def load_user(user_id):
     """Required by Flask-Login to reload user from session"""
     return User.get(user_id)
 
+# Register blueprints
+from acwr_feature_flag_admin import acwr_feature_flag_admin
+from acwr_configuration_admin import acwr_configuration_admin
+from acwr_migration_admin import acwr_migration_admin
+from acwr_visualization_routes import acwr_visualization_routes
+app.register_blueprint(acwr_feature_flag_admin)
+app.register_blueprint(acwr_configuration_admin)
+app.register_blueprint(acwr_migration_admin)
+app.register_blueprint(acwr_visualization_routes)
+
 
 # =============================================================================
 # SECTION 1: DATA SYNCHRONIZATION ROUTES
@@ -140,7 +150,7 @@ def sync_strava_data():
             return jsonify({'error': 'Failed to connect to Strava'}), 400
 
         # Calculate date range
-        end_date = datetime.now()
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
@@ -280,7 +290,7 @@ def oauth_callback():
                 return redirect('/strava-setup')
             
             flash('Welcome back! Your Strava connection has been updated.', 'success')
-            return redirect('/static/index.html')
+            return redirect('/welcome-post-strava')
         
         # New user - create account automatically
         logger.info(f"Creating new user account for Strava athlete {athlete_id}")
@@ -333,7 +343,7 @@ def oauth_callback():
         session['signup_source'] = 'landing_page'
         
         flash(f'Welcome to Your Training Monkey, {first_name}! Let\'s analyze your training data.', 'success')
-        return redirect('/static/index.html')
+        return redirect('/welcome-post-strava')
 
     except Exception as e:
         error_msg = f"OAuth callback error: {str(e)}"
@@ -445,7 +455,7 @@ def get_migration_status():
         query = """
             SELECT oauth_type, migration_status, strava_access_token, strava_refresh_token
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
         """
         user_settings = db_utils.execute_query(query, (current_user.id,), fetch=True)
         
@@ -799,7 +809,7 @@ def process_user_sync(user_id, days):
             user_hr_query = """
                 SELECT resting_hr, max_hr, gender 
                 FROM user_settings 
-                WHERE id = ?
+                WHERE id = %s
             """
             user_hr_result = db_utils.execute_query(user_hr_query, (user_id,), fetch=True)
 
@@ -845,7 +855,7 @@ def process_user_sync(user_id, days):
             logger.info(f"Tokens were automatically refreshed for user {user_id}")
 
         # Calculate date range
-        end_date = datetime.now()
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
@@ -1135,7 +1145,7 @@ def get_training_data():
 
         # Calculate date filter
         from datetime import datetime, timedelta
-        end_date = datetime.now()
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=int(date_range))
         start_date_str = start_date.strftime('%Y-%m-%d')
 
@@ -1145,8 +1155,8 @@ def get_training_data():
         activities = db_utils.execute_query(
             """
             SELECT * FROM activities 
-            WHERE user_id = ? 
-            AND date >= ?
+            WHERE user_id = %s 
+            AND date >= %s
             ORDER BY date ASC, activity_id ASC
             """,
             (current_user.id, start_date_str),
@@ -1209,6 +1219,28 @@ def get_training_data():
         # CRITICAL FIX: Apply date serialization AFTER aggregation too
         aggregated_data = [ensure_date_serialization(activity) for activity in aggregated_data]
 
+        # Check if user has custom dashboard configuration
+        dashboard_config = None
+        try:
+            config_result = db_utils.execute_query("""
+                SELECT chronic_period_days, decay_rate, is_active
+                FROM user_dashboard_configs 
+                WHERE user_id = %s AND is_active = TRUE
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (current_user.id,), fetch=True)
+            
+            if config_result:
+                dashboard_config = config_result[0]
+                logger.info(f"User {current_user.id} has custom dashboard config: {dashboard_config}")
+        except Exception as e:
+            logger.warning(f"Could not check dashboard config for user {current_user.id}: {str(e)}")
+
+        # If user has custom configuration, recalculate ACWR values
+        if dashboard_config:
+            logger.info(f"Recalculating ACWR with custom config: chronic={dashboard_config['chronic_period_days']}d, decay={dashboard_config['decay_rate']}")
+            aggregated_data = recalculate_acwr_with_config(aggregated_data, dashboard_config, current_user.id)
+
         logger.info(f"Processed to {len(aggregated_data)} daily records for dashboard")
 
         # Build response maintaining existing structure
@@ -1216,7 +1248,8 @@ def get_training_data():
             'success': True,
             'data': aggregated_data,  # Now with properly serialized dates
             'count': len(aggregated_data),
-            'raw_count': len(activity_list)
+            'raw_count': len(activity_list),
+            'dashboard_config': dashboard_config  # Include config info for frontend
         }
 
         # Add sport breakdown fields if requested
@@ -1269,7 +1302,7 @@ def get_stats():
 
         # Count total real activities for the current user
         activity_count_result = db_utils.execute_query(
-            "SELECT COUNT(*) FROM activities WHERE user_id = ? AND activity_id > 0",
+            "SELECT COUNT(*) FROM activities WHERE user_id = %s AND activity_id > 0",
             (current_user.id,),
             fetch=True
         )
@@ -1684,6 +1717,164 @@ def landing_redirect():
     return render_template('landing.html')
 
 
+@app.route('/getting-started')
+def getting_started_resources():
+    """Unified getting started resources page with context detection"""
+    try:
+        # Get source parameter for analytics tracking
+        source = request.args.get('source', 'direct')
+        
+        # Initialize user context
+        user_context = None
+        
+        # Check if user is authenticated
+        if current_user.is_authenticated:
+            user_id = current_user.id
+            
+            # Get user's onboarding progress
+            try:
+                from onboarding_manager import get_user_onboarding_progress
+                onboarding_progress = get_user_onboarding_progress(user_id)
+                
+                if onboarding_progress:
+                    # Map onboarding step to display name
+                    step_display_names = {
+                        'welcome': 'Welcome',
+                        'strava_connected': 'Strava Connected',
+                        'first_activity': 'First Activity',
+                        'data_sync': 'Data Sync',
+                        'dashboard_intro': 'Dashboard Introduction',
+                        'features_tour': 'Features Tour',
+                        'goals_setup': 'Goals Setup',
+                        'first_recommendation': 'First Recommendation',
+                        'journal_intro': 'Journal Introduction',
+                        'completed': 'Completed'
+                    }
+                    
+                    # Determine next steps based on current step
+                    next_steps_map = {
+                        'welcome': 'Connect your Strava account to get started',
+                        'strava_connected': 'We\'re processing your activity data',
+                        'first_activity': 'Your first activity has been synced',
+                        'data_sync': 'Your data analysis is ready',
+                        'dashboard_intro': 'Explore your training dashboard',
+                        'features_tour': 'Learn about advanced features',
+                        'goals_setup': 'Set your training goals',
+                        'first_recommendation': 'Review your AI recommendations',
+                        'journal_intro': 'Start tracking your training journal',
+                        'completed': 'You\'re all set! Explore all features'
+                    }
+                    
+                    user_context = {
+                        'user_id': user_id,
+                        'onboarding_step': onboarding_progress.current_step.value,
+                        'onboarding_step_display': step_display_names.get(onboarding_progress.current_step.value, 'Unknown'),
+                        'next_steps': next_steps_map.get(onboarding_progress.current_step.value, 'Continue with your training'),
+                        'features_unlocked': onboarding_progress.features_unlocked,
+                        'is_authenticated': True
+                    }
+                else:
+                    # User is authenticated but no onboarding progress found
+                    user_context = {
+                        'user_id': user_id,
+                        'onboarding_step': 'welcome',
+                        'onboarding_step_display': 'Welcome',
+                        'next_steps': 'Connect your Strava account to get started',
+                        'features_unlocked': [],
+                        'is_authenticated': True
+                    }
+                    
+            except Exception as e:
+                logger.error(f"Error getting onboarding progress for user {user_id}: {str(e)}")
+                # Fallback context for authenticated user
+                user_context = {
+                    'user_id': user_id,
+                    'onboarding_step': 'welcome',
+                    'onboarding_step_display': 'Welcome',
+                    'next_steps': 'Connect your Strava account to get started',
+                    'features_unlocked': [],
+                    'is_authenticated': True
+                }
+        else:
+            # User not authenticated
+            user_context = {
+                'user_id': None,
+                'onboarding_step': None,
+                'onboarding_step_display': None,
+                'next_steps': None,
+                'features_unlocked': [],
+                'is_authenticated': False
+            }
+        
+        # Track analytics for getting started page access
+        try:
+            track_analytics_event('getting_started_page_accessed', {
+                'source': source,
+                'user_authenticated': user_context['is_authenticated'] if user_context else False,
+                'onboarding_step': user_context['onboarding_step'] if user_context else None
+            })
+        except Exception as e:
+            logger.error(f"Error tracking getting started analytics: {str(e)}")
+        
+        # Render template with context
+        return render_template('getting_started_resources.html', 
+                             user_context=user_context,
+                             source=source)
+                             
+    except Exception as e:
+        logger.error(f"Error in getting_started_resources route: {str(e)}")
+        # Fallback to basic template without context
+        return render_template('getting_started_resources.html', 
+                             user_context=None,
+                             source=request.args.get('source', 'direct'))
+
+
+@app.route('/api/start-tutorial', methods=['POST'])
+@login_required
+@csrf_protected
+def start_tutorial():
+    """API endpoint to start a tutorial for the current user"""
+    try:
+        data = request.get_json()
+        tutorial_id = data.get('tutorial_id')
+        
+        if not tutorial_id:
+            return jsonify({'success': False, 'error': 'Tutorial ID is required'}), 400
+        
+        user_id = current_user.id
+        
+        # Import tutorial system
+        from onboarding_tutorial_system import start_tutorial
+        
+        # Start the tutorial
+        tutorial_session = start_tutorial(user_id, tutorial_id)
+        
+        if tutorial_session:
+            # Track analytics
+            track_analytics_event('tutorial_started', {
+                'tutorial_id': tutorial_id,
+                'user_id': user_id
+            })
+            
+            return jsonify({
+                'success': True,
+                'tutorial_id': tutorial_id,
+                'session_id': tutorial_session.session_id
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Unable to start tutorial'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting tutorial: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
 @app.route('/auth/strava')
 def strava_auth():
     """Enhanced Strava authentication for landing page users"""
@@ -1756,7 +1947,7 @@ def get_activities_for_management():
         per_page = 50
 
         # Calculate date range
-        end_date = datetime.now()
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
@@ -1777,11 +1968,11 @@ def get_activities_for_management():
                 trimp,
                 duration_minutes
             FROM activities 
-            WHERE user_id = ? 
-            AND date BETWEEN ? AND ?
+            WHERE user_id = %s 
+            AND date BETWEEN %s AND %s
             AND activity_id > 0
             ORDER BY date DESC, activity_id DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
             """,
             (current_user.id, start_date_str, end_date_str, per_page, offset),
             fetch=True
@@ -1792,8 +1983,8 @@ def get_activities_for_management():
             """
             SELECT COUNT(*) as count
             FROM activities 
-            WHERE user_id = ? 
-            AND date BETWEEN ? AND ?
+            WHERE user_id = %s 
+            AND date BETWEEN %s AND %s
             AND activity_id > 0
             """,
             (current_user.id, start_date_str, end_date_str),
@@ -2054,7 +2245,7 @@ def update_activity_elevation():
 
         # Check if activity belongs to current user - FIXED: Use db_utils prefix
         activity_check = db_utils.execute_query(
-            "SELECT 1 FROM activities WHERE activity_id = ? AND user_id = ?",
+            "SELECT 1 FROM activities WHERE activity_id = %s AND user_id = %s",
             (activity_id, current_user.id),
             fetch=True
         )
@@ -2066,7 +2257,7 @@ def update_activity_elevation():
             }), 404
 
         activity_data = db_utils.execute_query(
-            "SELECT distance_miles FROM activities WHERE activity_id = ? AND user_id = ?",
+            "SELECT distance_miles FROM activities WHERE activity_id = %s AND user_id = %s",
             (activity_id, current_user.id),
             fetch=True
         )
@@ -2088,11 +2279,11 @@ def update_activity_elevation():
             """
             UPDATE activities 
             SET 
-                elevation_gain_feet = ?,
-                elevation_load_miles = ?,
-                total_load_miles = ?,
-                elevation_factor_used = ?
-            WHERE activity_id = ? AND user_id = ?
+                elevation_gain_feet = %s,
+                elevation_load_miles = %s,
+                total_load_miles = %s,
+                elevation_factor_used = %s
+            WHERE activity_id = %s AND user_id = %s
             """,
             (elevation_feet, elevation_load_miles, total_load_miles, 850.0, activity_id, current_user.id)
         )
@@ -2142,7 +2333,7 @@ def get_journal_entries():
             """
             SELECT date, energy_level, rpe_score, pain_percentage, notes
             FROM journal_entries 
-            WHERE user_id = ? AND date >= ? AND date <= ?
+            WHERE user_id = %s AND date >= %s AND date <= %s
             """,
             (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
             fetch=True
@@ -2168,7 +2359,7 @@ def get_journal_entries():
             """
             SELECT date, autopsy_analysis, alignment_score, generated_at
             FROM ai_autopsies 
-            WHERE user_id = ? AND date >= ? AND date <= ?
+            WHERE user_id = %s AND date >= %s AND date <= %s
             """,
             (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
             fetch=True
@@ -2211,12 +2402,12 @@ def get_journal_entries():
             activity_summary = get_activity_summary_for_date(current_date, current_user.id)
 
             # Build observations from lookup
-            observations_data = obs_by_date.get(date_str, {})
+            obs_data = obs_by_date.get(date_str, {})
             observations = {
-                'energy_level': observations_data.get('energy_level'),
-                'rpe_score': observations_data.get('rpe_score'),
-                'pain_percentage': observations_data.get('pain_percentage'),
-                'notes': observations_data.get('notes', '')
+                'energy_level': obs_data.get('energy_level'),
+                'rpe_score': obs_data.get('rpe_score'),
+                'pain_percentage': obs_data.get('pain_percentage'),
+                'notes': obs_data.get('notes', '')
             }
 
             # Build autopsy from lookup
@@ -2301,7 +2492,7 @@ def get_unified_recommendation_for_date(date_obj, user_id):
                 """
                 SELECT daily_recommendation
                 FROM llm_recommendations 
-                WHERE user_id = ? AND target_date = ?
+                WHERE user_id = %s AND target_date = %s
                 ORDER BY id DESC 
                 LIMIT 1
                 """,
@@ -2327,7 +2518,7 @@ def get_unified_recommendation_for_date(date_obj, user_id):
 
                 # Verify what data exists for debugging
                 debug_query = db_utils.execute_query(
-                    "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = ? ORDER BY id DESC LIMIT 5",
+                    "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = %s ORDER BY id DESC LIMIT 5",
                     (user_id,),
                     fetch=True
                 )
@@ -2395,8 +2586,8 @@ def get_dashboard_training_decision(user_id):
             """
             SELECT daily_recommendation
             FROM llm_recommendations 
-            WHERE user_id = ? 
-            AND target_date = ?
+            WHERE user_id = %s 
+            AND target_date = %s
             ORDER BY generated_at DESC
             LIMIT 1
             """,
@@ -2415,6 +2606,69 @@ def get_dashboard_training_decision(user_id):
     except Exception as e:
         logger.error(f"Error getting dashboard training decision: {str(e)}")
         return f"Error retrieving next workout recommendation"
+
+
+def classify_workout_by_hr_zones(activity_list):
+    """
+    Classify workout based on time spent in HR zones rather than TRIMP.
+    This provides more accurate categorization that aligns with HR zone training.
+    Falls back to TRIMP-based classification when HR zone data is not available.
+    """
+    if not activity_list:
+        return 'Unknown'
+    
+    # Aggregate HR zone times across all activities for the day
+    total_zone_times = [0, 0, 0, 0, 0]  # Zone 1-5 in seconds
+    
+    for activity in activity_list:
+        total_zone_times[0] += activity.get('time_in_zone1', 0)
+        total_zone_times[1] += activity.get('time_in_zone2', 0)
+        total_zone_times[2] += activity.get('time_in_zone3', 0)
+        total_zone_times[3] += activity.get('time_in_zone4', 0)
+        total_zone_times[4] += activity.get('time_in_zone5', 0)
+    
+    # Calculate total time and percentages
+    total_time = sum(total_zone_times)
+    if total_time == 0:
+        return 'Unknown'  # No HR data available
+    
+    zone_percentages = [time / total_time * 100 for time in total_zone_times]
+    
+    # Classification logic based on HR zone distribution
+    # Zone 1: Recovery (0-60% HRR)
+    # Zone 2: Aerobic Base (60-70% HRR) 
+    # Zone 3: Aerobic (70-80% HRR)
+    # Zone 4: Threshold (80-90% HRR)
+    # Zone 5: VO2 Max (90-100% HRR)
+    
+    # Determine primary training zone
+    primary_zone = zone_percentages.index(max(zone_percentages)) + 1
+    
+    # Classification based on zone distribution
+    if zone_percentages[0] > 50:  # Zone 1 dominant
+        return 'Easy/Recovery'
+    elif zone_percentages[1] > 50:  # Zone 2 dominant
+        return 'Moderate'
+    elif zone_percentages[2] > 50:  # Zone 3 dominant
+        return 'Moderate'
+    elif zone_percentages[3] > 30:  # Zone 4 significant
+        return 'Tempo/Threshold'
+    elif zone_percentages[4] > 20:  # Zone 5 significant
+        return 'Intervals/Hard'
+    elif zone_percentages[1] + zone_percentages[2] > 70:  # Zones 2+3 dominant
+        return 'Moderate'
+    elif zone_percentages[3] + zone_percentages[4] > 40:  # Zones 4+5 significant
+        return 'Tempo/Threshold'
+    else:
+        # Mixed zones - classify by primary zone
+        if primary_zone <= 2:
+            return 'Easy/Recovery'
+        elif primary_zone == 3:
+            return 'Moderate'
+        elif primary_zone == 4:
+            return 'Tempo/Threshold'
+        else:
+            return 'Intervals/Hard'
 
 
 def get_activity_summary_for_date(date_obj, user_id):
@@ -2436,9 +2690,14 @@ def get_activity_summary_for_date(date_obj, user_id):
                 trimp,
                 duration_minutes,
                 avg_heart_rate,
-                max_heart_rate
+                max_heart_rate,
+                time_in_zone1,
+                time_in_zone2,
+                time_in_zone3,
+                time_in_zone4,
+                time_in_zone5
             FROM activities 
-            WHERE user_id = ? AND date = ? AND activity_id > 0
+            WHERE user_id = %s AND date = %s AND activity_id > 0
             ORDER BY activity_id DESC
             """,
             (user_id, date_str),
@@ -2472,15 +2731,8 @@ def get_activity_summary_for_date(date_obj, user_id):
         activity_type = primary_activity.get('type', 'Unknown')
         primary_activity_id = primary_activity.get('activity_id')
 
-        # Classify workout based on TRIMP (improved classifications)
-        if total_trimp <= 30:
-            workout_classification = 'Easy/Recovery'
-        elif total_trimp <= 70:
-            workout_classification = 'Moderate'
-        elif total_trimp <= 120:
-            workout_classification = 'Tempo/Threshold'
-        else:
-            workout_classification = 'Intervals/Hard'
+        # Classify workout based on HR zones (more accurate than TRIMP)
+        workout_classification = classify_workout_by_hr_zones(activity_list)
 
         result = {
             'type': activity_type,
@@ -2519,8 +2771,8 @@ def get_todays_decision_for_date(date_obj, user_id):
             """
             SELECT daily_recommendation
             FROM llm_recommendations 
-            WHERE user_id = ? 
-            AND target_date = ?
+            WHERE user_id = %s 
+            AND target_date = %s
             ORDER BY generated_at DESC
             LIMIT 1
             """,
@@ -2547,7 +2799,7 @@ def get_todays_decision_for_date(date_obj, user_id):
                 """
                 SELECT daily_recommendation
                 FROM llm_recommendations 
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY generated_at DESC
                 LIMIT 1
                 """,
@@ -2738,7 +2990,7 @@ def get_recommendation_by_target_date(user_id, target_date_str):
             """
             SELECT daily_recommendation 
             FROM llm_recommendations 
-            WHERE user_id = ? AND target_date = ?
+            WHERE user_id = %s AND target_date = %s
             ORDER BY generation_date DESC 
             LIMIT 1
             """,
@@ -2754,7 +3006,7 @@ def get_recommendation_by_target_date(user_id, target_date_str):
             """
             SELECT daily_recommendation 
             FROM llm_recommendations 
-            WHERE user_id = ? AND valid_until = ?
+            WHERE user_id = %s AND valid_until = %s
             ORDER BY generation_date DESC 
             LIMIT 1
             """,
@@ -2781,8 +3033,8 @@ def get_standard_daily_decision(user_id, target_date):
             """
             SELECT daily_recommendation
             FROM llm_recommendations 
-            WHERE user_id = ? 
-            AND generation_date >= ?
+            WHERE user_id = %s 
+            AND generation_date >= %s
             ORDER BY generation_date DESC
             LIMIT 1
             """,
@@ -2810,7 +3062,7 @@ def get_historical_decision_for_date(user_id, date_obj):
             """
             SELECT daily_recommendation
             FROM llm_recommendations 
-            WHERE user_id = ? AND generation_date = ?
+            WHERE user_id = %s AND generation_date = %s
             ORDER BY generation_date DESC
             LIMIT 1
             """,
@@ -2826,9 +3078,9 @@ def get_historical_decision_for_date(user_id, date_obj):
             """
             SELECT daily_recommendation
             FROM llm_recommendations 
-            WHERE user_id = ? 
-            AND generation_date <= ?
-            AND valid_until >= ?
+            WHERE user_id = %s 
+            AND generation_date <= %s
+            AND valid_until >= %s
             ORDER BY generation_date DESC
             LIMIT 1
             """,
@@ -3010,7 +3262,7 @@ def generate_autopsy_for_date(date_str, user_id):
 
         # Get user observations from database
         journal_entry = db_utils.execute_query(
-            "SELECT * FROM journal_entries WHERE user_id = ? AND date = ?",
+            "SELECT * FROM journal_entries WHERE user_id = %s AND date = %s",
             (user_id, date_str),
             fetch=True
         )
@@ -3073,7 +3325,7 @@ def create_daily_focused_prompt(metrics, target_date, user_id):
         yesterday = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
 
         yesterday_obs = db_utils.execute_query(
-            "SELECT energy_level, rpe_score, pain_percentage, notes FROM journal_entries WHERE user_id = ? AND date = ?",
+            "SELECT energy_level, rpe_score, pain_percentage, notes FROM journal_entries WHERE user_id = %s AND date = %s",
             (user_id, yesterday),
             fetch=True
         )
@@ -3201,7 +3453,7 @@ def daily_recommendations_cron():
             SELECT DISTINCT user_id, 
                    (SELECT email FROM user_settings WHERE id = user_id) as email
             FROM activities 
-            WHERE date >= ?
+            WHERE date >= %s
             """,
             (cutoff_date,),
             fetch=True
@@ -3268,7 +3520,7 @@ def weekly_comprehensive_cron():
             SELECT DISTINCT user_id,
                    (SELECT email FROM user_settings WHERE id = user_id) as email
             FROM activities 
-            WHERE date >= ? AND user_id IS NOT NULL
+            WHERE date >= %s AND user_id IS NOT NULL
             """,
             (cutoff_date,),
             fetch=True
@@ -3352,7 +3604,7 @@ def get_training_data_with_sport_breakdown():
         activities = db_utils.execute_query(
             """
             SELECT * FROM activities 
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY date ASC, activity_id ASC
             """,
             (current_user.id,),
@@ -3746,7 +3998,7 @@ def get_settings():
 
         # Get user data (your user_settings table serves as both user and settings)
         user_data = db_utils.execute_query(
-            "SELECT * FROM user_settings WHERE id = ?",
+            "SELECT * FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )
@@ -3858,7 +4110,7 @@ def update_settings():
 
         # *** CRITICAL FIX: GET OLD SETTINGS BEFORE UPDATE ***
         old_settings = db_utils.execute_query(
-            "SELECT * FROM user_settings WHERE id = ?",
+            "SELECT * FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )[0]
@@ -3887,7 +4139,7 @@ def update_settings():
         update_values.append(current_user.id)
 
         # Execute update with proper logging
-        update_query = f"UPDATE user_settings SET {', '.join(update_fields)} WHERE id = ?"
+        update_query = f"UPDATE user_settings SET {', '.join(update_fields)} WHERE id = %s"
         logger.info(f"Executing update for user {current_user.id}: {update_query}")
         logger.info(f"Update values: {update_values}")
 
@@ -3895,7 +4147,7 @@ def update_settings():
 
         # Get updated settings to verify the save
         updated_user = db_utils.execute_query(
-            "SELECT * FROM user_settings WHERE id = ?",
+            "SELECT * FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )[0]
@@ -4027,8 +4279,8 @@ def update_user_settings():
             # Update only the spectrum column (remove coaching_style_description)
             db_utils.execute_query("""
                 UPDATE user_settings 
-                SET coaching_style_spectrum = ?
-                WHERE id = ?
+                SET %s = %s
+                WHERE id = %s
             """, (coaching_spectrum, current_user.id))
 
             logger.info(f"Updated coaching style spectrum to {coaching_spectrum} for user {current_user.id}")
@@ -4049,7 +4301,7 @@ def get_user_settings():
         result = db_utils.execute_query("""
             SELECT coaching_style_spectrum, coaching_tone
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
         """, (current_user.id,), fetch=True)
 
         if result and len(result) > 0:
@@ -4079,7 +4331,7 @@ def get_heart_rate_zones():
 
         # Get user settings
         user_data = db_utils.execute_query(
-            "SELECT resting_hr, max_hr, hr_zones_method, custom_hr_zones FROM user_settings WHERE id = ?",
+            "SELECT resting_hr, max_hr, hr_zones_method, custom_hr_zones FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )
@@ -4246,7 +4498,7 @@ def save_custom_heart_rate_zones():
 
         # Get existing custom zones
         existing_data = db_utils.execute_query(
-            "SELECT custom_hr_zones FROM user_settings WHERE id = ?",
+            "SELECT custom_hr_zones FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )
@@ -4304,7 +4556,7 @@ def save_custom_heart_rate_zones():
         # Validate that adjacent zones connect properly
         # Get current calculated zones for reference
         user_data = db_utils.execute_query(
-            "SELECT resting_hr, max_hr, hr_zones_method FROM user_settings WHERE id = ?",
+            "SELECT resting_hr, max_hr, hr_zones_method FROM user_settings WHERE id = %s",
             (current_user.id,),
             fetch=True
         )[0]
@@ -4352,7 +4604,7 @@ def save_custom_heart_rate_zones():
         custom_zones_json = json.dumps(merged_zones) if merged_zones else None
 
         db_utils.execute_query(
-            "UPDATE user_settings SET custom_hr_zones = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE user_settings SET %s = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
             (custom_zones_json, current_user.id)
         )
 
@@ -4656,6 +4908,192 @@ def get_user_account_status():
     except Exception as e:
         logger.error(f"Error getting user account status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/user/dashboard-config', methods=['GET'])
+@login_required
+def get_user_dashboard_config():
+    """Get user's dashboard ACWR configuration"""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        if not user_id:
+            user_id = current_user.id
+        
+        # Check if user has custom dashboard configuration
+        result = db_utils.execute_query("""
+            SELECT chronic_period_days, decay_rate, is_active, updated_at
+            FROM user_dashboard_configs 
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """, (user_id,), fetch=True)
+        
+        if result:
+            config = result[0]
+            return jsonify({
+                'success': True,
+                'config': {
+                    'chronic_period_days': config['chronic_period_days'],
+                    'decay_rate': config['decay_rate'],
+                    'is_active': config['is_active'],
+                    'updated_at': config['updated_at'].isoformat() if config['updated_at'] else None
+                }
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'config': None  # Using default configuration
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting user dashboard config: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/user/dashboard-config', methods=['POST'])
+@login_required
+def set_user_dashboard_config():
+    """Set user's dashboard ACWR configuration"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        if not user_id:
+            user_id = current_user.id
+        
+        chronic_period_days = data.get('chronic_period_days')
+        decay_rate = data.get('decay_rate')
+        is_active = data.get('is_active', True)
+        
+        if not chronic_period_days or not decay_rate:
+            return jsonify({'success': False, 'error': 'chronic_period_days and decay_rate are required'}), 400
+        
+        # Validate parameters
+        if not (28 <= chronic_period_days <= 90):
+            return jsonify({'success': False, 'error': 'chronic_period_days must be between 28 and 90'}), 400
+        
+        if not (0.01 <= decay_rate <= 0.20):
+            return jsonify({'success': False, 'error': 'decay_rate must be between 0.01 and 0.20'}), 400
+        
+        # Deactivate any existing configurations for this user
+        db_utils.execute_query("""
+            UPDATE user_dashboard_configs 
+            SET is_active = FALSE, updated_at = NOW()
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        # Insert new configuration
+        db_utils.execute_query("""
+            INSERT INTO user_dashboard_configs (user_id, chronic_period_days, decay_rate, is_active, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
+        """, (user_id, chronic_period_days, decay_rate, is_active))
+        
+        return jsonify({
+            'success': True,
+            'message': 'Dashboard configuration updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error setting user dashboard config: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def recalculate_acwr_with_config(aggregated_data, config, user_id):
+    """Recalculate ACWR values using custom configuration"""
+    try:
+        from datetime import datetime, timedelta
+        import math
+        
+        chronic_period_days = config['chronic_period_days']
+        decay_rate = config['decay_rate']
+        
+        # Get all activities for the user to calculate proper chronic averages
+        # We need more data than what's in aggregated_data to calculate chronic properly
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=chronic_period_days + 30)  # Extra buffer
+        
+        activities = db_utils.execute_query("""
+            SELECT date, total_load_miles, trimp
+            FROM activities 
+            WHERE user_id = %s 
+            AND date >= %s
+            ORDER BY date ASC
+        """, (user_id, start_date.strftime('%Y-%m-%d')), fetch=True)
+        
+        if not activities:
+            logger.warning(f"No activities found for ACWR recalculation for user {user_id}")
+            return aggregated_data
+        
+        # Create activities lookup by date
+        activities_by_date = {}
+        for activity in activities:
+            date_str = activity['date'].strftime('%Y-%m-%d') if hasattr(activity['date'], 'strftime') else str(activity['date'])
+            activities_by_date[date_str] = {
+                'total_load_miles': activity['total_load_miles'] or 0,
+                'trimp': activity['trimp'] or 0
+            }
+        
+        # Recalculate ACWR for each day in aggregated_data
+        for day_data in aggregated_data:
+            date_str = day_data['date']
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+            
+            # Calculate acute averages (7 days)
+            acute_load_sum = 0
+            acute_trimp_sum = 0
+            acute_count = 0
+            
+            for i in range(7):
+                acute_date = date_obj - timedelta(days=i)
+                acute_date_str = acute_date.strftime('%Y-%m-%d')
+                if acute_date_str in activities_by_date:
+                    acute_load_sum += activities_by_date[acute_date_str]['total_load_miles']
+                    acute_trimp_sum += activities_by_date[acute_date_str]['trimp']
+                    acute_count += 1
+            
+            acute_load_avg = acute_load_sum / 7.0 if acute_count > 0 else 0
+            acute_trimp_avg = acute_trimp_sum / 7.0 if acute_count > 0 else 0
+            
+            # Calculate chronic averages with exponential decay
+            chronic_load_sum = 0
+            chronic_trimp_sum = 0
+            total_weight = 0
+            
+            for i in range(chronic_period_days):
+                chronic_date = date_obj - timedelta(days=i)
+                chronic_date_str = chronic_date.strftime('%Y-%m-%d')
+                if chronic_date_str in activities_by_date:
+                    days_ago = i
+                    weight = math.exp(-decay_rate * days_ago)
+                    total_weight += weight
+                    
+                    chronic_load_sum += activities_by_date[chronic_date_str]['total_load_miles'] * weight
+                    chronic_trimp_sum += activities_by_date[chronic_date_str]['trimp'] * weight
+            
+            chronic_load_avg = chronic_load_sum / total_weight if total_weight > 0 else 0
+            chronic_trimp_avg = chronic_trimp_sum / total_weight if total_weight > 0 else 0
+            
+            # Calculate new ACWR values
+            new_external_acwr = acute_load_avg / chronic_load_avg if chronic_load_avg > 0 else 0
+            new_internal_acwr = acute_trimp_avg / chronic_trimp_avg if chronic_trimp_avg > 0 else 0
+            
+            # Calculate normalized divergence
+            if new_external_acwr > 0 and new_internal_acwr > 0:
+                avg_acwr = (new_external_acwr + new_internal_acwr) / 2
+                new_normalized_divergence = (new_external_acwr - new_internal_acwr) / avg_acwr if avg_acwr > 0 else 0
+            else:
+                new_normalized_divergence = 0
+            
+            # Update the day data with new values
+            day_data['acute_chronic_ratio'] = round(new_external_acwr, 3)
+            day_data['trimp_acute_chronic_ratio'] = round(new_internal_acwr, 3)
+            day_data['normalized_divergence'] = round(new_normalized_divergence, 3)
+        
+        logger.info(f"Recalculated ACWR for {len(aggregated_data)} days with config: chronic={chronic_period_days}d, decay={decay_rate}")
+        return aggregated_data
+        
+    except Exception as e:
+        logger.error(f"Error recalculating ACWR with config: {str(e)}")
+        return aggregated_data  # Return original data if recalculation fails
 
 
 @app.route('/api/user/activate-account', methods=['POST'])
@@ -5892,8 +6330,8 @@ def get_trimp_performance_metrics():
             AVG(hr_stream_sample_count) as avg_hr_samples,
             AVG(trimp) as avg_trimp_value
         FROM activities 
-        WHERE trimp_processed_at >= ?
-        AND trimp_processed_at <= ?
+        WHERE trimp_processed_at >= %s
+        AND trimp_processed_at <= %s
         GROUP BY trimp_calculation_method
         """
         
@@ -5907,8 +6345,8 @@ def get_trimp_performance_metrics():
             COUNT(*) as calculations_count,
             AVG(hr_stream_sample_count) as avg_hr_samples
         FROM activities 
-        WHERE trimp_processed_at >= ?
-        AND trimp_processed_at <= ?
+        WHERE trimp_processed_at >= %s
+        AND trimp_processed_at <= %s
         GROUP BY EXTRACT(HOUR FROM trimp_processed_at), trimp_calculation_method
         ORDER BY hour
         """
@@ -5922,8 +6360,8 @@ def get_trimp_performance_metrics():
             COUNT(*) as total_attempts,
             SUM(CASE WHEN trimp IS NULL OR trimp <= 0 THEN 1 ELSE 0 END) as error_count
         FROM activities 
-        WHERE trimp_processed_at >= ?
-        AND trimp_processed_at <= ?
+        WHERE trimp_processed_at >= %s
+        AND trimp_processed_at <= %s
         GROUP BY trimp_calculation_method
         """
         
@@ -6019,7 +6457,7 @@ def compare_trimp_calculation_methods():
         user_hr_query = """
             SELECT resting_hr, max_hr, gender 
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
         """
         user_hr_result = execute_query(user_hr_query, (user_id,), fetch=True)
         
@@ -6038,7 +6476,7 @@ def compare_trimp_calculation_methods():
             logger.warning(f"TRIMP_COMPARISON: User HR config not found, using defaults - resting_hr={resting_hr}, max_hr={max_hr}, gender={gender}")
         
         # Get activities for comparison
-        end_date = datetime.now()
+        end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days_back)
         
         activities_query = """
@@ -6046,16 +6484,16 @@ def compare_trimp_calculation_methods():
             activity_id, date, duration_minutes, avg_heart_rate, trimp, trimp_calculation_method,
             hr_stream_sample_count
         FROM activities 
-        WHERE user_id = ? 
-        AND date >= ? 
-        AND date <= ?
+        WHERE user_id = %s 
+        AND date >= %s 
+        AND date <= %s
         AND avg_heart_rate IS NOT NULL
         AND duration_minutes > 0
         ORDER BY date DESC
-        LIMIT ?
+        LIMIT %s
         """
         
-        activities = execute_query(activities_query, (user_id, start_date.date(), end_date.date(), activity_count), fetch=True)
+        activities = execute_query(activities_query, (user_id, start_date, end_date, activity_count), fetch=True)
         
         if not activities:
             return jsonify({'error': 'No activities found for comparison'}), 404
@@ -6065,7 +6503,7 @@ def compare_trimp_calculation_methods():
         SELECT activity_id, hr_data
         FROM hr_streams 
         WHERE activity_id IN ({})
-        """.format(','.join(['?' for _ in activities]))
+        """.format(','.join(['%s' for _ in activities]))
         
         activity_ids = [activity['activity_id'] for activity in activities]
         hr_streams = execute_query(hr_streams_query, activity_ids, fetch=True)
@@ -6092,14 +6530,23 @@ def compare_trimp_calculation_methods():
             logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data available: {hr_stream_data is not None}")
             if hr_stream_data:
                 logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data type: {type(hr_stream_data)}")
-                logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data length: {len(hr_stream_data) if isinstance(hr_stream_data, str) else 'N/A'}")
+                if isinstance(hr_stream_data, list):
+                    logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data length: {len(hr_stream_data)}")
+                elif isinstance(hr_stream_data, str):
+                    logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data length: {len(hr_stream_data)}")
+                else:
+                    logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data type: {type(hr_stream_data)}")
             
             # Calculate enhanced TRIMP (with HR stream if available)
             if hr_stream_data:
                 try:
-                    # Parse HR stream data
-                    import json
-                    hr_stream = json.loads(hr_stream_data)
+                    # HR stream data is already a Python list from JSONB column
+                    if isinstance(hr_stream_data, str):
+                        import json
+                        hr_stream = json.loads(hr_stream_data)
+                    else:
+                        hr_stream = hr_stream_data
+                    
                     enhanced_trimp = calculate_banister_trimp(
                         duration_minutes=duration_minutes,
                         avg_hr=avg_hr,
@@ -6505,6 +6952,12 @@ def admin_trimp_settings():
         logger.error(f"Error loading TRIMP admin interface: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+@app.route('/welcome-post-strava')
+@login_required
+def welcome_post_strava():
+    """Welcome page shown after successful Strava connection"""
+    return render_template('welcome_post_strava.html')
 
 @app.route('/goals/setup', methods=['GET', 'POST'])
 @login_required

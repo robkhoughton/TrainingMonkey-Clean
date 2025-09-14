@@ -355,7 +355,7 @@ def get_last_activity_date(user_id=None):
         # User-specific version
         try:
             result = execute_query(
-                "SELECT date FROM activities WHERE user_id = ? ORDER BY date DESC LIMIT 1",
+                "SELECT date FROM activities WHERE user_id = %s ORDER BY date DESC LIMIT 1",
                 (user_id,),
                 fetch=True
             )
@@ -390,7 +390,7 @@ def save_llm_recommendation(recommendation):
                 generation_date, target_date, valid_until, data_start_date, data_end_date,
                 metrics_snapshot, daily_recommendation, weekly_recommendation,
                 pattern_insights, raw_response, user_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         # CRITICAL FIX: Include target_date in the parameters (was missing before)
@@ -426,7 +426,7 @@ def get_latest_recommendation(user_id=None):
         result = execute_query(
             """
             SELECT * FROM llm_recommendations 
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY generated_at DESC 
             LIMIT 1
             """,
@@ -498,7 +498,7 @@ def clear_old_recommendations(keep_count=10, user_id=None):
 
     try:
         # Get count of current recommendations for this user
-        count_result = execute_query("SELECT COUNT(*) FROM llm_recommendations WHERE user_id = ?", (user_id,),
+        count_result = execute_query("SELECT COUNT(*) FROM llm_recommendations WHERE user_id = %s", (user_id,),
                                      fetch=True)
         if count_result and count_result[0]:
             if hasattr(count_result[0], 'keys'):
@@ -513,11 +513,11 @@ def clear_old_recommendations(keep_count=10, user_id=None):
             execute_query(
                 """
                 DELETE FROM llm_recommendations 
-                WHERE user_id = ? AND id NOT IN (
+                WHERE user_id = %s AND id NOT IN (
                     SELECT id FROM llm_recommendations 
-                    WHERE user_id = ?
+                    WHERE user_id = %s
                     ORDER BY generation_date DESC 
-                    LIMIT ?
+                    LIMIT %s
                 )
                 """,
                 (user_id, user_id, keep_count)
@@ -755,7 +755,7 @@ def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0):
         # Insert HR stream data
         query = """
             INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, created_at, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
         
         params = (activity_id, user_id, hr_data_json, sample_rate)
@@ -786,7 +786,7 @@ def get_hr_stream_data(activity_id, user_id=None):
             query = """
                 SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
                 FROM hr_streams 
-                WHERE activity_id = ? AND user_id = ?
+                WHERE activity_id = %s AND user_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
             """
@@ -795,7 +795,7 @@ def get_hr_stream_data(activity_id, user_id=None):
             query = """
                 SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
                 FROM hr_streams 
-                WHERE activity_id = ?
+                WHERE activity_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
             """
@@ -866,11 +866,10 @@ def update_activity_trimp_metadata(activity_id, user_id, calculation_method, sam
         # Update activity with TRIMP metadata
         query = """
             UPDATE activities 
-            SET trimp = ?, 
-                trimp_calculation_method = ?, 
-                hr_stream_sample_count = ?, 
+            SET %s = %s, trimp_calculation_method = %s, 
+                hr_stream_sample_count = %s, 
                 trimp_processed_at = CURRENT_TIMESTAMP
-            WHERE activity_id = ? AND user_id = ?
+            WHERE activity_id = %s AND user_id = %s
         """
         
         params = (trimp_value, calculation_method, sample_count, activity_id, user_id)
@@ -907,7 +906,7 @@ def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
                        avg_heart_rate, max_heart_rate, trimp, trimp_calculation_method,
                        hr_stream_sample_count, trimp_processed_at
                 FROM activities 
-                WHERE user_id = ? 
+                WHERE user_id = %s 
                 AND date >= CURRENT_DATE - INTERVAL '{} days'
                 AND (
                     trimp IS NULL 
@@ -962,10 +961,10 @@ def delete_hr_stream_data(activity_id, user_id=None):
     try:
         # Build query with optional user_id filter
         if user_id:
-            query = "DELETE FROM hr_streams WHERE activity_id = ? AND user_id = ?"
+            query = "DELETE FROM hr_streams WHERE activity_id = %s AND user_id = %s"
             params = (activity_id, user_id)
         else:
-            query = "DELETE FROM hr_streams WHERE activity_id = ?"
+            query = "DELETE FROM hr_streams WHERE activity_id = %s"
             params = (activity_id,)
         
         result = execute_query(query, params)

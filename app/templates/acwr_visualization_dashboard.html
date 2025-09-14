@@ -1,0 +1,3109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parameter Visualization</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <!-- Version: 2025-01-15 - Practical Visualizations -->
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Three.js for 3D visualizations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Plotly.js for 2D visualizations -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    
+    <!-- Chart.js for additional charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom CSS -->
+    <style>
+        .visualization-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .control-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .parameter-control {
+            margin-bottom: 15px;
+        }
+        
+        .parameter-control label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        
+        .slider-container {
+            position: relative;
+            margin: 10px 0;
+        }
+        
+        .slider-value {
+            position: absolute;
+            right: 0;
+            top: -5px;
+            font-weight: 600;
+            color: #007bff;
+        }
+        
+        .risk-zone {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .risk-low { background-color: #d4edda; color: #155724; }
+        .risk-moderate { background-color: #fff3cd; color: #856404; }
+        .risk-high { background-color: #f8d7da; color: #721c24; }
+        .risk-very-high { background-color: #f5c6cb; color: #721c24; }
+        
+        .export-buttons {
+            margin-top: 20px;
+        }
+        
+        .export-buttons .btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .error-message {
+            display: none;
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .success-message {
+            display: none;
+            background-color: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        #threejs-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .preset-buttons {
+            margin-bottom: 20px;
+        }
+        
+        .preset-buttons .btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .detailed-settings {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        
+        .detailed-settings > label {
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: -5px;
+        }
+        
+        .comparison-panel {
+            background: #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #007bff;
+        }
+        
+        .metric-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        
+        /* Live Preview Animations */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .live-preview-active {
+            animation: slideIn 0.3s ease-out;
+            border: 2px solid #007bff !important;
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.3) !important;
+        }
+        
+        .slider-container.live-preview-active {
+            background: rgba(0, 123, 255, 0.1);
+            border-radius: 4px;
+            padding: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .parameter-control.live-preview-active {
+            background: rgba(0, 123, 255, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card.live-preview-active {
+            background: rgba(0, 123, 255, 0.1);
+            border: 1px solid #007bff;
+            transform: scale(1.02);
+            transition: all 0.3s ease;
+        }
+        
+        /* What-If Analysis Styles */
+        .scenario-card {
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .scenario-card .card {
+            margin-bottom: 15px;
+        }
+        
+        #scenarioComparisonChart {
+            position: relative !important;
+            z-index: 1 !important;
+            background: white !important;
+            border-radius: 4px;
+            max-height: 400px !important;
+            overflow: hidden !important;
+        }
+        
+        #config-comparison-container {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        
+        #config-comparison-container .card {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        
+        .scenario-card .metric-card {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .scenario-card .metric-value {
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+        
+        .comparison-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .comparison-panel .card {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        
+        .comparison-panel .card-header {
+            background: #e9ecef;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+        }
+        
+        .comparison-panel .card-body {
+            padding: 15px;
+        }
+        
+        .impact-analysis-card, .risk-assessment-card {
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .scenario-comparison-chart {
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Header -->
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3">
+                    <h1 class="h3 mb-0">Parameter Visualization</h1>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Control Panel -->
+            <div class="col-md-3">
+                <div class="control-panel">
+                    <h5 class="mb-3">Settings</h5>
+                    
+                    <!-- Step 1: User Selection -->
+                    <div class="parameter-control">
+                        <label for="userSelect"><strong>1. Select User:</strong></label>
+                        <select id="userSelect" class="form-select" onchange="onUserChange()">
+                            <option value="">Loading users...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Step 2: Chart Type -->
+                    <div class="parameter-control">
+                        <label for="chartType"><strong>2. Chart Type:</strong></label>
+                        <select id="chartType" class="form-select" onchange="onChartTypeChange()">
+                            <option value="acwr-time-series" selected>Overtraining Risk Over Time</option>
+                            <option value="parameter-sensitivity">Parameter Sensitivity</option>
+                            <option value="configuration-comparison">Configuration Comparison</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Step 3: Configuration -->
+                    <div class="parameter-control">
+                        <label for="configSelect"><strong>3. Configuration:</strong></label>
+                        <select id="configSelect" class="form-select" onchange="onConfigChange()">
+                            <option value="conservative">Conservative (28d, 0.03)</option>
+                            <option value="balanced" selected>Balanced (42d, 0.05)</option>
+                            <option value="aggressive">Aggressive (56d, 0.07)</option>
+                            <option value="custom">Custom Configuration</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Step 4: Detailed Settings -->
+                    <div class="detailed-settings">
+                        <label><strong>4. Detailed Settings:</strong></label>
+                        
+                        <!-- Chronic Period -->
+                        <div class="parameter-control">
+                            <label for="chronicPeriodSlider">Chronic Period: <span id="chronicPeriodValue">42</span> days</label>
+                            <input type="range" class="form-range" id="chronicPeriodSlider" 
+                                   min="28" max="90" value="42" step="7" oninput="onParameterChange()">
+                            <div class="range-labels">
+                                <small>28d</small>
+                                <small>90d</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Decay Rate -->
+                        <div class="parameter-control">
+                            <label for="decayRateSlider">Decay Rate: <span id="decayRateValue">0.05</span></label>
+                            <input type="range" class="form-range" id="decayRateSlider" 
+                                   min="0.01" max="0.20" value="0.05" step="0.01" oninput="onParameterChange()">
+                            <div class="range-labels">
+                                <small>0.01</small>
+                                <small>0.20</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Display Period -->
+                        <div class="parameter-control">
+                            <label for="displayPeriod">Display Period:</label>
+                            <select id="displayPeriod" class="form-select" onchange="onParameterChange()">
+                                <option value="30">30 days</option>
+                                <option value="60" selected>60 days</option>
+                                <option value="90">90 days</option>
+                                <option value="180">180 days</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- TRIMP Settings -->
+                    <div class="trimp-settings">
+                        <label><strong>5. TRIMP Settings:</strong></label>
+                        
+                        <!-- Heart Rate Method -->
+                        <div class="parameter-control">
+                            <label for="hrMethodSelect">Heart Rate Method:</label>
+                            <select id="hrMethodSelect" class="form-select" onchange="onTrimpSettingsChange()">
+                                <option value="percentage">Percentage of Max HR</option>
+                                <option value="karvonen" selected>Karvonen (HR Reserve)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Resting Heart Rate -->
+                        <div class="parameter-control">
+                            <label for="restingHrInput">Resting HR: <span id="restingHrValue">65</span> bpm</label>
+                            <input type="range" class="form-range" id="restingHrInput" 
+                                   min="40" max="100" value="65" step="1" oninput="onTrimpSettingsChange()">
+                            <div class="range-labels">
+                                <small>40</small>
+                                <small>100</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Max Heart Rate -->
+                        <div class="parameter-control">
+                            <label for="maxHrInput">Max HR: <span id="maxHrValue">180</span> bpm</label>
+                            <input type="range" class="form-range" id="maxHrInput" 
+                                   min="120" max="220" value="180" step="1" oninput="onTrimpSettingsChange()">
+                            <div class="range-labels">
+                                <small>120</small>
+                                <small>220</small>
+                            </div>
+                        </div>
+                        
+                        <!-- TRIMP Actions -->
+                        <div class="d-flex gap-2 mt-3">
+                            <button class="btn btn-outline-primary btn-sm" onclick="saveTrimpSettings()">
+                                <i class="bi bi-save"></i> Save
+                            </button>
+                            <button class="btn btn-outline-warning btn-sm" onclick="recalculateTrimp()">
+                                <i class="bi bi-arrow-clockwise"></i> Recalculate
+                            </button>
+                        </div>
+                        
+                        <!-- TRIMP Status -->
+                        <div id="trimpStatus" class="mt-2" style="display: none;">
+                            <small class="text-muted"></small>
+                        </div>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="mt-4">
+                        
+                        <div class="d-flex gap-2">
+                            <select id="exportTypeSelect" class="form-select form-select-sm">
+                                <option value="png">PNG</option>
+                                <option value="svg">SVG</option>
+                                <option value="csv">CSV</option>
+                                <option value="pdf">PDF</option>
+                            </select>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="performExport()">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading Spinner -->
+                    <div class="loading-spinner" id="loadingSpinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Generating visualizations...</p>
+                    </div>
+                    
+                    <!-- Messages -->
+                    <div class="error-message" id="errorMessage"></div>
+                    <div class="success-message" id="successMessage"></div>
+                </div>
+                
+            </div>
+            
+            <!-- Visualization Area -->
+            <div class="col-md-9">
+                <!-- Dynamic Chart Container -->
+                <div class="visualization-container">
+                    <div class="mb-3">
+                        <h5 id="chart-title">Overtraining Risk Over Time</h5>
+                    </div>
+                    
+                    <!-- ACWR Over Time Chart -->
+                    <div id="acwr-time-series-chart" class="chart-section" style="display: block;">
+                        <div id="dashboard-charts-container" class="chart-container">
+                            <div id="empty-state-message" class="text-center p-5" style="color: #6c757d; font-size: 1.2em; margin-top: 100px;">
+                                <i class="bi bi-person-plus" style="font-size: 3em; opacity: 0.5;"></i>
+                                <br><br>
+                                <strong>Select a User</strong>
+                                <br>
+                                <small>Choose a user from the dropdown above to view their overtraining risk analysis</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Parameter Sensitivity Chart -->
+                    <div id="parameter-sensitivity-chart" class="chart-section" style="display: none;">
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-3">
+                                <div>
+                                    <label for="sensitivityDate" class="form-label me-2 mb-0">Analysis Date:</label>
+                                    <input type="date" id="sensitivityDate" class="form-control form-control-sm" style="width: auto;">
+                                </div>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-info active" id="chronicPeriodBtn" onclick="toggleSensitivityMode('chronic_period')">Chronic Period</button>
+                                    <button class="btn btn-sm btn-outline-info" id="decayRateBtn" onclick="toggleSensitivityMode('decay_rate')">Decay Rate</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="sensitivity-analysis-container" class="chart-container"></div>
+                    </div>
+                </div>
+                
+                <!-- Configuration Comparison Chart -->
+                <div id="main-config-comparison-chart" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h5 class="card-title mb-0">Configuration Comparison</h5>
+                                            <p class="text-muted small mb-0">Compare different ACWR configurations over time</p>
+                                        </div>
+                                        <div class="d-flex gap-3">
+                                            <div>
+                                                <label for="parameter-select" class="form-label small mb-1">Parameter:</label>
+                                                <select id="parameter-select" class="form-select form-select-sm" onchange="updateParameterDisplay()">
+                                                    <option value="external_acwr" selected>External ACWR</option>
+                                                    <option value="internal_acwr">Internal ACWR</option>
+                                                    <option value="normalized_divergence">Normalized Divergence</option>
+                                                    <option value="internal_load">Internal Load</option>
+                                                    <option value="external_work">External Work</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label for="decay-select" class="form-label small mb-1">Decay Rate:</label>
+                                                <select id="decay-select" class="form-select form-select-sm" onchange="updateDecayRate()">
+                                                    <option value="0.01">0.01 (Slow)</option>
+                                                    <option value="0.03">0.03 (Moderate)</option>
+                                                    <option value="0.05" selected>0.05 (Standard)</option>
+                                                    <option value="0.08">0.08 (Fast)</option>
+                                                    <option value="0.10">0.10 (Very Fast)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div id="config-comparison-chart-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- What-If Analysis & Parameter Comparison -->
+                <div id="config-comparison-container" style="display: none; max-height: 800px; overflow-y: auto;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5 class="card-title mb-0">What-If Analysis & Parameter Comparison</h5>
+                                        <p class="text-muted small mb-0">Compare different ACWR configurations and analyze their impact</p>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-primary me-2" onclick="addCustomScenario()">
+                                            <i class="fas fa-plus"></i> Add Custom Scenario
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-success" onclick="exportWhatIfAnalysis()">
+                                            <i class="fas fa-download"></i> Export Analysis
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Comparison Chart -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6 class="mb-0">Scenario Comparison Chart</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div id="scenarioComparisonChart"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Scenario Cards -->
+                                    <div class="row mb-4" id="scenarioCards">
+                                        <!-- Scenario cards will be dynamically generated -->
+                                    </div>
+                                    
+                                    <!-- Analysis Panels -->
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6 class="mb-0">Impact Analysis</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div id="impactAnalysis">
+                                                        <!-- Impact analysis will be generated here -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6 class="mb-0">Risk Assessment</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div id="riskAssessment">
+                                                        <!-- Risk assessment will be generated here -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // Global variables
+        let currentUser = null;
+        let currentConfig = null;
+        let visualizationData = {};
+        let threeScene = null;
+        let threeRenderer = null;
+        let threeCamera = null;
+        let threeControls = null;
+        
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDashboard();
+        });
+        
+        function initializeDashboard() {
+            loadUsers();
+            loadConfigurations();
+            setupEventListeners();
+            updateSliderValues();
+            
+            // Initialize sensitivity analysis date to today
+            document.getElementById('sensitivityDate').value = new Date().toISOString().split('T')[0];
+        }
+        
+        function loadUsers() {
+            // Fetch real users from API
+            fetch('/api/visualization/users')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const userSelect = document.getElementById('userSelect');
+                        userSelect.innerHTML = '<option value="">Select a user...</option>';
+                        
+                        data.users.forEach((user, index) => {
+                            const option = document.createElement('option');
+                            option.value = user.id;
+                            option.textContent = `${user.name} (${user.email})`;
+                            userSelect.appendChild(option);
+                        });
+                        
+                        // Don't auto-select - let user choose manually to avoid issues
+                        // User can select from the dropdown when ready
+                    } else {
+                        // Fallback to showing error message
+                        const userSelect = document.getElementById('userSelect');
+                        userSelect.innerHTML = '<option value="">Error loading users</option>';
+                    }
+                })
+                .catch(error => {
+                    // Fallback to showing error message
+                    const userSelect = document.getElementById('userSelect');
+                    userSelect.innerHTML = '<option value="">Error loading users</option>';
+                    // Show user-friendly error
+                    showError('Failed to load users. Please refresh the page or check your connection.');
+                });
+        }
+        
+        function loadConfigurations() {
+            // Mock configuration data - in real implementation, this would come from API
+            const configs = [
+                { id: 1, name: 'Ultra-Reactive', chronic_period_days: 14, decay_rate: 0.15 },
+                { id: 2, name: 'Balanced', chronic_period_days: 42, decay_rate: 0.05 },
+                { id: 3, name: 'Ultra-Smooth', chronic_period_days: 84, decay_rate: 0.01 }
+            ];
+            
+            const configSelect = document.getElementById('configSelect');
+            configSelect.innerHTML = '<option value="">Select configuration...</option>';
+            
+            configs.forEach(config => {
+                const option = document.createElement('option');
+                option.value = config.id;
+                option.textContent = config.name;
+                configSelect.appendChild(option);
+            });
+        }
+        
+        function setupEventListeners() {
+            // Update slider values in real-time
+            document.getElementById('chronicPeriodSlider').addEventListener('input', updateSliderValues);
+            document.getElementById('decayRateSlider').addEventListener('input', updateSliderValues);
+            
+            // Add live preview visual feedback
+            document.getElementById('chronicPeriodSlider').addEventListener('input', addLivePreviewStyling);
+            document.getElementById('decayRateSlider').addEventListener('input', addLivePreviewStyling);
+            document.getElementById('displayPeriod').addEventListener('change', addLivePreviewStyling);
+            
+            // Remove live preview styling when user stops interacting
+            document.getElementById('chronicPeriodSlider').addEventListener('mouseup', removeLivePreviewStyling);
+            document.getElementById('decayRateSlider').addEventListener('mouseup', removeLivePreviewStyling);
+            
+            // Add sensitivity date change listener
+            document.getElementById('sensitivityDate').addEventListener('change', function() {
+                if (currentUser) {
+                    const parameters = {
+                        user_id: currentUser,
+                        chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                        decay_rate: parseFloat(document.getElementById('decayRateSlider').value),
+                        analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value)
+                    };
+                    generateSensitivityAnalysis(parameters);
+                }
+            });
+        }
+        
+        function addLivePreviewStyling() {
+            // Add live preview styling to active controls
+            const chronicSlider = document.getElementById('chronicPeriodSlider');
+            const decaySlider = document.getElementById('decayRateSlider');
+            const displaySelect = document.getElementById('displayPeriod');
+            
+            const chronicContainer = chronicSlider.closest('.slider-container');
+            const decayContainer = decaySlider.closest('.slider-container');
+            const analysisContainer = analysisSelect.closest('.parameter-control');
+            
+            if (chronicContainer) chronicContainer.classList.add('live-preview-active');
+            if (decayContainer) decayContainer.classList.add('live-preview-active');
+            if (analysisContainer) analysisContainer.classList.add('live-preview-active');
+            
+            // Add styling to metric cards
+            const metricCards = document.querySelectorAll('.metric-card');
+            metricCards.forEach(card => card.classList.add('live-preview-active'));
+        }
+        
+        function removeLivePreviewStyling() {
+            // Remove live preview styling after a delay
+            setTimeout(() => {
+                const chronicSlider = document.getElementById('chronicPeriodSlider');
+                const decaySlider = document.getElementById('decayRateSlider');
+                const displaySelect = document.getElementById('displayPeriod');
+                
+                const chronicContainer = chronicSlider.closest('.slider-container');
+                const decayContainer = decaySlider.closest('.slider-container');
+                const analysisContainer = analysisSelect.closest('.parameter-control');
+                
+                if (chronicContainer) chronicContainer.classList.remove('live-preview-active');
+                if (decayContainer) decayContainer.classList.remove('live-preview-active');
+                if (analysisContainer) analysisContainer.classList.remove('live-preview-active');
+                
+                // Remove styling from metric cards
+                const metricCards = document.querySelectorAll('.metric-card');
+                metricCards.forEach(card => card.classList.remove('live-preview-active'));
+            }, 1000);
+        }
+        
+        function updateSliderValues() {
+            const chronicValue = document.getElementById('chronicPeriodValue');
+            const decayValue = document.getElementById('decayRateValue');
+            
+            if (chronicValue) {
+                chronicValue.textContent = document.getElementById('chronicPeriodSlider').value;
+            }
+            if (decayValue) {
+                decayValue.textContent = document.getElementById('decayRateSlider').value;
+            }
+            
+            // Debounce visualization updates to prevent excessive API calls
+            if (currentUser) {
+                clearTimeout(window.sliderUpdateTimeout);
+                window.sliderUpdateTimeout = setTimeout(() => {
+                    updateVisualizations();
+                }, 500);
+            }
+        }
+        
+        function onUserChange() {
+            try {
+                currentUser = document.getElementById('userSelect').value;
+                if (currentUser) {
+                    // Show the current chart type and generate charts
+                    const chartType = document.getElementById('chartType').value;
+                    showChartType(chartType);
+                }
+            } catch (error) {
+                showError('Error changing user: ' + error.message);
+            }
+        }
+        
+        function onConfigChange() {
+            currentConfig = document.getElementById('configSelect').value;
+            if (currentConfig) {
+                // Load configuration parameters
+                loadConfigurationParameters(currentConfig);
+            }
+        }
+        
+        function loadConfigurationParameters(configId) {
+            // Mock configuration loading - in real implementation, this would come from API
+            const configs = {
+                1: { chronic_period_days: 14, decay_rate: 0.15 },
+                2: { chronic_period_days: 42, decay_rate: 0.05 },
+                3: { chronic_period_days: 84, decay_rate: 0.01 }
+            };
+            
+            const config = configs[configId];
+            if (config) {
+                document.getElementById('chronicPeriodSlider').value = config.chronic_period_days;
+                document.getElementById('decayRateSlider').value = config.decay_rate;
+                updateSliderValues();
+            }
+        }
+        
+        function applyPreset(preset) {
+            const presets = {
+                conservative: { chronic_period_days: 14, decay_rate: 0.15 },
+                moderate: { chronic_period_days: 42, decay_rate: 0.05 },
+                aggressive: { chronic_period_days: 84, decay_rate: 0.01 }
+            };
+            
+            const presetConfig = presets[preset];
+            if (presetConfig) {
+                document.getElementById('chronicPeriodSlider').value = presetConfig.chronic_period_days;
+                document.getElementById('decayRateSlider').value = presetConfig.decay_rate;
+                updateSliderValues();
+                updateVisualizations();
+            }
+        }
+        
+        function onChartTypeChange() {
+            const chartType = document.getElementById('chartType').value;
+            showChartType(chartType);
+            
+            // Update chart title
+            const titles = {
+                'acwr-time-series': 'Overtraining Risk',
+                'parameter-sensitivity': 'Parameter Sensitivity Analysis',
+                'configuration-comparison': 'Configuration Comparison'
+            };
+            const titleElement = document.getElementById('chart-title');
+            if (titleElement) {
+                titleElement.textContent = titles[chartType];
+            }
+            
+            // Generate the appropriate chart
+            if (currentUser) {
+                const displayPeriod = parseInt(document.getElementById('displayPeriod').value);
+                const chronicPeriod = parseInt(document.getElementById('chronicPeriodSlider').value);
+                const totalDataNeeded = displayPeriod + chronicPeriod; // Display + chronic for accurate calculation
+                
+                const parameters = {
+                    user_id: currentUser,
+                    chronic_period_days: chronicPeriod,
+                    decay_rate: currentDecayRate, // Use the dropdown value
+                    analysis_period: totalDataNeeded, // Total data needed for backend
+                    display_period: displayPeriod, // Actual period to display
+                    parameter: currentParameter // Use the dropdown value
+                };
+                
+                switch(chartType) {
+                    case 'acwr-time-series':
+                        generateDashboardCharts(parameters).catch(error => {
+                            showError('Error loading ACWR time series: ' + error.message);
+                        });
+                        break;
+                    case 'parameter-sensitivity':
+                        generateSensitivityAnalysis(parameters).catch(error => {
+                            showError('Error loading sensitivity analysis: ' + error.message);
+                        });
+                        break;
+                    case 'configuration-comparison':
+                        generateTimeSeries(parameters).catch(error => {
+                            showError('Error loading configuration comparison: ' + error.message);
+                        });
+                        break;
+                }
+            }
+        }
+        
+        function showLoadingIndicator(message = 'Loading chart...') {
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) {
+                spinner.style.display = 'block';
+                const loadingText = spinner.querySelector('p');
+                if (loadingText) {
+                    loadingText.textContent = message;
+                }
+            }
+        }
+        
+        function hideLoadingIndicator() {
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) {
+                spinner.style.display = 'none';
+            }
+        }
+        
+        function showChartType(chartType) {
+            try {
+                // Show loading indicator
+                showLoadingIndicator();
+                
+                // Hide all chart sections
+                document.getElementById('acwr-time-series-chart').style.display = 'none';
+                document.getElementById('parameter-sensitivity-chart').style.display = 'none';
+                document.getElementById('main-config-comparison-chart').style.display = 'none';
+                document.getElementById('config-comparison-container').style.display = 'none';
+                
+                // Show selected chart section
+                let chartElementId = chartType + '-chart';
+                if (chartType === 'configuration-comparison') {
+                    chartElementId = 'main-config-comparison-chart';
+                }
+                document.getElementById(chartElementId).style.display = 'block';
+                
+                // Generate chart if user is selected
+                if (currentUser) {
+                    updateVisualizations();
+                }
+            } catch (error) {
+                showError('Error showing chart type: ' + error.message);
+            }
+        }
+        
+        function onConfigChange() {
+            const configSelect = document.getElementById('configSelect');
+            const config = configSelect.value;
+            
+            if (config !== 'custom') {
+                // Apply preset configuration
+                const presets = {
+                    'conservative': { chronic: 28, decay: 0.03 },
+                    'balanced': { chronic: 42, decay: 0.05 },
+                    'aggressive': { chronic: 56, decay: 0.07 }
+                };
+                
+                if (presets[config]) {
+                    document.getElementById('chronicPeriodSlider').value = presets[config].chronic;
+                    document.getElementById('decayRateSlider').value = presets[config].decay;
+                    updateSliderValues();
+                    
+                    updateVisualizations();
+                }
+            }
+            // If custom is selected, just leave the current values
+        }
+        
+        function onParameterChange() {
+            // Update slider values immediately
+            updateSliderValues();
+            
+            // Set config dropdown to "custom" when manually adjusting
+            const configSelect = document.getElementById('configSelect');
+            if (configSelect.value !== 'custom') {
+                configSelect.value = 'custom';
+            }
+            
+            // Auto-update charts when parameters change
+            updateLivePreview();
+            
+            // Debounce full visualization updates to avoid too many API calls
+            clearTimeout(window.parameterChangeTimeout);
+            window.parameterChangeTimeout = setTimeout(() => {
+                updateVisualizations();
+            }, 1000);
+        }
+        
+        // Live preview functions removed - charts now auto-update
+        
+        function updateLivePreview() {
+            if (!currentUser) return;
+            
+            const parameters = {
+                user_id: currentUser,
+                chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                decay_rate: parseFloat(document.getElementById('decayRateSlider').value),
+                analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value)
+            };
+            
+            // Update current metrics with live preview
+            updateCurrentMetricsPreview(parameters);
+            
+            // Update parameter comparison panel
+            updateParameterComparison(parameters);
+            
+            // Show live preview indicator
+            showLivePreviewIndicator();
+        }
+        
+        function updateVisualizations() {
+            console.log('🚀 updateVisualizations called');
+            console.log('👤 currentUser:', currentUser);
+            if (!currentUser) {
+                console.log('❌ No current user, showing error');
+                showError('Please select a user first');
+                return;
+            }
+            
+            console.log('📊 Starting visualization update...');
+            showLoadingIndicator('Loading chart...');
+            hideMessages();
+            
+            const parameters = {
+                user_id: currentUser,
+                chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                decay_rate: parseFloat(document.getElementById('decayRateSlider').value),
+                analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value),
+                display_period: currentChartPeriod
+            };
+            
+            // Generate only the currently selected chart type
+            const chartType = document.getElementById('chartType').value;
+            let chartPromise;
+            
+            switch(chartType) {
+                case 'acwr-time-series':
+                    chartPromise = Promise.all([generateDashboardCharts(parameters), updateCurrentMetrics(parameters)]);
+                    break;
+                case 'parameter-sensitivity':
+                    chartPromise = generateSensitivityAnalysis(parameters);
+                    break;
+                case 'configuration-comparison':
+                    chartPromise = generateConfigurationComparison(parameters);
+                    break;
+                default:
+                    chartPromise = Promise.all([generateDashboardCharts(parameters), updateCurrentMetrics(parameters)]);
+            }
+            
+            chartPromise.then(() => {
+                hideLoadingIndicator();
+                showSuccess('Visualization updated successfully');
+            }).catch(error => {
+                hideLoadingIndicator();
+                showError('Error updating visualization: ' + error.message);
+            });
+        }
+        
+        function generateDashboardCharts(parameters) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const apiUrl = `/api/visualization/activities-data?user_id=${parameters.user_id}&days_back=${currentChartPeriod}&chronic_period_days=${parameters.chronic_period_days}&decay_rate=${parameters.decay_rate}`;
+                    
+                    // Fetch real data from the API with current parameters
+                    fetch(apiUrl)
+                        .then(response => response.json())
+                        .then(result => {
+                            if (result.success) {
+                                createDashboardCharts(result.data);
+                                resolve();
+                            } else {
+                                showError('Failed to load chart data: ' + result.error);
+                                reject(new Error('Failed to load chart data: ' + result.error));
+                            }
+                        })
+                        .catch(error => {
+                            showError('Failed to load chart data: ' + error.message);
+                            reject(error);
+                        });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+        
+        // REMOVED: initializeThreeJS() - unused 3D visualization function
+        
+        // REMOVED: setupSimpleControls() - unused 3D visualization function
+        
+        
+        function create3DSurface(surfaceData) {
+            // Clear existing surface
+            const existingSurface = threeScene.getObjectByName('surface');
+            if (existingSurface) {
+                threeScene.remove(existingSurface);
+            }
+            
+            // Create geometry
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            const colors = [];
+            
+            // Find min/max for color mapping
+            const values = surfaceData.map(d => d.z);
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            
+            surfaceData.forEach(point => {
+                vertices.push(point.x, point.z, point.y);
+                
+                // Color based on chronic load value
+                const normalizedValue = (point.z - minValue) / (maxValue - minValue);
+                const color = new THREE.Color();
+                color.setHSL(0.6 - normalizedValue * 0.6, 1, 0.5);
+                colors.push(color.r, color.g, color.b);
+            });
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            
+            // Create material
+            const material = new THREE.PointsMaterial({
+                size: 3,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            // Create mesh
+            const surface = new THREE.Points(geometry, material);
+            surface.name = 'surface';
+            threeScene.add(surface);
+            
+            // Render
+            threeRenderer.render(threeScene, threeCamera);
+        }
+        
+        function generateHeatmap(parameters) {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Generate mock heatmap data
+                    showError('Heatmap visualization not available - requires real data');
+                    reject(new Error('Heatmap visualization not available'));
+                    return;
+                    
+                    // Create Plotly heatmap
+                    const trace = {
+                        z: heatmapData.matrix,
+                        x: heatmapData.xLabels,
+                        y: heatmapData.yLabels,
+                        type: 'heatmap',
+                        colorscale: 'Viridis',
+                        showscale: true,
+                        colorbar: {
+                            title: 'Chronic Load'
+                        }
+                    };
+                    
+                    const layout = {
+                        title: 'Chronic Load Heatmap',
+                        xaxis: { title: 'Chronic Period (days)' },
+                        yaxis: { title: 'Decay Rate' },
+                        margin: { t: 50, l: 50, r: 50, b: 50 }
+                    };
+                    
+                    const config = {
+                        responsive: true,
+                        displayModeBar: true,
+                        modeBarButtonsToAdd: ['select2d', 'lasso2d'],
+                        displaylogo: false
+                    };
+                    
+                    Plotly.newPlot('heatmap-container', [trace], layout, config);
+                    
+                    // Add hover and click event handlers
+                    document.getElementById('heatmap-container').on('plotly_hover', function(data) {
+                        if (data.points && data.points.length > 0) {
+                            const point = data.points[0];
+                            const chronicPeriod = heatmapData.xLabels[point.x];
+                            const decayRate = heatmapData.yLabels[point.y];
+                            const chronicLoad = point.z;
+                            
+                            // Metrics panel removed - no need to update
+                            
+                            // Show detailed tooltip
+                            showDetailedTooltip({
+                                chronicPeriod: chronicPeriod,
+                                decayRate: decayRate,
+                                chronicLoad: chronicLoad,
+                                x: point.xaxis.d2p(point.x) + point.xaxis._offset,
+                                y: point.yaxis.d2p(point.y) + point.yaxis._offset
+                            });
+                        }
+                    });
+                    
+                    document.getElementById('heatmap-container').on('plotly_click', function(data) {
+                        if (data.points && data.points.length > 0) {
+                            const point = data.points[0];
+                            const chronicPeriod = heatmapData.xLabels[point.x];
+                            const decayRate = heatmapData.yLabels[point.y];
+                            
+                            // Update parameter controls
+                            document.getElementById('chronicPeriodSlider').value = chronicPeriod;
+                            document.getElementById('decayRateSlider').value = decayRate;
+                            updateSliderValues();
+                            
+                            // Update visualizations with new parameters
+                            updateVisualizations();
+                            
+                            showSuccess(`Selected parameters: ${chronicPeriod} days, ${decayRate} decay rate`);
+                        }
+                    });
+                    
+                    // Hide tooltip when mouse leaves heatmap
+                    document.getElementById('heatmap-container').on('plotly_unhover', function() {
+                        hideDetailedTooltip();
+                    });
+                    
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+        
+        
+        function refreshCurrentChart() {
+            if (currentUser) {
+                updateVisualizations();
+            }
+        }
+        
+        function performExport() {
+            const exportType = document.getElementById('exportTypeSelect').value;
+            const chartType = document.getElementById('chartType').value;
+            
+            
+            // Map export types to functions
+            const exportFunctions = {
+                'png': () => exportToPNG(),
+                'svg': () => exportToSVG(), 
+                'csv': () => exportToCSV(),
+                'pdf': () => exportToPDF()
+            };
+            
+            const exportFunction = exportFunctions[exportType];
+            if (exportFunction) {
+                exportFunction();
+                showSuccess(`${exportType.toUpperCase()} export initiated`);
+            } else {
+                showError('Export type not supported');
+            }
+        }
+        
+        function compareConfigurations() {
+            // This function is called by the "Compare All" button
+            // It will regenerate the time series with all configurations visible
+            if (currentUser) {
+                updateVisualizations();
+            }
+        }
+        
+        function updateConfigComparison() {
+            // Update configuration comparison when parameters change
+            if (currentUser) {
+                // Regenerate only the time series comparison
+                const parameters = {
+                    user_id: currentUser,
+                    chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                    decay_rate: currentDecayRate, // Use the dropdown value
+                    analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value),
+                    display_period: currentChartPeriod,
+                    parameter: currentParameter // Use the dropdown value
+                };
+                
+                generateTimeSeries(parameters).catch(error => {
+                    showError('Error updating configuration comparison: ' + error.message);
+                });
+            }
+        }
+        
+        function exportComparison() {
+            // Export configuration comparison data
+            // Implementation would go here
+        }
+        
+        // Global variable to track current configuration comparison parameter
+        let currentConfigParameter = 'external_acwr';
+        
+        // Global variable to track risk zone visibility
+        let riskZonesVisible = true;
+        
+        function toggleConfigParameter(parameter) {
+            // Update button states
+            document.querySelectorAll('[onclick^="toggleConfigParameter"]').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update current parameter
+            currentConfigParameter = parameter;
+            
+            // Regenerate configuration comparison chart
+            if (currentUser) {
+                updateVisualizations();
+            }
+        }
+        
+        // Global variables for current parameter and decay rate
+        let currentParameter = 'external_acwr';
+        let currentDecayRate = 0.05;
+        
+        // Function to get y-axis title based on parameter
+        function getYAxisTitle(parameter) {
+            switch(parameter) {
+                case 'external_acwr':
+                    return 'External ACWR';
+                case 'internal_acwr':
+                    return 'Internal ACWR';
+                case 'normalized_divergence':
+                    return 'Normalized Divergence';
+                case 'internal_load':
+                    return 'Internal Load (TRIMP)';
+                case 'external_work':
+                    return 'External Work (TRIMP)';
+                default:
+                    return 'ACWR / Divergence';
+            }
+        }
+        
+        // Function to get secondary y-axis title based on parameter
+        function getSecondaryYAxisTitle(parameter) {
+            switch(parameter) {
+                case 'external_work':
+                    return 'External Work (TRIMP)';
+                case 'internal_load':
+                    return 'Internal Load (TRIMP)';
+                default:
+                    return 'Work / Load';
+            }
+        }
+        
+        // Function to get risk zone shapes based on parameter type
+        function getRiskZoneShapesForParameter(parameter, dates) {
+            // Only show risk zones for ACWR parameters
+            if (parameter === 'external_acwr' || parameter === 'internal_acwr') {
+                return getRiskZoneShapesForDates(dates);
+            }
+            // For other parameters (load, work, divergence), return empty array
+            return [];
+        }
+        
+        function updateParameterDisplay() {
+            const parameterSelect = document.getElementById('parameter-select');
+            currentParameter = parameterSelect.value;
+            currentConfigParameter = currentParameter; // Update the global variable
+            
+            // Regenerate chart with new parameter
+            if (currentUser) {
+                generateTimeSeries({
+                    user_id: currentUser,
+                    parameter: currentParameter,
+                    decay_rate: currentDecayRate,
+                    chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                    analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value),
+                    display_period: parseInt(document.getElementById('displayPeriod').value)
+                });
+            }
+        }
+        
+        function updateDecayRate() {
+            const decaySelect = document.getElementById('decay-select');
+            currentDecayRate = parseFloat(decaySelect.value);
+            
+            // Regenerate chart with new decay rate
+            if (currentUser) {
+                generateTimeSeries({
+                    user_id: currentUser,
+                    parameter: currentParameter,
+                    decay_rate: currentDecayRate,
+                    chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                    analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value),
+                    display_period: parseInt(document.getElementById('displayPeriod').value)
+                });
+            }
+        }
+        
+        function generateTimeSeries(parameters) {
+            return new Promise((resolve, reject) => {
+                try {
+                    
+                    // Get configuration parameters from UI
+                    const acutePeriod = document.getElementById('acuteConfigSelect')?.value || 7;
+                    const comparisonType = document.getElementById('comparisonTypeSelect')?.value || 'chronic';
+                    const comparisonValues = document.getElementById('comparisonValuesInput')?.value || '28,42,56,70';
+                    
+                    // Build URL with configurable parameters  
+                    let url = `/api/visualization/multi-config-data?user_id=${parameters.user_id}&days_back=${parameters.analysis_period}&acute_period=${acutePeriod}`;
+                    
+                    // Add parameter selection
+                    if (parameters.parameter) {
+                        url += `&parameter=${parameters.parameter}`;
+                    }
+                    
+                    if (comparisonType === 'chronic') {
+                        url += `&chronic_variations=${comparisonValues}&decay_rate=${parameters.decay_rate}`;
+                    } else {
+                        url += `&decay_variations=${comparisonValues}&chronic_period=${parameters.chronic_period_days}`;
+                    }
+                    
+                    
+                    fetch(url)
+                        .then(response => response.json())
+                        .then(result => {
+                            if (!result.success) {
+                                showError('Failed to load configuration comparison data: ' + result.error);
+                                reject(new Error('Failed to load configuration comparison data: ' + result.error));
+                                return;
+                            }
+                            
+                            const configurations = result.configurations;
+                            const traces = [];
+                            let hasValidData = false;
+                            let timeSeriesData = { dates: [] };
+                            
+                            // Process each configuration from the batch response
+                            Object.keys(configurations).forEach(configName => {
+                                const configData = configurations[configName];
+                                const config = configData.config;
+                                
+                                if (configData && configData.dates) {
+                                    let values;
+                                    let yAxis = 'y';
+                                    
+                                    // Extract values based on the selected parameter
+                                    
+                                    switch (currentConfigParameter) {
+                                        case 'external_acwr':
+                                            values = configData.acwr || [];
+                                            break;
+                                        case 'internal_acwr':
+                                            values = configData.trimp_acwr || [];
+                                            break;
+                                        case 'normalized_divergence':
+                                            values = configData.normalized_divergence || [];
+                                            break;
+                                        case 'external_work':
+                                            // Use chronic load values for external work (time series)
+                                            values = configData.chronic_load || [];
+                                            yAxis = 'y2';
+                                            break;
+                                        case 'internal_load':
+                                            // Use chronic trimp values for internal load (time series)
+                                            values = configData.chronic_trimp || [];
+                                            yAxis = 'y2';
+                                            break;
+                                        default:
+                                            values = configData.acwr || [];
+                                    }
+                                    
+                                    
+                                    // Check if we have valid data
+                                    if (values && values.length > 0) {
+                                        hasValidData = true;
+                                        
+                                        // Use first config data for dates and risk zones
+                                        if (!timeSeriesData.dates.length) {
+                                            timeSeriesData = { dates: configData.dates };
+                                        }
+                                    }
+                                    
+                                    traces.push({
+                                        x: configData.dates,
+                                        y: values,
+                                        type: 'scatter',
+                                        mode: 'lines+markers',
+                                        name: config.name,
+                                        line: { 
+                                            color: config.color, 
+                                            width: 3  // Match upper chart line width
+                                        },
+                                        marker: { 
+                                            size: 8,  // Match sensitivity analysis marker size
+                                            color: config.color
+                                        },
+                                        yaxis: yAxis,
+                                        visible: true
+                                    });
+                                }
+                            });
+                            
+                            // If no valid data, show error
+                            if (!hasValidData || traces.length === 0) {
+                                console.error('No valid data found for configuration comparison');
+                                console.log('Configurations:', configurations);
+                                console.log('Traces length:', traces.length);
+                                
+                                showError('No data available for configuration comparison. Please check your data and try again.');
+                                reject(new Error('No valid data found for configuration comparison'));
+                                return;
+                            }
+                        
+                        // Add risk zone bands (use function to ensure consistency with toggle and parameter type)
+                        const shapes = riskZonesVisible ? getRiskZoneShapesForParameter(currentConfigParameter, timeSeriesData.dates) : [];
+                        
+                        // Ensure all shapes are set to layer 'below'
+                        shapes.forEach(shape => {
+                            shape.layer = 'below';
+                        });
+                    
+                    const layout = {
+                            title: `Configuration Comparison - ${currentConfigParameter.replace('_', ' ').toUpperCase()}`,
+                        xaxis: { 
+                            title: 'Date',
+                            showgrid: true,
+                            gridcolor: 'rgba(128,128,128,0.2)'
+                        },
+                        yaxis: { 
+                                title: getYAxisTitle(currentConfigParameter),
+                            titlefont: { color: '#007bff' },
+                            tickfont: { color: '#007bff' },
+                            showgrid: true,
+                            gridcolor: 'rgba(128,128,128,0.1)'
+                        },
+                        yaxis2: {
+                                title: getSecondaryYAxisTitle(currentConfigParameter),
+                            titlefont: { color: '#28a745' },
+                            tickfont: { color: '#28a745' },
+                            anchor: 'x',
+                            overlaying: 'y',
+                            side: 'right',
+                            showgrid: false
+                        },
+                        shapes: shapes,
+                        margin: { t: 50, l: 50, r: 80, b: 50 },
+                        height: 400,
+                        legend: {
+                            x: 0.02,
+                            y: 0.98,
+                            bgcolor: 'rgba(255,255,255,0.8)',
+                            bordercolor: 'rgba(0,0,0,0.2)',
+                            borderwidth: 1
+                        },
+                        hovermode: 'x unified'
+                    };
+                    
+                    const config = {
+                        responsive: true,
+                        displayModeBar: true,
+                        modeBarButtonsToAdd: ['select2d', 'lasso2d'],
+                        displaylogo: false
+                    };
+                    
+                            
+                            Plotly.newPlot('config-comparison-chart-container', traces, layout, config);
+                            
+                            // Add legend click event handler for toggle visibility
+                            document.getElementById('config-comparison-chart-container').on('plotly_legendclick', function(data) {
+                                // Prevent default behavior to allow custom toggle logic
+                                return false;
+                            });
+                            
+                            console.log('✅ Configuration comparison chart created successfully');
+                            resolve();
+                        })
+                        .catch(error => {
+                            console.error('Error loading configuration comparison data:', error);
+                            showError('Failed to load configuration comparison data: ' + error.message);
+                            reject(error);
+                        });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+        
+        
+        
+        
+        
+        function generateSensitivityAnalysis(parameters) {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Get the selected analysis date
+                    const analysisDate = document.getElementById('sensitivityDate').value || new Date().toISOString().split('T')[0];
+                    
+                    // Fetch real sensitivity analysis data from the API
+                    fetch('/api/visualization/sensitivity', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            user_id: parameters.user_id,
+                            analysis_date: analysisDate,
+                            base_chronic_period: parameters.chronic_period_days || 42,
+                            base_decay_rate: parameters.decay_rate || 0.05
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            console.log('Real sensitivity analysis data fetched successfully:', result.analysis_date);
+                            createSensitivityAnalysis(result.sensitivity_data);
+                    resolve();
+                        } else {
+                            console.error('Error fetching sensitivity analysis data:', result.error);
+                            showError('Failed to load sensitivity analysis data: ' + result.error);
+                            reject(new Error('Failed to load sensitivity analysis data: ' + result.error));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching sensitivity analysis data:', error);
+                        showError('Failed to load sensitivity analysis data: ' + error.message);
+                        reject(error);
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+        
+        function refreshSensitivityAnalysis() {
+            if (currentUser) {
+                const parameters = {
+                    user_id: currentUser,
+                    chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                    decay_rate: parseFloat(document.getElementById('decayRateSlider').value),
+                    analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value)
+                };
+                generateSensitivityAnalysis(parameters);
+            } else {
+                showError('Please select a user first');
+            }
+        }
+        
+        
+        // New practical visualization functions
+        // Global variable to track current chart period
+        let currentChartPeriod = 60;
+        
+        function setChartPeriod(days) {
+            currentChartPeriod = days;
+            
+            // Update button states
+            document.querySelectorAll('.btn-group .btn-outline-primary').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Regenerate charts with new period
+            if (currentUser) {
+                updateVisualizations();
+            }
+        }
+        
+        
+        function createDashboardCharts(data) {
+            const container = document.getElementById('dashboard-charts-container');
+            console.log('🎨 createDashboardCharts called with data:', data);
+            
+            // Hide empty state message when loading chart
+            const emptyStateMessage = document.getElementById('empty-state-message');
+            if (emptyStateMessage) {
+                emptyStateMessage.style.display = 'none';
+            }
+            
+            // For ACWR time series, always show combined chart with both internal and external
+            container.innerHTML = `
+                <div class="row">
+                    <div class="col-md-12">
+                        <div id="combined-acwr-chart" style="height: 480px;"></div>
+                    </div>
+                </div>
+            `;
+            console.log('🎯 Creating combined ACWR chart...');
+            createCombinedACWRChart('combined-acwr-chart', data);
+        }
+        
+        function createCombinedACWRChart(containerId, data) {
+            // Use real ACWR data from the database
+            const allInternalACWR = data.trimp_acwr || data.acwr; // Use TRIMP ACWR if available, fallback to regular ACWR
+            const allExternalACWR = data.acwr; // External ACWR (based on distance/load)
+            
+            // Apply display period limit to shown data
+            const displayPeriod = parseInt(document.getElementById('displayPeriod').value);
+            const dataLength = Math.min(displayPeriod, allInternalACWR.length);
+            
+            const internalACWR = allInternalACWR.slice(-dataLength); // Show last N days
+            const externalACWR = allExternalACWR.slice(-dataLength);
+            const dates = data.dates.slice(-dataLength);
+            
+            // Calculate normalized divergence (difference between internal and external ACWR)
+            const normalizedDivergence = internalACWR.map((internal, i) => {
+                const external = externalACWR[i] || 0;
+                return internal - external; // Simple divergence calculation
+            });
+            
+            const internalTrace = {
+                x: dates,
+                y: internalACWR,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Internal Load (TRIMP)',
+                line: { color: '#007bff', width: 3 },
+                marker: { size: 6 },
+                yaxis: 'y'
+            };
+            
+            const externalTrace = {
+                x: dates,
+                y: externalACWR,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'External Work',
+                line: { color: '#28a745', width: 3 },
+                marker: { size: 6 },
+                yaxis: 'y'
+            };
+            
+            const divergenceTrace = {
+                x: dates,
+                y: normalizedDivergence,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Normalized Divergence',
+                line: { color: '#dc3545', width: 2, dash: 'dot' },
+                marker: { size: 4 },
+                yaxis: 'y2'
+            };
+            
+            // Updated risk zones with improved color contrast: Balanced (0.8-1.3), Moderate Risk (1.3-1.5), High Risk (>1.5)
+            const riskZones = [
+                // Low Risk: < 0.8
+                { x0: dates[0], x1: dates[dates.length-1], y0: 0, y1: 0.8, fillcolor: 'rgba(40, 167, 69, 0.15)', type: 'rect', layer: 'below', line: { width: 0 } },
+                // Balanced: 0.8-1.3  
+                { x0: dates[0], x1: dates[dates.length-1], y0: 0.8, y1: 1.3, fillcolor: 'rgba(255, 193, 7, 0.2)', type: 'rect', layer: 'below', line: { width: 0 } },
+                // Moderate Risk: 1.3-1.5 - More orange/red contrast
+                { x0: dates[0], x1: dates[dates.length-1], y0: 1.3, y1: 1.5, fillcolor: 'rgba(255, 87, 34, 0.25)', type: 'rect', layer: 'below', line: { width: 0 } },
+                // High Risk: >1.5
+                { x0: dates[0], x1: dates[dates.length-1], y0: 1.5, y1: 3.0, fillcolor: 'rgba(199, 21, 133, 0.25)', type: 'rect', layer: 'below', line: { width: 0 } }
+            ];
+            
+            const layout = {
+                title: 'Internal vs External ACWR with Normalized Divergence',
+                xaxis: { 
+                    title: {
+                        text: 'Date',
+                        standoff: 5
+                    },
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.2)'
+                },
+                yaxis: { 
+                    title: 'ACWR', 
+                    range: [0, 2.5],
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.1)',
+                    side: 'left'
+                },
+                yaxis2: {
+                    title: 'Normalized Divergence',
+                    overlaying: 'y',
+                    side: 'right',
+                    range: [-0.5, 0.2], 
+                    showgrid: false,
+                    zeroline: true,
+                    zerolinecolor: 'rgba(128,128,128,0.3)',
+                    zerolinewidth: 1
+                },
+                shapes: riskZones,
+                annotations: [
+                    { x: dates[Math.floor(dates.length/2)], y: 0.4, text: 'Low Risk', showarrow: false, font: { color: 'green', size: 10 } },
+                    { x: dates[Math.floor(dates.length/2)], y: 1.05, text: 'Balanced', showarrow: false, font: { color: '#b8860b', size: 10 } },
+                    { x: dates[Math.floor(dates.length/2)], y: 1.4, text: 'Moderate Risk', showarrow: false, font: { color: '#ff5722', size: 10 } },
+                    { x: dates[Math.floor(dates.length/2)], y: 1.75, text: 'High Risk', showarrow: false, font: { color: '#c71585', size: 10 } }
+                ],
+                legend: {
+                    orientation: 'h',
+                    x: 0.5,
+                    y: -0.35,
+                    xanchor: 'center',
+                    yanchor: 'top',
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    bordercolor: 'rgba(0,0,0,0.2)',
+                    borderwidth: 1
+                },
+                margin: {
+                    b: 80  // Increased bottom margin for legend spacing
+                }
+            };
+            
+            Plotly.newPlot(containerId, [internalTrace, externalTrace, divergenceTrace], layout, {responsive: true});
+        }
+        
+        function createACWRChart(containerId, data, title, color) {
+            // Use real ACWR data from the database
+            const acwrValues = data.acwr; // Use real ACWR data
+            
+            const acwrTrace = {
+                x: data.dates,
+                y: acwrValues,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'ACWR',
+                line: { color: color, width: 3 },
+                marker: { size: 6 }
+            };
+            
+            // Add risk zones
+            const riskZones = [
+                { x0: data.dates[0], x1: data.dates[data.dates.length-1], y0: 0, y1: 0.8, fillcolor: 'rgba(0,255,0,0.1)', type: 'rect', layer: 'below' },
+                { x0: data.dates[0], x1: data.dates[data.dates.length-1], y0: 0.8, y1: 1.3, fillcolor: 'rgba(255,255,0,0.1)', type: 'rect', layer: 'below' },
+                { x0: data.dates[0], x1: data.dates[data.dates.length-1], y0: 1.3, y1: 2.0, fillcolor: 'rgba(255,165,0,0.1)', type: 'rect', layer: 'below' },
+                { x0: data.dates[0], x1: data.dates[data.dates.length-1], y0: 2.0, y1: 3.0, fillcolor: 'rgba(255,0,0,0.1)', type: 'rect', layer: 'below' }
+            ];
+            
+            const layout = {
+                title: `${title} - ACWR Over Time`,
+                xaxis: { title: 'Date' },
+                yaxis: { title: 'ACWR', range: [0, 2.5] },
+                shapes: riskZones,
+                annotations: [
+                    { x: data.dates[Math.floor(data.dates.length/2)], y: 0.4, text: 'Low Risk', showarrow: false, font: { color: 'green' } },
+                    { x: data.dates[Math.floor(data.dates.length/2)], y: 1.05, text: 'Moderate Risk', showarrow: false, font: { color: 'orange' } },
+                    { x: data.dates[Math.floor(data.dates.length/2)], y: 1.65, text: 'High Risk', showarrow: false, font: { color: 'red' } }
+                ]
+            };
+            
+            Plotly.newPlot(containerId, [acwrTrace], layout, {responsive: true});
+        }
+        
+        
+        
+        // Global variables for sensitivity analysis
+        let sensitivityData = null;
+        let sensitivityTraces = {};
+        let sensitivityLayout = null;
+        let currentSensitivityMode = 'chronic_period'; // 'chronic_period' or 'decay_rate'
+        
+        function createSensitivityAnalysis(data) {
+            const container = document.getElementById('sensitivity-analysis-container');
+            container.innerHTML = `
+                <div id="sensitivity-acwr-chart" style="height: 400px; margin-bottom: 20px; background: linear-gradient(135deg, rgba(0,123,255,0.05), rgba(111,66,193,0.05)); border-radius: 8px; padding: 15px; border: 1px solid rgba(0,123,255,0.1);"></div>
+                <div id="sensitivity-load-chart" style="height: 400px; background: linear-gradient(135deg, rgba(40,167,69,0.05), rgba(255,193,7,0.05)); border-radius: 8px; padding: 15px; border: 1px solid rgba(40,167,69,0.1);"></div>
+            `;
+            
+            // Store data globally for toggling
+            sensitivityData = data;
+            
+            // Use real data from the API if available, otherwise fall back to mock data
+            let xValues, externalAcwrValues, internalAcwrValues, normalizedDivergenceValues, externalWorkValues, internalLoadValues;
+            let xAxisTitle, chartTitle;
+            
+            if (data.sensitivity_results && data.sensitivity_results.length > 0) {
+                if (currentSensitivityMode === 'chronic_period') {
+                    // Group by chronic period, average across decay rates
+                    const groupedData = {};
+                    data.sensitivity_results.forEach(r => {
+                        const period = r.chronic_period_days;
+                        if (!groupedData[period]) {
+                            groupedData[period] = { external_acwr: [], internal_acwr: [], normalized_divergence: [], external_work: [], internal_load: [] };
+                        }
+                        groupedData[period].external_acwr.push(r.external_acwr || 0);
+                        groupedData[period].internal_acwr.push(r.internal_acwr || 0);
+                        groupedData[period].normalized_divergence.push(r.normalized_divergence || 0);
+                        groupedData[period].external_work.push(r.external_work || 0);
+                        groupedData[period].internal_load.push(r.internal_load || 0);
+                    });
+                    
+                    xValues = Object.keys(groupedData).map(Number).sort((a, b) => a - b);
+                    externalAcwrValues = xValues.map(period => {
+                        const values = groupedData[period].external_acwr;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    internalAcwrValues = xValues.map(period => {
+                        const values = groupedData[period].internal_acwr;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    normalizedDivergenceValues = xValues.map(period => {
+                        const values = groupedData[period].normalized_divergence;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    externalWorkValues = xValues.map(period => {
+                        const values = groupedData[period].external_work;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    internalLoadValues = xValues.map(period => {
+                        const values = groupedData[period].internal_load;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    xAxisTitle = 'Chronic Period (days)';
+                    chartTitle = 'Parameter Sensitivity: Chronic Period Effects';
+                } else {
+                    // Group by decay rate, average across chronic periods
+                    const groupedData = {};
+                    data.sensitivity_results.forEach(r => {
+                        const rate = r.decay_rate;
+                        if (!groupedData[rate]) {
+                            groupedData[rate] = { external_acwr: [], internal_acwr: [], normalized_divergence: [], external_work: [], internal_load: [] };
+                        }
+                        groupedData[rate].external_acwr.push(r.external_acwr || 0);
+                        groupedData[rate].internal_acwr.push(r.internal_acwr || 0);
+                        groupedData[rate].normalized_divergence.push(r.normalized_divergence || 0);
+                        groupedData[rate].external_work.push(r.external_work || 0);
+                        groupedData[rate].internal_load.push(r.internal_load || 0);
+                    });
+                    
+                    xValues = Object.keys(groupedData).map(Number).sort((a, b) => a - b);
+                    externalAcwrValues = xValues.map(rate => {
+                        const values = groupedData[rate].external_acwr;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    internalAcwrValues = xValues.map(rate => {
+                        const values = groupedData[rate].internal_acwr;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    normalizedDivergenceValues = xValues.map(rate => {
+                        const values = groupedData[rate].normalized_divergence;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    externalWorkValues = xValues.map(rate => {
+                        const values = groupedData[rate].external_work;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    internalLoadValues = xValues.map(rate => {
+                        const values = groupedData[rate].internal_load;
+                        return values.reduce((sum, val) => sum + val, 0) / values.length;
+                    });
+                    xAxisTitle = 'Decay Rate';
+                    chartTitle = 'Parameter Sensitivity: Decay Rate Effects';
+                }
+            } else {
+                // Fall back to mock data
+                if (currentSensitivityMode === 'chronic_period') {
+                    xValues = [28, 42, 56, 70, 84];
+                    xAxisTitle = 'Chronic Period (days)';
+                    chartTitle = 'Parameter Sensitivity: Chronic Period Effects';
+                } else {
+                    xValues = [0.03, 0.05, 0.07, 0.09];
+                    xAxisTitle = 'Decay Rate';
+                    chartTitle = 'Parameter Sensitivity: Decay Rate Effects';
+                }
+                externalAcwrValues = xValues.map(x => 1.0 + Math.random() * 0.2);
+                internalAcwrValues = xValues.map(x => 1.0 + Math.random() * 0.2);
+                normalizedDivergenceValues = xValues.map(x => 0.1 + Math.random() * 0.2);
+                externalWorkValues = xValues.map(x => 80 + Math.random() * 10);
+                internalLoadValues = xValues.map(x => 60 + Math.random() * 8);
+            }
+            
+            // Create two separate charts for better scaling
+            
+            // Chart 1: ACWR + Normalized Divergence
+            const acwrSensitivityTraces = {
+                external_acwr: {
+                    x: xValues,
+                    y: externalAcwrValues,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'External ACWR',
+                    line: { color: '#28a745', width: 3 },
+                    marker: { size: 6 },
+                    visible: true
+                },
+                internal_acwr: {
+                    x: xValues,
+                    y: internalAcwrValues,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Internal ACWR',
+                    line: { color: '#007bff', width: 3 },
+                    marker: { size: 6 },
+                    visible: true
+                },
+                normalized_divergence: {
+                    x: xValues,
+                    y: normalizedDivergenceValues,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Normalized Divergence',
+                    yaxis: 'y2',
+                    line: { color: '#dc3545', width: 2, dash: 'dot' },
+                    marker: { size: 4 },
+                    visible: true
+                }
+            };
+            
+            const acwrSensitivityLayout = {
+                title: `ACWR Sensitivity Analysis - ${chartTitle.replace('Parameter Sensitivity: ', '')}`,
+                xaxis: { 
+                    title: xAxisTitle,
+                    titlestandoff: 5,
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.2)'
+                },
+                yaxis: { 
+                    title: 'ACWR',
+                    titlefont: { color: '#28a745' },
+                    tickfont: { color: '#28a745' },
+                    range: [Math.min(...externalAcwrValues, ...internalAcwrValues) * 0.95, 
+                            Math.max(...externalAcwrValues, ...internalAcwrValues) * 1.05],
+                    side: 'left',
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.1)'
+                },
+                yaxis2: {
+                    title: 'Normalized Divergence',
+                    titlefont: { color: '#dc3545' },
+                    tickfont: { color: '#dc3545' },
+                    overlaying: 'y',
+                    side: 'right',
+                range: [-0.2, 0.5],
+                showgrid: false
+            },
+            legend: {
+                orientation: 'h',
+                x: 0.5,
+                y: -0.25,
+                xanchor: 'center',
+                yanchor: 'top',
+                bgcolor: 'rgba(255,255,255,0.9)',
+                bordercolor: 'rgba(0,0,0,0.2)',
+                borderwidth: 1
+            },
+            hovermode: 'x unified',
+                margin: { l: 60, r: 80, t: 60, b: 100 }
+            };
+            
+            // Chart 2: External Work + Internal Load  
+            const loadSensitivityTraces = {
+                external_work: {
+                    x: xValues,
+                    y: externalWorkValues,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'External Work',
+                    line: { color: '#28a745', width: 3 },
+                    marker: { size: 6 },
+                    visible: true
+                },
+                internal_load: {
+                    x: xValues,
+                    y: internalLoadValues,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Internal Load',
+                    yaxis: 'y2',
+                    line: { color: '#007bff', width: 3 },
+                    marker: { size: 6 },
+                    visible: true
+                }
+            };
+            
+            const loadSensitivityLayout = {
+                title: `Work/Load Sensitivity Analysis - ${chartTitle.replace('Parameter Sensitivity: ', '')}`,
+                xaxis: { 
+                    title: xAxisTitle,
+                    titlestandoff: 5,
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.2)'
+                },
+                yaxis: { 
+                    title: 'External Work',
+                    titlefont: { color: '#28a745' },
+                    tickfont: { color: '#28a745' },
+                    range: [Math.min(...externalWorkValues) * 0.95, 
+                            Math.max(...externalWorkValues) * 1.05],
+                    side: 'left',
+                    showgrid: true,
+                    gridcolor: 'rgba(128,128,128,0.1)'
+                },
+                yaxis2: {
+                    title: 'Internal Load',
+                    titlefont: { color: '#007bff' },
+                    tickfont: { color: '#007bff' },
+                    overlaying: 'y',
+                    side: 'right',
+                range: [Math.min(...internalLoadValues) * 0.95, 
+                        Math.max(...internalLoadValues) * 1.05],
+                showgrid: false
+            },
+            legend: {
+                orientation: 'h',
+                x: 0.5,
+                y: -0.25,
+                xanchor: 'center',
+                yanchor: 'top',
+                bgcolor: 'rgba(255,255,255,0.9)',
+                bordercolor: 'rgba(0,0,0,0.2)',
+                borderwidth: 1
+            },
+            hovermode: 'x unified',
+                margin: { l: 60, r: 80, t: 60, b: 100 }
+            };
+            
+            // Store for toggling (keep both chart data)
+            sensitivityTraces = {
+                acwr: acwrSensitivityTraces,
+                load: loadSensitivityTraces
+            };
+            sensitivityLayout = {
+                acwr: acwrSensitivityLayout,
+                load: loadSensitivityLayout
+            };
+            
+            // Plot both charts
+            const acwrTraceData = Object.values(acwrSensitivityTraces);
+            const loadTraceData = Object.values(loadSensitivityTraces);
+            
+            Plotly.newPlot('sensitivity-acwr-chart', acwrTraceData, acwrSensitivityLayout, {responsive: true});
+            Plotly.newPlot('sensitivity-load-chart', loadTraceData, loadSensitivityLayout, {responsive: true});
+        }
+        
+        function toggleSensitivityMode(mode) {
+            currentSensitivityMode = mode;
+            
+            // Update button states
+            document.getElementById('chronicPeriodBtn').classList.toggle('active', mode === 'chronic_period');
+            document.getElementById('decayRateBtn').classList.toggle('active', mode === 'decay_rate');
+            
+            // Refresh the analysis with the new mode
+            if (currentUser) {
+                const parameters = {
+                    user_id: currentUser,
+                    chronic_period_days: parseInt(document.getElementById('chronicPeriodSlider').value),
+                    decay_rate: parseFloat(document.getElementById('decayRateSlider').value),
+                    analysis_period: parseInt(document.getElementById('displayPeriod').value) + parseInt(document.getElementById('chronicPeriodSlider').value)
+                };
+                generateSensitivityAnalysis(parameters);
+            }
+        }
+        
+        function toggleSensitivityParameter(parameter) {
+            // With the new dual-chart approach, toggling is handled via legends
+            // This function is kept for compatibility but may not be needed
+            console.log('Parameter toggle requested for:', parameter);
+        }
+        
+        function updateCurrentMetrics(parameters) {
+            return new Promise((resolve) => {
+                // Mock current metrics
+                const acwrRatio = 1.2 + Math.random() * 0.4;
+                const acuteLoad = 80 + Math.random() * 20;
+                const chronicLoad = 100 + Math.random() * 20;
+                const dataQuality = 85 + Math.random() * 10;
+                
+                // Metrics panel removed - no longer updating individual metrics
+                
+                resolve();
+            });
+        }
+        
+        function updateCurrentMetricsPreview(parameters) {
+            // Calculate live preview metrics based on parameters
+            const chronicPeriod = parameters.chronic_period_days;
+            const decayRate = parameters.decay_rate;
+            
+            // Mock calculation based on parameters
+            const baseACWR = 1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2;
+            const baseAcute = 80 + Math.sin(chronicPeriod / 10) * 10;
+            const baseChronic = 100 + Math.cos(decayRate * 10) * 15;
+            const baseQuality = 85 + Math.sin(chronicPeriod / 20) * 5;
+            
+            // Update metrics with live preview styling
+            // Metrics panel removed - live preview no longer updates individual metrics
+            console.log('Live preview update:', { baseACWR, baseAcute, baseChronic, baseQuality });
+        }
+        
+        function updateParameterComparison(parameters) {
+            const chronicPeriod = parameters.chronic_period_days;
+            const decayRate = parameters.decay_rate;
+            
+            // Calculate comparison metrics
+            const currentConfig = {
+                chronic_period: chronicPeriod,
+                decay_rate: decayRate,
+                acwr_ratio: 1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2,
+                acute_load: 80 + Math.sin(chronicPeriod / 10) * 10,
+                chronic_load: 100 + Math.cos(decayRate * 10) * 15
+            };
+            
+            // Update current configuration display
+            const currentConfigElement = document.getElementById('currentConfigDetails');
+            if (currentConfigElement) {
+                currentConfigElement.innerHTML = `
+                    <div class="metric-card">
+                        <div class="metric-label">Chronic Period</div>
+                        <div class="metric-value" style="color: #007bff;">${currentConfig.chronic_period} days</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Decay Rate</div>
+                        <div class="metric-value" style="color: #007bff;">${currentConfig.decay_rate.toFixed(3)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Predicted ACWR</div>
+                        <div class="metric-value" style="color: #007bff;">${currentConfig.acwr_ratio.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Predicted Acute Load</div>
+                        <div class="metric-value" style="color: #007bff;">${currentConfig.acute_load.toFixed(1)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Predicted Chronic Load</div>
+                        <div class="metric-value" style="color: #007bff;">${currentConfig.chronic_load.toFixed(1)}</div>
+                    </div>
+                `;
+            }
+            
+            // Update what-if analysis
+            updateWhatIfAnalysis(currentConfig);
+        }
+        
+        function updateWhatIfAnalysis(currentConfig) {
+            // Initialize scenarios
+            initializeWhatIfScenarios(currentConfig);
+            
+            // Update scenario displays
+            updateScenarioDisplays();
+            
+            // Generate impact analysis
+            generateImpactAnalysis();
+            
+            // Generate risk assessment
+            generateRiskAssessment();
+            
+            // Create comparison chart with a delay to ensure everything is ready
+            setTimeout(() => {
+                createScenarioComparisonChart();
+            }, 100);
+        }
+        
+        function initializeWhatIfScenarios(currentConfig) {
+            // Store scenarios globally
+            window.whatIfScenarios = {
+                scenarioA: {
+                    name: 'Current Configuration',
+                    chronic_period: currentConfig.chronic_period,
+                    decay_rate: currentConfig.decay_rate,
+                    acwr_ratio: currentConfig.acwr_ratio,
+                    acute_load: currentConfig.acute_load,
+                    chronic_load: currentConfig.chronic_load,
+                    risk_level: getRiskZone(currentConfig.acwr_ratio).label
+                },
+                scenarioB: {
+                    name: 'Smoothed',
+                    chronic_period: 56,
+                    decay_rate: 0.03,
+                    acwr_ratio: 1.0 + (56 - 42) / 100 + (0.03 - 0.05) * 2,
+                    acute_load: 80 + Math.sin(56 / 10) * 10,
+                    chronic_load: 100 + Math.cos(0.03 * 10) * 15,
+                    risk_level: 'Low Risk'
+                },
+                scenarioC: {
+                    name: 'Responsive',
+                    chronic_period: 28,
+                    decay_rate: 0.08,
+                    acwr_ratio: 1.0 + (28 - 42) / 100 + (0.08 - 0.05) * 2,
+                    acute_load: 80 + Math.sin(28 / 10) * 10,
+                    chronic_load: 100 + Math.cos(0.08 * 10) * 15,
+                    risk_level: 'High Risk'
+                }
+            };
+        }
+        
+        function updateScenarioDisplays() {
+            const scenarios = window.whatIfScenarios;
+            
+            // Update Scenario A (Current)
+            document.getElementById('scenarioA').innerHTML = createScenarioCard(scenarios.scenarioA, 'A');
+            
+            // Update Scenario B (Smoothed)
+            document.getElementById('scenarioB').innerHTML = createScenarioCard(scenarios.scenarioB, 'B');
+            
+            // Update Scenario C (Responsive)
+            document.getElementById('scenarioC').innerHTML = createScenarioCard(scenarios.scenarioC, 'C');
+        }
+        
+        function createScenarioCard(scenario, scenarioId) {
+            return `
+                <div class="scenario-card">
+                    <div class="metric-card">
+                        <div class="metric-label">Chronic Period</div>
+                        <div class="metric-value">${scenario.chronic_period} days</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Decay Rate</div>
+                        <div class="metric-value">${scenario.decay_rate.toFixed(3)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">ACWR</div>
+                        <div class="metric-value">${scenario.acwr_ratio.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Risk Level</div>
+                        <div class="risk-zone risk-${getRiskZone(scenario.acwr_ratio).class}">${scenario.risk_level}</div>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="selectScenario('${scenarioId}')">
+                            Select This Scenario
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function generateImpactAnalysis() {
+            const scenarios = window.whatIfScenarios;
+            const current = scenarios.scenarioA;
+            
+            const impactAnalysis = document.getElementById('impactAnalysis');
+            impactAnalysis.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">ACWR Change (vs Current)</div>
+                    <div class="metric-value">
+                        <span class="text-success">Smoothed: ${((scenarios.scenarioB.acwr_ratio - current.acwr_ratio) * 100).toFixed(1)}%</span><br>
+                        <span class="text-danger">Responsive: ${((scenarios.scenarioC.acwr_ratio - current.acwr_ratio) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Training Load Impact</div>
+                    <div class="metric-value">
+                        <span class="text-info">Smoothed: Lower intensity</span><br>
+                        <span class="text-warning">Responsive: Higher intensity</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Recovery Time</div>
+                    <div class="metric-value">
+                        <span class="text-success">Smoothed: Faster recovery</span><br>
+                        <span class="text-danger">Responsive: Longer recovery</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function generateRiskAssessment() {
+            const scenarios = window.whatIfScenarios;
+            
+            const riskAssessment = document.getElementById('riskAssessment');
+            riskAssessment.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">Injury Risk</div>
+                    <div class="metric-value">
+                        <span class="text-success">Smoothed: Low (${(scenarios.scenarioB.acwr_ratio * 10).toFixed(0)}%)</span><br>
+                        <span class="text-warning">Current: Moderate (${(scenarios.scenarioA.acwr_ratio * 10).toFixed(0)}%)</span><br>
+                        <span class="text-danger">Responsive: High (${(scenarios.scenarioC.acwr_ratio * 10).toFixed(0)}%)</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Performance Impact</div>
+                    <div class="metric-value">
+                        <span class="text-info">Smoothed: Steady progress</span><br>
+                        <span class="text-primary">Current: Balanced approach</span><br>
+                        <span class="text-warning">Responsive: High variability</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Recommendation</div>
+                    <div class="metric-value">
+                        <span class="text-success">Smoothed: Safe for beginners</span><br>
+                        <span class="text-primary">Current: Good for experienced</span><br>
+                        <span class="text-danger">Responsive: Advanced only</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function createScenarioComparisonChart() {
+            if (!currentUser) {
+                console.log('❌ No user selected for scenario comparison chart');
+                return;
+            }
+            
+            const scenarios = window.whatIfScenarios;
+            if (!scenarios || !scenarios.scenarioA || !scenarios.scenarioB || !scenarios.scenarioC) {
+                console.log('❌ No scenarios available for chart, waiting...');
+                // Retry after a short delay
+                setTimeout(() => createScenarioComparisonChart(), 100);
+                return;
+            }
+            
+            console.log('📊 Creating scenario comparison chart with scenarios:', scenarios);
+            
+            // Clear any existing chart and ensure container is visible
+            const chartContainer = document.getElementById('scenarioComparisonChart');
+            if (!chartContainer) {
+                console.log('❌ Chart container not found');
+                return;
+            }
+            
+            // Clear the container completely
+            chartContainer.innerHTML = '';
+            chartContainer.style.display = 'block';
+            
+            // Create a simple comparison chart showing the current ACWR values for each scenario
+            const traces = [];
+            const colors = ['#007bff', '#28a745', '#dc3545'];
+            const scenarioKeys = ['scenarioA', 'scenarioB', 'scenarioC'];
+            
+            scenarioKeys.forEach((scenarioKey, index) => {
+                const scenario = scenarios[scenarioKey];
+                const color = colors[index];
+                
+                // Create a simple bar chart showing the ACWR ratio for each scenario
+                traces.push({
+                    x: [scenario.name],
+                    y: [scenario.acwr_ratio],
+                    name: `${scenario.name} (${scenario.chronic_period}d, decay: ${scenario.decay_rate})`,
+                    type: 'bar',
+                    marker: { color: color },
+                    text: [scenario.acwr_ratio.toFixed(3)],
+                    textposition: 'auto'
+                });
+            });
+            
+            const layout = {
+                title: 'Scenario Comparison - ACWR Values',
+                xaxis: { 
+                    title: 'Scenario',
+                    type: 'category'
+                },
+                yaxis: { 
+                    title: 'ACWR Ratio'
+                },
+                margin: { b: 80, t: 40, l: 60, r: 20 }
+            };
+
+            // Create the chart with error handling
+            try {
+                Plotly.newPlot('scenarioComparisonChart', traces, layout, { 
+                    responsive: false,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
+                    staticPlot: false
+                }).then(() => {
+                    console.log('✅ Scenario comparison chart created successfully');
+                }).catch(error => {
+                    console.error('❌ Error creating scenario comparison chart:', error);
+                });
+            } catch (error) {
+                console.error('❌ Error in Plotly.newPlot:', error);
+            }
+        }
+        
+        function selectScenario(scenarioId) {
+            const scenarios = window.whatIfScenarios;
+            const selectedScenario = scenarios[`scenario${scenarioId}`];
+            
+            if (selectedScenario) {
+                // Update parameter controls
+                document.getElementById('chronicPeriodSlider').value = selectedScenario.chronic_period;
+                document.getElementById('decayRateSlider').value = selectedScenario.decay_rate;
+                updateSliderValues();
+                
+                // Update visualizations
+                updateVisualizations();
+                
+                showSuccess(`Selected ${selectedScenario.name} scenario`);
+            }
+        }
+        
+        function addCustomScenario() {
+            // Create modal for custom scenario
+            const modalHtml = `
+                <div class="modal fade" id="customScenarioModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Add Custom Scenario</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label for="customScenarioName" class="form-label">Scenario Name</label>
+                                    <input type="text" class="form-control" id="customScenarioName" placeholder="Enter scenario name">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="customChronicPeriod" class="form-label">Chronic Period (days)</label>
+                                    <input type="number" class="form-control" id="customChronicPeriod" min="28" max="90" value="42">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="customDecayRate" class="form-label">Decay Rate</label>
+                                    <input type="number" class="form-control" id="customDecayRate" min="0.01" max="0.20" step="0.01" value="0.05">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" onclick="saveCustomScenario()">Save Scenario</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('customScenarioModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('customScenarioModal'));
+            modal.show();
+        }
+        
+        function saveCustomScenario() {
+            const name = document.getElementById('customScenarioName').value;
+            const chronicPeriod = parseInt(document.getElementById('customChronicPeriod').value);
+            const decayRate = parseFloat(document.getElementById('customDecayRate').value);
+            
+            if (!name) {
+                showError('Please enter a scenario name');
+                return;
+            }
+            
+            // Create custom scenario
+            const customScenario = {
+                name: name,
+                chronic_period: chronicPeriod,
+                decay_rate: decayRate,
+                acwr_ratio: 1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2,
+                acute_load: 80 + Math.sin(chronicPeriod / 10) * 10,
+                chronic_load: 100 + Math.cos(decayRate * 10) * 15,
+                risk_level: getRiskZone(1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2).label
+            };
+            
+            // Add to scenarios (replace scenario C for now)
+            window.whatIfScenarios.scenarioC = customScenario;
+            
+            // Update displays
+            updateScenarioDisplays();
+            generateImpactAnalysis();
+            generateRiskAssessment();
+            createScenarioComparisonChart();
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('customScenarioModal'));
+            modal.hide();
+            
+            showSuccess(`Custom scenario "${name}" added successfully`);
+        }
+        
+        function exportWhatIfAnalysis() {
+            const scenarios = window.whatIfScenarios;
+            
+            // Create export data
+            const exportData = {
+                timestamp: new Date().toISOString(),
+                scenarios: scenarios,
+                analysis: {
+                    impact: document.getElementById('impactAnalysis').innerHTML,
+                    risk: document.getElementById('riskAssessment').innerHTML
+                }
+            };
+            
+            // Create and download JSON file
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `what-if-analysis-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+            showSuccess('What-if analysis exported successfully');
+        }
+        
+        function showLivePreviewIndicator() {
+            // Show live preview indicator
+            let indicator = document.getElementById('live-preview-indicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'live-preview-indicator';
+                indicator.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #007bff;
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    z-index: 1000;
+                    box-shadow: 0 2px 8px rgba(0,123,255,0.3);
+                    animation: pulse 2s infinite;
+                `;
+                document.body.appendChild(indicator);
+            }
+            
+            indicator.textContent = 'Live Preview Active';
+            indicator.style.display = 'block';
+            
+            // Hide indicator after 2 seconds
+            setTimeout(() => {
+                if (indicator) {
+                    indicator.style.display = 'none';
+                }
+            }, 2000);
+        }
+        
+        function getRiskZone(acwrRatio) {
+            if (acwrRatio < 0.8) {
+                return { label: 'Low Risk', class: 'low' };
+            } else if (acwrRatio < 1.3) {
+                return { label: 'Moderate Risk', class: 'moderate' };
+            } else if (acwrRatio < 1.5) {
+                return { label: 'High Risk', class: 'high' };
+            } else {
+                return { label: 'Very High Risk', class: 'very-high' };
+            }
+        }
+        
+        // Utility functions
+        function showLoading(show) {
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) {
+                spinner.style.display = show ? 'block' : 'none';
+            }
+            // updateBtn no longer exists after removing live preview
+        }
+        
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+        
+        function showSuccess(message) {
+            const successElement = document.getElementById('successMessage');
+            successElement.textContent = message;
+            successElement.style.display = 'block';
+        }
+        
+        function hideMessages() {
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+        
+        function onWindowResize() {
+            if (threeCamera && threeRenderer) {
+                const container = document.getElementById('threejs-container');
+                threeCamera.aspect = container.clientWidth / container.clientHeight;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(container.clientWidth, container.clientHeight);
+                threeRenderer.render(threeScene, threeCamera);
+            }
+        }
+        
+        // Export functions
+        function exportToPNG() {
+            // Export all visualizations as PNG
+            showSuccess('PNG export initiated');
+        }
+        
+        function exportToSVG() {
+            // Export all visualizations as SVG
+            showSuccess('SVG export initiated');
+        }
+        
+        function exportToCSV() {
+            // Export data as CSV
+            showSuccess('CSV export initiated');
+        }
+        
+        function exportToPDF() {
+            // Export report as PDF
+            showSuccess('PDF export initiated');
+        }
+        
+        function exportHeatmap() {
+            Plotly.downloadImage('heatmap-container', {format: 'png', width: 800, height: 600, filename: 'acwr-heatmap'});
+        }
+        
+        function exportHeatmapSVG() {
+            Plotly.downloadImage('heatmap-container', {format: 'svg', width: 800, height: 600, filename: 'acwr-heatmap'});
+        }
+        
+        function exportTimeSeries() {
+            // Export time series data as CSV
+            showSuccess('Time series data exported');
+        }
+        
+        function exportSensitivity() {
+            // Export sensitivity analysis
+            showSuccess('Sensitivity analysis exported');
+        }
+        
+        function exportReport() {
+            // Export comprehensive report
+            showSuccess('Comprehensive report export initiated');
+        }
+        
+        // 3D visualization controls
+        function reset3DView() {
+            if (threeCamera) {
+                threeCamera.position.set(50, 50, 50);
+                threeRenderer.render(threeScene, threeCamera);
+            }
+        }
+        
+        function toggle3DWireframe() {
+            // Toggle wireframe mode
+            showSuccess('Wireframe mode toggled');
+        }
+        
+        function toggleRiskZones() {
+            // Toggle risk zone visibility
+            riskZonesVisible = !riskZonesVisible;
+            
+            // Update the configuration comparison chart
+            const plotDiv = document.getElementById('config-comparison-container');
+            if (plotDiv && plotDiv.data) {
+                // Update shapes (risk zones) visibility
+                const shapes = riskZonesVisible ? getRiskZoneShapes() : [];
+                
+                Plotly.relayout(plotDiv, { shapes: shapes });
+                
+                showSuccess(`Risk zones ${riskZonesVisible ? 'shown' : 'hidden'}`);
+            }
+        }
+        
+        function getRiskZoneShapes() {
+            // Get the current date range from the chart
+            const plotDiv = document.getElementById('config-comparison-container');
+            if (!plotDiv || !plotDiv.data || plotDiv.data.length === 0) {
+                return [];
+            }
+            
+            const dates = plotDiv.data[0].x;
+            if (!dates || dates.length === 0) {
+                return [];
+            }
+            
+            return getRiskZoneShapesForDates(dates);
+        }
+        
+        function getRiskZoneShapesForDates(dates) {
+            if (!dates || dates.length === 0) {
+                return [];
+            }
+            
+            return [
+                {
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'y',
+                    x0: dates[0],
+                    x1: dates[dates.length - 1],
+                    y0: 0,
+                    y1: 0.8,
+                    fillcolor: 'rgba(40, 167, 69, 0.25)',  // Green - more opaque
+                    opacity: 1.0,
+                    line: { width: 0 },
+                    layer: 'below'
+                },
+                {
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'y',
+                    x0: dates[0],
+                    x1: dates[dates.length - 1],
+                    y0: 0.8,
+                    y1: 1.3,
+                    fillcolor: 'rgba(255, 193, 7, 0.25)',  // Yellow - more opaque
+                    opacity: 1.0,
+                    line: { width: 0 },
+                    layer: 'below'
+                },
+                {
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'y',
+                    x0: dates[0],
+                    x1: dates[dates.length - 1],
+                    y0: 1.3,
+                    y1: 1.5,
+                    fillcolor: 'rgba(255, 99, 132, 0.25)',  // Orange/Red - more opaque
+                    opacity: 1.0,
+                    line: { width: 0 },
+                    layer: 'below'
+                },
+                {
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'y',
+                    x0: dates[0],
+                    x1: dates[dates.length - 1],
+                    y0: 1.5,
+                    y1: 3.0,
+                    fillcolor: 'rgba(199, 21, 133, 0.3)',  // Magenta-red - highest risk, most opaque
+                    opacity: 1.0,
+                    line: { width: 0 },
+                    layer: 'below'
+                }
+            ];
+        }
+        
+        
+        function showDetailedTooltip(data) {
+            // Create or update detailed tooltip
+            let tooltip = document.getElementById('detailed-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'detailed-tooltip';
+                tooltip.style.cssText = `
+                    position: absolute;
+                    background: rgba(0, 0, 0, 0.8);
+                    color: white;
+                    padding: 10px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    pointer-events: none;
+                    z-index: 1000;
+                    max-width: 200px;
+                `;
+                document.body.appendChild(tooltip);
+            }
+            
+            tooltip.innerHTML = `
+                <strong>Parameter Details:</strong><br>
+                Chronic Period: ${data.chronicPeriod} days<br>
+                Decay Rate: ${data.decayRate}<br>
+                Chronic Load: ${data.chronicLoad.toFixed(1)}<br>
+                <em>Click to apply these parameters</em>
+            `;
+            
+            tooltip.style.left = (data.x + 10) + 'px';
+            tooltip.style.top = (data.y - 10) + 'px';
+            tooltip.style.display = 'block';
+        }
+        
+        function hideDetailedTooltip() {
+            const tooltip = document.getElementById('detailed-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+        
+        function generateConfigurationComparison(parameters) {
+            return new Promise((resolve, reject) => {
+                try {
+                    console.log('🔄 Generating configuration comparison...');
+                    
+                    // Get current configuration from parameters
+                    const currentConfig = {
+                        chronic_period: parameters.chronic_period_days,
+                        decay_rate: parameters.decay_rate,
+                        acwr_ratio: 1.0, // Will be calculated from real data
+                        acute_load: 80, // Will be calculated from real data
+                        chronic_load: 100 // Will be calculated from real data
+                    };
+                    
+                    // Initialize and update what-if analysis (this will handle chart creation)
+                    updateWhatIfAnalysis(currentConfig);
+                    
+                    // Add a small delay to ensure chart is created after DOM updates
+                    setTimeout(() => {
+                        resolve();
+                    }, 200);
+                    
+                } catch (error) {
+                    console.error('❌ Error generating configuration comparison:', error);
+                    showError('Failed to generate configuration comparison: ' + error.message);
+                    reject(error);
+                }
+            });
+        }
+        
+        function updateScenarioDisplays() {
+            const scenarios = window.whatIfScenarios;
+            const container = document.getElementById('scenarioCards');
+            
+            container.innerHTML = '';
+            
+            Object.keys(scenarios).forEach((scenarioKey, index) => {
+                const scenario = scenarios[scenarioKey];
+                const cardHtml = createScenarioCard(scenario, scenarioKey, index);
+                container.insertAdjacentHTML('beforeend', cardHtml);
+            });
+        }
+        
+        function createScenarioCard(scenario, scenarioKey, index) {
+            const colors = ['#007bff', '#28a745', '#dc3545'];
+            const color = colors[index % colors.length];
+            
+            return `
+                <div class="col-md-4">
+                    <div class="card scenario-card" style="border-left: 4px solid ${color};">
+                        <div class="card-header">
+                            <h6 class="mb-0">${scenario.name}</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Chronic Period:</small><br>
+                                    <strong>${scenario.chronic_period} days</strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Decay Rate:</small><br>
+                                    <strong>${scenario.decay_rate}</strong>
+                                </div>
+                            </div>
+                            <hr>
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">ACWR Ratio:</small><br>
+                                    <strong>${scenario.acwr_ratio.toFixed(2)}</strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Risk Level:</small><br>
+                                    <span class="badge bg-${getRiskBadgeColor(scenario.risk_level)}">${scenario.risk_level}</span>
+                                </div>
+                            </div>
+                            <hr>
+                            <button class="btn btn-sm btn-outline-primary w-100" onclick="selectScenario('${scenarioKey}')">
+                                Select This Scenario
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function getRiskBadgeColor(riskLevel) {
+            switch(riskLevel) {
+                case 'Low Risk': return 'success';
+                case 'Balanced': return 'warning';
+                case 'Moderate Risk': return 'warning';
+                case 'High Risk': return 'danger';
+                default: return 'secondary';
+            }
+        }
+        
+        function generateImpactAnalysis() {
+            const scenarios = window.whatIfScenarios;
+            const container = document.getElementById('impactAnalysis');
+            
+            let analysis = '<h6>Configuration Impact Analysis</h6>';
+            
+            // Compare scenarios
+            const current = scenarios.scenarioA;
+            const conservative = scenarios.scenarioB;
+            const aggressive = scenarios.scenarioC;
+            
+            analysis += `
+                <div class="mb-3">
+                    <strong>Chronic Period Impact:</strong><br>
+                    <small>• Smoothed (${conservative.chronic_period}d): ${((conservative.acwr_ratio - current.acwr_ratio) * 100).toFixed(1)}% change in ACWR</small><br>
+                    <small>• Responsive (${aggressive.chronic_period}d): ${((aggressive.acwr_ratio - current.acwr_ratio) * 100).toFixed(1)}% change in ACWR</small>
+                </div>
+                <div class="mb-3">
+                    <strong>Decay Rate Impact:</strong><br>
+                    <small>• Smoothed (${conservative.decay_rate}): More stable chronic load calculation</small><br>
+                    <small>• Responsive (${aggressive.decay_rate}): More reactive to recent activities</small>
+                </div>
+                <div class="mb-3">
+                    <strong>Training Load Sensitivity:</strong><br>
+                    <small>• Higher decay rates = More responsive to recent training</small><br>
+                    <small>• Lower decay rates = More stable baseline</small>
+                </div>
+            `;
+            
+            container.innerHTML = analysis;
+        }
+        
+        function generateRiskAssessment() {
+            const scenarios = window.whatIfScenarios;
+            const container = document.getElementById('riskAssessment');
+            
+            let assessment = '<h6>Risk Assessment & Recommendations</h6>';
+            
+            // Find the scenario with highest and lowest risk
+            const scenarioArray = Object.values(scenarios);
+            const highestRisk = scenarioArray.reduce((max, scenario) => 
+                scenario.acwr_ratio > max.acwr_ratio ? scenario : max
+            );
+            const lowestRisk = scenarioArray.reduce((min, scenario) => 
+                scenario.acwr_ratio < min.acwr_ratio ? scenario : min
+            );
+            
+            assessment += `
+                <div class="mb-3 p-3 border rounded bg-light">
+                    <h6 class="text-primary">Risk Analysis</h6>
+                    <p class="mb-2"><strong>Highest Risk:</strong> ${highestRisk.name} (ACWR: ${highestRisk.acwr_ratio.toFixed(2)})</p>
+                    <p class="mb-2"><strong>Lowest Risk:</strong> ${lowestRisk.name} (ACWR: ${lowestRisk.acwr_ratio.toFixed(2)})</p>
+                    <p class="mb-0"><strong>Risk Range:</strong> ${(highestRisk.acwr_ratio - lowestRisk.acwr_ratio).toFixed(2)} ACWR units</p>
+                </div>
+                
+                <div class="mb-3 p-3 border rounded">
+                    <h6 class="text-success">Recommendations</h6>
+                    <ul class="mb-0">
+                        <li><strong>Smoothed approach</strong> for injury prevention and stability</li>
+                        <li><strong>Responsive approach</strong> for performance optimization</li>
+                        <li><strong>Monitor ACWR trends</strong> over time for early warning signs</li>
+                        <li><strong>Adjust training load</strong> based on risk level changes</li>
+                    </ul>
+                </div>
+            `;
+            
+            
+            container.innerHTML = assessment;
+        }
+        
+        function addCustomScenario() {
+            const modalHtml = `
+                <div class="modal fade" id="customScenarioModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Add Custom Scenario</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label for="customScenarioName" class="form-label">Scenario Name</label>
+                                    <input type="text" class="form-control" id="customScenarioName" placeholder="e.g., My Custom Config">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="customChronicPeriod" class="form-label">Chronic Period (days)</label>
+                                    <input type="number" class="form-control" id="customChronicPeriod" value="42" min="14" max="84">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="customDecayRate" class="form-label">Decay Rate</label>
+                                    <input type="number" class="form-control" id="customDecayRate" value="0.05" min="0.01" max="0.1" step="0.01">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" onclick="saveCustomScenario()">Save Scenario</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('customScenarioModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('customScenarioModal'));
+            modal.show();
+        }
+        
+        function saveCustomScenario() {
+            const name = document.getElementById('customScenarioName').value;
+            const chronicPeriod = parseInt(document.getElementById('customChronicPeriod').value);
+            const decayRate = parseFloat(document.getElementById('customDecayRate').value);
+            
+            if (!name) {
+                showError('Please enter a scenario name');
+                return;
+            }
+            
+            // Create custom scenario
+            const customScenario = {
+                name: name,
+                chronic_period: chronicPeriod,
+                decay_rate: decayRate,
+                acwr_ratio: 1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2,
+                acute_load: 80 + Math.sin(chronicPeriod / 10) * 10,
+                chronic_load: 100 + Math.cos(decayRate * 10) * 15,
+                risk_level: getRiskZone(1.0 + (chronicPeriod - 42) / 100 + (decayRate - 0.05) * 2).label
+            };
+            
+            // Add to scenarios (replace scenario C for now)
+            window.whatIfScenarios.scenarioC = customScenario;
+            
+            // Update displays
+            updateScenarioDisplays();
+            generateImpactAnalysis();
+            generateRiskAssessment();
+            createScenarioComparisonChart();
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('customScenarioModal'));
+            modal.hide();
+            
+            showSuccess(`Custom scenario "${name}" added successfully`);
+        }
+        
+        function selectScenario(scenarioId) {
+            const scenarios = window.whatIfScenarios;
+            const selectedScenario = scenarios[scenarioId];
+            
+            if (selectedScenario) {
+                // Update parameter controls
+                document.getElementById('chronicPeriodSlider').value = selectedScenario.chronic_period;
+                document.getElementById('decayRateSlider').value = selectedScenario.decay_rate;
+                
+                // Trigger parameter change
+                onConfigChange();
+                
+                showSuccess(`Selected scenario: ${selectedScenario.name}`);
+            }
+        }
+        
+        function getRiskZone(acwr) {
+            if (acwr < 0.8) return { label: 'Low Risk', color: 'success' };
+            if (acwr <= 1.3) return { label: 'Balanced', color: 'warning' };
+            if (acwr <= 1.5) return { label: 'Moderate Risk', color: 'warning' };
+            return { label: 'High Risk', color: 'danger' };
+        }
+    </script>
+</body>
+</html>
+

@@ -1286,9 +1286,10 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showAlert(`Recalculation started successfully! Operation ID: ${data.operation_id}`, 'success');
+                    showAlert(`Recalculation completed successfully! Processed ${data.success_count} activities`, 'success');
                     document.getElementById('recalculation-status-section').style.display = 'block';
-                    updateRecalculationStatus(data.operation_id);
+                    // Refresh the status display
+                    checkRecalculationStatus();
                 } else {
                     showAlert('Error starting recalculation: ' + data.error, 'danger');
                 }
@@ -1318,6 +1319,11 @@
 
         // Update recalculation status for specific operation
         async function updateRecalculationStatus(operationId) {
+            if (!operationId || operationId === 'undefined') {
+                console.warn('updateRecalculationStatus called with invalid operationId:', operationId);
+                return;
+            }
+            
             try {
                 const response = await fetch(`/api/admin/trimp-operations/${operationId}`);
                 const data = await response.json();

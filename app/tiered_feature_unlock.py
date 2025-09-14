@@ -580,7 +580,7 @@ class TieredFeatureUnlockManager:
                 # PostgreSQL syntax
                     cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = %s", (user_id,))
                 else:
-                    cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = ?", (user_id,))
+                    cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = %s", (user_id,))
                 return cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Error getting activity count for user {user_id}: {str(e)}")
@@ -601,7 +601,7 @@ class TieredFeatureUnlockManager:
                     cursor.execute("""
                         SELECT COUNT(DISTINCT date) 
                         FROM activities 
-                        WHERE user_id = ?
+                        WHERE user_id = %s
                     """, (user_id,))
                 return cursor.fetchone()[0]
         except Exception as e:
@@ -625,7 +625,7 @@ class TieredFeatureUnlockManager:
                     """, (user_id,))
                 else:
                     cursor.execute("""
-                        SELECT created_at FROM user_settings WHERE user_id = ?
+                        SELECT created_at FROM user_settings WHERE user_id = %s
                     """, (user_id,))
                 
                 result = cursor.fetchone()

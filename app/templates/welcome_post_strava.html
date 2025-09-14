@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to TrainingMonkey! - Strava Connected</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .welcome-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            padding: 3rem 2rem;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            animation: slideInUp 0.8s ease-out;
+        }
+
+        .welcome-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem auto;
+            animation: bounceIn 1s ease-out 0.3s both;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+        }
+
+        .success-icon svg {
+            width: 40px;
+            height: 40px;
+            color: white;
+            stroke-width: 3;
+        }
+
+        .welcome-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 1rem;
+            animation: fadeInUp 0.8s ease-out 0.5s both;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.2rem;
+            color: #64748b;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+            animation: fadeInUp 0.8s ease-out 0.7s both;
+        }
+
+        .connection-status {
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            animation: fadeInUp 0.8s ease-out 0.9s both;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-icon {
+            width: 24px;
+            height: 24px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status-icon svg {
+            width: 14px;
+            height: 14px;
+            color: white;
+        }
+
+        .status-text {
+            font-weight: 600;
+            color: #059669;
+            font-size: 1.1rem;
+        }
+
+        .connection-details {
+            color: #374151;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .next-steps {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            animation: fadeInUp 0.8s ease-out 1.1s both;
+        }
+
+        .next-steps h3 {
+            color: #1e293b;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .step-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0;
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+
+        .step-item:not(:last-child) {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .step-number {
+            width: 24px;
+            height: 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            animation: fadeInUp 0.8s ease-out 1.3s both;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.2);
+        }
+
+        .strava-branding {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            animation: fadeInUp 0.8s ease-out 1.5s both;
+        }
+
+        .strava-logo {
+            height: 20px;
+            width: auto;
+            opacity: 0.7;
+        }
+
+        /* Animations */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.1);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .welcome-container {
+                padding: 2rem 1.5rem;
+                margin: 1rem;
+            }
+
+            .welcome-title {
+                font-size: 2rem;
+            }
+
+            .welcome-subtitle {
+                font-size: 1.1rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                padding: 0.875rem 1.25rem;
+            }
+        }
+
+        /* Loading state */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .loading .btn {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .loading .btn::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: loadingShimmer 1.5s infinite;
+        }
+
+        @keyframes loadingShimmer {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome-container">
+        <!-- Success Icon -->
+        <div class="success-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4"></path>
+                <circle cx="12" cy="12" r="10"></circle>
+            </svg>
+        </div>
+
+        <!-- Welcome Message -->
+        <h1 class="welcome-title">Welcome to TrainingMonkey!</h1>
+        <p class="welcome-subtitle">
+            🎉 Your Strava account has been successfully connected!<br>
+            We're now ready to analyze your training data and provide personalized insights.
+        </p>
+
+        <!-- Connection Status -->
+        <div class="connection-status">
+            <div class="status-header">
+                <div class="status-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22,4 12,14.01 9,11.01"></polyline>
+                    </svg>
+                </div>
+                <span class="status-text">Strava Connected Successfully</span>
+            </div>
+            <div class="connection-details">
+                Your training data is now syncing with TrainingMonkey. 
+                We'll analyze your activities and provide personalized recommendations based on your training patterns.
+            </div>
+        </div>
+
+        <!-- Next Steps -->
+        <div class="next-steps">
+            <h3>What's Next?</h3>
+            <ul class="step-list">
+                <li class="step-item">
+                    <div class="step-number">1</div>
+                    <span>Set your training goals to get personalized insights</span>
+                </li>
+                <li class="step-item">
+                    <div class="step-number">2</div>
+                    <span>Let us analyze your training data (takes a few minutes)</span>
+                </li>
+                <li class="step-item">
+                    <div class="step-number">3</div>
+                    <span>Start receiving AI-powered training recommendations</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <a href="/goals-setup" class="btn btn-primary" id="setGoalsBtn">
+                Set My Goals
+            </a>
+            <a href="/dashboard" class="btn btn-secondary" id="viewDashboardBtn">
+                View Dashboard
+            </a>
+        </div>
+
+        <!-- Strava Branding -->
+        <div class="strava-branding">
+            <img 
+                src="/static/powered-by-strava-orange.svg" 
+                alt="Powered by Strava"
+                class="strava-logo"
+                onerror="handleLogoError(this)"
+            >
+        </div>
+    </div>
+
+    <script>
+        // Track welcome page view
+        document.addEventListener('DOMContentLoaded', function() {
+            // Analytics tracking
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'strava_connected_welcome', {
+                    'event_category': 'onboarding',
+                    'event_label': 'strava_connection_success'
+                });
+            }
+
+            // Track button clicks
+            document.getElementById('setGoalsBtn').addEventListener('click', function() {
+                trackButtonClick('set_goals');
+            });
+
+            document.getElementById('viewDashboardBtn').addEventListener('click', function() {
+                trackButtonClick('view_dashboard');
+            });
+
+            // Auto-redirect after 30 seconds if user doesn't interact
+            setTimeout(function() {
+                if (!document.querySelector('.loading')) {
+                    showAutoRedirect();
+                }
+            }, 30000);
+        });
+
+        function trackButtonClick(action) {
+            // Analytics tracking
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'welcome_page_action', {
+                    'event_category': 'onboarding',
+                    'event_label': action
+                });
+            }
+
+            // Add loading state
+            document.querySelector('.welcome-container').classList.add('loading');
+        }
+
+        function showAutoRedirect() {
+            // Show a subtle notification about auto-redirect
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                z-index: 1000;
+                animation: fadeInUp 0.3s ease-out;
+            `;
+            notification.innerHTML = 'Redirecting to dashboard in 10 seconds...';
+            document.body.appendChild(notification);
+
+            // Auto-redirect after 10 more seconds
+            setTimeout(function() {
+                window.location.href = '/dashboard';
+            }, 10000);
+        }
+
+        function handleLogoError(img) {
+            // Fallback for Powered by Strava logo if SVG fails to load
+            img.style.display = 'none';
+            const fallbackText = document.createElement('span');
+            fallbackText.innerHTML = 'POWERED BY STRAVA';
+            fallbackText.style.cssText = `
+                font-weight: bold;
+                color: #FC5200;
+                font-size: 14px;
+                letter-spacing: 0.5px;
+            `;
+            img.parentNode.appendChild(fallbackText);
+        }
+
+        // Add some interactive feedback
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-2px)';
+            });
+
+            btn.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+
+        // Add click animation to success icon
+        document.querySelector('.success-icon').addEventListener('click', function() {
+            this.style.animation = 'none';
+            setTimeout(() => {
+                this.style.animation = 'bounceIn 0.6s ease-out';
+            }, 10);
+        });
+    </script>
+</body>
+</html>

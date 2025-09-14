@@ -66,8 +66,8 @@ class UnifiedMetricsService:
                     average_speed_mph,
                     activity_id
                 FROM activities 
-                WHERE user_id = ? 
-                AND date BETWEEN ? AND ?
+                WHERE user_id = %s 
+                AND date BETWEEN %s AND %s
                 ORDER BY date, activity_id
                 """,
                 (user_id, start_date, end_date),
@@ -176,8 +176,8 @@ class UnifiedMetricsService:
                     AVG(total_load_miles) as avg_load_per_activity,
                     SUM(trimp) as total_trimp
                 FROM activities 
-                WHERE user_id = ? 
-                AND date BETWEEN ? AND ?
+                WHERE user_id = %s 
+                AND date BETWEEN %s AND %s
                 AND activity_id > 0  -- Exclude rest days
                 GROUP BY sport_type
                 ORDER BY total_load DESC
@@ -206,14 +206,14 @@ class UnifiedMetricsService:
             params = [user_id]
 
             if start_date and end_date:
-                date_filter = "AND date BETWEEN ? AND ?"
+                date_filter = "AND date BETWEEN %s AND %s"
                 params.extend([start_date, end_date])
 
             result = execute_query(
                 f"""
                 SELECT COUNT(*) as cycling_count
                 FROM activities 
-                WHERE user_id = ? 
+                WHERE user_id = %s 
                 AND sport_type = 'cycling'
                 {date_filter}
                 """,
@@ -248,7 +248,7 @@ class UnifiedMetricsService:
             latest_activity = execute_query(
                 """
                 SELECT * FROM activities 
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY date DESC 
                 LIMIT 1
                 """,
@@ -325,7 +325,7 @@ class UnifiedMetricsService:
 
             # Find the most recent date explicitly marked as a rest day for this user
             last_rest_day_record = execute_query(
-                "SELECT date FROM activities WHERE type = 'rest' AND user_id = ? ORDER BY date DESC LIMIT 1",
+                "SELECT date FROM activities WHERE type = 'rest' AND user_id = %s ORDER BY date DESC LIMIT 1",
                 (user_id,),
                 fetch=True
             )
@@ -334,7 +334,7 @@ class UnifiedMetricsService:
                 logger.warning(f"No explicit rest day (type='rest') found for user {user_id}")
                 # If no 'type=rest' day is found, calculate days since the very first record for this user
                 first_ever_record = execute_query(
-                    "SELECT date FROM activities WHERE user_id = ? ORDER BY date ASC LIMIT 1",
+                    "SELECT date FROM activities WHERE user_id = %s ORDER BY date ASC LIMIT 1",
                     (user_id,),
                     fetch=True
                 )
@@ -436,7 +436,7 @@ class UnifiedMetricsService:
             activities = execute_query(
                 """
                 SELECT * FROM activities 
-                WHERE date >= ? AND user_id = ?
+                WHERE date >= %s AND user_id = %s
                 ORDER BY date
                 """,
                 (start_date, user_id),
@@ -484,7 +484,7 @@ class UnifiedMetricsService:
 
             # Get the same data directly from database
             latest_from_db = execute_query(
-                "SELECT * FROM activities WHERE user_id = ? ORDER BY date DESC LIMIT 1",
+                "SELECT * FROM activities WHERE user_id = %s ORDER BY date DESC LIMIT 1",
                 (user_id,),
                 fetch=True
             )

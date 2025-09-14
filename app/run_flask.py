@@ -11,7 +11,7 @@ if __name__ == '__main__':
     for rule in app.url_map.iter_rules():
         print(f"  {rule.rule} -> {rule.endpoint}")
     
-    print("\nStarting server on http://localhost:5001")
+    print("\nStarting server on http://localhost:5000")
     print("Press Ctrl+C to stop")
     
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=5000)

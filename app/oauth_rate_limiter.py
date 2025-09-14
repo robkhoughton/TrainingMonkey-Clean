@@ -112,7 +112,7 @@ class OAuthRateLimiter:
             db_utils.execute_query(
                 """INSERT INTO oauth_security_log 
                    (event_type, event_data, timestamp, ip_address, user_agent)
-                   VALUES (?, ?, ?, ?, ?)""",
+                   VALUES (%s)""",
                 (
                     event_type,
                     json.dumps(event_data),
@@ -380,7 +380,7 @@ class OAuthSecurityMonitor:
             query = """
                 SELECT event_type, event_data, timestamp, ip_address, user_agent
                 FROM oauth_security_log 
-                WHERE timestamp > ?
+                WHERE timestamp > %s
                 ORDER BY timestamp DESC
             """
             
@@ -546,7 +546,7 @@ def cleanup_oauth_security_data():
         cutoff_date = datetime.now() - timedelta(days=30)
         
         db_utils.execute_query(
-            "DELETE FROM oauth_security_log WHERE timestamp < ?",
+            "DELETE FROM oauth_security_log WHERE timestamp < %s",
             (cutoff_date.isoformat(),),
             fetch=False
         )

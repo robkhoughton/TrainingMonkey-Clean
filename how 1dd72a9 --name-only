@@ -1,0 +1,28 @@
+[33mcommit 1dd72a97d22d3bc0a684c8691db294d3f0ba9a68[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: robkhoughton <rob.houghton.ca@gmail.com>
+Date:   Sun Sep 7 10:27:39 2025 -0700
+
+    removed local database compatibility
+
+.gitignore
+app/auth.py
+app/db_utils.py
+app/elevation_migration_module.py
+app/email_validation.py
+app/legal_compliance.py
+app/new_user_dashboard.py
+app/onboarding_analytics.py
+app/onboarding_completion_tracker.py
+app/onboarding_manager.py
+app/onboarding_progress_tracker.py
+app/onboarding_tutorial_system.py
+app/progressive_feature_triggers.py
+app/strava_app.py
+app/tiered_feature_unlock.py
+scripts/Before.txt
+scripts/Deployment_script.txt
+scripts/Git_Commit_Checklist.md
+scripts/PRD_Workflow.md
+scripts/create-prd.md
+scripts/generate-tasks.md
+scripts/process-task-list.md

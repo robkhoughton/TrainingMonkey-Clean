@@ -168,35 +168,20 @@ class EmailValidator:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    if exclude_user_id:
-                        query = """
-                        SELECT id, account_status, created_at 
-                        FROM users 
-                        WHERE LOWER(email) = LOWER(%s) AND id != %s
-                        """
-                        cursor.execute(query, (email, exclude_user_id))
-                    else:
-                        query = """
-                        SELECT id, account_status, created_at 
-                        FROM users 
-                        WHERE LOWER(email) = LOWER(%s)
-                        """
-                        cursor.execute(query, (email,))
+                if exclude_user_id:
+                    query = """
+                    SELECT id, account_status, created_at 
+                    FROM users 
+                    WHERE LOWER(email) = LOWER(%s) AND id != %s
+                    """
+                    cursor.execute(query, (email, exclude_user_id))
                 else:
-                    if exclude_user_id:
-                        query = """
-                        SELECT id, account_status, created_at 
-                        FROM users 
-                        WHERE LOWER(email) = LOWER(?) AND id != ?
-                        """
-                        cursor.execute(query, (email, exclude_user_id))
-                    else:
-                        query = """
-                        SELECT id, account_status, created_at 
-                        FROM users 
-                        WHERE LOWER(email) = LOWER(?)
-                        """
-                        cursor.execute(query, (email,))
+                    query = """
+                    SELECT id, account_status, created_at 
+                    FROM users 
+                    WHERE LOWER(email) = LOWER(%s)
+                    """
+                    cursor.execute(query, (email,))
                 
                 result = cursor.fetchone()
                 

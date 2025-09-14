@@ -585,7 +585,16 @@
                 <button class="demo-btn" onclick="showScenario('high-risk')">High Risk</button>
             </div>
 
-            <p style="color: #64748b; font-style: italic;">Interactive demo—click the scenarios above to see different training states</p>
+            <!-- Scenario Description -->
+            <div class="scenario-description" id="scenarioDescription">
+                <p style="color: #64748b; font-style: italic; text-align: center; margin-top: 1rem;">
+                    Perfect balance - train with confidence
+                </p>
+            </div>
+            
+            <p style="color: #64748b; font-style: italic; text-align: center; margin-top: 0.5rem;">
+                Interactive demo—click the scenarios above to see different training states
+            </p>
         </div>
     </section>
 
@@ -630,6 +639,19 @@
             <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
                 Need 28+ days of training data for complete analysis
             </p>
+            
+            <!-- Help Link -->
+            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.2);">
+                <p style="margin-bottom: 1rem; opacity: 0.9; font-size: 1rem;">
+                    Need help getting started?
+                </p>
+                <a href="/getting-started?source=onboarding" onclick="trackGettingStartedClick()" 
+                   style="display: inline-block; background: rgba(255,255,255,0.1); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.2); transition: all 0.3s ease; backdrop-filter: blur(10px);"
+                   onmouseover="this.style.background='rgba(255,255,255,0.2)'; this.style.borderColor='rgba(255,255,255,0.3)'"
+                   onmouseout="this.style.background='rgba(255,255,255,0.1)'; this.style.borderColor='rgba(255,255,255,0.2)'">
+                    View Getting Started Guide
+                </a>
+            </div>
         </div>
     </section>
 
@@ -701,3 +723,66 @@
             const scenario = scenarios[scenarioKey];
             const line = document.getElementById('divergenceLine');
             const point = document.getElementById('divergencePoint');
+            const statusIndicator = document.getElementById('statusIndicator');
+            const scenarioDescription = document.getElementById('scenarioDescription');
+            
+            if (!scenario || !line || !point || !statusIndicator || !scenarioDescription) return;
+            
+            // Update divergence point position
+            point.style.left = scenario.position + '%';
+            
+            // Update status indicator
+            statusIndicator.className = 'status-indicator ' + scenario.color;
+            statusIndicator.innerHTML = '<span>●</span> ' + scenario.status;
+            
+            // Update scenario description
+            scenarioDescription.innerHTML = '<p style="color: #64748b; font-style: italic; text-align: center; margin-top: 1rem;">' + scenario.description + '</p>';
+            
+            // Update button states
+            document.querySelectorAll('.demo-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Add smooth transition
+            point.style.transition = 'left 0.5s ease-in-out';
+            statusIndicator.style.transition = 'all 0.3s ease-in-out';
+            scenarioDescription.style.transition = 'opacity 0.3s ease-in-out';
+            
+            // Track demo interaction
+            trackDemoInteraction(scenarioKey);
+        }
+        
+        function trackDemoInteraction(scenarioKey) {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'demo_interaction',
+                    event_data: {
+                        scenario: scenarioKey,
+                        source: 'onboarding',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+        }
+
+        function trackGettingStartedClick() {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                        button: 'getting_started_guide',
+                        source: 'onboarding',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+        }

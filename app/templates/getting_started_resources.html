@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started - TrainingMonkey</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Learn how to get started with TrainingMonkey's training load divergence analysis. Connect Strava, import your data, and get instant insights.">
+    <meta name="keywords" content="getting started, training analysis, Strava integration, trail running, training load">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Getting Started with TrainingMonkey">
+    <meta property="og:description" content="Everything you need to know to get started with TrainingMonkey's training analysis">
+    <meta property="og:url" content="{{ request.url }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+
+    <!-- Getting Started CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/getting_started.css') }}">
+</head>
+<body data-user-authenticated="{{ 'true' if user_context and user_context.is_authenticated else 'false' }}">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1>Getting Started with TrainingMonkey</h1>
+            <p class="subtitle">Everything you need to know to unlock your training potential</p>
+            <p class="description">Learn how to connect Strava, import your data, and get instant insights into your training load divergence.</p>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-content">
+            <a href="/" class="nav-logo">TrainingMonkey</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/getting-started">Getting Started</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Contextual Banner -->
+        <div class="contextual-banner" id="contextual-banner" style="display: none;">
+            <h2 id="contextual-title">Welcome!</h2>
+            <p id="contextual-message">Let's get you started with TrainingMonkey.</p>
+        </div>
+
+        <!-- Onboarding Progress Banner -->
+        {% if user_context and user_context.onboarding_step %}
+        <div class="contextual-banner" id="onboarding-progress-banner">
+            <h2>Your Onboarding Progress</h2>
+            <p>You're currently at: <strong>{{ user_context.onboarding_step_display }}</strong></p>
+            {% if user_context.next_steps %}
+            <p><strong>Next:</strong> {{ user_context.next_steps }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- What You'll Get Section -->
+        <section class="benefits-section">
+            <h2 class="animate-on-scroll">What You'll Get</h2>
+            <div class="benefits-grid">
+                <div class="benefit-card animate-on-scroll animate-delay-1">
+                    <span class="benefit-icon">🎯</span>
+                    <h3>Find Your Sweet Spot</h3>
+                    <p>Discover the optimal training load that maximizes performance while minimizing injury risk through our divergence analysis.</p>
+                </div>
+                <div class="benefit-card animate-on-scroll animate-delay-2">
+                    <span class="benefit-icon">🛡️</span>
+                    <h3>Injury Risk, Made Obvious</h3>
+                    <p>See when your internal stress (TRIMP) exceeds external load, indicating potential overtraining and injury risk.</p>
+                </div>
+                <div class="benefit-card animate-on-scroll animate-delay-3">
+                    <span class="benefit-icon">🏔️</span>
+                    <h3>Built for Vert</h3>
+                    <p>Our analysis accounts for elevation gain and trail running specifics that other platforms miss.</p>
+                </div>
+                <div class="benefit-card animate-on-scroll animate-delay-4">
+                    <span class="benefit-icon">🤖</span>
+                    <h3>AI Recommendations</h3>
+                    <p>Get personalized training recommendations based on your unique divergence patterns and goals.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Demo Section -->
+        <section class="demo-section">
+            <h2>See It In Action</h2>
+            <div class="demo-container">
+                <p>Experience how TrainingMonkey analyzes your training data to reveal insights your Garmin can't show you.</p>
+                
+                <!-- Value Proposition Over Garmin/Coros -->
+                <div class="value-proposition-card">
+                    <h4>Why TrainingMonkey vs. Garmin/Coros Analytics?</h4>
+                    <div class="comparison-grid">
+                        <div class="comparison-item">
+                            <div class="comparison-icon">📊</div>
+                            <h5>Garmin/Coros</h5>
+                            <p>Shows what you did<br><em>(External load only)</em></p>
+                        </div>
+                        <div class="comparison-arrow">→</div>
+                        <div class="comparison-item highlight">
+                            <div class="comparison-icon">🎯</div>
+                            <h5>TrainingMonkey</h5>
+                            <p>Shows if your body can handle it<br><em>(Divergence analysis)</em></p>
+                        </div>
+                    </div>
+                    <p class="value-summary">Our patent-pending technology compares external vs. internal load to spot dangerous imbalances weeks before they become injuries.</p>
+                </div>
+                
+                <!-- Interactive Demo -->
+                <div class="chart-demo">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Training Load Divergence</h3>
+                        <div class="status-indicator status-sweet-spot" id="statusIndicator">
+                            <span>●</span> Sweet Spot
+                        </div>
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="chart-zones">
+                            <div class="zone-label">High Risk</div>
+                            <div class="zone-label">Caution</div>
+                            <div class="zone-label">Sweet Spot</div>
+                            <div class="zone-label">Caution</div>
+                            <div class="zone-label">High Risk</div>
+                        </div>
+                        <div class="divergence-line" id="divergenceLine" style="left: 50%;"></div>
+                        <div class="divergence-point" id="divergencePoint" style="left: 50%; top: 60%;"></div>
+                    </div>
+
+                    <div class="chart-axis">
+                        <span class="axis-label">External Load Too High</span>
+                        <span class="axis-label">Perfect Balance</span>
+                        <span class="axis-label">Internal Load Too High</span>
+                    </div>
+
+                    <!-- Enhanced Scenario Information -->
+                    <div class="scenario-info">
+                        <div class="scenario-description" id="scenarioDescription">
+                            Perfect balance - train with confidence
+                        </div>
+                        <div class="scenario-metrics">
+                            <div class="metric">
+                                <span class="metric-label">External Load:</span>
+                                <span class="metric-value" id="externalLoadValue">0.85</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Internal Load:</span>
+                                <span class="metric-value" id="internalLoadValue">0.82</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Divergence:</span>
+                                <span class="metric-value" id="divergenceValue">0.03</span>
+                            </div>
+                        </div>
+                        <div class="scenario-recommendation" id="scenarioRecommendation">
+                            Continue current training intensity
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Demo Controls -->
+                <div class="demo-controls">
+                    <button class="demo-btn active" onclick="showScenario('sweet-spot')">Optimal Training</button>
+                    <button class="demo-btn" onclick="showScenario('overreaching')">Overreaching</button>
+                    <button class="demo-btn" onclick="showScenario('undertrained')">Recovery Phase</button>
+                    <button class="demo-btn" onclick="showScenario('high-risk')">High Risk</button>
+                </div>
+
+                <p style="color: #64748b; font-style: italic; margin-top: 1rem;">Interactive demo—click the scenarios above to see different training states</p>
+            </div>
+        </section>
+
+        <!-- AI Recommendation Display -->
+        <section class="ai-recommendation-section">
+            <div class="ai-recommendation-container">
+                <h2>AI-Powered Training Recommendations</h2>
+                <p>See how our AI adapts recommendations based on your training state</p>
+                
+                <div class="ai-recommendation-card animate-on-scroll">
+                    <div class="ai-header">
+                        <div class="ai-avatar">🤖</div>
+                        <div class="ai-info">
+                            <h3>TrainingMonkey AI</h3>
+                            <span class="ai-timestamp" id="aiTimestamp">Today at 2:30 PM</span>
+                        </div>
+                        <div class="ai-status" id="aiStatus">Active</div>
+                    </div>
+                    
+                    <div class="ai-recommendation-content">
+                        <div class="recommendation-type" id="recommendationType">Training Decision</div>
+                        <div class="recommendation-text" id="recommendationText">
+                            <strong>Continue current training intensity.</strong> Your external and internal loads are well-balanced, indicating optimal training adaptation. Maintain your current pace and intensity for the next 3-5 days.
+                        </div>
+                        
+                        <div class="recommendation-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Confidence:</span>
+                                <span class="detail-value" id="confidenceValue">92%</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Risk Level:</span>
+                                <span class="detail-value" id="riskLevelValue">Low</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Next Check:</span>
+                                <span class="detail-value" id="nextCheckValue">Tomorrow</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="ai-actions">
+                        <button class="ai-action-btn primary" onclick="tryDifferentScenario()">
+                            Try Different Scenario
+                        </button>
+                        <button class="ai-action-btn secondary" onclick="explainRecommendation()">
+                            Explain This
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="scenario-explanation" id="scenarioExplanation" style="display: none;">
+                    <h4>Why This Recommendation?</h4>
+                    <p id="explanationText">This recommendation is based on your current training load divergence analysis. When external and internal loads are balanced, it indicates your body is adapting well to training stress.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Why 28 Days Section -->
+        <section class="why-28-days-section">
+            <div class="why-28-days-container">
+                <h2>Why 28 Days?</h2>
+                <p class="section-subtitle">Understanding the science behind our data requirements</p>
+                
+                <div class="explanation-grid">
+                    <div class="explanation-card animate-on-scroll">
+                        <div class="card-icon">
+                            <div class="icon-circle">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12,6 12,12 16,14"></polyline>
+                                </svg>
+                            </div>
+                        </div>
+                        <h3>Training Adaptation Cycles</h3>
+                        <p>Your body needs time to adapt to training stress. 28 days captures multiple adaptation cycles, giving us a complete picture of how you respond to different training loads.</p>
+                        <div class="progress-indicator">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 100%;"></div>
+                            </div>
+                            <span class="progress-label">Full adaptation cycle captured</span>
+                        </div>
+                    </div>
+
+                    <div class="explanation-card animate-on-scroll animate-delay-1">
+                        <div class="card-icon">
+                            <div class="icon-circle">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 3v18h18"></path>
+                                    <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <h3>Pattern Recognition</h3>
+                        <p>Our AI needs sufficient data points to identify your unique training patterns and divergence trends. 28+ days provides the statistical significance needed for accurate analysis.</p>
+                        <div class="progress-indicator">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 85%;"></div>
+                            </div>
+                            <span class="progress-label">85% pattern accuracy</span>
+                        </div>
+                    </div>
+
+                    <div class="explanation-card animate-on-scroll animate-delay-2">
+                        <div class="card-icon">
+                            <div class="icon-circle">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <h3>Baseline Establishment</h3>
+                        <p>We establish your personal baseline for external and internal training loads. This baseline is crucial for detecting meaningful divergences that indicate overtraining risk.</p>
+                        <div class="progress-indicator">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 95%;"></div>
+                            </div>
+                            <span class="progress-label">95% baseline accuracy</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timeline-explanation animate-on-scroll animate-delay-3">
+                    <h3>Data Collection Timeline</h3>
+                    <div class="timeline-visual">
+                        <div class="timeline-item">
+                            <div class="timeline-marker">
+                                <div class="marker-circle">7</div>
+                            </div>
+                            <div class="timeline-content">
+                                <h4>Week 1</h4>
+                                <p>Initial data collection begins</p>
+                                <div class="data-points">
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <div class="timeline-marker">
+                                <div class="marker-circle">14</div>
+                            </div>
+                            <div class="timeline-content">
+                                <h4>Week 2</h4>
+                                <p>Patterns start to emerge</p>
+                                <div class="data-points">
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <div class="timeline-marker">
+                                <div class="marker-circle">21</div>
+                            </div>
+                            <div class="timeline-content">
+                                <h4>Week 3</h4>
+                                <p>Baseline becomes clearer</p>
+                                <div class="data-points">
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item active">
+                            <div class="timeline-marker">
+                                <div class="marker-circle">28+</div>
+                            </div>
+                            <div class="timeline-content">
+                                <h4>Week 4+</h4>
+                                <p>Full analysis ready</p>
+                                <div class="data-points">
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                    <span class="data-point">•</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="science-explanation animate-on-scroll animate-delay-4">
+                    <h3>The Science Behind It</h3>
+                    <div class="science-grid">
+                        <div class="science-item">
+                            <div class="science-icon">🧬</div>
+                            <h4>Physiological Adaptation</h4>
+                            <p>Muscle and cardiovascular adaptations typically occur in 2-4 week cycles. 28 days ensures we capture these natural rhythms.</p>
+                        </div>
+                        <div class="science-item">
+                            <div class="science-icon">📊</div>
+                            <h4>Statistical Significance</h4>
+                            <p>With 28+ data points, our algorithms achieve 95% confidence in divergence detection, reducing false positives.</p>
+                        </div>
+                        <div class="science-item">
+                            <div class="science-icon">🎯</div>
+                            <h4>Personalized Accuracy</h4>
+                            <p>Your unique response patterns emerge over time. 28 days allows us to distinguish your normal variations from concerning trends.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Goal-Based Insights Preview -->
+        <section class="goal-insights-section">
+            <div class="goal-insights-container">
+                <h2>Your Goals, Your Insights</h2>
+                <p class="section-subtitle">See how your personal goals connect to our divergence analysis for truly personalized training</p>
+                
+                <div class="goals-preview-grid">
+                    <div class="goal-card animate-on-scroll">
+                        <div class="goal-header">
+                            <div class="goal-icon">🏃‍♂️</div>
+                            <h3>Marathon Training</h3>
+                            <div class="goal-status">Active</div>
+                        </div>
+                        <div class="goal-progress">
+                            <div class="progress-info">
+                                <span class="progress-label">Training Load Balance</span>
+                                <span class="progress-value">Optimal</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill optimal" style="width: 78%;"></div>
+                            </div>
+                        </div>
+                        <div class="goal-insight">
+                            <div class="insight-header">
+                                <span class="insight-icon">💡</span>
+                                <span class="insight-title">Today's Insight</span>
+                            </div>
+                            <p class="insight-text">Your current training load is perfectly balanced for marathon preparation. Continue your current intensity for the next 3 days, then increase by 10%.</p>
+                        </div>
+                        <div class="goal-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Divergence</span>
+                                <span class="metric-value positive">+0.05</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Risk Level</span>
+                                <span class="metric-value low">Low</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Next Check</span>
+                                <span class="metric-value">Tomorrow</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="goal-card animate-on-scroll animate-delay-1">
+                        <div class="goal-header">
+                            <div class="goal-icon">⛰️</div>
+                            <h3>Trail Running</h3>
+                            <div class="goal-status">Active</div>
+                        </div>
+                        <div class="goal-progress">
+                            <div class="progress-info">
+                                <span class="progress-label">Elevation Adaptation</span>
+                                <span class="progress-value">Improving</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill improving" style="width: 65%;"></div>
+                            </div>
+                        </div>
+                        <div class="goal-insight">
+                            <div class="insight-header">
+                                <span class="insight-icon">⚠️</span>
+                                <span class="insight-title">Caution Alert</span>
+                            </div>
+                            <p class="insight-text">Your internal load is higher than expected for the elevation gain. Consider reducing intensity by 15% on your next trail run.</p>
+                        </div>
+                        <div class="goal-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Divergence</span>
+                                <span class="metric-value negative">-0.18</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Risk Level</span>
+                                <span class="metric-value medium">Medium</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Next Check</span>
+                                <span class="metric-value">In 2 hours</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="goal-card animate-on-scroll animate-delay-2">
+                        <div class="goal-header">
+                            <div class="goal-icon">💪</div>
+                            <h3>Strength Building</h3>
+                            <div class="goal-status">Active</div>
+                        </div>
+                        <div class="goal-progress">
+                            <div class="progress-info">
+                                <span class="progress-label">Recovery Status</span>
+                                <span class="progress-value">Excellent</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill excellent" style="width: 92%;"></div>
+                            </div>
+                        </div>
+                        <div class="goal-insight">
+                            <div class="insight-header">
+                                <span class="insight-icon">🎯</span>
+                                <span class="insight-title">Opportunity</span>
+                            </div>
+                            <p class="insight-text">Your recovery is excellent. You're ready for a challenging strength session. Consider increasing your training load by 20% today.</p>
+                        </div>
+                        <div class="goal-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Divergence</span>
+                                <span class="metric-value positive">+0.12</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Risk Level</span>
+                                <span class="metric-value low">Low</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Next Check</span>
+                                <span class="metric-value">After session</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="goals-connection-explanation animate-on-scroll animate-delay-3">
+                    <h3>How Goals Connect to Divergence Analysis</h3>
+                    <div class="connection-flow">
+                        <div class="connection-step">
+                            <div class="step-icon">
+                                <div class="icon-circle">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M9 11H5a2 2 0 0 0-2 2v3c0 1.1.9 2 2 2h4m0-7v7m0-7h10a2 2 0 0 1 2 2v3c0 1.1-.9 2-2 2H9m0-7V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <h4>Set Your Goals</h4>
+                            <p>Define your training objectives: marathon, trail running, strength building, or injury prevention.</p>
+                        </div>
+
+                        <div class="connection-arrow">→</div>
+
+                        <div class="connection-step">
+                            <div class="step-icon">
+                                <div class="icon-circle">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 3v18h18"></path>
+                                        <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <h4>Analyze Divergence</h4>
+                            <p>Our AI analyzes your training load divergence in the context of your specific goals and training phase.</p>
+                        </div>
+
+                        <div class="connection-arrow">→</div>
+
+                        <div class="connection-step">
+                            <div class="step-icon">
+                                <div class="icon-circle">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M9 12l2 2 4-4"></path>
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                    </svg>
+                                </div>
+                            </div>
+                            <h4>Get Goal-Specific Insights</h4>
+                            <p>Receive personalized recommendations that align with your goals and current training phase.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="goals-cta animate-on-scroll animate-delay-4">
+                    <h3>Ready to Set Your Goals?</h3>
+                    <p>Connect your training objectives with our divergence analysis for truly personalized insights.</p>
+                    <div class="cta-buttons">
+                        <a href="/goals-setup" class="btn btn-primary">Set Up Goals</a>
+                        <a href="/dashboard" class="btn btn-secondary">View Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3-Step Visual Setup Process -->
+        <section class="setup-section">
+            <div class="setup-container">
+                <h2>Get Started in 3 Simple Steps</h2>
+                <p class="setup-subtitle">Follow this visual timeline to set up your TrainingMonkey account</p>
+                
+                <div class="timeline-container">
+                    <!-- Step 1: Connect Strava -->
+                    <div class="timeline-step animate-on-scroll {% if user_context and user_context.onboarding_step in ['strava_connected', 'first_activity', 'data_sync', 'dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}completed{% elif user_context and user_context.onboarding_step == 'welcome' %}current{% endif %}">
+                        <div class="step-icon">
+                            <div class="icon-circle">
+                                <svg class="step-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="8.5" cy="7" r="4"></circle>
+                                    <path d="M20 8v6"></path>
+                                    <path d="M23 11h-6"></path>
+                                </svg>
+                            </div>
+                            <div class="step-number">1</div>
+                        </div>
+                        <div class="step-content">
+                            <h3>Connect Strava</h3>
+                            <p>Link your Strava account with one-click OAuth integration. We'll securely access your activity data.</p>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-icon">🔐</span>
+                                    <span>Secure OAuth connection</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">⚡</span>
+                                    <span>One-click setup</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">📊</span>
+                                    <span>Access to all activities</span>
+                                </div>
+                            </div>
+                            {% if user_context and user_context.onboarding_step in ['strava_connected', 'first_activity', 'data_sync', 'dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}
+                            <div class="step-status completed">
+                                <span class="status-icon">✅</span>
+                                <span>Completed</span>
+                            </div>
+                            {% elif user_context and user_context.onboarding_step == 'welcome' %}
+                            <div class="step-status current">
+                                <span class="status-icon">⏳</span>
+                                <span>Next Step</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Timeline Connector -->
+                    <div class="timeline-connector {% if user_context and user_context.onboarding_step in ['data_sync', 'dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}completed{% endif %}"></div>
+
+                    <!-- Step 2: Import Data -->
+                    <div class="timeline-step animate-on-scroll animate-delay-1 {% if user_context and user_context.onboarding_step in ['data_sync', 'dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}completed{% elif user_context and user_context.onboarding_step == 'strava_connected' %}current{% endif %}">
+                        <div class="step-icon">
+                            <div class="icon-circle">
+                                <svg class="step-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7,10 12,15 17,10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                            </div>
+                            <div class="step-number">2</div>
+                        </div>
+                        <div class="step-content">
+                            <h3>Import 28+ Days of Data</h3>
+                            <p>We'll automatically sync your recent activities. 28+ days gives us enough data for accurate divergence analysis.</p>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-icon">📅</span>
+                                    <span>28+ days of history</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">🔄</span>
+                                    <span>Automatic sync</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">⚡</span>
+                                    <span>Real-time updates</span>
+                                </div>
+                            </div>
+                            {% if user_context and user_context.onboarding_step in ['data_sync', 'dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}
+                            <div class="step-status completed">
+                                <span class="status-icon">✅</span>
+                                <span>Completed</span>
+                            </div>
+                            {% elif user_context and user_context.onboarding_step == 'strava_connected' %}
+                            <div class="step-status current">
+                                <span class="status-icon">⏳</span>
+                                <span>In Progress</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Timeline Connector -->
+                    <div class="timeline-connector {% if user_context and user_context.onboarding_step in ['dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}completed{% endif %}"></div>
+
+                    <!-- Step 3: Get Analysis -->
+                    <div class="timeline-step animate-on-scroll animate-delay-2 {% if user_context and user_context.onboarding_step in ['dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}completed{% elif user_context and user_context.onboarding_step == 'data_sync' %}current{% endif %}">
+                        <div class="step-icon">
+                            <div class="icon-circle">
+                                <svg class="step-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 3v18h18"></path>
+                                    <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path>
+                                </svg>
+                            </div>
+                            <div class="step-number">3</div>
+                        </div>
+                        <div class="step-content">
+                            <h3>Get Instant Analysis</h3>
+                            <p>View your training load divergence and receive personalized recommendations to optimize your training.</p>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-icon">📈</span>
+                                    <span>Divergence analysis</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">🤖</span>
+                                    <span>AI recommendations</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-icon">🎯</span>
+                                    <span>Personalized insights</span>
+                                </div>
+                            </div>
+                            {% if user_context and user_context.onboarding_step in ['dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}
+                            <div class="step-status completed">
+                                <span class="status-icon">✅</span>
+                                <span>Completed</span>
+                            </div>
+                            {% elif user_context and user_context.onboarding_step == 'data_sync' %}
+                            <div class="step-status current">
+                                <span class="status-icon">⏳</span>
+                                <span>Next Step</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section class="faq-section">
+            <h2>Frequently Asked Questions</h2>
+            <div class="faq-list">
+                <!-- Contextual FAQ based on onboarding step -->
+                {% if user_context and user_context.onboarding_step == 'welcome' %}
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I connect my Strava account?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Click the "Connect with Strava" button and follow the authorization process. We'll securely access your activity data using OAuth.</p>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How much data do I need?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We need at least 28 days of training data to provide accurate divergence analysis. This gives us enough data points to identify patterns in your training load and internal stress levels.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>Is my data secure?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Yes, we take data security seriously. We use OAuth to securely connect to Strava, never store your password, and follow industry best practices for data protection.</p>
+                    </div>
+                </div>
+                
+                {% if user_context and user_context.onboarding_step in ['strava_connected', 'first_activity', 'data_sync'] %}
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How long does data processing take?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Data processing typically takes 2-5 minutes depending on the amount of activity data. You'll receive an email notification when your analysis is ready.</p>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What if I don't have 28 days of data?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>If you don't have 28 days of data yet, we'll show you a preview of what your analysis will look like and guide you through building up your data history.</p>
+                    </div>
+                </div>
+                
+                {% if user_context and user_context.onboarding_step in ['dashboard_intro', 'features_tour', 'goals_setup', 'first_recommendation', 'journal_intro', 'completed'] %}
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I interpret my divergence analysis?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Positive divergence means your external load is higher than internal stress (good fitness adaptation). Negative divergence indicates potential overtraining risk.</p>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How does divergence analysis work?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Divergence analysis compares your external training load (distance, time, elevation) with your internal stress (TRIMP from heart rate). When these diverge, it indicates potential overtraining or undertraining.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What is TRIMP and why is it important?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>TRIMP (Training Impulse) measures your internal training stress based on heart rate data. It's more accurate than just distance or time because it accounts for how hard your body is working during each workout.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>Can I use TrainingMonkey without a heart rate monitor?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>While heart rate data provides the most accurate TRIMP calculations, we can still provide valuable insights using estimated heart rate zones based on your activity type and perceived exertion.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How often should I check my training analysis?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We recommend checking your analysis weekly to track trends and make adjustments to your training plan. The dashboard updates automatically as new activities are synced from Strava.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What if I disagree with the AI recommendations?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>AI recommendations are suggestions based on your data patterns. Always listen to your body and consult with a coach or healthcare professional for personalized training advice.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tutorial Access Section -->
+        <section class="tutorial-section">
+            <h2>Need More Help?</h2>
+            <p>Access our comprehensive tutorials and help resources to make the most of TrainingMonkey.</p>
+            
+            <!-- Contextual Tutorial Content -->
+            {% if user_context and user_context.onboarding_step %}
+                {% if user_context.onboarding_step == 'welcome' %}
+                <p><strong>Getting Started:</strong> Check out our step-by-step setup guide to connect Strava and get your first analysis.</p>
+                {% elif user_context.onboarding_step in ['strava_connected', 'first_activity', 'data_sync'] %}
+                <p><strong>Data Processing:</strong> Learn about how we analyze your training data and what to expect during the sync process.</p>
+                {% elif user_context.onboarding_step in ['dashboard_intro', 'features_tour'] %}
+                <p><strong>Dashboard Tour:</strong> Explore our interactive tutorials to understand your training load analysis and divergence insights.</p>
+                {% elif user_context.onboarding_step in ['goals_setup', 'first_recommendation'] %}
+                <p><strong>Goals & Recommendations:</strong> Learn how to set training goals and interpret AI-powered recommendations.</p>
+                {% elif user_context.onboarding_step in ['journal_intro', 'completed'] %}
+                <p><strong>Advanced Features:</strong> Discover journaling, advanced analytics, and how to optimize your training with TrainingMonkey.</p>
+                {% endif %}
+            {% endif %}
+            
+            <!-- Tutorial Categories -->
+            <div class="tutorial-categories">
+                <div class="tutorial-category">
+                    <h3>🎯 Getting Started</h3>
+                    <p>Learn the basics of connecting Strava and understanding your first analysis.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="welcome_tour" class="tutorial-link">Welcome Tour</a>
+                        <a href="#" data-tutorial-id="strava_connection_guide" class="tutorial-link">Strava Setup Guide</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>📊 Dashboard & Analysis</h3>
+                    <p>Master your training load dashboard and divergence analysis.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="dashboard_tutorial" class="tutorial-link">Dashboard Tour</a>
+                        <a href="#" data-tutorial-id="features_tour" class="tutorial-link">Features Overview</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>🎯 Goals & Recommendations</h3>
+                    <p>Set training goals and understand AI-powered recommendations.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="goals_setup_tutorial" class="tutorial-link">Goals Setup</a>
+                        <a href="#" data-tutorial-id="journal_tutorial" class="tutorial-link">Journal & Tracking</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tutorial-buttons">
+                <a href="/tutorials" class="btn btn-primary">View All Tutorials</a>
+                <a href="/help" class="btn btn-secondary">Help Center</a>
+                {% if user_context and user_context.onboarding_step and user_context.onboarding_step != 'welcome' %}
+                <a href="/dashboard" class="btn btn-secondary">Go to Dashboard</a>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 TrainingMonkey. All rights reserved.</p>
+    </footer>
+
+    <!-- Getting Started JavaScript -->
+    <script src="{{ url_for('static', filename='js/getting_started.js') }}"></script>
+</body>
+</html>

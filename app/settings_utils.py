@@ -99,7 +99,7 @@ def get_complete_user_settings(user_id):
             SELECT resting_hr, max_hr, hr_zones_method, primary_sport, 
                    acwr_alert_threshold, recommendation_style
             FROM user_settings 
-            WHERE id = ?
+            WHERE id = %s
             """,
             (user_id,),
             fetch=True
@@ -152,7 +152,7 @@ def recalculate_trimp_for_user(user_id, user_settings):
             """
             SELECT activity_id as id, avg_heart_rate as average_heartrate, duration_minutes, date, type
             FROM activities 
-            WHERE user_id = ? 
+            WHERE user_id = %s 
             AND avg_heart_rate IS NOT NULL
             AND avg_heart_rate > 0
             ORDER BY date
@@ -184,7 +184,7 @@ def recalculate_trimp_for_user(user_id, user_settings):
                 if new_trimp is not None:
                     # Update the activity with new TRIMP
                     execute_query(
-                        "UPDATE activities SET trimp = ? WHERE activity_id = ? AND user_id = ?",
+                        "UPDATE activities SET %s = %s WHERE activity_id = %s AND user_id = %s",
                         (new_trimp, activity['id'], user_id)
                     )
                     updated_count += 1
@@ -279,7 +279,7 @@ def recalculate_all_moving_averages(user_id):
             """
             SELECT DISTINCT date 
             FROM activities 
-            WHERE user_id = ? 
+            WHERE user_id = %s 
             ORDER BY date
             """,
             (user_id,),

@@ -6,6 +6,11 @@ ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=strava_app.py
 ENV PORT=8080
 
+# ACWR Migration System Environment Variables
+ENV ACWR_MIGRATION_ENABLED=true
+ENV ACWR_MONITORING_ENABLED=true
+ENV ACWR_VISUALIZATION_ENABLED=true
+
 # Create app directory
 WORKDIR /app
 
@@ -71,10 +76,36 @@ COPY historical_trimp_recalculation.py .
 COPY trimp_deployment_monitor.py .
 COPY deploy_trimp_enhancement.py .
 
+# Copy ACWR Configuration and Calculation Services
+COPY acwr_calculation_service.py .
+COPY acwr_configuration_service.py .
+COPY acwr_configuration_admin.py .
+COPY exponential_decay_engine.py .
+
+# Copy ACWR Migration System Services
+COPY acwr_migration_service.py .
+COPY acwr_migration_monitoring.py .
+COPY acwr_migration_integrity.py .
+COPY acwr_migration_rollback.py .
+COPY acwr_migration_rollback_executor.py .
+COPY acwr_migration_performance_optimizer.py .
+COPY acwr_migration_batch_processor.py .
+COPY acwr_migration_progress_tracker.py .
+COPY acwr_migration_websocket.py .
+COPY acwr_migration_admin.py .
+
+# Copy ACWR Visualization Services
+COPY acwr_visualization_service.py .
+COPY acwr_visualization_routes.py .
+
+# Copy ACWR Feature Flag Services
+COPY acwr_feature_flag_admin.py .
+COPY acwr_feature_flag_monitor.py .
+
 # Copy test runner (for development use)
 COPY run_tests.py .
 
-# Copy templates directory (includes new legal and onboarding templates)
+# Copy templates directory (includes legal, onboarding, and ACWR admin templates)
 COPY templates/ /app/templates/
 
 # Copy utils directory (refactored utility functions)

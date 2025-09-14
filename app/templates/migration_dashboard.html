@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACWR Migration Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-card {
+            transition: transform 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-badge {
+            font-size: 0.8em;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .metric-card.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        .metric-card.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .metric-card.danger {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        }
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            transform-origin: 50% 50%;
+        }
+        .alert-item {
+            border-left: 4px solid;
+            transition: all 0.2s;
+        }
+        .alert-item:hover {
+            background-color: #f8f9fa;
+        }
+        .alert-item.critical {
+            border-left-color: #dc3545;
+        }
+        .alert-item.high {
+            border-left-color: #fd7e14;
+        }
+        .alert-item.medium {
+            border-left-color: #ffc107;
+        }
+        .alert-item.low {
+            border-left-color: #28a745;
+        }
+        .migration-item {
+            border-left: 4px solid #007bff;
+            transition: all 0.2s;
+        }
+        .migration-item:hover {
+            background-color: #f8f9fa;
+        }
+        .migration-item.completed {
+            border-left-color: #28a745;
+        }
+        .migration-item.failed {
+            border-left-color: #dc3545;
+        }
+        .migration-item.running {
+            border-left-color: #007bff;
+        }
+        .migration-item.paused {
+            border-left-color: #ffc107;
+        }
+        .migration-item.cancelled {
+            border-left-color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-database"></i> ACWR Migration Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.create_migration') }}">
+                    <i class="fas fa-plus"></i> Create Migration
+                </a>
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.migration_history') }}">
+                    <i class="fas fa-history"></i> History
+                </a>
+                <a class="nav-link" href="{{ url_for('acwr_migration_admin.migration_alerts') }}">
+                    <i class="fas fa-bell"></i> Alerts
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- System Health Metrics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card metric-card success dashboard-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-play-circle fa-2x mb-2"></i>
+                        <h4>{{ health_metrics.active_migrations }}</h4>
+                        <p class="mb-0">Active Migrations</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card warning dashboard-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <h4>{{ health_metrics.recent_errors }}</h4>
+                        <p class="mb-0">Recent Errors</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card danger dashboard-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-bell fa-2x mb-2"></i>
+                        <h4>{{ health_metrics.unacknowledged_alerts }}</h4>
+                        <p class="mb-0">Unacknowledged Alerts</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card dashboard-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-heartbeat fa-2x mb-2"></i>
+                        <h4 class="text-capitalize">{{ health_metrics.system_status }}</h4>
+                        <p class="mb-0">System Status</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Active Migrations -->
+            <div class="col-md-6">
+                <div class="card dashboard-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-play-circle"></i> Active Migrations
+                        </h5>
+                        <span class="badge bg-primary">{{ active_migrations|length }}</span>
+                    </div>
+                    <div class="card-body">
+                        {% if active_migrations %}
+                            {% for migration_id, migration_data in active_migrations.items() %}
+                                <div class="migration-item p-3 mb-2 rounded">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                <a href="{{ url_for('acwr_migration_admin.monitor_migration', migration_id=migration_id) }}" 
+                                                   class="text-decoration-none">
+                                                    {{ migration_id }}
+                                                </a>
+                                            </h6>
+                                            <p class="text-muted mb-1">
+                                                User: {{ migration_data.user_id }} | 
+                                                Config: {{ migration_data.configuration_id }}
+                                            </p>
+                                            <small class="text-muted">
+                                                Started: {{ migration_data.start_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge bg-primary status-badge">
+                                                {{ migration_data.status.value }}
+                                            </span>
+                                            <div class="mt-2">
+                                                <button class="btn btn-sm btn-outline-primary" 
+                                                        onclick="pauseMigration('{{ migration_id }}')">
+                                                    <i class="fas fa-pause"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" 
+                                                        onclick="cancelMigration('{{ migration_id }}')">
+                                                    <i class="fas fa-stop"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-3x mb-3"></i>
+                                <p>No active migrations</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Alerts -->
+            <div class="col-md-6">
+                <div class="card dashboard-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-bell"></i> Recent Alerts
+                        </h5>
+                        <a href="{{ url_for('acwr_migration_admin.migration_alerts') }}" 
+                           class="btn btn-sm btn-outline-primary">View All</a>
+                    </div>
+                    <div class="card-body">
+                        {% if active_alerts %}
+                            {% for alert in active_alerts %}
+                                <div class="alert-item p-3 mb-2 rounded alert-item-{{ alert.severity }}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">{{ alert.title }}</h6>
+                                            <p class="text-muted mb-1">{{ alert.message }}</p>
+                                            <small class="text-muted">
+                                                {{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge bg-{{ 'danger' if alert.severity == 'critical' else 'warning' if alert.severity == 'high' else 'info' }} status-badge">
+                                                {{ alert.severity }}
+                                            </span>
+                                            <div class="mt-2">
+                                                <button class="btn btn-sm btn-outline-success" 
+                                                        onclick="acknowledgeAlert('{{ alert.alert_id }}')">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-check-circle fa-3x mb-3"></i>
+                                <p>No active alerts</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Migration History -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card dashboard-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history"></i> Recent Migration History
+                        </h5>
+                        <a href="{{ url_for('acwr_migration_admin.migration_history') }}" 
+                           class="btn btn-sm btn-outline-primary">View All</a>
+                    </div>
+                    <div class="card-body">
+                        {% if recent_migrations %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Migration ID</th>
+                                            <th>User</th>
+                                            <th>Configuration</th>
+                                            <th>Status</th>
+                                            <th>Progress</th>
+                                            <th>Created</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for migration in recent_migrations %}
+                                            <tr>
+                                                <td>
+                                                    <a href="{{ url_for('acwr_migration_admin.monitor_migration', migration_id=migration.migration_id) }}" 
+                                                       class="text-decoration-none">
+                                                        {{ migration.migration_id[:8] }}...
+                                                    </a>
+                                                </td>
+                                                <td>{{ migration.username or 'N/A' }}</td>
+                                                <td>{{ migration.config_name or 'N/A' }}</td>
+                                                <td>
+                                                    <span class="badge bg-{{ 'success' if migration.status == 'completed' else 'danger' if migration.status == 'failed' else 'primary' if migration.status == 'running' else 'warning' if migration.status == 'paused' else 'secondary' }} status-badge">
+                                                        {{ migration.status }}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {% if migration.total_activities and migration.total_activities > 0 %}
+                                                        {% set progress = (migration.processed_activities / migration.total_activities * 100) %}
+                                                        <div class="progress" style="height: 20px;">
+                                                            <div class="progress-bar" role="progressbar" 
+                                                                 style="width: {{ progress }}%">
+                                                                {{ "%.1f"|format(progress) }}%
+                                                            </div>
+                                                        </div>
+                                                    {% else %}
+                                                        <span class="text-muted">N/A</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ migration.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                                <td>
+                                                    <a href="{{ url_for('acwr_migration_admin.monitor_migration', migration_id=migration.migration_id) }}" 
+                                                       class="btn btn-sm btn-outline-primary">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-3x mb-3"></i>
+                                <p>No migration history</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh dashboard every 30 seconds
+        setInterval(function() {
+            location.reload();
+        }, 30000);
+
+        // Migration control functions
+        function pauseMigration(migrationId) {
+            if (confirm('Are you sure you want to pause this migration?')) {
+                fetch(`/admin/migration/api/pause/${migrationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Migration paused successfully', 'success');
+                        location.reload();
+                    } else {
+                        showAlert('Failed to pause migration: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error pausing migration: ' + error, 'danger');
+                });
+            }
+        }
+
+        function cancelMigration(migrationId) {
+            if (confirm('Are you sure you want to cancel this migration? This action cannot be undone.')) {
+                fetch(`/admin/migration/api/cancel/${migrationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Migration cancelled successfully', 'success');
+                        location.reload();
+                    } else {
+                        showAlert('Failed to cancel migration: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error cancelling migration: ' + error, 'danger');
+                });
+            }
+        }
+
+        function acknowledgeAlert(alertId) {
+            fetch(`/admin/migration/api/acknowledge-alert/${alertId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Alert acknowledged successfully', 'success');
+                    location.reload();
+                } else {
+                    showAlert('Failed to acknowledge alert: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('Error acknowledging alert: ' + error, 'danger');
+            });
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+

@@ -92,13 +92,195 @@
             height: 20px;
             width: auto;
         }
+        /* Progress Section Styles */
+        .progress-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+        }
+
+        .progress-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: calc(50% + 20px);
+            right: calc(-50% + 20px);
+            height: 2px;
+            background: #e2e8f0;
+            z-index: 1;
+        }
+
+        .step.completed:not(:last-child)::after {
+            background: #10b981;
+        }
+
+        .step-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 0.75rem auto;
+            font-weight: 600;
+            font-size: 1rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step.completed .step-icon {
+            background: #10b981;
+            color: white;
+        }
+
+        .step.current .step-icon {
+            background: #667eea;
+            color: white;
+        }
+
+        .step.upcoming .step-icon {
+            background: #e2e8f0;
+            color: #6c757d;
+        }
+
+        .step-content {
+            text-align: center;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .step-desc {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+
+        .step.completed .step-title {
+            color: #10b981;
+        }
+
+        .step.current .step-title {
+            color: #667eea;
+        }
+
+        /* FAQ Section Styles */
+        .faq-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border: 1px solid #e2e8f0;
+        }
+
+        .faq-item {
+            margin-bottom: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .faq-question {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            user-select: none;
+        }
+
+        .faq-question:hover {
+            background: #f8fafc;
+        }
+
+        .faq-icon {
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .faq-text {
+            flex: 1;
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+
+        .faq-toggle {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #667eea;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .faq-item.active .faq-toggle {
+            transform: rotate(45deg);
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background: #f8fafc;
+        }
+
+        .faq-item.active .faq-answer {
+            max-height: 200px;
+        }
+
+        .faq-answer p {
+            padding: 1rem 1.25rem;
+            margin: 0;
+            color: #64748b;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
         @media (max-width: 768px) {
             body {
                 margin: 15px;
                 padding: 15px;
             }
-            .info-box, .form-box, .warning-box {
+            .info-box, .form-box, .warning-box, .progress-section {
                 padding: 15px;
+            }
+            .progress-steps {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            .step:nth-child(1)::after,
+            .step:nth-child(2)::after,
+            .step:nth-child(3)::after {
+                display: none;
+            }
+            .step-icon {
+                width: 35px;
+                height: 35px;
+                font-size: 0.9rem;
             }
         }
     </style>
@@ -106,6 +288,37 @@
 <body>
     <h1 style="color: #2c3e50; margin-bottom: 10px;">Connect Your Strava Account</h1>
     <p style="color: #6c757d; margin-bottom: 30px;">Set up your personal connection to sync training data with Your Training Monkey</p>
+
+    <!-- Progress Indicator -->
+    <div class="progress-section">
+        <div class="progress-header">
+            <h3 style="color: #2c3e50; margin: 0; text-align: center;">Getting You Set Up</h3>
+            <p style="color: #6c757d; margin: 0.5rem 0 0 0; text-align: center; font-size: 0.9rem;">Step 1 of 3 • Let's get started!</p>
+        </div>
+        <div class="progress-steps">
+            <div class="step current">
+                <div class="step-icon">1</div>
+                <div class="step-content">
+                    <div class="step-title">Connect Strava</div>
+                    <div class="step-desc">Link your training data</div>
+                </div>
+            </div>
+            <div class="step upcoming">
+                <div class="step-icon">2</div>
+                <div class="step-content">
+                    <div class="step-title">Setup Preferences</div>
+                    <div class="step-desc">Enter goals and preferences</div>
+                </div>
+            </div>
+            <div class="step upcoming">
+                <div class="step-icon">3</div>
+                <div class="step-content">
+                    <div class="step-title">Welcome</div>
+                    <div class="step-desc">All set - redirected to Dashboard</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="info-box">
         <h3 style="margin-top: 0; color: #1976d2;">🔑 Step 1: Create Your Personal Strava App</h3>
@@ -166,6 +379,99 @@
     <div class="warning-box">
         <h4 style="margin-top: 0; color: #856404;">ℹ️ Why do I need my own app?</h4>
         <p style="margin-bottom: 0;">This is a temporary setup while we wait for Strava to approve our application for multiple users. Once approved, this step won't be necessary and you'll connect with a single click.</p>
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="faq-section">
+        <h3 style="color: #2c3e50; margin-bottom: 1.5rem; text-align: center;">Frequently Asked Questions</h3>
+        
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">What happens when I click 'Connect with Strava'?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>You'll be redirected to Strava's secure login page. Simply log in with your Strava credentials and authorize TrainingMonkey to access your activity data.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">What if I don't have a Strava account?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>You'll need a Strava account to use TrainingMonkey. If you don't have one, you can create a free account at strava.com. Once you have a Strava account, you'll need to connect it to your fitness device accounts (Garmin Connect, Coros, etc.) to automatically sync your historical training data. Verify that your data has transferred to Strava, then come back to complete the TrainingMonkey connection.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">Why use TrainingMonkey when I already have Garmin/Coros analytics?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>While Garmin and Coros provide excellent device-specific analytics, TrainingMonkey offers something unique: <strong>divergence analysis</strong>. We compare your external training load (what you did) against your internal load (how your body responded) to spot dangerous imbalances weeks before they become injuries. Garmin shows you what you did, but we show you if your body can handle it. Our patent-pending technology provides early warning signals that device analytics alone can't detect.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">Is my Strava data safe? What can TrainingMonkey access?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>TrainingMonkey only accesses your activity data (distance, time, heart rate) to analyze your training load. We never access personal information, messages, or photos. Your data is encrypted and never shared.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">How long does the connection take?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>The entire process takes less than 30 seconds: click the button, log into Strava, authorize the connection, and you're done!</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">When will I see my training analysis?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>After connecting Strava, we'll start analyzing your data immediately. You'll see basic insights within hours, and full personalized recommendations after we have 28 days of your training data.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">I'm getting an error when trying to connect. What should I do?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>Make sure you're logged into the correct Strava account. If you're still having trouble, try refreshing the page or clearing your browser cache.</p>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question" onclick="toggleFAQ(this)">
+                <span class="faq-icon">❓</span>
+                <span class="faq-text">Can I disconnect Strava later if I want to?</span>
+                <span class="faq-toggle">+</span>
+            </div>
+            <div class="faq-answer">
+                <p>Absolutely! You can disconnect Strava anytime from your TrainingMonkey settings or directly from your Strava account settings.</p>
+            </div>
+        </div>
     </div>
 
     <!-- OFFICIAL STRAVA BRANDING FOOTER -->
@@ -243,6 +549,22 @@
             letter-spacing: 0.5px;
         `;
         img.parentNode.appendChild(fallbackText);
+    }
+
+    // FAQ Toggle Function
+    function toggleFAQ(element) {
+        const faqItem = element.parentElement;
+        const isActive = faqItem.classList.contains('active');
+        
+        // Close all other FAQ items
+        document.querySelectorAll('.faq-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        // Toggle current item
+        if (!isActive) {
+            faqItem.classList.add('active');
+        }
     }
 
     // Form validation feedback
