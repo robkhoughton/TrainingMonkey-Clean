@@ -32,6 +32,19 @@
 
     <h1>Your Training Monkey - Settings</h1>
 
+    <!-- Getting Started Integration Point -->
+    <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+        <p style="margin: 0 0 0.5rem 0; color: #6c757d; font-size: 0.9rem;">
+            Need help understanding how your settings affect your training analysis?
+        </p>
+        <a href="/getting-started?source=settings" onclick="trackGettingStartedClick()" 
+           style="display: inline-block; background: #007bff; color: white; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;"
+           onmouseover="this.style.background='#0056b3'; this.style.transform='translateY(-1px)'"
+           onmouseout="this.style.background='#007bff'; this.style.transform='translateY(0)'">
+            View Settings Guide
+        </a>
+    </div>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -79,5 +92,24 @@
         <p>Use the manual sync feature on your dashboard to pull the latest activities from Strava.</p>
         <a href="/dashboard" class="btn">Go to Dashboard</a>
     </div>
+
+    <script>
+        function trackGettingStartedClick() {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                        button: 'settings_guide',
+                        source: 'settings',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+        }
+    </script>
 </body>
 </html>

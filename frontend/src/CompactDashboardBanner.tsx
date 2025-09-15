@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ContextualTooltip from './ContextualTooltip';
+import MetricTooltip from './MetricTooltip';
 
 // TypeScript interfaces for proper type safety
 interface CompactDashboardBannerProps {
@@ -21,27 +23,25 @@ interface SyncResponse {
   date_range?: string;
 }
 
-// Mini Strain Gauge Component
-interface MiniStrainGaugeProps {
-  value: number;
+// Dual Needle Strain Gauge Component
+interface DualNeedleStrainGaugeProps {
+  externalValue: number;
+  internalValue: number;
   max: number;
-  label: string;
-  subLabel: string;
-  type: 'external' | 'internal';
   size?: number;
 }
 
-const MiniStrainGauge: React.FC<MiniStrainGaugeProps> = ({
-  value,
+const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
+  externalValue,
+  internalValue,
   max = 2.0,
-  label,
-  subLabel,
-  type,
-  size = 110 // Increased even more to maximize space
+  size = 120 // Restored to proper size
 }) => {
-  // Calculate angle (gauge spans 180 degrees)
-  const clampedValue = Math.max(0, Math.min(max, value));
-  const angle = (clampedValue / max) * 180;
+  // Calculate angles (gauge spans 180 degrees)
+  const clampedExternalValue = Math.max(0, Math.min(max, externalValue));
+  const clampedInternalValue = Math.max(0, Math.min(max, internalValue));
+  const externalAngle = (clampedExternalValue / max) * 180;
+  const internalAngle = (clampedInternalValue / max) * 180;
   
   // Color zones based on ACWR thresholds - matching chart colors
   const getColorForValue = (val: number) => {
@@ -51,16 +51,20 @@ const MiniStrainGauge: React.FC<MiniStrainGaugeProps> = ({
     return '#e74c3c'; // Red - high risk (matching chart)
   };
   
-  const radius = (size - 15) / 2; // Increased radius for bigger gauge
-  const strokeWidth = 10; // Increased stroke width for better visibility
+  const radius = (size - 15) / 2; // Adjusted radius for smaller gauge
+  const strokeWidth = 6; // Reduced stroke width for tighter look
   const centerX = size / 2;
   const centerY = size / 2;
   
-  // Needle position - adjusted for horizontal gauge (9 o'clock to 3 o'clock)
-  const needleAngle = (angle + 180) * (Math.PI / 180); // Offset by 180° for horizontal orientation
-  const needleLength = radius - 3;
-  const needleX = centerX + needleLength * Math.cos(needleAngle);
-  const needleY = centerY + needleLength * Math.sin(needleAngle);
+  // Needle positions - adjusted for horizontal gauge (9 o'clock to 3 o'clock)
+  const externalNeedleAngle = (externalAngle + 180) * (Math.PI / 180);
+  const internalNeedleAngle = (internalAngle + 180) * (Math.PI / 180);
+  const needleLength = radius - 5;
+  
+  const externalNeedleX = centerX + needleLength * Math.cos(externalNeedleAngle);
+  const externalNeedleY = centerY + needleLength * Math.sin(externalNeedleAngle);
+  const internalNeedleX = centerX + needleLength * Math.cos(internalNeedleAngle);
+  const internalNeedleY = centerY + needleLength * Math.sin(internalNeedleAngle);
   
   return (
     <div style={{ 
@@ -69,12 +73,12 @@ const MiniStrainGauge: React.FC<MiniStrainGaugeProps> = ({
       alignItems: 'center',
       minWidth: size,
       height: '100%',
-      justifyContent: 'center',
+      justifyContent: 'flex-start', // Changed to eliminate gap
       position: 'relative'
     }}>
-      {/* Gauge SVG - maximized */}
-      <div style={{ position: 'relative' }}>
-        <svg width={size} height={size * 0.65} viewBox={`0 0 ${size} ${size * 0.65}`}>
+      {/* Gauge SVG - positioned lower with overflow protection */}
+      <div style={{ position: 'relative', overflow: 'visible', marginTop: '15px' }}>
+        <svg width={size} height={size * 0.6} viewBox={`-15 -10 ${size + 30} ${size * 0.6 + 25}`}>
           {/* Horizontal 180-degree gauge: 9 o'clock to 3 o'clock */}
           {(() => {
             const createHorizontalPath = (startAngle: number, endAngle: number) => {
@@ -133,14 +137,25 @@ const MiniStrainGauge: React.FC<MiniStrainGaugeProps> = ({
             );
           })()}
           
-          {/* Needle - thicker for bigger gauge */}
+          {/* External Needle (Green) - lighter weight */}
           <line
             x1={centerX}
             y1={centerY}
-            x2={needleX}
-            y2={needleY}
-            stroke="#2c3e50"
-            strokeWidth={4} // Thicker needle for bigger gauge
+            x2={externalNeedleX}
+            y2={externalNeedleY}
+            stroke="#2ecc71" // Green for external
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+          
+          {/* Internal Needle (Blue) - lighter weight */}
+          <line
+            x1={centerX}
+            y1={centerY}
+            x2={internalNeedleX}
+            y2={internalNeedleY}
+            stroke="#3498db" // Blue for internal
+            strokeWidth={2.5}
             strokeLinecap="round"
           />
           
@@ -148,101 +163,109 @@ const MiniStrainGauge: React.FC<MiniStrainGaugeProps> = ({
           <circle
             cx={centerX}
             cy={centerY}
-            r={4} // Bigger center dot
+            r={5}
             fill="#2c3e50"
           />
           
-          {/* Scale labels positioned properly for horizontal gauge - simplified */}
-          {/* Tick marks every 0.5 units around the outside edge */}
+          {/* Scientific tick marks and labels - more detailed */}
           {(() => {
             const ticks = [];
-            for (let i = 0; i <= 4; i++) { // 0, 0.5, 1.0, 1.5, 2.0
-              const value = i * 0.5;
+            // Major ticks every 0.2 units, minor ticks every 0.1 units
+            for (let i = 0; i <= 20; i++) { // 0, 0.1, 0.2, ..., 2.0
+              const value = i * 0.1;
               const angle = (value / 2.0) * 180; // Convert to angle (0-180°)
               const tickAngle = (angle + 180) * (Math.PI / 180); // Horizontal orientation
               
-              // Outer tick position
-              const tickOuterRadius = radius + 8;
-              const tickInnerRadius = radius + 3;
+              const isMajorTick = i % 2 === 0; // Every 0.2 units
+              const tickOuterRadius = radius + (isMajorTick ? 12 : 8);
+              const tickInnerRadius = radius + (isMajorTick ? 4 : 6);
               
               const outerX = centerX + tickOuterRadius * Math.cos(tickAngle);
               const outerY = centerY + tickOuterRadius * Math.sin(tickAngle);
               const innerX = centerX + tickInnerRadius * Math.cos(tickAngle);
               const innerY = centerY + tickInnerRadius * Math.sin(tickAngle);
               
-              // Label position
-              const labelRadius = radius + 15;
-              const labelX = centerX + labelRadius * Math.cos(tickAngle);
-              const labelY = centerY + labelRadius * Math.sin(tickAngle);
-              
               ticks.push(
                 <g key={value}>
-                  {/* Tick mark - all the same */}
+                  {/* Tick mark */}
                   <line
                     x1={innerX}
                     y1={innerY}
                     x2={outerX}
                     y2={outerY}
                     stroke="#666"
-                    strokeWidth={1}
-                    opacity={0.7}
+                    strokeWidth={isMajorTick ? 2 : 1}
+                    opacity={isMajorTick ? 0.8 : 0.5}
                   />
-                  {/* Label - all the same font */}
-                  <text
-                    x={labelX}
-                    y={labelY + 3}
-                    fill="#666"
-                    fontSize="7"
-                    textAnchor="middle"
-                    fontWeight="400"
-                  >
-                    {value === 0 ? "0" : value === 1.0 ? "1.0" : value.toFixed(1)}
-                  </text>
+                  {/* Label for major ticks */}
+                  {isMajorTick && (
+                    <text
+                      x={centerX + (radius + 20) * Math.cos(tickAngle)}
+                      y={centerY + (radius + 20) * Math.sin(tickAngle) + 4}
+                      fill="#666"
+                      fontSize="10"
+                      textAnchor="middle"
+                      fontWeight="500"
+                    >
+                      {value === 0 ? "0" : value === 1.0 ? "1.0" : value === 2.0 ? "2.0" : value.toFixed(1)}
+                    </text>
+                  )}
                 </g>
               );
             }
             return ticks;
           })()}
         </svg>
-        
-        {/* Centered numeric value - positioned in middle of gauge - larger font */}
-        <div style={{
-          position: 'absolute',
-          top: '45%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center'
-        }}>
-          <div style={{
-            fontSize: '1.3rem', // Larger font for bigger gauge
-            fontWeight: 'bold',
-            color: getColorForValue(value || 0),
-            marginBottom: '2px',
-            fontFamily: 'Arial, sans-serif'
-          }}>
-            {value ? value.toFixed(2) : 'N/A'}
-          </div>
-        </div>
       </div>
       
-      {/* Labels below gauge - reduced spacing */}
-      <div style={{ textAlign: 'center', marginTop: '1px' }}>
-        <div style={{
-          fontSize: '0.75rem', // Slightly larger for bigger gauge
-          color: '#6b7280',
-          fontWeight: '600',
-          textTransform: 'uppercase',
-          letterSpacing: '0.3px',
-          lineHeight: '1'
-        }}>
-          {label}
+      {/* External values positioned outside gauge - eliminate gap */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        width: '100%', 
+        marginTop: '-5px', // Negative margin to pull values closer to gauge
+        padding: '0 2px'
+      }}>
+        {/* External value (Green) */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            fontSize: '1.1rem',
+            fontWeight: 'bold',
+            color: '#2ecc71', // Green for external
+            fontFamily: 'Arial, sans-serif'
+          }}>
+            {externalValue ? externalValue.toFixed(2) : 'N/A'}
+          </div>
+          <div style={{
+            fontSize: '0.7rem',
+            color: '#6b7280',
+            fontWeight: '600',
+            textTransform: 'capitalize',
+            letterSpacing: '0.3px'
+          }}>
+            External
+          </div>
         </div>
-        <div style={{
-          fontSize: '0.7rem', // Slightly larger
-          color: '#9ca3af',
-          lineHeight: '1'
-        }}>
-          {subLabel}
+        
+        {/* Internal value (Blue) */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            fontSize: '1.1rem',
+            fontWeight: 'bold',
+            color: '#3498db', // Blue for internal
+            fontFamily: 'Arial, sans-serif'
+          }}>
+            {internalValue ? internalValue.toFixed(2) : 'N/A'}
+          </div>
+          <div style={{
+            fontSize: '0.7rem',
+            color: '#6b7280',
+            fontWeight: '600',
+            textTransform: 'capitalize',
+            letterSpacing: '0.3px'
+          }}>
+            Internal
+          </div>
         </div>
       </div>
     </div>
@@ -254,7 +277,8 @@ const BalanceIndicator: React.FC<{
   divergence: number;
   trainingLoad: number;
   avgTrainingLoad: number;
-}> = ({ divergence, trainingLoad, avgTrainingLoad }) => {
+  width?: number;
+}> = ({ divergence, trainingLoad, avgTrainingLoad, width = 180 }) => {
   
   // Calculate balance position (-1 to +1 range)
   const normalizedDivergence = Math.max(-0.5, Math.min(0.5, divergence)) / 0.5; // Clamp to -1 to +1
@@ -267,79 +291,92 @@ const BalanceIndicator: React.FC<{
   const indicatorPosition = 50 + (normalizedDivergence * 35); // 35% max deviation from center
   
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
-      minWidth: 100, // Increased for bigger balance bar
+      minWidth: width,
       height: '100%',
-      justifyContent: 'center',
+      justifyContent: 'flex-start', // Changed to eliminate gap
       position: 'relative'
     }}>
-      {/* Balance bar - much larger and more prominent */}
-      <div style={{ width: '100%', height: '45px', position: 'relative', marginTop: '2px' }}>
-        <svg width="100%" height="100%" viewBox="0 0 100 45">
-          {/* Background track - much larger */}
-          <rect x="12" y="18" width="76" height="10" rx="5" fill="#e5e7eb" />
+      {/* Scientific instrument-style balance bar - aligned with gauge axis */}
+      <div style={{ width: '100%', height: '50px', position: 'relative', marginTop: '25px' }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${width} 50`}>
+          {/* Scientific instrument background track - dynamic width */}
+          <rect x="10" y="20" width={width - 20} height="8" rx="4" fill="#f8f9fa" stroke="#e9ecef" strokeWidth="1" />
           
-          {/* Color segments - matching divergence risk zones */}
-          <rect x="12" y="18" width="19" height="10" rx="5" fill="#e74c3c" opacity="0.8" />
-          <rect x="31" y="18" width="38" height="10" rx="0" fill="#2ecc71" opacity="0.8" />
-          <rect x="69" y="18" width="19" height="10" rx="5" fill="#3498db" opacity="0.8" />
+          {/* Color segments - extended to both ends for full scale coverage */}
+          <rect x="10" y="20" width={(width - 20) * 0.2} height="8" rx="4" fill="#3498db" opacity="0.7" />
+          <rect x={10 + (width - 20) * 0.2} y="20" width={(width - 20) * 0.6} height="8" rx="0" fill="#2ecc71" opacity="0.7" />
+          <rect x={10 + (width - 20) * 0.8} y="20" width={(width - 20) * 0.2} height="8" rx="4" fill="#e74c3c" opacity="0.7" />
           
-          {/* Training load intensity ring around indicator - larger */}
+          {/* Scientific instrument indicator - reversed for risk assessment */}
           <circle
-            cx={50 + (normalizedDivergence * 25)} // Adjusted for larger scale
-            cy="23"
-            r="8" // Much larger ring
-            fill="none"
-            stroke={intensityColor}
-            strokeWidth="3"
-            opacity="0.7"
-          />
-          
-          {/* Main indicator dot - larger */}
-          <circle
-            cx={50 + (normalizedDivergence * 25)}
-            cy="23"
-            r="5" // Much larger indicator
+            cx={width/2 - (normalizedDivergence * (width - 20) * 0.4)} // Dynamic positioning for full scale
+            cy="24"
+            r="4" // Restored indicator size
             fill="#2c3e50"
             stroke="white"
-            strokeWidth="2"
+            strokeWidth="1.5"
           />
           
-          {/* Scale labels - simplified tick marks below the bar */}
+          {/* Precision crosshair indicator */}
+          <line
+            x1={width/2 - (normalizedDivergence * (width - 20) * 0.4) - 6}
+            y1="24"
+            x2={width/2 - (normalizedDivergence * (width - 20) * 0.4) + 6}
+            y2="24"
+            stroke="#2c3e50"
+            strokeWidth="1"
+            opacity="0.8"
+          />
+          <line
+            x1={width/2 - (normalizedDivergence * (width - 20) * 0.4)}
+            y1="18"
+            x2={width/2 - (normalizedDivergence * (width - 20) * 0.4)}
+            y2="30"
+            stroke="#2c3e50"
+            strokeWidth="1"
+            opacity="0.8"
+          />
+          
+          {/* Enhanced scale labels - extended to both ends */}
           {(() => {
             const ticks = [];
-            const values = [-0.5, -0.25, 0, 0.25, 0.5]; // Divergence range
+            const values = [-0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]; // Full scale to both ends
             
             for (let i = 0; i < values.length; i++) {
               const value = values[i];
-              const position = 50 + (value / 0.5) * 25; // Scale to slider position
+              const position = width/2 - (value / 0.6) * (width - 20) * 0.4; // Dynamic positioning for full scale
+              const isMajorTick = value % 0.1 === 0 && (value === 0 || value % 0.2 === 0); // Major ticks at 0, ±0.2, ±0.4, ±0.6
               
               ticks.push(
                 <g key={value}>
-                  {/* Tick mark below the bar */}
+                  {/* Scientific instrument tick marks - restored */}
                   <line
                     x1={position}
-                    y1="28"
+                    y1={isMajorTick ? "32" : "35"}
                     x2={position}
-                    y2="33"
+                    y2={isMajorTick ? "40" : "37"}
                     stroke="#666"
-                    strokeWidth="1"
-                    opacity="0.7"
+                    strokeWidth={isMajorTick ? "1.5" : "0.8"}
+                    opacity={isMajorTick ? "0.9" : "0.6"}
                   />
-                  {/* Label below tick */}
-                  <text
-                    x={position}
-                    y="38"
-                    fill="#666"
-                    fontSize="5"
-                    textAnchor="middle"
-                    fontWeight="400"
-                  >
-                    {value === 0 ? "0" : value.toFixed(2)}
-                  </text>
+                  {/* Scientific instrument labels - restored */}
+                  {isMajorTick && (
+                    <text
+                      x={position}
+                      y="46"
+                      fill="#666"
+                      fontSize="8"
+                      textAnchor="middle"
+                      fontWeight="500"
+                      fontFamily="monospace"
+                    >
+                      {value === 0 ? "0" : value.toFixed(1)}
+                    </text>
+                  )}
                 </g>
               );
             }
@@ -347,7 +384,7 @@ const BalanceIndicator: React.FC<{
           })()}
         </svg>
         
-        {/* Centered numeric value - positioned in middle like gauges */}
+        {/* Scientific instrument numeric display - restored */}
         <div style={{
           position: 'absolute',
           top: '15%',
@@ -356,18 +393,19 @@ const BalanceIndicator: React.FC<{
           textAlign: 'center'
         }}>
           <div style={{
-            fontSize: '1.4rem', // Larger to match bigger gauges
+            fontSize: '1.2rem', // Restored size
             fontWeight: 'bold',
-            color: '#3498db',
-            fontFamily: 'Arial, sans-serif'
+            color: '#2c3e50',
+            fontFamily: 'monospace', // Scientific instrument font
+            letterSpacing: '0.5px'
           }}>
             {divergence ? divergence.toFixed(2) : 'N/A'}
           </div>
         </div>
       </div>
       
-      {/* Labels below balance bar - matching gauge style */}
-      <div style={{ textAlign: 'center', marginTop: '1px' }}>
+      {/* Labels below balance bar - add space from tick labels */}
+      <div style={{ textAlign: 'center', marginTop: '5px' }}>
         <div style={{
           fontSize: '0.75rem', // Match gauge label size
           color: '#6b7280',
@@ -628,7 +666,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
               textShadow: '2px 2px 4px rgba(0, 0, 0, 0.5)',
               letterSpacing: '0em',
               lineHeight: '1.1',
-              textTransform: 'uppercase',
+              textTransform: 'capitalize',
               fontFamily: 'Arial, sans-serif'
             }}>
               Your Training Monkey
@@ -647,52 +685,6 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
               Train that monkey on your back
             </p>
             
-            {/* Getting Started Link */}
-            <a 
-              href="/getting-started?source=dashboard" 
-              onClick={() => {
-                // Track analytics
-                fetch('/api/landing/analytics', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    event_type: 'cta_click',
-                    event_data: {
-                      button: 'getting_started_guide',
-                      source: 'dashboard',
-                      timestamp: new Date().toISOString()
-                    }
-                  })
-                }).catch(e => console.log('Analytics tracking failed:', e));
-              }}
-              style={{
-                display: 'inline-block',
-                marginTop: '0.5rem',
-                padding: '0.25rem 0.5rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                textDecoration: 'none',
-                borderRadius: '0.25rem',
-                fontSize: '0.6rem',
-                fontWeight: '500',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                transition: 'all 0.2s ease',
-                backdropFilter: 'blur(10px)',
-                textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              New to TrainingMonkey? Get started here
-            </a>
           </div>
         </div>
 
@@ -707,49 +699,81 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
           minHeight: '80px' // Maintaining original height constraint
         }}>
-          {/* Card title */}
-          <h3 style={{
-            margin: '0 0 0.2rem 0', // Reduced bottom margin to save space
-            fontSize: '0.95rem',
-            fontWeight: '600',
-            color: colors.dark,
-            textAlign: 'center'
-          }}>
-            Training Balance
-          </h3>
+          {/* Dynamic Risk Assessment Title */}
+          {(() => {
+            // Determine risk level based on metrics
+            const externalAcwr = metrics?.externalAcwr || 0;
+            const internalAcwr = metrics?.internalAcwr || 0;
+            const divergence = metrics?.normalizedDivergence || 0;
+            
+            // Risk assessment logic
+            let riskLevel = 'LOW';
+            let riskColor = '#2ecc71'; // Green
+            
+            if (externalAcwr > 1.3 || internalAcwr > 1.3 || divergence < -0.15) {
+              riskLevel = 'HIGH';
+              riskColor = '#e74c3c'; // Red
+            } else if (externalAcwr > 1.1 || internalAcwr > 1.1 || divergence < -0.05) {
+              riskLevel = 'MODERATE';
+              riskColor = '#f39c12'; // Orange
+            }
+            
+            return (
+              <h3 style={{
+                margin: '0 0 0.5rem 0',
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                color: colors.dark,
+                textAlign: 'center'
+              }}>
+                Injury Risk At-A-Glance - <span style={{ color: riskColor, fontWeight: '700' }}>{riskLevel}</span>
+              </h3>
+            );
+          })()}
 
-          {/* Gauges container - maximized within remaining space */}
+          {/* Consolidated gauges container - centralized */}
           <div style={{ 
             display: 'flex', 
-            justifyContent: 'space-around', 
+            justifyContent: 'center', 
             alignItems: 'stretch',
-            gap: '0.5rem',
+            gap: '0.5rem', // Add space between gauge and bar
             flex: 1,
-            minHeight: '50px' // Ensure minimum space for gauges
+            minHeight: '40px',
+            marginLeft: '20px' // Add left margin to centralize
           }}>
-            <MiniStrainGauge
-              value={metrics?.externalAcwr || 0}
-              max={2.0}
-              label="External"
-              subLabel="Strain"
-              type="external"
-              size={110} // Increased to maximize space
-            />
+            <MetricTooltip
+              data-metric-tooltip
+              metric="Training Strain (Dual ACWR)"
+              value={`Ext: ${(metrics?.externalAcwr || 0).toFixed(2)}, Int: ${(metrics?.internalAcwr || 0).toFixed(2)}`}
+              description="Dual ACWR display showing both external training load (distance, elevation) and internal stress (heart rate zones) on a single gauge. Green needle = external, blue needle = internal."
+              interpretation="Compare needle positions to assess training balance. Both needles in green zone (0.8-1.3) indicates optimal training load."
+              warning={(metrics?.externalAcwr || 0) > 1.3 || (metrics?.internalAcwr || 0) > 1.3 ? "High strain detected - consider reducing training intensity" : undefined}
+              position="top"
+            >
+              <DualNeedleStrainGauge
+                externalValue={metrics?.externalAcwr || 0}
+                internalValue={metrics?.internalAcwr || 0}
+                max={2.0}
+                size={100}
+              />
+            </MetricTooltip>
             
-            <MiniStrainGauge
-              value={metrics?.internalAcwr || 0}
-              max={2.0}
-              label="Internal"
-              subLabel="Strain"
-              type="internal"
-              size={110} // Increased to maximize space
-            />
-            
-            <BalanceIndicator
-              divergence={metrics?.normalizedDivergence || 0}
-              trainingLoad={metrics?.sevenDayAvgLoad || 0}
-              avgTrainingLoad={avgTrainingLoad}
-            />
+            <MetricTooltip
+              data-metric-tooltip
+              metric="Training Balance"
+              value={(metrics?.normalizedDivergence || 0).toFixed(3)}
+              description="Normalized divergence between external and internal training load. Shows if your heart rate stress matches your external training effort."
+              interpretation="Negative values indicate your body is working harder than expected (fatigue/overtraining), positive values suggest good fitness/recovery."
+              warning={(metrics?.normalizedDivergence || 0) < -0.15 ? "High overtraining risk - rest recommended" : (metrics?.normalizedDivergence || 0) < -0.05 ? "Moderate fatigue - consider easier training" : undefined}
+              position="top"
+            >
+              <BalanceIndicator
+                divergence={metrics?.normalizedDivergence || 0}
+                trainingLoad={metrics?.sevenDayAvgLoad || 0}
+                avgTrainingLoad={avgTrainingLoad}
+                width={200}
+              />
+            </MetricTooltip>
           </div>
         </div>
 
@@ -764,75 +788,121 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
           minHeight: '80px'
         }}>
-          <h3 style={{
-            margin: '0 0 0.5rem 0',
-            fontSize: '0.95rem', // Matches Training Balance
-            fontWeight: '600',
-            color: colors.dark
-          }}>
-            Recovery Status
-          </h3>
+          <ContextualTooltip
+            content={
+              <div>
+                <div style={{ fontWeight: '600', marginBottom: '0.5rem' }}>
+                  Recovery Status
+                </div>
+                <div style={{ fontSize: '0.8rem', lineHeight: '1.4' }}>
+                  Tracks your recovery metrics including days since rest and 7-day training load. 
+                  Helps identify when you need rest or can handle more training.
+                </div>
+              </div>
+            }
+            position="bottom"
+            delay={300}
+          >
+            <h3 style={{
+              margin: '0 0 0.5rem 0',
+              fontSize: '0.95rem', // Matches Training Balance
+              fontWeight: '600',
+              color: colors.dark,
+              cursor: 'help'
+            }}>
+              Recovery Status
+            </h3>
+          </ContextualTooltip>
 
           <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ margin: '0', fontSize: '0.75rem', color: '#6b7280' }}>Days Since Rest</p>
-              <p style={{
-                margin: '0',
-                fontSize: '1.3rem', // Slightly larger for emphasis
-                fontWeight: 'bold',
-                color: (metrics?.daysSinceRest || 0) > 6 ? colors.warning : colors.secondary
-              }}>
-                {metrics?.daysSinceRest || 0}
-              </p>
-            </div>
+            <MetricTooltip
+              data-metric-tooltip
+              metric="Days Since Rest"
+              value={metrics?.daysSinceRest || 0}
+              description="Number of consecutive days without a rest day. Extended training blocks without rest can increase injury risk."
+              interpretation="Consider a rest day when this reaches 6-7 days to allow for proper recovery."
+              warning={(metrics?.daysSinceRest || 0) > 6 ? "Extended training block - rest day recommended" : undefined}
+              position="top"
+            >
+              <div style={{ textAlign: 'center', cursor: 'help' }}>
+                <p style={{ margin: '0', fontSize: '0.75rem', color: '#6b7280' }}>Days Since Rest</p>
+                <p style={{
+                  margin: '0',
+                  fontSize: '1.3rem', // Slightly larger for emphasis
+                  fontWeight: 'bold',
+                  color: (metrics?.daysSinceRest || 0) > 6 ? colors.warning : colors.secondary
+                }}>
+                  {metrics?.daysSinceRest || 0}
+                </p>
+              </div>
+            </MetricTooltip>
 
-            <div style={{ textAlign: 'center' }}>
-              <p style={{
-                margin: '0',
-                fontSize: '0.75rem',  // Label styling
-                color: '#6b7280'      // Label styling
-              }}>
-                7-Day Total Load
-              </p>
+            <ContextualTooltip
+              content={
+                <div>
+                  <div style={{ fontWeight: '600', marginBottom: '0.5rem' }}>
+                    7-Day Training Load Summary
+                  </div>
+                  <div style={{ fontSize: '0.8rem', lineHeight: '1.4', marginBottom: '0.5rem' }}>
+                    <strong>External Load:</strong> Total distance and elevation over 7 days<br/>
+                    <strong>Internal Load:</strong> Total TRIMP (heart rate stress) over 7 days
+                  </div>
+                  <div style={{ fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    These metrics help track your weekly training volume and intensity.
+                  </div>
+                </div>
+              }
+              position="top"
+              delay={300}
+            >
+              <div style={{ textAlign: 'center', cursor: 'help' }}>
+                <p style={{
+                  margin: '0',
+                  fontSize: '0.75rem',  // Label styling
+                  color: '#6b7280'      // Label styling
+                }}>
+                  7-Day Total Load
+                </p>
 
-              {/* Value only - large and bold */}
-              <p style={{
-                margin: '0',
-                fontSize: '1.1rem',   // Value styling (matches ACWR values)
-                fontWeight: 'bold',
-                color: colors.primary
-              }}>
-                {metrics?.sevenDayAvgLoad ? (metrics.sevenDayAvgLoad * 7).toFixed(1) : "N/A"}
-              </p>
+                {/* Value only - large and bold */}
+                <p style={{
+                  margin: '0',
+                  fontSize: '1.1rem',   // Value styling (matches ACWR values)
+                  fontWeight: 'bold',
+                  color: colors.primary
+                }}>
+                  {metrics?.sevenDayAvgLoad ? (metrics.sevenDayAvgLoad * 7).toFixed(1) : "N/A"}
+                </p>
 
-              {/* Unit only - small gray to match label */}
-              <p style={{
-                margin: '0',
-                fontSize: '0.75rem',  // Unit styling (matches "7-Day Total Load" label)
-                color: '#6b7280'      // Unit styling (matches "7-Day Total Load" label)
-              }}>
-                miles equivalent
-              </p>
+                {/* Unit only - small gray to match label */}
+                <p style={{
+                  margin: '0',
+                  fontSize: '0.75rem',  // Unit styling (matches "7-Day Total Load" label)
+                  color: '#6b7280'      // Unit styling (matches "7-Day Total Load" label)
+                }}>
+                  miles equivalent
+                </p>
 
-              {/* Value only - large and bold */}
-              <p style={{
-                margin: '0',
-                fontSize: '1.1rem',   // Value styling (matches ACWR values)
-                fontWeight: 'bold',
-                color: colors.primary
-              }}>
-                {metrics?.sevenDayAvgTrimp ? (metrics.sevenDayAvgTrimp * 7).toFixed(0) : "N/A"}
-              </p>
+                {/* Value only - large and bold */}
+                <p style={{
+                  margin: '0',
+                  fontSize: '1.1rem',   // Value styling (matches ACWR values)
+                  fontWeight: 'bold',
+                  color: colors.primary
+                }}>
+                  {metrics?.sevenDayAvgTrimp ? (metrics.sevenDayAvgTrimp * 7).toFixed(0) : "N/A"}
+                </p>
 
-              {/* Unit only - small gray to match label */}
-              <p style={{
-                margin: '0',
-                fontSize: '0.75rem',  // Unit styling (matches "7-Day Total Load" label)
-                color: '#6b7280'      // Unit styling (matches "7-Day Total Load" label)
-              }}>
-                TRIMP
-              </p>
-            </div>
+                {/* Unit only - small gray to match label */}
+                <p style={{
+                  margin: '0',
+                  fontSize: '0.75rem',  // Unit styling (matches "7-Day Total Load" label)
+                  color: '#6b7280'      // Unit styling (matches "7-Day Total Load" label)
+                }}>
+                  TRIMP
+                </p>
+              </div>
+            </ContextualTooltip>
           </div>
 
           <div style={{

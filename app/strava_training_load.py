@@ -1558,9 +1558,9 @@ def update_moving_averages_enhanced(date, user_id):
 
         if result['success']:
             # Extract enhanced calculation results
-            seven_day_avg_load = result['enhanced_acute_load']
+            seven_day_avg_load = result['acute_load_avg']
             twentyeight_day_avg_load = result['enhanced_chronic_load']
-            seven_day_avg_trimp = result.get('enhanced_acute_trimp', 0.0)
+            seven_day_avg_trimp = result.get('acute_trimp_avg', 0.0)
             twentyeight_day_avg_trimp = result.get('enhanced_chronic_trimp', 0.0)
             acute_chronic_ratio = result['enhanced_acute_chronic_ratio']
             trimp_acute_chronic_ratio = result.get('enhanced_trimp_acute_chronic_ratio', 0.0)

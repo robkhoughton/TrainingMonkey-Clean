@@ -244,19 +244,12 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT onboarding_step, onboarding_completed_at, 
-                               last_onboarding_activity, created_at
-                        FROM user_settings 
-                        WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT onboarding_step, onboarding_completed_at, 
-                               last_onboarding_activity, created_at
-                        FROM user_settings 
-                        WHERE user_id = %s
-                    """, (user_id,))
+                cursor.execute("""
+                    SELECT onboarding_step, onboarding_completed_at, 
+                           last_onboarding_activity, created_at
+                    FROM user_settings 
+                    WHERE user_id = %s
+                """, (user_id,))
                 
                 result = cursor.fetchone()
                 if not result:
@@ -306,18 +299,12 @@ class OnboardingManager:
                 
                 # Update onboarding step
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET onboarding_step = %s, 
-                            last_onboarding_activity = %s
-                        WHERE user_id = %s
-                    """, (step.value, datetime.now(), user_id))
-                else:
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET %s = %s
-                        WHERE user_id = %s
-                    """, (step.value, datetime.now(), user_id))
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET onboarding_step = %s, 
+                        last_onboarding_activity = %s
+                    WHERE user_id = %s
+                """, (step.value, datetime.now(), user_id))
                 
                 # Log step completion
                 self._log_onboarding_event(user_id, 'step_completed', {
@@ -406,17 +393,11 @@ class OnboardingManager:
                     cursor = conn.cursor()
                     
                     # PostgreSQL syntax
-                        cursor.execute("""
-                            UPDATE user_settings 
-                            SET features_unlocked = %s
-                            WHERE user_id = %s
-                        """, (json.dumps(unlocked_features), user_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE user_settings 
-                            SET %s = %s
-                            WHERE user_id = %s
-                        """, (json.dumps(unlocked_features), user_id))
+                    cursor.execute("""
+                        UPDATE user_settings 
+                        SET features_unlocked = %s
+                        WHERE user_id = %s
+                    """, (json.dumps(unlocked_features), user_id))
                 
                 # Log feature unlock
                 self._log_onboarding_event(user_id, 'feature_unlocked', {
@@ -490,13 +471,9 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT features_unlocked FROM user_settings WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT features_unlocked FROM user_settings WHERE user_id = %s
-                    """, (user_id,))
+                cursor.execute("""
+                    SELECT features_unlocked FROM user_settings WHERE user_id = %s
+                """, (user_id,))
                 
                 result = cursor.fetchone()
                 if not result or not result[0]:
@@ -532,13 +509,9 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT features_unlocked FROM user_settings WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT features_unlocked FROM user_settings WHERE user_id = %s
-                    """, (user_id,))
+                cursor.execute("""
+                    SELECT features_unlocked FROM user_settings WHERE user_id = %s
+                """, (user_id,))
                 
                 result = cursor.fetchone()
                 if not result or not result[0]:
@@ -557,13 +530,9 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM activities WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM activities WHERE user_id = %s
-                    """, (user_id,))
+                cursor.execute("""
+                    SELECT COUNT(*) FROM activities WHERE user_id = %s
+                """, (user_id,))
                 
                 result = cursor.fetchone()
                 return result[0] if result else 0
@@ -590,13 +559,9 @@ class OnboardingManager:
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
                         # PostgreSQL syntax
-                            cursor.execute("""
-                                SELECT strava_athlete_id FROM user_settings WHERE user_id = %s
-                            """, (user_id,))
-                        else:
-                            cursor.execute("""
-                                SELECT strava_athlete_id FROM user_settings WHERE user_id = %s
-                            """, (user_id,))
+                        cursor.execute("""
+                            SELECT strava_athlete_id FROM user_settings WHERE user_id = %s
+                        """, (user_id,))
                         
                         result = cursor.fetchone()
                         if not result or not result[0]:
@@ -628,19 +593,12 @@ class OnboardingManager:
                 cursor = conn.cursor()
                 
                 # PostgreSQL syntax
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET onboarding_completed_at = %s,
-                            account_status = 'active'
-                        WHERE user_id = %s
-                    """, (datetime.now(), user_id))
-                else:
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET %s = %s,
-                            account_status = 'active'
-                        WHERE user_id = %s
-                    """, (datetime.now(), user_id))
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET onboarding_completed_at = %s,
+                        account_status = 'active'
+                    WHERE user_id = %s
+                """, (datetime.now(), user_id))
                 
                 # Log onboarding completion
                 self._log_onboarding_event(user_id, 'onboarding_completed', {

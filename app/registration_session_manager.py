@@ -407,7 +407,7 @@ class RegistrationSessionManager:
                 INSERT INTO registration_sessions (
                     session_id, user_id, session_type, status, created_at, expires_at,
                     last_activity, ip_address, user_agent, metadata, updated_at
-                ) VALUES (%s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             current_time = datetime.now()

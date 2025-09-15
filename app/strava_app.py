@@ -1109,7 +1109,18 @@ def health_check():
 @login_required
 @app.route('/strava-setup', methods=['GET', 'POST'])
 def strava_setup():
-    """Strava connection setup where users provide their own app credentials"""
+    """
+    LEGACY FALLBACK: Manual Strava credential entry
+    This route is maintained as an emergency fallback only.
+    Primary OAuth flow should use /auth/strava-signup with centralized app.
+    
+    Use cases:
+    - Emergency fallback if centralized system fails
+    - Development/testing with custom Strava apps
+    - Edge cases where centralized OAuth doesn't work
+    
+    TODO: Consider removing in future version if centralized system proves stable
+    """
     if request.method == 'POST':
         # Handle the form submission
         client_id = request.form.get('client_id')
@@ -1361,7 +1372,7 @@ def home():
     """Landing page for new users, dashboard for existing users"""
     if current_user.is_authenticated:
         # Existing user - redirect to dashboard
-        return send_from_directory('/app/static', 'index.html')
+        return send_from_directory('build', 'index.html')
 
     # New/unauthenticated user - show landing page
     return render_template('landing.html')
@@ -1370,7 +1381,7 @@ def home():
 @login_required
 def dashboard():
     """Serve React dashboard"""
-    return send_from_directory('/app/static', 'index.html')
+    return send_from_directory('build', 'index.html')
 
 # =============================================================================
 # SECTION 4: STATIC FILE SERVING
@@ -1381,16 +1392,54 @@ def dashboard():
 def serve_static(filename):
     """Serve React static files (CSS, JS, etc.)"""
     try:
-        return send_from_directory('/app/static/static', filename)
+        logger.info(f"Serving static file: {filename}")
+        # Handle files that are in the build root (not in build/static/)
+        if filename in ['index.html', 'manifest.json'] or filename.endswith(('.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico')):
+            try:
+                logger.info(f"Trying to serve {filename} from build/")
+                return send_from_directory('build', filename)
+            except Exception as e:
+                logger.info(f"Failed to serve {filename} from build/: {e}")
+                pass  # Fall through to try build/static
+        
+        logger.info(f"Trying to serve {filename} from build/static/")
+        return send_from_directory('build/static', filename)
     except Exception as e:
         logger.error(f"Static file error: {str(e)}")
         return f"Error serving {filename}: {str(e)}", 404
+
+@app.route('/static/static/<path:filename>')
+def serve_static_double(filename):
+    """Handle double /static/static/ paths from React build"""
+    try:
+        return send_from_directory('build/static', filename)
+    except Exception as e:
+        logger.error(f"Static file error: {str(e)}")
+        return f"Error serving {filename}: {str(e)}", 404
+
+@app.route('/static/manifest.json')
+def serve_static_manifest():
+    """Serve manifest.json from /static/ path"""
+    try:
+        return send_from_directory('build', 'manifest.json')
+    except Exception as e:
+        logger.error(f"Manifest file error: {str(e)}")
+        return f"Error serving manifest.json: {str(e)}", 404
+
+@app.route('/static/training-monkey-runner.webp')
+def serve_static_runner_image():
+    """Serve training-monkey-runner.webp from /static/ path"""
+    try:
+        return send_from_directory('build', 'training-monkey-runner.webp')
+    except Exception as e:
+        logger.error(f"Runner image error: {str(e)}")
+        return f"Error serving training-monkey-runner.webp: {str(e)}", 404
 
 @app.route('/favicon.ico')
 def favicon():
     """Serve favicon"""
     try:
-        return send_from_directory('static', 'favicon.ico')
+        return send_from_directory('build', 'favicon.ico')
     except:
         return '', 404
 
@@ -1398,7 +1447,7 @@ def favicon():
 def manifest():
     """Serve manifest.json"""
     try:
-        return send_from_directory('static', 'manifest.json')
+        return send_from_directory('build', 'manifest.json')
     except:
         return '', 404
 
@@ -1406,7 +1455,7 @@ def manifest():
 def logo192():
     """Serve logo192.png"""
     try:
-        return send_from_directory('static', 'logo192.png')
+        return send_from_directory('build', 'logo192.png')
     except:
         return '', 404
 
@@ -1571,9 +1620,9 @@ def login():
             logger.info(f"User {email} logged in successfully")
 
             if request.is_json:
-                return jsonify({'success': True, 'redirect': '/static/index.html'})
+                return jsonify({'success': True, 'redirect': '/dashboard'})
             else:
-                return redirect('/static/index.html')
+                return redirect('/dashboard')
         else:
             if request.is_json:
                 return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
@@ -1655,17 +1704,311 @@ def landing_analytics():
         data = request.get_json()
         event_type = data.get('event_type')
         event_data = data.get('event_data', {})
-
-        # Log analytics event
-        logger.info(f"Landing page analytics: {event_type} - {event_data}")
-
-        # Here you could store in analytics database if needed
-        # For now, just log for monitoring
-
-        return jsonify({'success': True})
+        
+        # Import analytics tracker
+        from analytics_tracker import track_analytics_event, EventType, IntegrationPoint
+        
+        # Map event types to analytics tracker types
+        event_type_mapping = {
+            'cta_click': EventType.CTA_CLICK,
+            'integration_point_click': EventType.INTEGRATION_POINT_CLICK,
+            'getting_started_access': EventType.GETTING_STARTED_ACCESS,
+            'tutorial_start': EventType.TUTORIAL_START,
+            'tutorial_complete': EventType.TUTORIAL_COMPLETE,
+            'tutorial_skip': EventType.TUTORIAL_SKIP,
+            'demo_interaction': EventType.DEMO_INTERACTION,
+            'page_view': EventType.PAGE_VIEW,
+            'scroll_depth': EventType.SCROLL_DEPTH,
+            'tutorial_trigger_shown': EventType.TUTORIAL_TRIGGER_SHOWN,
+            'tutorial_trigger_clicked': EventType.TUTORIAL_TRIGGER_CLICKED
+        }
+        
+        # Map integration points
+        integration_point_mapping = {
+            'landing_cta': IntegrationPoint.LANDING_CTA,
+            'landing_see_how_it_works': IntegrationPoint.LANDING_SEE_HOW_IT_WORKS,
+            'onboarding_help_link': IntegrationPoint.ONBOARDING_HELP_LINK,
+            'dashboard_help_button': IntegrationPoint.DASHBOARD_HELP_BUTTON,
+            'settings_guide_button': IntegrationPoint.SETTINGS_GUIDE_BUTTON,
+            'goals_guide_button': IntegrationPoint.GOALS_GUIDE_BUTTON,
+            'replay_tutorial_button': IntegrationPoint.REPLAY_TUTORIAL_BUTTON,
+            'contextual_tutorial_trigger': IntegrationPoint.CONTEXTUAL_TUTORIAL_TRIGGER
+        }
+        
+        # Get mapped values
+        mapped_event_type = event_type_mapping.get(event_type, EventType.PAGE_VIEW)
+        integration_point = None
+        if 'integration_point' in event_data:
+            integration_point = integration_point_mapping.get(event_data['integration_point'])
+        
+        # Get user info if available
+        user_id = current_user.id if current_user.is_authenticated else None
+        session_id = session.get('session_id', request.remote_addr)
+        
+        # Determine source and target pages
+        source_page = event_data.get('source', 'unknown')
+        target_page = event_data.get('target', None)
+        
+        # Track the event
+        success = track_analytics_event(
+            event_type=mapped_event_type,
+            event_data=event_data,
+            user_id=user_id,
+            session_id=session_id,
+            integration_point=integration_point,
+            source_page=source_page,
+            target_page=target_page,
+            request=request
+        )
+        
+        if success:
+            # Log analytics event for monitoring
+            logger.info(f"Analytics event tracked: {event_type} - {event_data}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to track event'}), 500
 
     except Exception as e:
         logger.error(f"Error tracking landing page analytics: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/click-through-rates', methods=['GET'])
+@login_required
+def get_click_through_rates():
+    """Get click-through rate analytics for integration points"""
+    try:
+        from analytics_tracker import analytics_tracker
+        from dataclasses import asdict
+        
+        # Get query parameters
+        time_period = request.args.get('time_period', '7d')
+        integration_points = request.args.getlist('integration_points')
+        
+        # Get click-through rates
+        ctr_data = analytics_tracker.get_click_through_rates(
+            time_period=time_period,
+            integration_points=integration_points if integration_points else None
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': [asdict(ctr) for ctr in ctr_data]
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting click-through rates: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/user-journey-funnel', methods=['GET'])
+@login_required
+def get_user_journey_funnel():
+    """Get user journey conversion funnel analytics"""
+    try:
+        from analytics_tracker import analytics_tracker
+        
+        # Get query parameters
+        time_period = request.args.get('time_period', '7d')
+        
+        # Get funnel data
+        funnel_data = analytics_tracker.get_user_journey_funnel(time_period=time_period)
+        
+        return jsonify({
+            'success': True,
+            'data': funnel_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting user journey funnel: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/tutorial-metrics', methods=['GET'])
+@login_required
+def get_tutorial_analytics():
+    """Get tutorial analytics and completion rates"""
+    try:
+        from analytics_tracker import analytics_tracker
+        
+        # Get query parameters
+        time_period = request.args.get('time_period', '7d')
+        
+        # Get tutorial analytics
+        tutorial_data = analytics_tracker.get_tutorial_analytics(time_period=time_period)
+        
+        return jsonify({
+            'success': True,
+            'data': tutorial_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting tutorial analytics: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tutorials/start', methods=['POST'])
+@login_required
+def start_tutorial():
+    """Start a tutorial and track the start event"""
+    try:
+        data = request.get_json()
+        tutorial_id = data.get('tutorial_id')
+        
+        if not tutorial_id:
+            return jsonify({'success': False, 'error': 'Tutorial ID required'}), 400
+        
+        # Mark tutorial as started
+        from onboarding_tutorial_system import OnboardingTutorialSystem
+        tutorial_system = OnboardingTutorialSystem()
+        
+        success = tutorial_system.mark_tutorial_started(
+            user_id=current_user.id,
+            tutorial_id=tutorial_id,
+            start_data={
+                'source': data.get('source', 'unknown'),
+                'timestamp': data.get('timestamp')
+            }
+        )
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Tutorial started successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to start tutorial'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting tutorial: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tutorials/complete', methods=['POST'])
+@login_required
+def complete_tutorial():
+    """Mark a tutorial as completed and track the completion event"""
+    try:
+        data = request.get_json()
+        tutorial_id = data.get('tutorial_id')
+        
+        if not tutorial_id:
+            return jsonify({'success': False, 'error': 'Tutorial ID required'}), 400
+        
+        # Mark tutorial as completed
+        from onboarding_tutorial_system import OnboardingTutorialSystem
+        tutorial_system = OnboardingTutorialSystem()
+        
+        success = tutorial_system.mark_tutorial_completed(
+            user_id=current_user.id,
+            tutorial_id=tutorial_id,
+            completion_data={
+                'source': data.get('source', 'unknown'),
+                'timestamp': data.get('timestamp'),
+                'completion_time': data.get('completion_time'),
+                'steps_completed': data.get('steps_completed')
+            }
+        )
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Tutorial completed successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to complete tutorial'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error completing tutorial: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tutorials/skip', methods=['POST'])
+@login_required
+def skip_tutorial():
+    """Mark a tutorial as skipped and track the skip event"""
+    try:
+        data = request.get_json()
+        tutorial_id = data.get('tutorial_id')
+        
+        if not tutorial_id:
+            return jsonify({'success': False, 'error': 'Tutorial ID required'}), 400
+        
+        # Mark tutorial as skipped
+        from onboarding_tutorial_system import OnboardingTutorialSystem
+        tutorial_system = OnboardingTutorialSystem()
+        
+        success = tutorial_system.mark_tutorial_skipped(
+            user_id=current_user.id,
+            tutorial_id=tutorial_id,
+            skip_data={
+                'source': data.get('source', 'unknown'),
+                'timestamp': data.get('timestamp'),
+                'skip_reason': data.get('skip_reason'),
+                'step_skipped_at': data.get('step_skipped_at')
+            }
+        )
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Tutorial skipped successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to skip tutorial'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error skipping tutorial: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tutorials/stats', methods=['GET'])
+@login_required
+def get_tutorial_stats():
+    """Get tutorial completion statistics"""
+    try:
+        from onboarding_tutorial_system import OnboardingTutorialSystem
+        
+        tutorial_id = request.args.get('tutorial_id')
+        time_period = request.args.get('time_period', '7d')
+        
+        tutorial_system = OnboardingTutorialSystem()
+        stats = tutorial_system.get_tutorial_completion_stats(
+            tutorial_id=tutorial_id,
+            time_period=time_period
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting tutorial stats: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/detailed-funnel', methods=['GET'])
+@login_required
+def get_detailed_funnel():
+    """Get detailed funnel analysis with cohort tracking"""
+    try:
+        from analytics_tracker import analytics_tracker
+        
+        # Get query parameters
+        time_period = request.args.get('time_period', '7d')
+        funnel_type = request.args.get('funnel_type', 'onboarding')
+        
+        # Get detailed funnel data
+        funnel_data = analytics_tracker.get_detailed_funnel_analysis(time_period=time_period)
+        
+        # Get enhanced funnel data
+        enhanced_funnel_data = analytics_tracker.get_user_journey_funnel(
+            time_period=time_period, 
+            funnel_type=funnel_type
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'detailed_funnel': funnel_data,
+                'enhanced_funnel': enhanced_funnel_data
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting detailed funnel: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1674,7 +2017,7 @@ def landing_analytics():
 def first_time_dashboard():
     """Special dashboard experience for new users from landing page"""
     if not session.get('new_user_onboarding'):
-        return redirect('/static/index.html')
+        return redirect('/dashboard')
 
     try:
         # Use correct date formatting pattern
@@ -1694,7 +2037,7 @@ def first_time_dashboard():
 
         if days_of_data and days_of_data.get('days', 0) >= 14:
             session.pop('new_user_onboarding', None)
-            return redirect('/static/index.html?highlight=divergence&new_user=true')
+            return redirect('/dashboard?highlight=divergence&new_user=true')
         else:
             return render_template('onboarding.html',
                                    days_needed=max(0, 28 - days_of_data.get('days', 0)) if days_of_data else 28,
@@ -1702,7 +2045,7 @@ def first_time_dashboard():
 
     except Exception as e:
         logger.error(f"Error checking user data: {str(e)}")
-        return redirect('/static/index.html')
+        return redirect('/dashboard')
 
 # Removed duplicate / route - keeping only the first one
 # FIXED: There were two @app.route('/') definitions causing conflicts
@@ -1751,15 +2094,15 @@ def getting_started_resources():
                         'completed': 'Completed'
                     }
                     
-                    # Determine next steps based on current step
+                    # Determine next steps based on current step - aligned with 4-step getting started flow
                     next_steps_map = {
-                        'welcome': 'Connect your Strava account to get started',
-                        'strava_connected': 'We\'re processing your activity data',
-                        'first_activity': 'Your first activity has been synced',
-                        'data_sync': 'Your data analysis is ready',
+                        'welcome': 'Create Your Account',
+                        'strava_connected': 'Connect with Strava', 
+                        'first_activity': 'Set your training goals',      # After Strava connection
+                        'data_sync': 'Set your training goals',           # After data sync
+                        'goals_setup': 'View your training analysis',     # After goals setup
                         'dashboard_intro': 'Explore your training dashboard',
                         'features_tour': 'Learn about advanced features',
-                        'goals_setup': 'Set your training goals',
                         'first_recommendation': 'Review your AI recommendations',
                         'journal_intro': 'Start tracking your training journal',
                         'completed': 'You\'re all set! Explore all features'
@@ -1779,7 +2122,7 @@ def getting_started_resources():
                         'user_id': user_id,
                         'onboarding_step': 'welcome',
                         'onboarding_step_display': 'Welcome',
-                        'next_steps': 'Connect your Strava account to get started',
+                        'next_steps': 'Create User Account',
                         'features_unlocked': [],
                         'is_authenticated': True
                     }
@@ -1791,7 +2134,7 @@ def getting_started_resources():
                     'user_id': user_id,
                     'onboarding_step': 'welcome',
                     'onboarding_step_display': 'Welcome',
-                    'next_steps': 'Connect your Strava account to get started',
+                    'next_steps': 'Create User Account',
                     'features_unlocked': [],
                     'is_authenticated': True
                 }
@@ -1825,6 +2168,168 @@ def getting_started_resources():
         logger.error(f"Error in getting_started_resources route: {str(e)}")
         # Fallback to basic template without context
         return render_template('getting_started_resources.html', 
+                             user_context=None,
+                             source=request.args.get('source', 'direct'))
+
+
+@app.route('/guide')
+def guide():
+    """Guide page with comprehensive tutorials and advanced features"""
+    try:
+        # Get source parameter for analytics tracking
+        source = request.args.get('source', 'direct')
+        
+        # Initialize user context
+        user_context = None
+        
+        # Check if user is authenticated
+        if current_user.is_authenticated:
+            user_id = current_user.id
+            
+            # Get user's onboarding progress for contextual content
+            try:
+                from onboarding_manager import get_user_onboarding_progress
+                onboarding_progress = get_user_onboarding_progress(user_id)
+                
+                if onboarding_progress:
+                    user_context = {
+                        'is_authenticated': True,
+                        'user_id': user_id,
+                        'onboarding_step': onboarding_progress.get('current_step', 'welcome'),
+                        'next_steps': onboarding_progress.get('next_steps', 'Continue exploring advanced features')
+                    }
+                else:
+                    user_context = {
+                        'is_authenticated': True,
+                        'user_id': user_id,
+                        'onboarding_step': 'completed',
+                        'next_steps': 'Explore advanced features and tutorials'
+                    }
+            except Exception as e:
+                logger.error(f"Error getting onboarding progress for guide: {str(e)}")
+                user_context = {
+                    'is_authenticated': True,
+                    'user_id': user_id,
+                    'onboarding_step': 'completed',
+                    'next_steps': 'Explore advanced features and tutorials'
+                }
+        else:
+            user_context = {
+                'is_authenticated': False,
+                'onboarding_step': 'welcome',
+                'next_steps': 'Sign up to access personalized tutorials'
+            }
+        
+        # Track analytics
+        try:
+            from analytics_tracker import track_page_view
+            track_page_view(
+                page='guide',
+                source=source,
+                user_id=user_context.get('user_id') if user_context else None
+            )
+        except Exception as e:
+            logger.error(f"Error tracking guide analytics: {str(e)}")
+        
+        # Render template with context
+        return render_template('guide.html', 
+                             user_context=user_context,
+                             source=source)
+                             
+    except Exception as e:
+        logger.error(f"Error in guide route: {str(e)}")
+        # Fallback to basic template without context
+        return render_template('guide.html', 
+                             user_context=None,
+                             source=request.args.get('source', 'direct'))
+
+
+@app.route('/faq')
+def faq():
+    """FAQ page with frequently asked questions"""
+    try:
+        # Get source parameter for analytics tracking
+        source = request.args.get('source', 'direct')
+        
+        # Initialize user context
+        user_context = None
+        
+        # Check if user is authenticated
+        if current_user.is_authenticated:
+            user_context = {
+                'is_authenticated': True,
+                'user_id': current_user.id
+            }
+        else:
+            user_context = {
+                'is_authenticated': False
+            }
+        
+        # Track analytics
+        try:
+            from analytics_tracker import track_page_view
+            track_page_view(
+                page='faq',
+                source=source,
+                user_id=user_context.get('user_id') if user_context else None
+            )
+        except Exception as e:
+            logger.error(f"Error tracking FAQ analytics: {str(e)}")
+        
+        # Render template with context
+        return render_template('faq.html', 
+                             user_context=user_context,
+                             source=source)
+                             
+    except Exception as e:
+        logger.error(f"Error in FAQ route: {str(e)}")
+        # Fallback to basic template without context
+        return render_template('faq.html', 
+                             user_context=None,
+                             source=request.args.get('source', 'direct'))
+
+
+@app.route('/tutorials')
+def tutorials():
+    """Tutorials hub page with comprehensive learning resources"""
+    try:
+        # Get source parameter for analytics tracking
+        source = request.args.get('source', 'direct')
+        
+        # Initialize user context
+        user_context = None
+        
+        # Check if user is authenticated
+        if current_user.is_authenticated:
+            user_context = {
+                'is_authenticated': True,
+                'user_id': current_user.id
+            }
+        else:
+            user_context = {
+                'is_authenticated': False
+            }
+        
+        # Track analytics
+        try:
+            from analytics_tracker import track_page_view
+            track_page_view(
+                page='tutorials',
+                source=source,
+                user_id=user_context.get('user_id') if user_context else None
+            )
+        except Exception as e:
+            logger.error(f"Error tracking tutorials analytics: {str(e)}")
+        
+        # Render template with context
+        return render_template('tutorials.html', 
+                             user_context=user_context,
+                             source=source)
+                             
+    except Exception as e:
+        logger.error(f"Error in tutorials route: {str(e)}")
+        # Fallback to basic template without context
+        return render_template('tutorials.html', 
                              user_context=None,
                              source=request.args.get('source', 'direct'))
 
@@ -1869,6 +2374,75 @@ def start_tutorial():
             
     except Exception as e:
         logger.error(f"Error starting tutorial: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@app.route('/api/tutorials/available', methods=['GET'])
+@login_required
+def get_available_tutorials():
+    """API endpoint to get available tutorials for existing users"""
+    try:
+        user_id = current_user.id
+        
+        # Import tutorial system
+        from onboarding_tutorial_system import get_available_tutorials, get_recommended_tutorials
+        
+        # Get all available tutorials
+        available_tutorials = get_available_tutorials(user_id)
+        
+        # Get recommended tutorials
+        recommended_tutorials = get_recommended_tutorials(user_id, limit=3)
+        
+        # Organize tutorials by category
+        tutorials_by_category = {}
+        for tutorial in available_tutorials:
+            category = tutorial.get('category', 'general')
+            if category not in tutorials_by_category:
+                tutorials_by_category[category] = []
+            tutorials_by_category[category].append(tutorial)
+        
+        return jsonify({
+            'success': True,
+            'tutorials': available_tutorials,
+            'recommended': recommended_tutorials,
+            'by_category': tutorials_by_category
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting available tutorials: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@app.route('/api/tutorials/content/<tutorial_id>', methods=['GET'])
+@login_required
+def get_tutorial_content(tutorial_id):
+    """API endpoint to get tutorial content for existing users"""
+    try:
+        # Import tutorial system
+        from onboarding_tutorial_system import get_tutorial_content
+        
+        # Get tutorial content
+        content = get_tutorial_content(tutorial_id)
+        
+        if content:
+            return jsonify({
+                'success': True,
+                'content': content
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Tutorial not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting tutorial content: {str(e)}")
         return jsonify({
             'success': False,
             'error': 'Internal server error'
@@ -6959,7 +7533,7 @@ def welcome_post_strava():
     """Welcome page shown after successful Strava connection"""
     return render_template('welcome_post_strava.html')
 
-@app.route('/goals/setup', methods=['GET', 'POST'])
+@app.route('/goals-setup', methods=['GET', 'POST'])
 @login_required
 def goals_setup():
     """Streamlined goals setup page - addresses 'too many options' and 'time consuming' issues"""
@@ -6991,8 +7565,8 @@ def goals_setup():
             """, (goal_type, target_value, timeframe, user_id))
             
             # Mark onboarding step as complete
-            from onboarding_manager import onboarding_manager
-            onboarding_manager.complete_step(user_id, 'goals_configured')
+            from onboarding_manager import onboarding_manager, OnboardingStep
+            onboarding_manager.complete_onboarding_step(user_id, OnboardingStep.GOALS_SETUP)
             
             # Track analytics (real data this time!)
             track_analytics_event('goals_setup_completed', {

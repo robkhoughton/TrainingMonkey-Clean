@@ -326,6 +326,114 @@
                 left: 100%;
             }
         }
+        
+        /* Progress Timeline */
+        .progress-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .progress-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .progress-header h3 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .progress-header p {
+            color: #6c757d;
+            margin: 0.5rem 0 0 0;
+            font-size: 0.9rem;
+        }
+        
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            position: relative;
+        }
+        
+        .step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 60%;
+            width: 80%;
+            height: 2px;
+            background: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step.completed:not(:last-child)::after {
+            background: #28a745;
+        }
+        
+        .step-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .step.completed .step-icon {
+            background: #28a745;
+            color: white;
+        }
+        
+        .step-content {
+            text-align: center;
+        }
+        
+        .step-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #28a745;
+            margin-bottom: 0.25rem;
+        }
+        
+        .step-desc {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        @media (max-width: 768px) {
+            .progress-steps {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .step:not(:last-child)::after {
+                display: none;
+            }
+            
+            .step-icon {
+                width: 35px;
+                height: 35px;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -344,6 +452,37 @@
             🎉 Your Strava account has been successfully connected!<br>
             We're now ready to analyze your training data and provide personalized insights.
         </p>
+
+        <!-- Progress Timeline -->
+        <div class="progress-section">
+            <div class="progress-header">
+                <h3>🎯 Onboarding Complete!</h3>
+                <p>Step 3 of 3 • All Set!</p>
+            </div>
+            <div class="progress-steps">
+                <div class="step completed">
+                    <div class="step-icon">1</div>
+                    <div class="step-content">
+                        <div class="step-title">Connect Strava</div>
+                        <div class="step-desc">Link your training data</div>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">2</div>
+                    <div class="step-content">
+                        <div class="step-title">Setup Preferences</div>
+                        <div class="step-desc">Enter preferences (some optional)</div>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">3</div>
+                    <div class="step-content">
+                        <div class="step-title">All Set</div>
+                        <div class="step-desc">Redirected to Dashboard</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Connection Status -->
         <div class="connection-status">

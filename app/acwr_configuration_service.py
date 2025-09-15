@@ -375,7 +375,7 @@ class ACWRConfigurationService:
                 INSERT INTO acwr_enhanced_calculations
                 (user_id, activity_id, configuration_id, acwr_ratio, acute_load, chronic_load,
                  calculation_method, created_at, updated_at)
-                VALUES (%s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             # Get activity_id from activity_date

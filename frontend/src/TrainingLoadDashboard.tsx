@@ -82,7 +82,7 @@ const TrainingLoadDashboard: React.FC = () => {
     daysSinceRest: 0,
     normalizedDivergence: 0
   });
-  const [dateRange, setDateRange] = useState('14');
+  const [dateRange, setDateRange] = useState('30');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renderKey, setRenderKey] = useState(0);
@@ -685,49 +685,7 @@ const getRecommendationDateContext = (recommendation) => {
         metrics={metrics}
       />
 
-      {/* Chart Time Period Control */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.25rem',
-          padding: '0.25rem',
-          backgroundColor: 'white',
-          borderRadius: '0.5rem',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: '#374151' }}>
-            Training Charts
-          </h2>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>
-              Time Period:
-            </label>
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              style={{
-                padding: '0.375rem',
-                borderRadius: '0.375rem',
-                border: '1px solid #d1d5db',
-                backgroundColor: 'white',
-                fontSize: '0.875rem',
-                color: '#374151',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="7">7 Days</option>
-              <option value="14">14 Days</option>
-              <option value="30">30 Days</option>
-              <option value="60">60 Days</option>
-              <option value="90">90 Days</option>
-            </select>
-          </div>
-        </div>
-
-      {/* Sport Filter Controls - only show if cycling data exists */}
-      {hasCyclingData && (
+      {/* Consolidated Dashboard Controls */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -736,33 +694,71 @@ const getRecommendationDateContext = (recommendation) => {
           padding: '0.5rem',
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+          flexWrap: 'wrap',
+          gap: '1rem'
         }}>
-          <span style={{ fontWeight: '500', color: '#374151' }}>Show Sports:</span>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedSports.includes('running')}
-                onChange={() => setSelectedSports(prev =>
-                  prev.includes('running') ? prev.filter(s => s !== 'running') : [...prev, 'running']
-                )}
-              />
-              <span style={{ color: '#2ecc71' }}>Running</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedSports.includes('cycling')}
-                onChange={() => setSelectedSports(prev =>
-                  prev.includes('cycling') ? prev.filter(s => s !== 'cycling') : [...prev, 'cycling']
-                )}
-              />
-              <span style={{ color: '#3498db' }}>Cycling</span>
-            </label>
+          {/* Left side: Training Charts and Time Period */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: '#374151' }}>
+              Training Charts
+            </h2>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value)}
+                style={{
+                  padding: '0.375rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: 'white',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="7">7 Days</option>
+                <option value="14">14 Days</option>
+                <option value="30">30 Days</option>
+                <option value="60">60 Days</option>
+                <option value="90">90 Days</option>
+              </select>
+              <label style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>
+                Time Period
+              </label>
+            </div>
           </div>
+
+          {/* Right side: Show Sports (only if cycling data exists) */}
+          {hasCyclingData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontWeight: '500', color: '#374151' }}>Show Sports:</span>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedSports.includes('running')}
+                    onChange={() => setSelectedSports(prev =>
+                      prev.includes('running') ? prev.filter(s => s !== 'running') : [...prev, 'running']
+                    )}
+                  />
+                  <span style={{ color: '#2ecc71' }}>Running</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedSports.includes('cycling')}
+                    onChange={() => setSelectedSports(prev =>
+                      prev.includes('cycling') ? prev.filter(s => s !== 'cycling') : [...prev, 'cycling']
+                    )}
+                  />
+                  <span style={{ color: '#3498db' }}>Cycling</span>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
       {/* Overtraining Risk Over Time Chart */}
       <div className={styles.chartContainer}>
@@ -786,7 +782,7 @@ const getRecommendationDateContext = (recommendation) => {
                   value: 'ACWR',
                   angle: -90,
                   position: 'insideLeft',
-                  style: { textAnchor: 'middle', fontSize: '12px', fontWeight: '500' }
+                  style: { textAnchor: 'middle', fontSize: '14px', fontWeight: '500' }
                 }}
                 tickFormatter={(value) => value.toFixed(1)}
                 width={60}
@@ -800,7 +796,7 @@ const getRecommendationDateContext = (recommendation) => {
                   value: 'Normalized Divergence',
                   angle: 90,
                   position: 'insideRight',
-                  style: { textAnchor: 'middle', fontSize: '12px', fontWeight: '500' }
+                  style: { textAnchor: 'middle', fontSize: '14px', fontWeight: '500', fill: '#dc3545' }
                 }}
                 tickFormatter={(value) => value.toFixed(2)}
                 width={60}

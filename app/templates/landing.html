@@ -55,10 +55,10 @@
             min-height: 250px;
             display: flex;
             align-items: center;
-            justify-content: space-between; /* Changed from flex-end to space-between */
+            justify-content: space-between;
         }
 
-        /* Monkey mascot styling */
+        /* Monkey mascot styling with circular text */
         .monkey-mascot {
             position: relative;
             z-index: 2;
@@ -67,6 +67,38 @@
             margin-left: 2rem;
             filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
             transition: transform 0.3s ease;
+        }
+
+        /* Circular text around monkey mascot */
+        .circular-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .circular-text svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .circular-text text {
+            fill: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-weight: 600;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
         .monkey-mascot:hover {
@@ -672,12 +704,28 @@
                 padding: 2rem 1rem;
             }
 
+            .monkey-mascot {
+                width: 80px;
+                height: 80px;
+                margin-left: 1rem;
+            }
+
+            .circular-text {
+                width: 140px;
+                height: 140px;
+                font-size: 12px;
+            }
+
             .header h1 {
                 font-size: 2.5rem;
             }
 
             .header .subtitle {
                 font-size: 1.25rem;
+            }
+
+            .header-content {
+                max-width: 100%;
             }
 
             .demo-section,
@@ -692,6 +740,24 @@
 
             .cta-title {
                 font-size: 1.8rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .monkey-mascot {
+                width: 60px;
+                height: 60px;
+                margin-left: 0.5rem;
+            }
+
+            .circular-text {
+                width: 100px;
+                height: 100px;
+                font-size: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
             }
         }
 
@@ -726,7 +792,7 @@
 </head>
 <body>
     <div class="above-fold">
-        <nav style="position: absolute; top: 2rem; left: 2rem; z-index: 10;">
+        <nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10;">
             <a href="/login" style="
                 display: inline-block;
                 background: rgba(255,255,255,0.9);
@@ -757,6 +823,32 @@
         <section class="header">
             <div class="monkey-mascot">
                 <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="Your Training Monkey Mascot">
+                <div class="circular-text">
+                    <svg viewBox="0 0 200 200">
+                        <defs>
+                            <!-- Drop shadow filter -->
+                            <filter id="textShadow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.3)"/>
+                            </filter>
+                            <!-- Upper half circle path -->
+                            <path id="upperCircle" d="M 20, 100 A 80,80 0 0,1 180, 100"/>
+                            <!-- Lower half circle path (reversed for upright text) -->
+                            <path id="lowerCircle" d="M 20, 100 A 80,80 0 0,0 180, 100"/>
+                        </defs>
+                        <!-- Upper text -->
+                        <text font-size="18" font-weight="700" filter="url(#textShadow)">
+                            <textPath href="#upperCircle" startOffset="50%" text-anchor="middle">
+                                Your Training Monkey
+                            </textPath>
+                        </text>
+                        <!-- Lower text (upright) -->
+                        <text>
+                            <textPath href="#lowerCircle" startOffset="50%" text-anchor="middle">
+                                Prevent Injuries - Train Smarter
+                            </textPath>
+                        </text>
+                    </svg>
+                </div>
             </div>
             <div class="header-content fade-in">
                 <h1>Your Training Monkey</h1>

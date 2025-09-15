@@ -493,6 +493,155 @@ class OnboardingTutorialSystem:
                 estimated_duration=110,
                 difficulty_level='intermediate',
                 category='journal'
+            ),
+            
+            # Additional tutorials for existing users
+            'dashboard_advanced_tutorial': Tutorial(
+                tutorial_id='dashboard_advanced_tutorial',
+                name='Advanced Dashboard Features',
+                description='Learn about advanced dashboard features and customization options',
+                tutorial_type=TutorialType.WALKTHROUGH,
+                trigger=TutorialTrigger.MANUAL,
+                target_step=None,  # Available to all existing users
+                steps=[
+                    TutorialStep(
+                        step_id='advanced_metrics',
+                        title='Advanced Metrics',
+                        content='Learn about ACWR, TRIMP, and divergence analysis - the key metrics that make TrainingMonkey unique.',
+                        target_element='#metrics-section',
+                        position='top',
+                        action_required=False,
+                        estimated_duration=30
+                    ),
+                    TutorialStep(
+                        step_id='chart_interactions',
+                        title='Chart Interactions',
+                        content='Discover how to interact with charts: hover for details, click to freeze tooltips, and use legends for explanations.',
+                        target_element='#training-charts',
+                        position='bottom',
+                        action_required=False,
+                        estimated_duration=25
+                    ),
+                    TutorialStep(
+                        step_id='progressive_disclosure',
+                        title='Progressive Features',
+                        content='As you use the dashboard more, advanced features will automatically appear. Use the toggle to show/hide them manually.',
+                        target_element='#progressive-disclosure-toggle',
+                        position='right',
+                        action_required=False,
+                        estimated_duration=20
+                    ),
+                    TutorialStep(
+                        step_id='help_system',
+                        title='Help System',
+                        content='Use the help button (❓) and tooltips throughout the dashboard to get contextual assistance.',
+                        target_element='#help-button',
+                        position='left',
+                        action_required=False,
+                        estimated_duration=15
+                    )
+                ],
+                estimated_duration=90,
+                difficulty_level='intermediate',
+                category='dashboard'
+            ),
+            
+            'training_analysis_tutorial': Tutorial(
+                tutorial_id='training_analysis_tutorial',
+                name='Understanding Training Analysis',
+                description='Deep dive into training load analysis and divergence insights',
+                tutorial_type=TutorialType.MODAL,
+                trigger=TutorialTrigger.MANUAL,
+                target_step=None,  # Available to all existing users
+                steps=[
+                    TutorialStep(
+                        step_id='external_vs_internal',
+                        title='External vs Internal Load',
+                        content='External load is what you do (distance, elevation), internal load is how your body responds (heart rate zones).',
+                        position='center',
+                        action_required=False,
+                        estimated_duration=25
+                    ),
+                    TutorialStep(
+                        step_id='divergence_explained',
+                        title='Divergence Analysis',
+                        content='Divergence shows when your internal and external loads don\'t match. This reveals fatigue, fitness changes, or environmental stress.',
+                        target_element='#divergence-chart',
+                        position='top',
+                        action_required=False,
+                        estimated_duration=30
+                    ),
+                    TutorialStep(
+                        step_id='acwr_understanding',
+                        title='ACWR (Acute:Chronic Workload Ratio)',
+                        content='ACWR compares your recent training (7 days) to your training base (28 days). Values 0.8-1.3 are optimal.',
+                        target_element='#acwr-metrics',
+                        position='bottom',
+                        action_required=False,
+                        estimated_duration=25
+                    ),
+                    TutorialStep(
+                        step_id='trimp_understanding',
+                        title='TRIMP (Training Impulse)',
+                        content='TRIMP measures internal training stress based on heart rate zones and duration. Higher values = more intense training.',
+                        target_element='#trimp-chart',
+                        position='left',
+                        action_required=False,
+                        estimated_duration=20
+                    )
+                ],
+                estimated_duration=100,
+                difficulty_level='advanced',
+                category='analysis'
+            ),
+            
+            'ai_recommendations_tutorial': Tutorial(
+                tutorial_id='ai_recommendations_tutorial',
+                name='AI Recommendations Guide',
+                description='Learn how to interpret and use AI-powered training recommendations',
+                tutorial_type=TutorialType.INTERACTIVE,
+                trigger=TutorialTrigger.MANUAL,
+                target_step=None,  # Available to all existing users
+                steps=[
+                    TutorialStep(
+                        step_id='ai_overview',
+                        title='AI Recommendations',
+                        content='Our AI analyzes your training patterns, goals, and current fitness to provide personalized recommendations.',
+                        target_element='#recommendations-section',
+                        position='top',
+                        action_required=False,
+                        estimated_duration=20
+                    ),
+                    TutorialStep(
+                        step_id='recommendation_types',
+                        title='Types of Recommendations',
+                        content='You\'ll get daily training decisions, weekly planning advice, and pattern insights based on your data.',
+                        position='center',
+                        action_required=False,
+                        estimated_duration=25
+                    ),
+                    TutorialStep(
+                        step_id='generate_recommendations',
+                        title='Generate New Recommendations',
+                        content='Click the "Generate AI Analysis" button to get fresh recommendations based on your latest training data.',
+                        target_element='#generate-recommendations-btn',
+                        position='bottom',
+                        action_required=True,
+                        action_text='Generate Analysis',
+                        estimated_duration=30
+                    ),
+                    TutorialStep(
+                        step_id='interpret_recommendations',
+                        title='Interpreting Recommendations',
+                        content='Look for specific guidance on training intensity, recovery needs, and goal progress in your recommendations.',
+                        position='center',
+                        action_required=False,
+                        estimated_duration=20
+                    )
+                ],
+                estimated_duration=95,
+                difficulty_level='intermediate',
+                category='recommendations'
             )
         }
     
@@ -969,6 +1118,10 @@ class OnboardingTutorialSystem:
     def _check_tutorial_prerequisites(self, user_id: int, tutorial: Tutorial) -> bool:
         """Check if user meets tutorial prerequisites"""
         try:
+            # For existing users, we'll be more lenient with prerequisites
+            # Check if user is an existing user (has completed onboarding)
+            is_existing_user = self._is_existing_user(user_id)
+            
             for prerequisite in tutorial.prerequisites:
                 # Check step completion
                 if prerequisite.startswith('step:'):
@@ -976,6 +1129,9 @@ class OnboardingTutorialSystem:
                     try:
                         step = OnboardingStep(step_name)
                         if not self.onboarding_manager.has_completed_step(user_id, step):
+                            # For existing users, skip step prerequisites for most tutorials
+                            if is_existing_user and tutorial.category in ['dashboard', 'features', 'general']:
+                                continue
                             return False
                     except ValueError:
                         continue
@@ -984,6 +1140,9 @@ class OnboardingTutorialSystem:
                 elif prerequisite.startswith('feature:'):
                     feature_name = prerequisite.split(':', 1)[1]
                     if not self.onboarding_manager.check_feature_unlock(user_id, feature_name):
+                        # For existing users, allow access to most features
+                        if is_existing_user and tutorial.category in ['dashboard', 'features', 'general']:
+                            continue
                         return False
                 
                 # Check activity count
@@ -991,6 +1150,9 @@ class OnboardingTutorialSystem:
                     required_count = int(prerequisite.split(':', 1)[1])
                     actual_count = self.tiered_feature_manager._get_user_activity_count(user_id)
                     if actual_count < required_count:
+                        # For existing users, reduce activity requirements
+                        if is_existing_user and actual_count > 0:
+                            continue
                         return False
             
             return True
@@ -999,16 +1161,240 @@ class OnboardingTutorialSystem:
             logger.error(f"Error checking tutorial prerequisites: {str(e)}")
             return False
     
+    def _is_existing_user(self, user_id: int) -> bool:
+        """Check if user is an existing user (has completed onboarding)"""
+        try:
+            # Check if user has completed the welcome step (indicating they're past initial onboarding)
+            return self.onboarding_manager.has_completed_step(user_id, OnboardingStep.WELCOME)
+        except Exception as e:
+            logger.error(f"Error checking if user is existing user: {str(e)}")
+            return False
+    
     def _has_user_completed_tutorial(self, user_id: int, tutorial_id: str) -> bool:
         """Check if user has completed a tutorial"""
         try:
-            # In practice, this would query the database for completed sessions
-            # For now, return False as placeholder
+            # Check database for actual completion records
+            completion_query = """
+                SELECT COUNT(*) as count 
+                FROM tutorial_completions 
+                WHERE user_id = %s AND tutorial_id = %s
+            """
+            
+            result = db_utils.execute_query(completion_query, (user_id, tutorial_id), fetch=True)
+            if result and result.get('count', 0) > 0:
+                return True
+            
+            # Fallback for existing users (simulate completion for demo purposes)
+            if self._is_existing_user(user_id):
+                completed_tutorials = [
+                    'welcome_tour',
+                    'dashboard_tutorial',
+                    'features_tour'
+                ]
+                return tutorial_id in completed_tutorials
+            
             return False
             
         except Exception as e:
             logger.error(f"Error checking tutorial completion: {str(e)}")
             return False
+    
+    def mark_tutorial_completed(self, user_id: int, tutorial_id: str, completion_data: Dict[str, Any] = None) -> bool:
+        """Mark a tutorial as completed for a user"""
+        try:
+            # Insert completion record
+            completion_query = """
+                INSERT INTO tutorial_completions (user_id, tutorial_id, completed_at, completion_data)
+                VALUES (%s, %s, NOW(), %s)
+                ON CONFLICT (user_id, tutorial_id) DO UPDATE SET
+                    completed_at = NOW(),
+                    completion_data = EXCLUDED.completion_data
+            """
+            
+            completion_data_json = json.dumps(completion_data) if completion_data else None
+            db_utils.execute_query(completion_query, (user_id, tutorial_id, completion_data_json))
+            
+            # Track analytics event
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.TUTORIAL_COMPLETE,
+                event_data={
+                    'tutorial_id': tutorial_id,
+                    'user_id': user_id,
+                    'completion_data': completion_data
+                },
+                user_id=user_id,
+                source_page='tutorial_system'
+            )
+            
+            logger.info(f"Tutorial {tutorial_id} marked as completed for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error marking tutorial as completed: {str(e)}")
+            return False
+    
+    def mark_tutorial_started(self, user_id: int, tutorial_id: str, start_data: Dict[str, Any] = None) -> bool:
+        """Mark a tutorial as started for a user"""
+        try:
+            # Insert start record
+            start_query = """
+                INSERT INTO tutorial_sessions (user_id, tutorial_id, started_at, start_data)
+                VALUES (%s, %s, NOW(), %s)
+            """
+            
+            start_data_json = json.dumps(start_data) if start_data else None
+            db_utils.execute_query(start_query, (user_id, tutorial_id, start_data_json))
+            
+            # Track analytics event
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.TUTORIAL_START,
+                event_data={
+                    'tutorial_id': tutorial_id,
+                    'user_id': user_id,
+                    'start_data': start_data
+                },
+                user_id=user_id,
+                source_page='tutorial_system'
+            )
+            
+            logger.info(f"Tutorial {tutorial_id} marked as started for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error marking tutorial as started: {str(e)}")
+            return False
+    
+    def mark_tutorial_skipped(self, user_id: int, tutorial_id: str, skip_data: Dict[str, Any] = None) -> bool:
+        """Mark a tutorial as skipped for a user"""
+        try:
+            # Insert skip record
+            skip_query = """
+                INSERT INTO tutorial_skips (user_id, tutorial_id, skipped_at, skip_data)
+                VALUES (%s, %s, NOW(), %s)
+            """
+            
+            skip_data_json = json.dumps(skip_data) if skip_data else None
+            db_utils.execute_query(skip_query, (user_id, tutorial_id, skip_data_json))
+            
+            # Track analytics event
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.TUTORIAL_SKIP,
+                event_data={
+                    'tutorial_id': tutorial_id,
+                    'user_id': user_id,
+                    'skip_data': skip_data
+                },
+                user_id=user_id,
+                source_page='tutorial_system'
+            )
+            
+            logger.info(f"Tutorial {tutorial_id} marked as skipped for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error marking tutorial as skipped: {str(e)}")
+            return False
+    
+    def get_tutorial_completion_stats(self, tutorial_id: str = None, time_period: str = '7d') -> Dict[str, Any]:
+        """Get tutorial completion statistics"""
+        try:
+            # Calculate date range
+            from datetime import datetime, timedelta
+            end_date = datetime.now()
+            if time_period == '1d':
+                start_date = end_date - timedelta(days=1)
+            elif time_period == '7d':
+                start_date = end_date - timedelta(days=7)
+            elif time_period == '30d':
+                start_date = end_date - timedelta(days=30)
+            else:
+                start_date = end_date - timedelta(days=7)
+            
+            # Build query
+            if tutorial_id:
+                query = """
+                    SELECT 
+                        t.tutorial_id,
+                        COUNT(DISTINCT ts.user_id) as total_starts,
+                        COUNT(DISTINCT tc.user_id) as total_completions,
+                        COUNT(DISTINCT tsk.user_id) as total_skips,
+                        ROUND(
+                            (COUNT(DISTINCT tc.user_id)::float / NULLIF(COUNT(DISTINCT ts.user_id), 0)) * 100, 2
+                        ) as completion_rate,
+                        ROUND(
+                            (COUNT(DISTINCT tsk.user_id)::float / NULLIF(COUNT(DISTINCT ts.user_id), 0)) * 100, 2
+                        ) as skip_rate
+                    FROM (
+                        SELECT %s as tutorial_id
+                    ) t
+                    LEFT JOIN tutorial_sessions ts ON t.tutorial_id = ts.tutorial_id 
+                        AND ts.started_at >= %s AND ts.started_at <= %s
+                    LEFT JOIN tutorial_completions tc ON t.tutorial_id = tc.tutorial_id 
+                        AND tc.completed_at >= %s AND tc.completed_at <= %s
+                    LEFT JOIN tutorial_skips tsk ON t.tutorial_id = tsk.tutorial_id 
+                        AND tsk.skipped_at >= %s AND tsk.skipped_at <= %s
+                    GROUP BY t.tutorial_id
+                """
+                params = [tutorial_id, start_date, end_date, start_date, end_date, start_date, end_date]
+            else:
+                query = """
+                    SELECT 
+                        COALESCE(ts.tutorial_id, tc.tutorial_id, tsk.tutorial_id) as tutorial_id,
+                        COUNT(DISTINCT ts.user_id) as total_starts,
+                        COUNT(DISTINCT tc.user_id) as total_completions,
+                        COUNT(DISTINCT tsk.user_id) as total_skips,
+                        ROUND(
+                            (COUNT(DISTINCT tc.user_id)::float / NULLIF(COUNT(DISTINCT ts.user_id), 0)) * 100, 2
+                        ) as completion_rate,
+                        ROUND(
+                            (COUNT(DISTINCT tsk.user_id)::float / NULLIF(COUNT(DISTINCT ts.user_id), 0)) * 100, 2
+                        ) as skip_rate
+                    FROM (
+                        SELECT tutorial_id FROM tutorial_sessions WHERE started_at >= %s AND started_at <= %s
+                        UNION
+                        SELECT tutorial_id FROM tutorial_completions WHERE completed_at >= %s AND completed_at <= %s
+                        UNION
+                        SELECT tutorial_id FROM tutorial_skips WHERE skipped_at >= %s AND skipped_at <= %s
+                    ) all_tutorials
+                    LEFT JOIN tutorial_sessions ts ON all_tutorials.tutorial_id = ts.tutorial_id 
+                        AND ts.started_at >= %s AND ts.started_at <= %s
+                    LEFT JOIN tutorial_completions tc ON all_tutorials.tutorial_id = tc.tutorial_id 
+                        AND tc.completed_at >= %s AND tc.completed_at <= %s
+                    LEFT JOIN tutorial_skips tsk ON all_tutorials.tutorial_id = tsk.tutorial_id 
+                        AND tsk.skipped_at >= %s AND tsk.skipped_at <= %s
+                    GROUP BY all_tutorials.tutorial_id
+                    ORDER BY total_starts DESC
+                """
+                params = [start_date, end_date, start_date, end_date, start_date, end_date, 
+                         start_date, end_date, start_date, end_date, start_date, end_date]
+            
+            result = db_utils.execute_query(query, params, fetch=True)
+            
+            if tutorial_id and result:
+                return {
+                    'tutorial_id': result.get('tutorial_id'),
+                    'total_starts': result.get('total_starts', 0),
+                    'total_completions': result.get('total_completions', 0),
+                    'total_skips': result.get('total_skips', 0),
+                    'completion_rate': result.get('completion_rate', 0),
+                    'skip_rate': result.get('skip_rate', 0),
+                    'time_period': time_period
+                }
+            elif not tutorial_id:
+                return {
+                    'tutorials': result if isinstance(result, list) else [result] if result else [],
+                    'time_period': time_period,
+                    'total_tutorials': len(result) if isinstance(result, list) else (1 if result else 0)
+                }
+            else:
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Error getting tutorial completion stats: {str(e)}")
+            return {}
     
     def _calculate_tutorial_relevance_score(self, user_id: int, tutorial_info: Dict[str, Any], 
                                           progress: Any) -> float:
@@ -1076,7 +1462,7 @@ class OnboardingTutorialSystem:
                 else:
                     cursor.execute("""
                         INSERT INTO user_settings (user_id, tutorial_sessions)
-                        VALUES (%s)
+                        VALUES (%s, %s)
                     """, (session.user_id, json.dumps([session_data])))
             
         except Exception as e:

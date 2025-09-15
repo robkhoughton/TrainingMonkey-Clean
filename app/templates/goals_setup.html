@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Set Your Goals - TrainingMonkey</title>
+    <title>Set Your Goals - Your Training Monkey</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         .goals-container {
@@ -141,6 +141,141 @@
             color: #6c757d;
             font-size: 0.9rem;
         }
+        
+        /* Progress Timeline */
+        .progress-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .progress-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .progress-header h3 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .progress-header p {
+            color: #6c757d;
+            margin: 0.5rem 0 0 0;
+            font-size: 0.9rem;
+        }
+        
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            position: relative;
+        }
+        
+        .step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 60%;
+            width: 80%;
+            height: 2px;
+            background: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step.completed:not(:last-child)::after {
+            background: #28a745;
+        }
+        
+        .step.current:not(:last-child)::after {
+            background: linear-gradient(90deg, #28a745 50%, #e9ecef 50%);
+        }
+        
+        .step-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .step.completed .step-icon {
+            background: #28a745;
+            color: white;
+        }
+        
+        .step.current .step-icon {
+            background: #007bff;
+            color: white;
+            box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.2);
+        }
+        
+        .step.upcoming .step-icon {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .step-content {
+            text-align: center;
+        }
+        
+        .step-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.25rem;
+        }
+        
+        .step.completed .step-title {
+            color: #28a745;
+        }
+        
+        .step.current .step-title {
+            color: #007bff;
+        }
+        
+        .step.upcoming .step-title {
+            color: #6c757d;
+        }
+        
+        .step-desc {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        @media (max-width: 768px) {
+            .progress-steps {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .step:not(:last-child)::after {
+                display: none;
+            }
+            
+            .step-icon {
+                width: 35px;
+                height: 35px;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -150,8 +285,48 @@
             <p>Choose one goal to get started. You can always add more later.</p>
         </div>
         
-        <div class="progress-indicator">
-            Step 5 of 6 • Almost there!
+        <!-- Progress Timeline -->
+        <div class="progress-section">
+            <div class="progress-header">
+                <h3>Setting Up Your Training Goals</h3>
+                <p>Step 3 of 3 • Set Your Training Goals</p>
+            </div>
+            <div class="progress-steps">
+                <div class="step completed">
+                    <div class="step-icon">1</div>
+                    <div class="step-content">
+                        <div class="step-title">Create Account</div>
+                        <div class="step-desc">Set up your profile</div>
+                    </div>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">2</div>
+                    <div class="step-content">
+                        <div class="step-title">Connect Strava</div>
+                        <div class="step-desc">Link your training data</div>
+                    </div>
+                </div>
+                <div class="step current">
+                    <div class="step-icon">3</div>
+                    <div class="step-content">
+                        <div class="step-title">Setup Goals</div>
+                        <div class="step-desc">Set your training goals</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Getting Started Integration Point -->
+        <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <p style="margin: 0 0 0.5rem 0; color: #6c757d; font-size: 0.9rem;">
+                Need help understanding how your goals affect your training recommendations?
+            </p>
+            <a href="/getting-started?source=goals" onclick="trackGettingStartedClick()" 
+               style="display: inline-block; background: #007bff; color: white; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;"
+               onmouseover="this.style.background='#0056b3'; this.style.transform='translateY(-1px)'"
+               onmouseout="this.style.background='#007bff'; this.style.transform='translateY(0)'">
+                View Goals Guide
+            </a>
         </div>
         
         <form method="POST" id="goalsForm">
@@ -279,6 +454,23 @@
                 return false;
             }
         });
+
+        function trackGettingStartedClick() {
+            fetch('/api/landing/analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event_type: 'cta_click',
+                    event_data: {
+                        button: 'goals_guide',
+                        source: 'goals',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            }).catch(e => console.log('Analytics tracking failed:', e));
+        }
     </script>
 </body>
 </html>

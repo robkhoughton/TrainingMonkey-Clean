@@ -140,7 +140,7 @@ class SecureTokenStorage:
             db_utils.execute_query(
                 """INSERT INTO token_audit_log 
                    (user_id, operation, success, timestamp, ip_address, user_agent, details)
-                   VALUES (%s)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                 (
                     audit_data['user_id'],
                     audit_data['operation'],

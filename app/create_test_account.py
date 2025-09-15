@@ -273,7 +273,7 @@ class TestAccountCreator:
                 query = """
                     INSERT INTO activities (
                         user_id, activity_type, distance, duration, date, strava_id, created_at
-                    ) VALUES (%s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 execute_query(query, (
@@ -302,7 +302,7 @@ class TestAccountCreator:
                 query = """
                     INSERT INTO training_load (
                         user_id, date, training_load, created_at
-                    ) VALUES (%s)
+                    ) VALUES (%s, %s, %s, %s)
                     ON CONFLICT (user_id, date) DO UPDATE SET
                         training_load = EXCLUDED.training_load,
                         updated_at = %s

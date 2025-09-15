@@ -280,3 +280,270 @@
 2025-09-13 07:44:14,198 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
 2025-09-13 10:26:14,781 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
 2025-09-13 10:26:14,781 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:44:17,063 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:44:17,064 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:44:19,837 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:44:19,837 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:46:41,676 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:46:41,676 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:47:06,819 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:47:06,819 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:48:13,447 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:48:13,447 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-13 19:48:15,772 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-13 19:48:15,773 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 07:11:37,536 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 07:11:37,536 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 07:11:41,974 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 07:11:41,974 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:25:19,711 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:25:19,711 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:25:19,711 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:25:19,711 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:25:29,564 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:25:29,564 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:25:29,568 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:25:29,568 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:50:02,362 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:50:02,362 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:50:02,362 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:50:11,668 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:50:11,668 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 10:50:11,675 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 10:50:11,675 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 13:21:37,730 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 13:21:37,731 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 13:21:37,731 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 13:21:52,214 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 13:21:52,214 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 13:21:52,221 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 13:21:52,221 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:10:33,784 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:10:33,784 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:10:33,784 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:10:33,784 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:10:39,409 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:10:39,409 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:10:39,410 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:10:39,410 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:51,380 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:53:51,380 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:51,380 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:54,473 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:53:54,473 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:54,493 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:53:54,493 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:58,489 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:53:58,489 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:53:58,546 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:53:58,546 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:54:23,382 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:54:23,382 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 15:54:23,404 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 15:54:23,404 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:09,378 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:09,378 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:09,489 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:09,489 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:14,742 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:14,743 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:14,782 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:14,782 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:21,662 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:21,662 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:00:21,662 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:00:21,662 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:07:03,144 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:07:03,144 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:07:04,146 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:07:04,146 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:07:10,847 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:07:10,847 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 16:07:11,817 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 16:07:11,817 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:08:56,722 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:08:56,723 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:08:56,729 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:08:56,729 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:00,027 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:00,027 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:00,027 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:00,029 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:03,873 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:03,873 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:03,899 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:03,899 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:09,108 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:09,108 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:09,137 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:09,137 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:11,799 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:11,799 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:11,832 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:11,832 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:15,647 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:15,647 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:15,700 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:15,700 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:19,493 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:19,493 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:19,596 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:19,596 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:58,952 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:58,952 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:09:59,042 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:09:59,042 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:10:37,970 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:10:37,970 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:10:37,976 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:10:37,978 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:11:23,385 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:11:23,385 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:11:23,431 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:11:23,431 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:13:04,295 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:13:04,295 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:13:04,348 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:13:04,348 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:18:35,381 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:18:35,381 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:18:35,402 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:18:35,402 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:19:02,027 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:19:02,027 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:19:02,071 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:19:02,071 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:20:44,559 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:20:44,559 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:20:44,592 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:20:44,592 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:20:53,649 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:20:53,649 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:20:53,652 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:20:53,652 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:23:57,050 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:23:57,050 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:23:57,062 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:23:57,062 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:24:58,959 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:24:58,959 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:24:59,112 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:24:59,112 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:27:43,808 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:27:43,808 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:27:44,309 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:27:44,309 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:33:32,091 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:33:32,091 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:33:34,381 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:33:34,381 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:35:04,712 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:35:04,712 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:35:07,267 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:35:07,282 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:35:09,819 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:35:09,819 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:35:12,446 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:35:12,446 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:35:21,183 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:35:21,183 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:39:30,130 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:39:30,130 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:39:32,701 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:39:32,702 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:41:39,826 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:41:39,826 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:41:47,278 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:41:47,278 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:41:56,083 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:41:56,083 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:44:58,975 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:44:58,975 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:45:05,218 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:45:05,218 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:46:19,554 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:46:19,554 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:46:21,891 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:46:21,891 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:49:55,494 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:49:55,494 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:49:57,996 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:49:57,996 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:51:31,916 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:51:31,917 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:51:43,208 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:51:43,208 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-14 19:51:54,331 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-14 19:51:54,332 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:13:53,413 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:13:53,413 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:30:19,321 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:30:19,321 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:30:24,233 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:30:24,233 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:31:46,054 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:31:46,054 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:31:57,076 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:31:57,076 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:32:02,017 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:32:02,017 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:32:10,571 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:32:10,571 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:32:17,826 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:32:17,826 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:32:24,132 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:32:24,132 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:32:33,820 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:32:33,820 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:36:46,823 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:36:46,824 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:36:49,018 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:36:49,020 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:38:33,583 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:38:33,583 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:38:35,752 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:38:35,752 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:49:16,728 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:49:16,730 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 07:49:19,008 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 07:49:19,008 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:01:07,931 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:01:07,932 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:01:10,055 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:01:10,055 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:08:41,337 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:08:41,337 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:08:43,527 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:08:43,527 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:25:56,102 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:25:56,102 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:25:58,219 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:25:58,219 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:30:43,189 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:30:43,189 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:30:45,394 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:30:45,394 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:38:19,394 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:38:19,394 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:38:21,722 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:38:21,722 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:48:09,727 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:48:09,727 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:48:11,844 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:48:11,844 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:59:13,063 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:59:13,063 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 08:59:15,255 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 08:59:15,255 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:05:28,749 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:05:28,749 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:05:30,958 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:05:30,958 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:13:23,367 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:13:23,367 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:13:25,564 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:13:25,564 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:16:42,850 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:16:42,850 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3
+2025-09-15 09:16:44,952 - llm_recommendations - INFO - Loaded configuration from C:\Users\robho\Documents\TrainingMonkey-Clean\app\config.json
+2025-09-15 09:16:44,952 - llm_recommendations - INFO - Using model: claude-sonnet-4-20250514, temperature: 0.3

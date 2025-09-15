@@ -94,10 +94,9 @@ const FAQManager = {
         toggle.classList.add('expanded');
         toggle.textContent = '−';
         
-        // Smooth scroll to expanded FAQ
-        setTimeout(() => {
-            Utils.smoothScrollTo(answer.parentElement, 50);
-        }, CONFIG.animationDuration);
+        // Track FAQ expansion
+        const questionText = answer.parentElement.querySelector('.faq-question').textContent.trim();
+        EngagementTracker.trackFAQExpansion(questionText);
     },
 
     /**
@@ -293,9 +292,61 @@ const TutorialManager = {
     },
 
     /**
+     * Load tutorial completion status and update UI
+     */
+    async loadTutorialStatus() {
+        try {
+            // Only load tutorial status if user is logged in
+            const response = await fetch('/api/tutorials/available');
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                if (data.success) {
+                    const completedTutorials = data.tutorials.filter(tutorial => tutorial.completed);
+                    this.updateTutorialLinks(completedTutorials);
+                }
+            } else if (response.status === 401) {
+                // User not logged in - this is expected on getting started page
+                console.log('User not logged in - skipping tutorial status');
+            } else {
+                console.warn('Failed to load tutorial status:', response.status);
+            }
+        } catch (error) {
+            console.warn('Could not load tutorial status:', error);
+        }
+    },
+
+    /**
+     * Update tutorial links to show replay options for completed tutorials
+     */
+    updateTutorialLinks(completedTutorials) {
+        const tutorialLinks = document.querySelectorAll('.tutorial-link');
+        tutorialLinks.forEach(link => {
+            const tutorialId = link.getAttribute('data-tutorial-id');
+            const isCompleted = completedTutorials.some(tutorial => tutorial.tutorial_id === tutorialId);
+            
+            if (isCompleted) {
+                // Add replay indicator
+                link.style.position = 'relative';
+                link.innerHTML = `
+                    <span style="color: #10b981; margin-right: 0.5rem;">✅</span>
+                    ${link.textContent}
+                    <span style="color: #10b981; margin-left: 0.5rem; font-size: 0.8em;">(Replay)</span>
+                `;
+                link.style.color = '#10b981';
+                link.style.fontWeight = '500';
+            }
+        });
+    },
+
+    /**
      * Initialize tutorial functionality
      */
     init() {
+        // Load tutorial completion status first
+        this.loadTutorialStatus();
+        
         // Add click handlers for tutorial links
         const tutorialLinks = document.querySelectorAll('.tutorial-link');
         tutorialLinks.forEach(link => {
@@ -303,6 +354,10 @@ const TutorialManager = {
                 e.preventDefault();
                 const tutorialId = link.getAttribute('data-tutorial-id') || 
                                  link.textContent.toLowerCase().replace(/\s+/g, '_');
+                
+                // Track tutorial click
+                EngagementTracker.trackTutorialClick(tutorialId);
+                
                 this.startTutorial(tutorialId);
             });
         });
@@ -428,6 +483,247 @@ const NavigationManager = {
     }
 };
 
+// Engagement Tracking Manager
+const EngagementTracker = {
+    // Engagement metrics
+    metrics: {
+        pageLoadTime: 0,
+        timeOnPage: 0,
+        scrollDepth: 0,
+        maxScrollDepth: 0,
+        sectionsViewed: new Set(),
+        interactions: 0,
+        demoInteractions: 0,
+        tutorialClicks: 0,
+        faqExpansions: 0,
+        startTime: Date.now(),
+        lastActivity: Date.now()
+    },
+
+    /**
+     * Track page load time
+     */
+    trackPageLoad() {
+        this.metrics.pageLoadTime = Date.now() - this.metrics.startTime;
+        this.trackEngagementEvent('page_load', {
+            load_time: this.metrics.pageLoadTime,
+            source: this.getSourceFromURL()
+        });
+    },
+
+    /**
+     * Track scroll depth
+     */
+    trackScrollDepth() {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const documentHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const scrollPercent = Math.round((scrollTop / documentHeight) * 100);
+        
+        if (scrollPercent > this.metrics.maxScrollDepth) {
+            this.metrics.maxScrollDepth = scrollPercent;
+            
+            // Track milestone scroll depths
+            if (scrollPercent >= 25 && !this.metrics.sectionsViewed.has('25%')) {
+                this.metrics.sectionsViewed.add('25%');
+                this.trackEngagementEvent('scroll_milestone', { depth: 25 });
+            }
+            if (scrollPercent >= 50 && !this.metrics.sectionsViewed.has('50%')) {
+                this.metrics.sectionsViewed.add('50%');
+                this.trackEngagementEvent('scroll_milestone', { depth: 50 });
+            }
+            if (scrollPercent >= 75 && !this.metrics.sectionsViewed.has('75%')) {
+                this.metrics.sectionsViewed.add('75%');
+                this.trackEngagementEvent('scroll_milestone', { depth: 75 });
+            }
+            if (scrollPercent >= 90 && !this.metrics.sectionsViewed.has('90%')) {
+                this.metrics.sectionsViewed.add('90%');
+                this.trackEngagementEvent('scroll_milestone', { depth: 90 });
+            }
+        }
+    },
+
+    /**
+     * Track section views
+     */
+    trackSectionView(sectionName) {
+        if (!this.metrics.sectionsViewed.has(sectionName)) {
+            this.metrics.sectionsViewed.add(sectionName);
+            this.trackEngagementEvent('section_view', { section: sectionName });
+        }
+    },
+
+    /**
+     * Track user interactions
+     */
+    trackInteraction(type, data = {}) {
+        this.metrics.interactions++;
+        this.metrics.lastActivity = Date.now();
+        
+        this.trackEngagementEvent('interaction', {
+            type: type,
+            total_interactions: this.metrics.interactions,
+            ...data
+        });
+    },
+
+    /**
+     * Track demo interactions
+     */
+    trackDemoInteraction(scenario) {
+        this.metrics.demoInteractions++;
+        this.trackEngagementEvent('demo_interaction', {
+            scenario: scenario,
+            total_demo_interactions: this.metrics.demoInteractions
+        });
+    },
+
+    /**
+     * Track tutorial clicks
+     */
+    trackTutorialClick(tutorialId) {
+        this.metrics.tutorialClicks++;
+        this.trackEngagementEvent('tutorial_click', {
+            tutorial_id: tutorialId,
+            total_tutorial_clicks: this.metrics.tutorialClicks
+        });
+    },
+
+    /**
+     * Track FAQ expansions
+     */
+    trackFAQExpansion(question) {
+        this.metrics.faqExpansions++;
+        this.trackEngagementEvent('faq_expansion', {
+            question: question,
+            total_faq_expansions: this.metrics.faqExpansions
+        });
+    },
+
+    /**
+     * Track time on page
+     */
+    trackTimeOnPage() {
+        this.metrics.timeOnPage = Date.now() - this.metrics.startTime;
+        
+        // Track time milestones
+        const minutes = Math.floor(this.metrics.timeOnPage / 60000);
+        if (minutes >= 1 && !this.metrics.sectionsViewed.has('1min')) {
+            this.metrics.sectionsViewed.add('1min');
+            this.trackEngagementEvent('time_milestone', { minutes: 1 });
+        }
+        if (minutes >= 3 && !this.metrics.sectionsViewed.has('3min')) {
+            this.metrics.sectionsViewed.add('3min');
+            this.trackEngagementEvent('time_milestone', { minutes: 3 });
+        }
+        if (minutes >= 5 && !this.metrics.sectionsViewed.has('5min')) {
+            this.metrics.sectionsViewed.add('5min');
+            this.trackEngagementEvent('time_milestone', { minutes: 5 });
+        }
+    },
+
+    /**
+     * Track engagement event
+     */
+    trackEngagementEvent(eventType, eventData) {
+        fetch('/api/landing/analytics', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                event_type: 'getting_started_engagement',
+                event_data: {
+                    event_subtype: eventType,
+                    source: this.getSourceFromURL(),
+                    timestamp: new Date().toISOString(),
+                    ...eventData
+                }
+            })
+        }).catch(e => console.log('Engagement tracking failed:', e));
+    },
+
+    /**
+     * Get source from URL parameters
+     */
+    getSourceFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('source') || 'direct';
+    },
+
+    /**
+     * Track page exit
+     */
+    trackPageExit() {
+        this.metrics.timeOnPage = Date.now() - this.metrics.startTime;
+        
+        this.trackEngagementEvent('page_exit', {
+            time_on_page: this.metrics.timeOnPage,
+            max_scroll_depth: this.metrics.maxScrollDepth,
+            total_interactions: this.metrics.interactions,
+            demo_interactions: this.metrics.demoInteractions,
+            tutorial_clicks: this.metrics.tutorialClicks,
+            faq_expansions: this.metrics.faqExpansions,
+            sections_viewed: Array.from(this.metrics.sectionsViewed)
+        });
+    },
+
+    /**
+     * Initialize engagement tracking
+     */
+    init() {
+        // Track page load
+        this.trackPageLoad();
+        
+        // Track scroll depth
+        const debouncedScrollTrack = Utils.debounce(() => this.trackScrollDepth(), 100);
+        window.addEventListener('scroll', debouncedScrollTrack);
+        
+        // Track time on page
+        const timeTracker = setInterval(() => this.trackTimeOnPage(), 30000); // Every 30 seconds
+        
+        // Track page exit
+        window.addEventListener('beforeunload', () => this.trackPageExit());
+        
+        // Track visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.trackEngagementEvent('page_hidden', {
+                    time_on_page: Date.now() - this.metrics.startTime
+                });
+            } else {
+                this.trackEngagementEvent('page_visible', {
+                    time_on_page: Date.now() - this.metrics.startTime
+                });
+            }
+        });
+        
+        // Track section views using Intersection Observer
+        this.setupSectionTracking();
+        
+        console.log('Engagement tracking initialized');
+    },
+
+    /**
+     * Setup section tracking with Intersection Observer
+     */
+    setupSectionTracking() {
+        const sections = document.querySelectorAll('section, .section, [data-section]');
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const sectionName = entry.target.getAttribute('data-section') || 
+                                      entry.target.className || 
+                                      entry.target.tagName.toLowerCase();
+                    this.trackSectionView(sectionName);
+                }
+            });
+        }, { threshold: 0.5 });
+        
+        sections.forEach(section => observer.observe(section));
+    }
+};
+
 // Performance Manager
 const PerformanceManager = {
     /**
@@ -468,12 +764,9 @@ const PerformanceManager = {
      * Preload critical resources
      */
     preloadCriticalResources() {
-        // Preload CSS for next page
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.href = '/static/css/dashboard.css';
-        link.as = 'style';
-        document.head.appendChild(link);
+        // Preload CSS for next page - only if dashboard.css exists
+        // Note: dashboard.css doesn't exist yet, so skipping preload
+        // TODO: Create dashboard.css or remove this preload
     },
 
     /**
@@ -683,6 +976,10 @@ const InteractiveDemoManager = {
      * Track demo interaction
      */
     trackDemoInteraction(scenario) {
+        // Track with engagement tracker
+        EngagementTracker.trackDemoInteraction(scenario);
+        
+        // Also track with legacy analytics
         fetch('/api/landing/analytics', {
             method: 'POST',
             headers: {
@@ -783,6 +1080,7 @@ const GettingStartedApp = {
             NavigationManager.init();
             PerformanceManager.init();
             InteractiveDemoManager.init();
+            EngagementTracker.init();
             
             console.log('Getting Started App initialized successfully');
         } catch (error) {

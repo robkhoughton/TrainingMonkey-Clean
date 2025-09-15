@@ -1,0 +1,182 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}FAQs - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Find answers to frequently asked questions about TrainingMonkey's training load divergence analysis, Strava integration, and advanced features.{% endblock %}
+
+{% block meta_keywords %}FAQ, frequently asked questions, training analysis, Strava integration, TRIMP, divergence analysis, TrainingMonkey help{% endblock %}
+
+{% block og_title %}FAQs - Your Training Monkey{% endblock %}
+
+{% block og_description %}Get answers to common questions about TrainingMonkey's training analysis and features.{% endblock %}
+
+{% block header_title %}
+<h1>Frequently Asked Questions</h1>
+<p class="subtitle">Find answers to common questions about Your Training Monkey</p>
+<p class="description">Everything you need to know about training load divergence analysis, data security, and advanced features.</p>
+{% endblock %}
+
+{% block content %}
+        <!-- FAQ Section -->
+        <section class="faq-section" id="faq-section">
+            <h2>Common Questions</h2>
+            <div class="faq-list">
+                <!-- Getting Started Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I connect my Strava account?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Click the "Connect with Strava" button and follow the authorization process. We'll securely access your activity data using OAuth.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How much data do I need?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We need at least 28 days of training data to provide accurate divergence analysis. This gives us enough data points to identify patterns in your training load and internal stress levels.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What if I don't have 28 days of data?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>If you don't have 28 days of data yet, we'll show you a preview of what your analysis will look like and guide you through building up your data history.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How long does data processing take?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Data processing typically takes 2-5 minutes depending on the amount of activity data. You'll receive an email notification when your analysis is ready.</p>
+                    </div>
+                </div>
+
+                <!-- Data Security Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>Is my data secure?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Yes, we take data security seriously. We use OAuth to securely connect to Strava, never store your password, and follow industry best practices for data protection.</p>
+                    </div>
+                </div>
+
+                <!-- Analysis & Understanding Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How does divergence analysis work?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Divergence analysis compares your external training load (distance, time, elevation) with your internal stress (TRIMP from heart rate). When these diverge, it indicates potential overtraining or undertraining.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I interpret my divergence analysis?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Positive divergence means your external load is higher than internal stress (good fitness adaptation). Negative divergence indicates potential overtraining risk.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What is TRIMP and why is it important?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>TRIMP (Training Impulse) measures your internal training stress based on heart rate data. It's more accurate than just distance or time because it accounts for how hard your body is working during each workout.</p>
+                    </div>
+                </div>
+
+                <!-- Equipment & Requirements Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>Can I use TrainingMonkey without a heart rate monitor?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>While heart rate data provides the most accurate TRIMP calculations, we can still provide valuable insights using estimated heart rate zones based on your activity type and perceived exertion.</p>
+                    </div>
+                </div>
+
+                <!-- Usage & Best Practices Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How often should I check my training analysis?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We recommend checking your analysis weekly to track trends and make adjustments to your training plan. The dashboard updates automatically as new activities are synced from Strava.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What if I disagree with the AI recommendations?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>AI recommendations are suggestions based on your data patterns. Always listen to your body and consult with a coach or healthcare professional for personalized training advice.</p>
+                    </div>
+                </div>
+
+                <!-- Advanced Features Questions -->
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I set up heart rate zones?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Go to Settings and configure your resting and maximum heart rate. We'll automatically calculate your 5-zone system for accurate TRIMP calculations.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What are ACWR thresholds?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>ACWR (Acute:Chronic Workload Ratio) thresholds help identify injury risk. We use industry-standard ranges but you can customize them in Settings based on your training experience.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How does the AI Journal work?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>The AI Journal analyzes your subjective input, training notes, and objective data to provide personalized insights and recommendations for your training success.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Call to Action Section -->
+        <section class="tutorial-section">
+            <h2>Still Have Questions?</h2>
+            <p>Can't find what you're looking for? Check out our comprehensive guide or contact support.</p>
+            
+            <div class="tutorial-buttons">
+                <a href="/guide" class="btn btn-primary">View Guide</a>
+                <a href="/dashboard" class="btn btn-secondary">Go to Dashboard</a>
+            </div>
+        </section>
+{% endblock %}

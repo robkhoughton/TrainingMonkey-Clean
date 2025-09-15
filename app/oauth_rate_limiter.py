@@ -112,7 +112,7 @@ class OAuthRateLimiter:
             db_utils.execute_query(
                 """INSERT INTO oauth_security_log 
                    (event_type, event_data, timestamp, ip_address, user_agent)
-                   VALUES (%s)""",
+                   VALUES (%s, %s, %s, %s, %s)""",
                 (
                     event_type,
                     json.dumps(event_data),

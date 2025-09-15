@@ -56,17 +56,26 @@ body {
     line-height: 1.6;
     color: #1f2937;
     overflow-x: hidden;
-    background: #f8fafc;
+    background: #ffffff;
+    background-image: url('../images/wireframe-runner.jpg');
+    background-position: left center;
+    background-size: 60%;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
 }
 
 /* Header Styles */
 .header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(315deg, rgba(59, 130, 246, 0.95) 0%, rgba(99, 102, 241, 0.9) 50%, rgba(139, 92, 246, 0.8) 100%);
     color: white;
-    text-align: center;
-    padding: 4rem 2rem;
+    text-align: right;
+    padding: 1.5rem 2rem;
     position: relative;
     overflow: hidden;
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .header::before {
@@ -80,38 +89,60 @@ body {
     opacity: 0.3;
 }
 
+/* Monkey mascot placeholder styling */
+.monkey-mascot-placeholder {
+    position: relative;
+    z-index: 2;
+    width: 120px;
+    height: 120px;
+    margin-left: 2rem;
+    /* Empty placeholder - no monkey icon as requested */
+}
+
+
 .header-content {
     position: relative;
     z-index: 2;
-    max-width: 800px;
-    margin: 0 auto;
+    max-width: 500px;
+    margin: 0;
+    margin-right: calc(50% - 700px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    text-align: right;
 }
 
 .header h1 {
-    font-size: 3rem;
+    font-size: 2.5rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+    white-space: nowrap;
 }
 
 .header .subtitle {
-    font-size: 1.3rem;
-    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
     opacity: 0.95;
     font-weight: 300;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
 
 .header .description {
-    font-size: 1.1rem;
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
     opacity: 0.9;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
 
 /* Navigation Styles */
 .nav {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(8px);
     padding: 1rem 2rem;
     position: sticky;
     top: 0;
@@ -151,32 +182,69 @@ body {
     color: #667eea;
 }
 
+.nav-links a.active {
+    color: #667eea;
+    font-weight: 600;
+    position: relative;
+}
+
+.nav-links a.active::after {
+    content: '';
+    position: absolute;
+    bottom: -0.5rem;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #667eea;
+    border-radius: 1px;
+}
+
 /* Main Content Styles */
 .main-content {
     max-width: 1200px;
     margin: 0 auto;
     padding: 2rem;
+    position: relative;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f1f5f9' fill-opacity='0.3'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+}
+
+.main-content::before {
+    content: '';
+    position: absolute;
+    top: -6rem;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('../images/wireframe-runner.jpg') center/cover;
+    opacity: 0.08;
+    z-index: -1;
+    pointer-events: none;
 }
 
 /* Contextual Content Styles */
 .contextual-banner {
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-    border: 1px solid #0ea5e9;
+    background: linear-gradient(135deg, rgba(240, 249, 255, 0.8) 0%, rgba(224, 242, 254, 0.8) 100%);
+    border: 1px solid rgba(14, 165, 233, 0.7);
     border-radius: 12px;
     padding: 1.5rem;
     margin-bottom: 2rem;
     text-align: center;
+    position: relative;
+    z-index: 10;
+    backdrop-filter: blur(4px);
 }
 
 .contextual-banner h2 {
     color: #0369a1;
     font-size: 1.5rem;
     margin-bottom: 0.5rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .contextual-banner p {
     color: #0c4a6e;
     font-size: 1rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* What You'll Get Section Styles */
@@ -362,18 +430,19 @@ body {
 
 /* 3-Step Setup Process Styles */
 .setup-section {
-    background: white;
-    border-radius: 16px;
-    padding: 3rem 2rem;
-    margin-bottom: 3rem;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 12px;
+    padding: 1.5rem 1rem;
+    margin-bottom: 2rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(3px);
 }
 
 .setup-section h2 {
     text-align: center;
     font-size: 2.5rem;
-    margin-bottom: 3rem;
-    color: #1f2937;
+    margin-bottom: 1.5rem;
+    color: #0369a1;
 }
 
 .setup-steps {
@@ -434,11 +503,12 @@ body {
 
 /* FAQ Section Styles */
 .faq-section {
-    background: white;
+    background: rgba(255, 255, 255, 0.8);
     border-radius: 16px;
     padding: 3rem 2rem;
     margin-bottom: 3rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(3px);
 }
 
 .faq-section h2 {
@@ -495,16 +565,17 @@ body {
 }
 
 .faq-toggle.expanded {
-    transform: rotate(45deg);
+    /* No rotation - use different character instead */
 }
 
 /* Tutorial Access Section Styles */
 .tutorial-section {
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    background: linear-gradient(135deg, rgba(240, 249, 255, 0.8) 0%, rgba(224, 242, 254, 0.8) 100%);
     border-radius: 16px;
     padding: 3rem 2rem;
     margin-bottom: 3rem;
     text-align: center;
+    backdrop-filter: blur(3px);
 }
 
 .tutorial-section h2 {
@@ -627,8 +698,25 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    .header {
+        min-height: 160px;
+        padding: 1rem;
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .monkey-mascot-placeholder {
+        display: none;
+    }
+    
+    .header-content {
+        margin-right: 0;
+        text-align: center;
+    }
+    
     .header h1 {
         font-size: 2rem;
+        white-space: nowrap;
     }
 
     .header .subtitle {
@@ -660,15 +748,107 @@ body {
         width: 100%;
         max-width: 300px;
     }
+    
+    /* Tutorial Content Responsive */
+    .tutorial-content {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .toc-container {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .tutorial-content .tutorial-section {
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .tutorial-content h2 {
+        font-size: 1.2rem;
+    }
+    
+    .tutorial-content h3 {
+        font-size: 1.1rem;
+    }
+    
+    .tutorial-content p {
+        font-size: 0.9rem;
+    }
+}
+
+/* Prominent Button Styling */
+.btn-prominent {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+    border: 2px solid #047857 !important;
+    box-shadow: 0 4px 15px rgba(5, 150, 105, 0.3) !important;
+    font-weight: 600 !important;
+    font-size: 1.1rem !important;
+    padding: 0.75rem 1.25rem !important;
+    transform: translateY(0) !important;
+    transition: all 0.3s ease !important;
+}
+
+.btn-prominent:hover {
+    background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
+    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4) !important;
+    transform: translateY(-2px) !important;
+}
+
+.btn-prominent:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 10px rgba(5, 150, 105, 0.3) !important;
+}
+
+/* Step Numbers in Banner */
+.contextual-banner .step-number-large {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 1rem;
+    margin: 0 0.5rem;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    border: 2px solid #ffffff;
+    line-height: 1;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.contextual-banner .step-number-large:hover {
+    transform: scale(1.1) rotate(5deg);
+    box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+}
+
+/* Arrow styling in banner */
+.contextual-banner h2 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.contextual-banner h2 span:not(.step-number-large) {
+    color: #0ea5e9;
+    font-size: 1.2rem;
+    font-weight: 600;
 }
 
 @media (max-width: 480px) {
     .header {
-        padding: 2rem 1rem;
+        padding: 1.5rem 1rem;
+        min-height: 140px;
     }
 
     .header h1 {
         font-size: 1.8rem;
+        white-space: nowrap;
     }
 
     .nav {
@@ -1215,23 +1395,27 @@ html {
 .timeline-container {
     position: relative;
     display: flex;
-    flex-direction: column;
-    gap: 2rem;
-    align-items: center;
+    flex-direction: row;
+    gap: 1rem;
+    align-items: flex-start;
+    justify-content: space-between;
+    max-width: 1000px;
+    margin: 0 auto;
 }
 
 .timeline-step {
     display: flex;
-    align-items: flex-start;
-    gap: 2rem;
-    width: 100%;
-    max-width: 800px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    flex: 1;
     position: relative;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0 0.5rem;
 }
 
 .timeline-step:hover {
-    transform: translateX(10px);
+    transform: translateY(-5px);
 }
 
 .step-icon {
@@ -1240,17 +1424,19 @@ html {
 }
 
 .icon-circle {
-    width: 80px;
-    height: 80px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
+    margin-bottom: 0.75rem;
+    border: 2px solid #ffffff;
 }
 
 .icon-circle::before {
@@ -1277,6 +1463,17 @@ html {
 .timeline-step.completed .icon-circle {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+}
+
+.timeline-step.completed {
+    opacity: 0.6;
+    filter: grayscale(0.3);
+}
+
+.timeline-step.completed .step-content h3,
+.timeline-step.completed .step-content p,
+.timeline-step.completed .step-details {
+    opacity: 0.7;
 }
 
 .timeline-step.current .icon-circle {
@@ -1371,6 +1568,13 @@ html {
     stroke-width: 2.5;
 }
 
+.step-number-large {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
 .step-number {
     position: absolute;
     top: -8px;
@@ -1399,37 +1603,36 @@ html {
 }
 
 .step-content {
-    flex: 1;
-    text-align: left;
-    padding-top: 0.5rem;
+    text-align: center;
+    width: 100%;
 }
 
 .step-content h3 {
-    font-size: 1.5rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #1e293b;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
 }
 
 .step-content p {
-    font-size: 1rem;
+    font-size: 0.8rem;
     color: #64748b;
-    line-height: 1.6;
-    margin-bottom: 1.5rem;
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
 }
 
 .step-details {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
 }
 
 .step-details .detail-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-size: 0.875rem;
+    gap: 0.5rem;
+    font-size: 0.7rem;
     color: #475569;
 }
 
@@ -1463,34 +1666,310 @@ html {
     font-size: 1rem;
 }
 
-.timeline-connector {
-    width: 4px;
-    height: 60px;
-    background: #e2e8f0;
-    margin: 0 auto;
-    position: relative;
+.step-action {
+    margin-top: 0.5rem;
+}
+
+/* Coming Soon Popup */
+.coming-soon-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    border: 2px solid #667eea;
+}
+
+.coming-soon-popup h3 {
+    color: #667eea;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.coming-soon-popup p {
+    color: #6b7280;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+.coming-soon-popup .btn {
+    background: #667eea;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
     transition: all 0.3s ease;
 }
 
+.coming-soon-popup .btn:hover {
+    background: #5a67d8;
+    transform: translateY(-2px);
+}
+
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    backdrop-filter: blur(4px);
+}
+
+.popup-hidden {
+    display: none;
+}
+
+/* Table of Contents Styling */
+.toc-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin: 2rem 0;
+}
+
+.toc-category {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(3px);
+}
+
+.toc-category h3 {
+    color: #0369a1;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+}
+
+.toc-category ul {
+    list-style: none;
+    padding: 0;
+}
+
+.toc-category li {
+    margin-bottom: 0.5rem;
+}
+
+.toc-category a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.toc-category a:hover {
+    color: #5a67d8;
+    text-decoration: underline;
+}
+
+/* Tutorial Content Styling - Technical Layout */
+.tutorial-content {
+    margin-top: 3rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    text-align: left;
+}
+
+.tutorial-content .tutorial-section {
+    margin-bottom: 3rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(2px);
+    border-left: 4px solid #667eea;
+}
+
+.tutorial-content h2 {
+    color: #0369a1;
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    text-align: left;
+    border: none;
+    padding: 0;
+}
+
+.tutorial-content h3 {
+    color: #1f2937;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    text-align: left;
+}
+
+.tutorial-content h4 {
+    color: #374151;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.tutorial-content h5 {
+    color: #4b5563;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.tutorial-content p {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    text-align: left;
+}
+
+.tutorial-content ul, .tutorial-content ol {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    text-align: left;
+}
+
+.tutorial-content li {
+    margin-bottom: 0.5rem;
+}
+
+/* Formula Box Styling - Technical */
+.formula-box {
+    background: #f8fafc;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin: 1rem 0;
+    text-align: left;
+    font-family: 'Courier New', monospace;
+}
+
+.formula-box code {
+    background: none;
+    color: #1e293b;
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: 'Courier New', monospace;
+}
+
+/* Interpretation Table Styling - Technical */
+.interpretation-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    background: white;
+    border: 1px solid #d1d5db;
+    font-size: 0.9rem;
+}
+
+.interpretation-table th {
+    background: #f3f4f6;
+    color: #374151;
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #d1d5db;
+    font-size: 0.9rem;
+}
+
+.interpretation-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.interpretation-table tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+.interpretation-table tr:hover {
+    background: #f3f4f6;
+}
+
+/* Enhanced step action buttons for more prominence */
+.step-action .btn {
+    padding: 0.8rem 1.8rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    min-width: 180px;
+    display: inline-block;
+    text-align: center;
+    border: 2px solid #ffffff;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.step-action .btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.step-action .btn-primary:hover {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+}
+
+.btn-strava {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.btn-strava:hover {
+    transform: translateY(-2px);
+}
+
+.btn-strava img {
+    display: block;
+}
+
+.timeline-connector {
+    width: 60px;
+    height: 4px;
+    background: #e2e8f0;
+    margin: 25px auto 0;
+    position: relative;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
 .timeline-connector.completed {
-    background: linear-gradient(to bottom, #10b981, #059669);
+    background: linear-gradient(to right, #10b981, #059669);
 }
 
 .timeline-connector::after {
     content: '';
     position: absolute;
     top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 12px;
-    height: 12px;
-    background: #e2e8f0;
-    border-radius: 50%;
+    right: -8px;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 12px solid #e2e8f0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
     transition: all 0.3s ease;
 }
 
 .timeline-connector.completed::after {
-    background: #10b981;
+    border-left-color: #10b981;
     box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
 }
 
@@ -1575,6 +2054,7 @@ html {
     justify-content: center;
     box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
     transition: all 0.3s ease;
+    border: 2px solid #ffffff;
 }
 
 .explanation-card:hover .card-icon .icon-circle {
@@ -2076,6 +2556,7 @@ html {
     box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
     margin: 0 auto;
     transition: all 0.3s ease;
+    border: 2px solid #ffffff;
 }
 
 .connection-step:hover .icon-circle {
@@ -2219,38 +2700,75 @@ html {
     }
     
     /* Timeline responsive styles */
-    .timeline-step {
+    .timeline-container {
         flex-direction: column;
-        text-align: center;
         gap: 1rem;
     }
     
-    .step-content {
-        text-align: center;
-    }
-    
-    .step-details {
+    .timeline-step {
+        flex-direction: row;
+        text-align: left;
+        gap: 1rem;
         align-items: center;
     }
     
+    .step-content {
+        text-align: left;
+    }
+    
     .icon-circle {
-        width: 60px;
-        height: 60px;
+        width: 40px;
+        height: 40px;
+        margin-bottom: 0;
     }
     
-    .step-svg {
-        width: 24px;
-        height: 24px;
+    .step-number-large {
+        font-size: 1rem;
     }
     
-    .step-number {
-        width: 20px;
-        height: 20px;
+    .step-content h3 {
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .step-content p {
         font-size: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .step-details {
+        gap: 0.3rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .step-details .detail-item {
+        font-size: 0.7rem;
+        gap: 0.4rem;
+    }
+    
+    .detail-icon {
+        font-size: 0.8rem;
+        width: 16px;
     }
     
     .timeline-connector {
-        height: 40px;
+        width: 4px;
+        height: 20px;
+        margin: 0.5rem auto;
+    }
+    
+    .timeline-connector::after {
+        top: 100%;
+        right: 50%;
+        transform: translateX(50%);
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 10px solid #e2e8f0;
+        border-bottom: none;
+    }
+    
+    .timeline-connector.completed::after {
+        border-top-color: #10b981;
     }
     
     /* Why 28 Days responsive styles */

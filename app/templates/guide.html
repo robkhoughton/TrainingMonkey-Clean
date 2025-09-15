@@ -1,0 +1,326 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}Guide - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Master Your Training Monkey with comprehensive tutorials, advanced features, and expert tips. Learn to optimize your training load analysis and prevent injuries.{% endblock %}
+
+{% block meta_keywords %}training monkey tutorials, advanced features, training optimization, injury prevention, training load analysis, expert tips{% endblock %}
+
+{% block og_title %}Guide - Your Training Monkey{% endblock %}
+
+{% block og_description %}Master Your Training Monkey with comprehensive tutorials, advanced features, and expert tips for optimal training performance.{% endblock %}
+
+{% block header_title %}
+<h1>Guide</h1>
+<p class="subtitle">Master advanced features and unlock your full training potential</p>
+<p class="description">Discover comprehensive tutorials, expert tips, and advanced techniques to optimize your training load analysis and prevent injuries.</p>
+{% endblock %}
+
+{% block content %}
+        <!-- Quick Start Guide -->
+        <section class="setup-section">
+            <h2>Quick Start Guide</h2>
+            <div class="timeline-container">
+                <!-- Step 1: Getting to Know Your Dashboard -->
+                <div class="timeline-step">
+                    <div class="step-icon">
+                        <div class="icon-circle">
+                            <span class="step-number-large">1</span>
+                        </div>
+                    </div>
+                    <div class="step-content">
+                        <h3>Explore Your Dashboard</h3>
+                        <p>Understand your training load divergence analysis and key metrics</p>
+                        <div class="step-details">
+                            <div class="detail-item">
+                                <span class="detail-icon">📈</span>
+                                <span>Training load trends</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">⚠️</span>
+                                <span>Injury risk alerts</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">🎯</span>
+                                <span>Performance insights</span>
+                            </div>
+                        </div>
+                        <div class="step-action">
+                            <a href="/dashboard" class="btn btn-primary">Explore Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeline Connector -->
+                <div class="timeline-connector"></div>
+
+                <!-- Step 2: Advanced Settings -->
+                <div class="timeline-step">
+                    <div class="step-icon">
+                        <div class="icon-circle">
+                            <span class="step-number-large">2</span>
+                        </div>
+                    </div>
+                    <div class="step-content">
+                        <h3>Personalize Your Settings</h3>
+                        <p>Customize your training analysis with personalized settings and preferences</p>
+                        <div class="step-details">
+                            <div class="detail-item">
+                                <span class="detail-icon">❤️</span>
+                                <span>Heart rate zones</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">⚖️</span>
+                                <span>ACWR thresholds</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">🎯</span>
+                                <span>Training goals</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">👨‍🏫</span>
+                                <span>Coaching style</span>
+                            </div>
+                        </div>
+                        <div class="step-action">
+                            <a href="/settings" class="btn btn-primary">Configure Settings</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeline Connector -->
+                <div class="timeline-connector"></div>
+
+                <!-- Step 3: Master Dashboard Features -->
+                <div class="timeline-step">
+                    <div class="step-icon">
+                        <div class="icon-circle">
+                            <span class="step-number-large">3</span>
+                        </div>
+                    </div>
+                    <div class="step-content">
+                        <h3>Empower AI</h3>
+                        <p>Unlock AI-powered insights through subjective input and intelligent analysis</p>
+                        <div class="step-details">
+                            <div class="detail-item">
+                                <span class="detail-icon">📝</span>
+                                <span>Subjective input</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">📋</span>
+                                <span>Training notes</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-icon">🔍</span>
+                                <span>Daily review of training success</span>
+                            </div>
+                        </div>
+                        <div class="step-action">
+                            <a href="/journal" class="btn btn-primary">Open Journal</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tutorial Categories -->
+        <section class="tutorial-section" id="tutorial-categories">
+            <h2>Comprehensive Learning Resources</h2>
+            <p>Master every aspect of Your Training Monkey with our detailed tutorials and guides.</p>
+            
+            <!-- Tutorial Categories -->
+            <div class="tutorial-categories">
+                <div class="tutorial-category">
+                    <h3>🎯 Getting Started</h3>
+                    <p>Learn the basics of connecting Strava and understanding your first analysis.</p>
+                    <div class="tutorial-links">
+                        <a href="/getting-started" class="tutorial-link">Getting Started Guide</a>
+                        <a href="/faq" class="tutorial-link">Frequently Asked Questions</a>
+                        <a href="/dashboard" class="tutorial-link">Dashboard Overview</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>📊 Dashboard & Analysis</h3>
+                    <p>Master your training load dashboard and divergence analysis.</p>
+                    <div class="tutorial-links">
+                        <a href="/dashboard" class="tutorial-link">Dashboard Tour</a>
+                        <a href="/faq" class="tutorial-link">Understanding Divergence</a>
+                        <a href="/faq" class="tutorial-link">ACWR Explained</a>
+                        <a href="/settings" class="tutorial-link">Configure Settings</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>🎯 Goals & Recommendations</h3>
+                    <p>Set training goals and understand AI-powered recommendations.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="goals_setup_tutorial" class="tutorial-link">Goals Setup</a>
+                        <a href="#" data-tutorial-id="journal_tutorial" class="tutorial-link">Journal & Tracking</a>
+                        <a href="#" data-tutorial-id="ai_recommendations" class="tutorial-link">AI Recommendations Guide</a>
+                        <a href="#" data-tutorial-id="training_optimization" class="tutorial-link">Training Optimization</a>
+                    </div>
+                </div>
+
+                <div class="tutorial-category">
+                    <h3>🛡️ Injury Prevention</h3>
+                    <p>Learn how to use divergence analysis to prevent injuries and overtraining.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="injury_prevention" class="tutorial-link">Injury Prevention Guide</a>
+                        <a href="#" data-tutorial-id="overtraining_signs" class="tutorial-link">Recognizing Overtraining</a>
+                        <a href="#" data-tutorial-id="recovery_optimization" class="tutorial-link">Recovery Optimization</a>
+                    </div>
+                </div>
+
+                <div class="tutorial-category">
+                    <h3>📱 Advanced Features</h3>
+                    <p>Explore advanced features and customization options.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="data_export" class="tutorial-link">Data Export & Analysis</a>
+                        <a href="#" data-tutorial-id="custom_metrics" class="tutorial-link">Custom Metrics</a>
+                        <a href="#" data-tutorial-id="integration_guide" class="tutorial-link">Third-party Integrations</a>
+                    </div>
+                </div>
+
+                <div class="tutorial-category">
+                    <h3>❓ Troubleshooting</h3>
+                    <p>Common issues and how to resolve them.</p>
+                    <div class="tutorial-links">
+                        <a href="#" data-tutorial-id="sync_issues" class="tutorial-link">Sync Issues</a>
+                        <a href="#" data-tutorial-id="data_accuracy" class="tutorial-link">Data Accuracy</a>
+                        <a href="#" data-tutorial-id="performance_optimization" class="tutorial-link">Performance Tips</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tutorial-buttons">
+                <a href="/tutorials" class="btn btn-primary">View All Tutorials</a>
+                <a href="/faq" class="btn btn-secondary">FAQs</a>
+                <a href="/dashboard" class="btn btn-secondary">Go to Dashboard</a>
+            </div>
+        </section>
+
+        <!-- Expert Tips Section -->
+        <section class="faq-section">
+            <h2>Expert Tips & Best Practices</h2>
+            <div class="faq-list">
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How often should I check my training analysis?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We recommend checking your analysis weekly to track trends and make adjustments to your training plan. The dashboard updates automatically as new activities are synced from Strava.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What's the best way to interpret divergence alerts?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Positive divergence means your external load is higher than internal stress (good fitness adaptation). Negative divergence indicates potential overtraining risk and suggests reducing training intensity or taking additional recovery time.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How can I optimize my training based on AI recommendations?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>AI recommendations are based on your historical data patterns. Use them as guidance, but always listen to your body. Combine the data insights with your personal experience and consult with a coach for personalized training advice.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What should I do if I see consistent negative divergence?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Consistent negative divergence suggests your body is under more stress than your training load indicates. Consider reducing training volume, increasing recovery time, checking sleep quality, and monitoring nutrition and hydration.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How do I set realistic training goals?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Set goals based on your current fitness level and available training time. Use the dashboard to track progress and adjust goals as needed. Focus on consistency over intensity, especially when building your training base.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Success Stories Section -->
+        <section class="tutorial-section">
+            <h2>Success Stories</h2>
+            <p>See how other athletes have used Your Training Monkey to optimize their training and prevent injuries.</p>
+            
+            <div class="tutorial-categories">
+                <div class="tutorial-category">
+                    <h3>🏃‍♂️ Trail Runner - Sarah</h3>
+                    <p>"Your Training Monkey helped me identify overtraining patterns before they became injuries. I was able to adjust my training and complete my first 50K without any issues."</p>
+                    <div class="tutorial-links">
+                        <a href="#" class="tutorial-link">Read Full Story</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>🚴‍♀️ Cyclist - Mike</h3>
+                    <p>"The divergence analysis showed me when I was pushing too hard. I learned to balance intensity and recovery, leading to better performance and fewer injuries."</p>
+                    <div class="tutorial-links">
+                        <a href="#" class="tutorial-link">Read Full Story</a>
+                    </div>
+                </div>
+                
+                <div class="tutorial-category">
+                    <h3>🏃‍♀️ Marathoner - Lisa</h3>
+                    <p>"The AI recommendations helped me optimize my training schedule. I achieved a personal best while staying injury-free throughout my training cycle."</p>
+                    <div class="tutorial-links">
+                        <a href="#" class="tutorial-link">Read Full Story</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Coming Soon Popup -->
+        <div id="coming-soon-overlay" class="popup-overlay popup-hidden"></div>
+        <div id="coming-soon-popup" class="coming-soon-popup popup-hidden">
+            <h3>🚀 Coming Soon!</h3>
+            <p>This tutorial is currently in development. We're working hard to bring you comprehensive guides and resources.</p>
+            <button class="btn" onclick="closeComingSoonPopup()">Got it!</button>
+        </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function showComingSoonPopup() {
+    document.getElementById('coming-soon-overlay').classList.remove('popup-hidden');
+    document.getElementById('coming-soon-popup').classList.remove('popup-hidden');
+}
+
+function closeComingSoonPopup() {
+    document.getElementById('coming-soon-overlay').classList.add('popup-hidden');
+    document.getElementById('coming-soon-popup').classList.add('popup-hidden');
+}
+
+// Add click handlers to all tutorial links that have href="#"
+document.addEventListener('DOMContentLoaded', function() {
+    const tutorialLinks = document.querySelectorAll('.tutorial-link[href="#"]');
+    tutorialLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            showComingSoonPopup();
+        });
+    });
+    
+    // Close popup when clicking overlay
+    document.getElementById('coming-soon-overlay').addEventListener('click', closeComingSoonPopup);
+});
+</script>
+{% endblock %}

@@ -286,37 +286,87 @@
     </style>
 </head>
 <body>
-    <h1 style="color: #2c3e50; margin-bottom: 10px;">Connect Your Strava Account</h1>
-    <p style="color: #6c757d; margin-bottom: 30px;">Set up your personal connection to sync training data with Your Training Monkey</p>
+    <!-- LEGACY FALLBACK WARNING -->
+    <div class="warning-box" style="background: #f8d7da; border-left: 4px solid #dc3545; color: #721c24; margin-bottom: 20px;">
+        <h3 style="margin: 0 0 10px 0; color: #721c24;">⚠️ Legacy Fallback Method</h3>
+        <p style="margin: 0 0 10px 0;"><strong>This is a complex fallback method.</strong> Most users should use the simple "Connect with Strava" button on the main signup page.</p>
+        <p style="margin: 0;"><strong>When to use this:</strong> Only if the main OAuth connection fails or for development/testing purposes.</p>
+    </div>
+
+    <h1 style="color: #2c3e50; margin-bottom: 10px;">Connect Your Strava Account (Legacy Method)</h1>
+    <p style="color: #6c757d; margin-bottom: 30px;">This is the manual credential entry method. For most users, we recommend using the <a href="/auth/strava-signup" style="color: #007bff; text-decoration: underline;">simple OAuth connection</a> instead.</p>
 
     <!-- Progress Indicator -->
     <div class="progress-section">
         <div class="progress-header">
             <h3 style="color: #2c3e50; margin: 0; text-align: center;">Getting You Set Up</h3>
-            <p style="color: #6c757d; margin: 0.5rem 0 0 0; text-align: center; font-size: 0.9rem;">Step 1 of 3 • Let's get started!</p>
+            <p style="color: #6c757d; margin: 0.5rem 0 0 0; text-align: center; font-size: 0.9rem;">Step 2 of 3 • Connect your data!</p>
         </div>
         <div class="progress-steps">
-            <div class="step current">
+            <div class="step completed">
                 <div class="step-icon">1</div>
+                <div class="step-content">
+                    <div class="step-title">Create Account</div>
+                    <div class="step-desc">Set up your profile</div>
+                </div>
+            </div>
+            <div class="step current">
+                <div class="step-icon">2</div>
                 <div class="step-content">
                     <div class="step-title">Connect Strava</div>
                     <div class="step-desc">Link your training data</div>
                 </div>
             </div>
             <div class="step upcoming">
-                <div class="step-icon">2</div>
-                <div class="step-content">
-                    <div class="step-title">Setup Preferences</div>
-                    <div class="step-desc">Enter goals and preferences</div>
-                </div>
-            </div>
-            <div class="step upcoming">
                 <div class="step-icon">3</div>
                 <div class="step-content">
-                    <div class="step-title">Welcome</div>
-                    <div class="step-desc">All set - redirected to Dashboard</div>
+                    <div class="step-title">Setup Goals</div>
+                    <div class="step-desc">Set your training goals</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- What Happens Next Section -->
+    <div class="what-happens-next" style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-radius: 12px; padding: 2rem; margin: 2rem 0; border-left: 4px solid #1976d2;">
+        <h3 style="margin-top: 0; color: #1976d2; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1.5rem;">🚀</span>
+            What Happens Next?
+        </h3>
+        <p style="color: #424242; margin-bottom: 1.5rem; font-size: 1.1rem;">
+            After you connect Strava, here's exactly what will happen:
+        </p>
+        
+        <div style="display: grid; gap: 1rem;">
+            <div style="display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.7); border-radius: 8px;">
+                <div style="background: #4caf50; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; flex-shrink: 0;">1</div>
+                <div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">Connect Strava</h4>
+                    <p style="margin: 0; color: #424242;">You'll be redirected to Strava to authorize the connection, then back to TrainingMonkey with a welcome message.</p>
+                </div>
+            </div>
+            
+            <div style="display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.7); border-radius: 8px;">
+                <div style="background: #ff9800; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; flex-shrink: 0;">2</div>
+                <div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">Welcome & Setup Preferences</h4>
+                    <p style="margin: 0; color: #424242;">You'll be guided through setting up your training goals and preferences (some optional) to personalize your experience.</p>
+                </div>
+            </div>
+            
+            <div style="display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.7); border-radius: 8px;">
+                <div style="background: #9c27b0; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; flex-shrink: 0;">3</div>
+                <div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">All Set - Dashboard</h4>
+                    <p style="margin: 0; color: #424242;">You'll be redirected to your personalized training dashboard where you can see your divergence analysis and AI recommendations.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: rgba(25, 118, 210, 0.1); border-radius: 8px; padding: 1rem; margin-top: 1.5rem; border-left: 3px solid #1976d2;">
+            <p style="margin: 0; color: #1976d2; font-weight: 500;">
+                <strong>⏱️ Timeline:</strong> The entire process takes less than 2 minutes. You'll have access to your training analysis immediately after setup!
+            </p>
         </div>
     </div>
 
@@ -484,7 +534,7 @@
         >
     </div>
 
-    <a href="/static/index.html" class="back-link">← Back to Dashboard</a>
+    <a href="/dashboard" class="back-link">← Back to Dashboard</a>
 
     <script>
     function submitStravaForm() {

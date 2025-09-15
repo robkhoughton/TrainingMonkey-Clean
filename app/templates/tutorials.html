@@ -1,0 +1,1541 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}Tutorials - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Comprehensive tutorials and guides for mastering Your Training Monkey's training load divergence analysis, advanced features, and optimization techniques.{% endblock %}
+
+{% block meta_keywords %}tutorials, training guides, divergence analysis, TRIMP, ACWR, training optimization, injury prevention, TrainingMonkey help{% endblock %}
+
+{% block og_title %}Tutorials - Your Training Monkey{% endblock %}
+
+{% block og_description %}Master every aspect of Your Training Monkey with our comprehensive tutorial collection.{% endblock %}
+
+{% block header_title %}
+<h1>Tutorials</h1>
+<p class="subtitle">Master every aspect of Your Training Monkey</p>
+<p class="description">Comprehensive guides, step-by-step tutorials, and expert tips to help you optimize your training and prevent injuries.</p>
+{% endblock %}
+
+{% block content %}
+        <!-- Table of Contents -->
+        <section class="setup-section">
+            <h2>Table of Contents</h2>
+            <div class="toc-container">
+                <div class="toc-category">
+                    <h3>🎯 Getting Started</h3>
+                    <ul>
+                        <li><a href="#getting-started-guide">Getting Started Guide</a></li>
+                        <li><a href="#frequently-asked-questions">Frequently Asked Questions</a></li>
+                        <li><a href="#dashboard-overview">Dashboard Overview</a></li>
+                    </ul>
+                </div>
+                <div class="toc-category">
+                    <h3>📊 Dashboard & Analysis</h3>
+                    <ul>
+                        <li><a href="#dashboard-tour">Dashboard Tour</a></li>
+                        <li><a href="#understanding-divergence">Understanding Divergence</a></li>
+                        <li><a href="#acwr-explained">ACWR Explained</a></li>
+                        <li><a href="#heart-rate-zones-setup">Heart Rate Zones Setup</a></li>
+                        <li><a href="#configure-settings">Configure Settings</a></li>
+                    </ul>
+                </div>
+                <div class="toc-category">
+                    <h3>🎯 Goals & Recommendations</h3>
+                    <ul>
+                        <li><a href="#goals-setup">Goals Setup</a></li>
+                        <li><a href="#journal-tracking">Journal & Tracking</a></li>
+                        <li><a href="#ai-recommendations">AI Recommendations Guide</a></li>
+                        <li><a href="#training-optimization">Training Optimization</a></li>
+                    </ul>
+                </div>
+                <div class="toc-category">
+                    <h3>🛡️ Injury Prevention</h3>
+                    <ul>
+                        <li><a href="#injury-prevention">Injury Prevention Guide</a></li>
+                        <li><a href="#recognizing-overtraining">Recognizing Overtraining</a></li>
+                        <li><a href="#recovery-optimization">Recovery Optimization</a></li>
+                    </ul>
+                </div>
+                <div class="toc-category">
+                    <h3>📱 Advanced Features</h3>
+                    <ul>
+                        <li><a href="#data-export-analysis">Data Export & Analysis</a></li>
+                        <li><a href="#custom-metrics">Custom Metrics</a></li>
+                        <li><a href="#third-party-integrations">Third-party Integrations</a></li>
+                    </ul>
+                </div>
+                <div class="toc-category">
+                    <h3>❓ Troubleshooting</h3>
+                    <ul>
+                        <li><a href="#sync-issues">Sync Issues</a></li>
+                        <li><a href="#data-accuracy">Data Accuracy</a></li>
+                        <li><a href="#performance-tips">Performance Tips</a></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tutorial Content -->
+        <section class="tutorial-content">
+            <!-- Getting Started Guide -->
+            <div class="tutorial-section" id="getting-started-guide">
+                <h2>Getting Started Guide</h2>
+                <p>Welcome to Your Training Monkey! This comprehensive guide will help you get started with training load divergence analysis.</p>
+                
+                <h3>What is Training Load Divergence Analysis?</h3>
+                <p>Training load divergence analysis compares your external training load (distance, time, elevation) with your internal stress (TRIMP from heart rate). When these diverge, it indicates potential overtraining or undertraining.</p>
+                
+                <h3>Key Benefits:</h3>
+                <ul>
+                    <li><strong>Injury Prevention:</strong> Early detection of overtraining risk</li>
+                    <li><strong>Performance Optimization:</strong> Identify when you're ready for increased training</li>
+                    <li><strong>Personalized Insights:</strong> AI-powered recommendations based on your data</li>
+                    <li><strong>Training Efficiency:</strong> Optimize your training load for maximum benefit</li>
+                </ul>
+                
+                <h3>Getting Started Steps:</h3>
+                <ol>
+                    <li><strong>Connect Strava:</strong> Link your Strava account to import training data</li>
+                    <li><strong>Configure Settings:</strong> Set up heart rate zones and ACWR thresholds</li>
+                    <li><strong>Explore Dashboard:</strong> Review your training load analysis</li>
+                    <li><strong>Use Journal:</strong> Track subjective feedback and get AI insights</li>
+                </ol>
+            </div>
+
+            <!-- Understanding Divergence -->
+            <div class="tutorial-section" id="understanding-divergence">
+                <h2>Understanding Divergence Analysis</h2>
+                <p>Divergence analysis is the core technology behind Your Training Monkey's injury prevention capabilities.</p>
+                
+                <h3>What is Normalized Divergence?</h3>
+                <p>Normalized divergence quantifies the relationship between external loading (distance, elevation) and internal physiological response (TRIMP, heart rate). It's calculated as:</p>
+                
+                <div class="formula-box">
+                    <code>Normalized Divergence = (External ACWR - Internal ACWR) / ((External ACWR + Internal ACWR) / 2)</code>
+                </div>
+                
+                <h3>Interpretation Guidelines:</h3>
+                <table class="interpretation-table">
+                    <thead>
+                        <tr>
+                            <th>Divergence Range</th>
+                            <th>Classification</th>
+                            <th>Interpretation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>&lt; -0.15</td>
+                            <td>High Overtraining Risk</td>
+                            <td>Internal stress is significantly higher than external work. Indicates poor efficiency, accumulated fatigue, or overtraining.</td>
+                        </tr>
+                        <tr>
+                            <td>-0.15 to -0.05</td>
+                            <td>Moderate Risk</td>
+                            <td>Internal response is disproportionately high. May indicate early fatigue or insufficient recovery.</td>
+                        </tr>
+                        <tr>
+                            <td>-0.05 to +0.05</td>
+                            <td>Balanced</td>
+                            <td>Balanced relationship between work completed and physiological response. Ideal for most training.</td>
+                        </tr>
+                        <tr>
+                            <td>+0.05 to +0.15</td>
+                            <td>Efficient</td>
+                            <td>External work exceeds relative internal cost. Indicates good adaptation, efficiency, or potential for increased loading.</td>
+                        </tr>
+                        <tr>
+                            <td>&gt; +0.15</td>
+                            <td>Potential Undertraining</td>
+                            <td>External work significantly exceeds internal stress. May indicate potential for increased intensity or training stimulus.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ACWR Explained -->
+            <div class="tutorial-section" id="acwr-explained">
+                <h2>ACWR Explained</h2>
+                <p>ACWR (Acute:Chronic Workload Ratio) quantifies the relationship between recent training (acute load) and longer-term training history (chronic load). This metric is fundamental to injury prevention and training optimization.</p>
+                
+                <h3>What is ACWR?</h3>
+                <p>ACWR compares your recent training load (acute) to your longer-term training capacity (chronic). This ratio helps identify when you're training too hard, too easy, or just right relative to your current fitness level.</p>
+                
+                <h3>How ACWR is Calculated:</h3>
+                <div class="formula-box">
+                    <code>ACWR = 7-day rolling daily average / 28-day rolling daily average</code>
+                </div>
+                
+                <h4>Understanding the Components:</h4>
+                <ul>
+                    <li><strong>Acute Load (7-day):</strong> Your average daily training load over the past week</li>
+                    <li><strong>Chronic Load (28-day):</strong> Your average daily training load over the past month</li>
+                    <li><strong>Ratio:</strong> How your recent training compares to your established baseline</li>
+                </ul>
+                
+                <h3>ACWR Interpretation Guidelines:</h3>
+                <table class="interpretation-table">
+                    <thead>
+                        <tr>
+                            <th>ACWR Range</th>
+                            <th>Classification</th>
+                            <th>Interpretation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>&lt; 0.8</td>
+                            <td>Undertraining</td>
+                            <td>Insufficient acute load relative to chronic capacity. Risk of losing conditioning or training adaptations. May indicate tapering or recovery period.</td>
+                        </tr>
+                        <tr>
+                            <td>0.8 - 1.3</td>
+                            <td>Optimal Zone</td>
+                            <td>Balanced training that promotes fitness gains with low injury risk. Ideal for sustained training progression.</td>
+                        </tr>
+                        <tr>
+                            <td>1.3 - 1.5</td>
+                            <td>High Risk</td>
+                            <td>Elevated injury risk (~40% higher than optimal zone). Should be used sparingly and intentionally for specific training blocks.</td>
+                        </tr>
+                        <tr>
+                            <td>&gt; 1.5</td>
+                            <td>Very High Risk</td>
+                            <td>Significantly increased injury risk (~70%+ higher than optimal zone). Generally should be avoided except during carefully monitored peak training.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Advanced ACWR Features:</h3>
+                <p>Your Training Monkey uses enhanced ACWR calculations that go beyond simple averaging:</p>
+                
+                <h4>Exponential Decay Weighting:</h4>
+                <p>Recent training sessions have more impact than older ones. Our system uses exponential decay to weight training sessions based on how recently they occurred, providing more accurate chronic load calculations.</p>
+                
+                <h4>Configurable Time Periods:</h4>
+                <ul>
+                    <li><strong>Acute Period:</strong> Typically 7 days (configurable)</li>
+                    <li><strong>Chronic Period:</strong> Typically 28 days (configurable 28-90 days)</li>
+                    <li><strong>Decay Rate:</strong> Adjustable exponential decay for personalized accuracy</li>
+                </ul>
+                
+                <h3>Seasonal Training Considerations:</h3>
+                <ul>
+                    <li><strong>Base Building:</strong> Target ACWR 0.9-1.1, emphasize aerobic development</li>
+                    <li><strong>Build Phase:</strong> Allow ACWR 1.1-1.3, include intensity progression</li>
+                    <li><strong>Peak Phase:</strong> Brief periods >1.3 acceptable with planned recovery</li>
+                    <li><strong>Recovery Phase:</strong> Target ACWR 0.7-0.9, focus on adaptation</li>
+                </ul>
+                
+                <h3>Why ACWR Matters:</h3>
+                <p>Research shows that maintaining ACWR within the optimal zone (0.8-1.3) significantly reduces injury risk while promoting fitness gains. Values outside this range indicate either insufficient training stimulus or excessive load that may lead to overtraining or injury.</p>
+            </div>
+
+            <!-- Heart Rate Zones Setup -->
+            <div class="tutorial-section" id="heart-rate-zones-setup">
+                <h2>Heart Rate Zones Setup</h2>
+                <p>Your heart rate zones form the foundation of all training calculations in Your Training Monkey. These zones determine how your Training Impulse (TRIMP) is calculated, which directly impacts your internal ACWR, injury risk assessments, and AI recommendations.</p>
+                
+                <h3>Why Heart Rate Zones Matter:</h3>
+                <ul>
+                    <li><strong>TRIMP Calculations:</strong> Higher intensity zones receive exponentially more weight in training load calculations</li>
+                    <li><strong>Historical Data:</strong> Changing these settings recalculates ALL your past training data</li>
+                    <li><strong>AI Recommendations:</strong> Your zones influence how the AI interprets workout intensity and prescribes future training</li>
+                    <li><strong>Injury Prevention:</strong> Accurate zones are critical for proper ACWR calculations and overtraining detection</li>
+                </ul>
+                
+                <h3>The Two Calculation Methods:</h3>
+                
+                <h4>Percentage Method (Simple):</h4>
+                <p>Calculates zones as direct percentages of your maximum heart rate:</p>
+                <ul>
+                    <li><strong>Zone 1:</strong> 50-60% of max HR (Recovery)</li>
+                    <li><strong>Zone 2:</strong> 60-70% of max HR (Aerobic Base)</li>
+                    <li><strong>Zone 3:</strong> 70-80% of max HR (Aerobic)</li>
+                    <li><strong>Zone 4:</strong> 80-90% of max HR (Threshold)</li>
+                    <li><strong>Zone 5:</strong> 90-100% of max HR (VO2 Max)</li>
+                </ul>
+                
+                <h4>Karvonen Method (Heart Rate Reserve):</h4>
+                <p>Uses the difference between max and resting HR (your "heart rate reserve") to calculate zones:</p>
+                <ul>
+                    <li><strong>Zone 1:</strong> Resting + 50-60% of reserve (Recovery)</li>
+                    <li><strong>Zone 2:</strong> Resting + 60-70% of reserve (Aerobic Base)</li>
+                    <li><strong>Zone 3:</strong> Resting + 70-80% of reserve (Aerobic)</li>
+                    <li><strong>Zone 4:</strong> Resting + 80-90% of reserve (Threshold)</li>
+                    <li><strong>Zone 5:</strong> Resting + 90-100% of reserve (VO2 Max)</li>
+                </ul>
+                <p>Generally produces more personalized and physiologically accurate zones by accounting for your resting heart rate.</p>
+                
+                <h3>Zone Characteristics:</h3>
+                <ul>
+                    <li><strong>Zone 1 (Recovery):</strong> Very easy intensity, aerobic base building</li>
+                    <li><strong>Zone 2 (Aerobic Base):</strong> Comfortable aerobic pace, primary training zone</li>
+                    <li><strong>Zone 3 (Aerobic):</strong> Moderate intensity, tempo efforts</li>
+                    <li><strong>Zone 4 (Lactate Threshold):</strong> Hard intensity, threshold training</li>
+                    <li><strong>Zone 5 (VO2 Max):</strong> Maximum intensity, high-intensity intervals</li>
+                </ul>
+                
+                <h3>Choosing the Right Method:</h3>
+                <ul>
+                    <li><strong>Use Karvonen</strong> if you know your true resting heart rate (most accurate)</li>
+                    <li><strong>Use Percentage</strong> if you're unsure about your resting HR or prefer simplicity</li>
+                    <li><strong>Custom Zones:</strong> Override calculated zones if you've done laboratory testing</li>
+                </ul>
+                
+                <h3>Impact on Your Training Analysis:</h3>
+                <p>Accurate heart rate zones are essential for:</p>
+                <ul>
+                    <li>Proper TRIMP calculations that reflect true training intensity</li>
+                    <li>Accurate internal ACWR calculations for injury risk assessment</li>
+                    <li>Reliable AI recommendations based on your actual physiological response</li>
+                    <li>Consistent training load analysis across all your activities</li>
+                </ul>
+            </div>
+
+            <!-- Frequently Asked Questions -->
+            <div class="tutorial-section" id="frequently-asked-questions">
+                <h2>Frequently Asked Questions</h2>
+                <p>Find answers to common questions about Your Training Monkey's training load divergence analysis, Strava integration, and advanced features.</p>
+                
+                <div class="tutorial-buttons">
+                    <a href="/faq" class="btn btn-primary">View Complete FAQ</a>
+                </div>
+            </div>
+
+            <!-- Dashboard Overview -->
+            <div class="tutorial-section" id="dashboard-overview">
+                <h2>Dashboard Overview</h2>
+                <p>Your Training Monkey dashboard provides a comprehensive view of your training load analysis and injury risk assessment.</p>
+                
+                <h3>Key Dashboard Components:</h3>
+                <ul>
+                    <li><strong>Training Load Chart:</strong> Visual representation of your external vs internal training load over time</li>
+                    <li><strong>Divergence Analysis:</strong> Real-time assessment of training efficiency and injury risk</li>
+                    <li><strong>ACWR Monitoring:</strong> Acute:Chronic Workload Ratio tracking for injury prevention</li>
+                    <li><strong>AI Recommendations:</strong> Personalized insights based on your training patterns</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">View Dashboard</a>
+                </div>
+            </div>
+
+            <!-- Dashboard Tour -->
+            <div class="tutorial-section" id="dashboard-tour">
+                <h2>Dashboard Tour</h2>
+                <p>Take a guided tour of your Training Monkey dashboard to understand all the features and how to navigate them effectively.</p>
+                
+                <h3>Main Dashboard Sections:</h3>
+                <ul>
+                    <li><strong>Training Charts:</strong> Visual analysis of your training data with interactive charts</li>
+                    <li><strong>Metrics Cards:</strong> Key performance indicators displayed at a glance</li>
+                    <li><strong>AI Recommendations:</strong> Personalized training guidance based on your data</li>
+                    <li><strong>Time Period Controls:</strong> Adjust the date range for your analysis</li>
+                    <li><strong>Sport Filters:</strong> Focus on specific activities (running, cycling, etc.)</li>
+                </ul>
+                
+                <h3>Interactive Features:</h3>
+                <ul>
+                    <li><strong>Chart Hover:</strong> Hover over data points for detailed information</li>
+                    <li><strong>Legend Toggle:</strong> Click legend items to show/hide data series</li>
+                    <li><strong>Date Range Selection:</strong> Use controls to focus on specific time periods</li>
+                    <li><strong>Metric Tooltips:</strong> Hover over metrics for explanations</li>
+                </ul>
+                
+                <h3>Getting Started:</h3>
+                <p>The dashboard automatically adapts to your experience level, showing more features as you progress through the onboarding process. New users see a simplified interface with guided tutorials, while experienced users have access to advanced analytics and customization options.</p>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Start Dashboard Tour</a>
+                </div>
+            </div>
+
+            <!-- Configure Settings -->
+            <div class="tutorial-section" id="configure-settings">
+                <h2>Configure Settings</h2>
+                <p>Properly configuring your settings is crucial for accurate training analysis. Your heart rate zones and personal information directly impact all calculations and recommendations.</p>
+                
+                <h3>Essential Settings:</h3>
+                <ul>
+                    <li><strong>Resting Heart Rate:</strong> Your lowest heart rate when completely at rest</li>
+                    <li><strong>Maximum Heart Rate:</strong> Your highest achievable heart rate during intense exercise</li>
+                    <li><strong>Gender:</strong> Used for TRIMP calculations (different coefficients for males/females)</li>
+                    <li><strong>Heart Rate Zone Method:</strong> Choose between Percentage or Karvonen (Heart Rate Reserve) method</li>
+                </ul>
+                
+                <h3>Heart Rate Zone Methods:</h3>
+                
+                <h4>Percentage Method (Simple):</h4>
+                <ul>
+                    <li><strong>Zone 1:</strong> 50-60% of max HR (Recovery)</li>
+                    <li><strong>Zone 2:</strong> 60-70% of max HR (Aerobic Base)</li>
+                    <li><strong>Zone 3:</strong> 70-80% of max HR (Aerobic)</li>
+                    <li><strong>Zone 4:</strong> 80-90% of max HR (Threshold)</li>
+                    <li><strong>Zone 5:</strong> 90-100% of max HR (VO2 Max)</li>
+                </ul>
+                
+                <h4>Karvonen Method (Heart Rate Reserve):</h4>
+                <ul>
+                    <li><strong>Zone 1:</strong> Resting + 50-60% of reserve (Recovery)</li>
+                    <li><strong>Zone 2:</strong> Resting + 60-70% of reserve (Aerobic Base)</li>
+                    <li><strong>Zone 3:</strong> Resting + 70-80% of reserve (Aerobic)</li>
+                    <li><strong>Zone 4:</strong> Resting + 80-90% of reserve (Threshold)</li>
+                    <li><strong>Zone 5:</strong> Resting + 90-100% of reserve (VO2 Max)</li>
+                </ul>
+                
+                <h3>Why Settings Matter:</h3>
+                <ul>
+                    <li><strong>TRIMP Calculations:</strong> Higher intensity zones receive exponentially more weight</li>
+                    <li><strong>Historical Data:</strong> Changing settings recalculates ALL your past training data</li>
+                    <li><strong>AI Recommendations:</strong> Your zones influence how the AI interprets workout intensity</li>
+                    <li><strong>Injury Prevention:</strong> Accurate zones are critical for proper ACWR calculations</li>
+                </ul>
+                
+                <h3>Custom Zone Overrides:</h3>
+                <p>If you've done laboratory testing or have specific zone boundaries from your coach, you can override the calculated zones with custom values. This is especially useful for athletes with unique physiological profiles.</p>
+                
+                <div class="tutorial-buttons">
+                    <a href="/settings" class="btn btn-primary">Configure Settings</a>
+                </div>
+            </div>
+
+            <!-- Goals Setup -->
+            <div class="tutorial-section" id="goals-setup">
+                <h2>Goals Setup</h2>
+                <p>Setting clear, achievable goals helps you stay motivated and track your progress effectively. Your Training Monkey uses your goals to provide personalized recommendations and insights.</p>
+                
+                <h3>Types of Goals You Can Set:</h3>
+                
+                <h4>🏃‍♂️ Distance Goals</h4>
+                <p>Set targets for total distance covered in running, cycling, or other activities. Perfect for building endurance and tracking overall training volume.</p>
+                <ul>
+                    <li>Weekly, monthly, or seasonal distance targets</li>
+                    <li>Flexible timeframes from 1 week to 6 months</li>
+                    <li>Automatically tracks progress across all activities</li>
+                </ul>
+                
+                <h4>📅 Activity Frequency Goals</h4>
+                <p>Set targets for the number of training sessions you want to complete. Great for building consistency and establishing training habits.</p>
+                <ul>
+                    <li>Target number of activities per week/month</li>
+                    <li>Helps maintain training consistency</li>
+                    <li>Adapts to your schedule and preferences</li>
+                </ul>
+                
+                <h4>📈 Performance Improvement Goals</h4>
+                <p>Set targets for improving your pace, time, or overall performance. The AI will help you structure training to achieve these improvements safely.</p>
+                <ul>
+                    <li>Percentage-based improvement targets</li>
+                    <li>Considers your current fitness level</li>
+                    <li>Provides structured progression plans</li>
+                </ul>
+                
+                <h3>How Goals Impact Your Training:</h3>
+                <ul>
+                    <li><strong>AI Recommendations:</strong> Your goals influence the type and intensity of training suggestions</li>
+                    <li><strong>Progress Tracking:</strong> Visual progress indicators help you stay motivated</li>
+                    <li><strong>Injury Prevention:</strong> Goals are balanced with your current training load and recovery needs</li>
+                    <li><strong>Adaptive Planning:</strong> Recommendations adjust based on your progress toward goals</li>
+                </ul>
+                
+                <h3>Setting SMART Goals:</h3>
+                <ul>
+                    <li><strong>Specific:</strong> Clear, well-defined objectives</li>
+                    <li><strong>Measurable:</strong> Quantifiable targets you can track</li>
+                    <li><strong>Achievable:</strong> Realistic given your current fitness level</li>
+                    <li><strong>Relevant:</strong> Aligned with your overall training objectives</li>
+                    <li><strong>Time-bound:</strong> Set within specific timeframes</li>
+                </ul>
+                
+                <h3>Getting Started:</h3>
+                <p>Start with one primary goal to avoid overwhelming yourself. You can always add more goals later as you become more comfortable with the system. The onboarding process will guide you through setting your first goal step by step.</p>
+                
+                <div class="tutorial-buttons">
+                    <a href="/goals/setup" class="btn btn-primary">Set Up Goals</a>
+                </div>
+            </div>
+
+            <!-- Journal & Tracking -->
+            <div class="tutorial-section" id="journal-tracking">
+                <h2>Journal & Tracking</h2>
+                <p>The Training Journal is your daily training diary that bridges AI recommendations with actual performance through intelligent analysis. Track your subjective feedback and get personalized insights.</p>
+                
+                <h3>Daily Journal Features:</h3>
+                <ul>
+                    <li><strong>7-Day Rolling View:</strong> See your training history and current recommendations</li>
+                    <li><strong>Subjective Tracking:</strong> Record energy levels, RPE, pain, and notes</li>
+                    <li><strong>AI Integration:</strong> Compare what was recommended vs. what you actually did</li>
+                    <li><strong>Activity Summaries:</strong> Automatic workout classification and TRIMP analysis</li>
+                </ul>
+                
+                <h3>What You Can Track:</h3>
+                
+                <h4>📊 Energy Level (1-5 Scale)</h4>
+                <ul>
+                    <li><strong>1:</strong> Very low energy, feeling drained</li>
+                    <li><strong>2:</strong> Low energy, sluggish</li>
+                    <li><strong>3:</strong> Moderate energy, normal</li>
+                    <li><strong>4:</strong> High energy, feeling good</li>
+                    <li><strong>5:</strong> Very high energy, feeling great</li>
+                </ul>
+                
+                <h4>💪 Rate of Perceived Exertion (RPE 1-10)</h4>
+                <ul>
+                    <li><strong>1-2:</strong> Very easy, recovery pace</li>
+                    <li><strong>3-4:</strong> Easy, conversational pace</li>
+                    <li><strong>5-6:</strong> Moderate, comfortable but working</li>
+                    <li><strong>7-8:</strong> Hard, challenging but sustainable</li>
+                    <li><strong>9-10:</strong> Very hard to maximum effort</li>
+                </ul>
+                
+                <h4>🩹 Pain Level (0-100%)</h4>
+                <ul>
+                    <li><strong>0%:</strong> No pain or discomfort</li>
+                    <li><strong>20%:</strong> Mild discomfort, barely noticeable</li>
+                    <li><strong>40%:</strong> Noticeable but manageable</li>
+                    <li><strong>60%:</strong> Moderate pain, affects performance</li>
+                    <li><strong>80%:</strong> Significant pain, limits activity</li>
+                    <li><strong>100%:</strong> Severe pain, unable to continue</li>
+                </ul>
+                
+                <h3>AI Autopsy System:</h3>
+                <p>The journal includes an intelligent "AI Autopsy" that analyzes the gap between:</p>
+                <ul>
+                    <li><strong>What AI Recommended:</strong> Your prescribed training for the day</li>
+                    <li><strong>What You Actually Did:</strong> Your completed activities</li>
+                    <li><strong>How You Felt:</strong> Your subjective feedback and observations</li>
+                    <li><strong>Learning Insights:</strong> How this information improves future recommendations</li>
+                </ul>
+                
+                <h3>How It Works:</h3>
+                <ol>
+                    <li><strong>Morning:</strong> Check your daily AI recommendation</li>
+                    <li><strong>Training:</strong> Complete your workout as planned or modified</li>
+                    <li><strong>Evening:</strong> Record your observations in the journal</li>
+                    <li><strong>Analysis:</strong> AI generates autopsy comparing recommendation vs. reality</li>
+                    <li><strong>Learning:</strong> Future recommendations improve based on your feedback</li>
+                </ol>
+                
+                <h3>Benefits:</h3>
+                <ul>
+                    <li><strong>Personalized Recommendations:</strong> AI learns from your actual responses</li>
+                    <li><strong>Injury Prevention:</strong> Early detection of overtraining or pain patterns</li>
+                    <li><strong>Performance Optimization:</strong> Better understanding of what works for you</li>
+                    <li><strong>Training Consistency:</strong> Track patterns and maintain motivation</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/journal" class="btn btn-primary">Open Training Journal</a>
+                </div>
+            </div>
+
+            <!-- AI Recommendations Guide -->
+            <div class="tutorial-section" id="ai-recommendations">
+                <h2>AI Recommendations Guide</h2>
+                <p>Your Training Monkey's AI analyzes your training patterns and provides personalized, evidence-based recommendations to optimize your training and prevent injuries.</p>
+                
+                <h3>How AI Recommendations Work:</h3>
+                <p>The AI system uses advanced analysis of your training data to provide three types of recommendations:</p>
+                
+                <h4>📅 Daily Recommendations</h4>
+                <p>Specific guidance for your next training session based on:</p>
+                <ul>
+                    <li><strong>Safety Assessment:</strong> Injury risk evaluation using ACWR and divergence analysis</li>
+                    <li><strong>Overtraining Detection:</strong> Early warning signs of excessive training load</li>
+                    <li><strong>Recovery Status:</strong> Days since rest and current fatigue levels</li>
+                    <li><strong>Progression Planning:</strong> Optimal training stimulus for continued improvement</li>
+                </ul>
+                
+                <h4>📊 Weekly Planning</h4>
+                <p>Strategic guidance for your upcoming training week:</p>
+                <ul>
+                    <li><strong>Volume Management:</strong> Optimal weekly training load distribution</li>
+                    <li><strong>Intensity Planning:</strong> Hard vs. easy session scheduling</li>
+                    <li><strong>ACWR Management:</strong> Strategies to maintain optimal training ratios</li>
+                    <li><strong>Pattern Optimization:</strong> Leveraging positive trends and addressing concerns</li>
+                </ul>
+                
+                <h4>🔍 Pattern Insights</h4>
+                <p>Analysis of your training patterns and trends:</p>
+                <ul>
+                    <li><strong>Training Trends:</strong> Weekly volume and intensity patterns</li>
+                    <li><strong>Workout Distribution:</strong> Balance of different training types</li>
+                    <li><strong>Performance Indicators:</strong> Key metrics and their implications</li>
+                    <li><strong>Forward-Looking Analysis:</strong> Predictions and recommendations for future training</li>
+                </ul>
+                
+                <h3>Data Sources for AI Analysis:</h3>
+                <ul>
+                    <li><strong>Training Metrics:</strong> ACWR, TRIMP, divergence analysis, and training load</li>
+                    <li><strong>Activity History:</strong> Recent workouts, intensity, and performance trends</li>
+                    <li><strong>Subjective Feedback:</strong> Energy levels, RPE, pain, and notes from your journal</li>
+                    <li><strong>Personal Goals:</strong> Your training objectives and target improvements</li>
+                    <li><strong>Physiological Profile:</strong> Heart rate zones, fitness level, and training experience</li>
+                </ul>
+                
+                <h3>AI Autopsy System:</h3>
+                <p>The AI continuously learns from your training by analyzing the gap between recommendations and reality:</p>
+                <ul>
+                    <li><strong>Recommendation vs. Reality:</strong> Compares what was suggested vs. what you actually did</li>
+                    <li><strong>Outcome Analysis:</strong> How you felt and performed after following (or not following) recommendations</li>
+                    <li><strong>Learning Integration:</strong> Uses this feedback to improve future recommendations</li>
+                    <li><strong>Personalization:</strong> Adapts to your unique response patterns and preferences</li>
+                </ul>
+                
+                <h3>Coaching Style Adaptation:</h3>
+                <p>The AI adapts its communication style to match your preferences:</p>
+                <ul>
+                    <li><strong>Casual:</strong> Friendly, encouraging tone with simple explanations</li>
+                    <li><strong>Supportive:</strong> Balanced approach with motivational elements</li>
+                    <li><strong>Motivational:</strong> Energetic, goal-focused communication</li>
+                    <li><strong>Analytical:</strong> Data-driven, technical explanations with detailed metrics</li>
+                </ul>
+                
+                <h3>Making the Most of AI Recommendations:</h3>
+                <ul>
+                    <li><strong>Regular Journaling:</strong> Provide subjective feedback to improve AI accuracy</li>
+                    <li><strong>Follow Recommendations:</strong> The more you follow suggestions, the better they become</li>
+                    <li><strong>Track Progress:</strong> Monitor how recommendations align with your goals</li>
+                    <li><strong>Ask Questions:</strong> Use the journal to clarify or request specific guidance</li>
+                </ul>
+                
+                <h3>Understanding Recommendation Categories:</h3>
+                <ul>
+                    <li><strong>Training Adjustments:</strong> Modify intensity, volume, or workout type</li>
+                    <li><strong>Recovery Suggestions:</strong> When to rest or do easy training</li>
+                    <li><strong>Goal Optimization:</strong> Adjust targets based on current progress</li>
+                    <li><strong>Injury Prevention:</strong> Early warning recommendations and risk mitigation</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">View AI Recommendations</a>
+                </div>
+            </div>
+
+            <!-- Training Optimization -->
+            <div class="tutorial-section" id="training-optimization">
+                <h2>Training Optimization</h2>
+                <p>Optimize your training using Your Training Monkey's data-driven approach to achieve better performance while minimizing injury risk. Learn how to use the platform's metrics and recommendations to fine-tune your training.</p>
+                
+                <h3>Daily Training Decision Framework:</h3>
+                <p>Your Training Monkey uses a systematic approach to optimize your daily training decisions:</p>
+                
+                <h4>1. Safety Check</h4>
+                <ul>
+                    <li><strong>Days since rest > 7:</strong> Mandatory rest day required</li>
+                    <li><strong>Pain score ≥ 3:</strong> Consecutive days of high pain require rest</li>
+                    <li><strong>Priority:</strong> Safety always comes first</li>
+                </ul>
+                
+                <h4>2. Overtraining Check</h4>
+                <ul>
+                    <li><strong>Normalized Divergence < -0.15:</strong> High overtraining risk</li>
+                    <li><strong>Action:</strong> Rest or very light workout only</li>
+                    <li><strong>Recovery focus:</strong> Allow body to adapt and recover</li>
+                </ul>
+                
+                <h4>3. ACWR Check</h4>
+                <ul>
+                    <li><strong>Both External & Internal ACWR > 1.3:</strong> High injury risk</li>
+                    <li><strong>Action:</strong> Reduce intensity and/or volume</li>
+                    <li><strong>Strategy:</strong> Focus on active recovery or easy training</li>
+                </ul>
+                
+                <h4>4. Recovery Check</h4>
+                <ul>
+                    <li><strong>Divergence < -0.05 + Days since rest > 5:</strong> Recovery needed</li>
+                    <li><strong>Action:</strong> Active recovery session</li>
+                    <li><strong>Focus:</strong> Low intensity, movement-based recovery</li>
+                </ul>
+                
+                <h4>5. Progression Check</h4>
+                <ul>
+                    <li><strong>Both ACWR < 0.8:</strong> Undertraining detected</li>
+                    <li><strong>Action:</strong> Gradual load increase opportunity</li>
+                    <li><strong>Strategy:</strong> Progressive overload within safe limits</li>
+                </ul>
+                
+                <h3>Weekly Planning Optimization:</h3>
+                <p>Strategic weekly planning ensures optimal training distribution:</p>
+                
+                <h4>Essential Weekly Priorities:</h4>
+                <ul>
+                    <li><strong>Rest Days:</strong> Ensure 1-2 rest days per week</li>
+                    <li><strong>High-Intensity Limit:</strong> Maximum 2-3 sessions with TRIMP > 70 per week</li>
+                    <li><strong>80/20 Rule:</strong> Maintain 80% easy, 20% moderate-hard intensity distribution</li>
+                    <li><strong>Step-Back Weeks:</strong> Plan recovery weeks when ACWR trends > 1.2 for 7+ days</li>
+                </ul>
+                
+                <h3>Advanced Pattern Recognition:</h3>
+                <p>Your Training Monkey identifies patterns that can optimize your training:</p>
+                
+                <h4>Red Flag Patterns to Avoid:</h4>
+                <ul>
+                    <li><strong>Chronic Elevation:</strong> ACWR > 1.3 for 5+ consecutive days</li>
+                    <li><strong>Divergence Drift:</strong> Normalized divergence trending negative for 5+ days</li>
+                    <li><strong>Volume Sensitivity:</strong> >15% weekly load increases causing ACWR spikes</li>
+                    <li><strong>Intensity Clustering:</strong> >2 consecutive days TRIMP >70 without recovery</li>
+                    <li><strong>Recovery Failure:</strong> High TRIMP sessions followed by poor recovery for 48+ hours</li>
+                </ul>
+                
+                <h4>Positive Adaptation Patterns to Leverage:</h4>
+                <ul>
+                    <li><strong>Efficient Loading:</strong> Consistent positive divergence (0.05-0.15) with stable ACWR</li>
+                    <li><strong>Progressive Overload:</strong> Gradual ACWR increase (0.05-0.1 per week) in optimal zone</li>
+                    <li><strong>Recovery Response:</strong> Quick return to baseline metrics after hard sessions</li>
+                </ul>
+                
+                <h3>Seasonal Training Optimization:</h3>
+                <p>Adapt your training approach based on your training phase:</p>
+                
+                <h4>Base Building Phase:</h4>
+                <ul>
+                    <li><strong>Target ACWR:</strong> 0.9-1.1</li>
+                    <li><strong>Focus:</strong> Aerobic development and volume building</li>
+                    <li><strong>Intensity:</strong> Primarily easy to moderate efforts</li>
+                </ul>
+                
+                <h4>Build Phase:</h4>
+                <ul>
+                    <li><strong>Target ACWR:</strong> 1.1-1.3</li>
+                    <li><strong>Focus:</strong> Intensity progression and race-specific training</li>
+                    <li><strong>Intensity:</strong> Include threshold and interval work</li>
+                </ul>
+                
+                <h4>Peak Phase:</h4>
+                <ul>
+                    <li><strong>Target ACWR:</strong> Brief periods >1.3 acceptable</li>
+                    <li><strong>Focus:</strong> Race preparation and sharpening</li>
+                    <li><strong>Recovery:</strong> Planned recovery periods essential</li>
+                </ul>
+                
+                <h3>Optimization Strategies:</h3>
+                <ul>
+                    <li><strong>Data-Driven Decisions:</strong> Use metrics to guide training choices</li>
+                    <li><strong>Progressive Overload:</strong> Gradual increases in training stress</li>
+                    <li><strong>Recovery Integration:</strong> Plan recovery as part of training</li>
+                    <li><strong>Pattern Recognition:</strong> Learn from your training patterns</li>
+                    <li><strong>Goal Alignment:</strong> Ensure training supports your objectives</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Optimize Your Training</a>
+                </div>
+            </div>
+
+            <!-- Injury Prevention Guide -->
+            <div class="tutorial-section" id="injury-prevention">
+                <h2>Injury Prevention Guide</h2>
+                <p>Your Training Monkey's advanced analytics help prevent injuries by identifying risk patterns before they become problems. Learn how to use the platform's early warning systems to stay healthy and train consistently.</p>
+                
+                <h3>Early Warning Systems:</h3>
+                <p>The platform monitors multiple indicators to detect injury risk early:</p>
+                
+                <h4>🚨 Critical Risk Indicators:</h4>
+                <ul>
+                    <li><strong>ACWR > 1.5:</strong> Very high injury risk (70%+ higher than optimal)</li>
+                    <li><strong>Normalized Divergence < -0.15:</strong> High overtraining risk</li>
+                    <li><strong>Days since rest > 7:</strong> Mandatory rest required</li>
+                    <li><strong>Pain score ≥ 3:</strong> Consecutive days require medical attention</li>
+                </ul>
+                
+                <h4>⚠️ Warning Signs to Watch:</h4>
+                <ul>
+                    <li><strong>ACWR 1.3-1.5:</strong> Elevated injury risk (40% higher than optimal)</li>
+                    <li><strong>Divergence < -0.05:</strong> Recovery needed</li>
+                    <li><strong>Chronic Elevation:</strong> ACWR > 1.3 for 5+ consecutive days</li>
+                    <li><strong>Volume Sensitivity:</strong> >15% weekly load increases causing ACWR spikes</li>
+                </ul>
+                
+                <h3>Red Flag Patterns:</h3>
+                <p>Your Training Monkey identifies dangerous patterns that increase injury risk:</p>
+                
+                <h4>High-Risk Patterns:</h4>
+                <ul>
+                    <li><strong>Divergence Drift:</strong> Normalized divergence trending negative for 5+ days</li>
+                    <li><strong>Intensity Clustering:</strong> >2 consecutive days TRIMP >70 without recovery</li>
+                    <li><strong>Recovery Failure:</strong> High TRIMP sessions followed by poor recovery for 48+ hours</li>
+                    <li><strong>Load Spike Sensitivity:</strong> Single high-volume day (>150% of 7-day average) causing ACWR jump >0.15</li>
+                </ul>
+                
+                <h3>Injury Prevention Strategies:</h3>
+                
+                <h4>Daily Prevention:</h4>
+                <ul>
+                    <li><strong>Follow AI Recommendations:</strong> The system prioritizes safety in all suggestions</li>
+                    <li><strong>Monitor Pain Levels:</strong> Track pain in your journal and respond appropriately</li>
+                    <li><strong>Respect Rest Days:</strong> Take mandatory rest when recommended</li>
+                    <li><strong>Gradual Progression:</strong> Avoid sudden increases in training load</li>
+                </ul>
+                
+                <h4>Weekly Prevention:</h4>
+                <ul>
+                    <li><strong>Rest Day Planning:</strong> Ensure 1-2 rest days per week</li>
+                    <li><strong>Intensity Distribution:</strong> Maintain 80/20 easy/hard ratio</li>
+                    <li><strong>High-Intensity Limits:</strong> Maximum 2-3 sessions with TRIMP > 70 per week</li>
+                    <li><strong>Step-Back Weeks:</strong> Plan recovery weeks when ACWR trends > 1.2 for 7+ days</li>
+                </ul>
+                
+                <h3>When to Seek Professional Help:</h3>
+                <p><strong>Consult a healthcare provider immediately if you experience:</strong></p>
+                <ul>
+                    <li>Persistent pain that worsens or doesn't improve with rest</li>
+                    <li>Acute injuries during or after training</li>
+                    <li>Unusual fatigue, dizziness, or shortness of breath</li>
+                    <li>Signs of overtraining syndrome or burnout</li>
+                    <li>Any symptoms that concern you about your health</li>
+                    <li>Chest pain, heart irregularities, or breathing difficulties</li>
+                </ul>
+                
+                <h3>Emergency Medical Situations:</h3>
+                <p><strong>🚨 Stop training immediately and seek medical help if you experience:</strong></p>
+                <ul>
+                    <li>Chest pain, pressure, or discomfort</li>
+                    <li>Severe shortness of breath</li>
+                    <li>Dizziness or fainting</li>
+                    <li>Severe muscle or joint pain</li>
+                    <li>Any symptom that feels life-threatening</li>
+                </ul>
+                
+                <h3>Important Limitations:</h3>
+                <div class="alert-box">
+                    <p><strong>Remember:</strong> Risk calculations are statistical estimates, not medical predictions. Many injury risk factors cannot be detected from activity data alone, including:</p>
+                    <ul>
+                        <li>Individual biomechanics and movement patterns</li>
+                        <li>Nutrition and hydration status</li>
+                        <li>Sleep quality and recovery</li>
+                        <li>Pre-existing health conditions</li>
+                        <li>Environmental factors and training surfaces</li>
+                    </ul>
+                </div>
+                
+                <h3>Proactive Injury Prevention:</h3>
+                <ul>
+                    <li><strong>Regular Monitoring:</strong> Check your dashboard daily for risk indicators</li>
+                    <li><strong>Journal Tracking:</strong> Record pain, energy, and recovery in your training journal</li>
+                    <li><strong>Gradual Progression:</strong> Follow the platform's progression recommendations</li>
+                    <li><strong>Recovery Focus:</strong> Prioritize recovery as much as training</li>
+                    <li><strong>Professional Guidance:</strong> Consult healthcare providers for persistent issues</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Monitor Injury Risk</a>
+                </div>
+            </div>
+
+            <!-- Recognizing Overtraining -->
+            <div class="tutorial-section" id="recognizing-overtraining">
+                <h2>Recognizing Overtraining</h2>
+                <p>Overtraining occurs when training stress exceeds your body's ability to recover and adapt. Your Training Monkey's advanced analytics help identify overtraining patterns before they become serious problems.</p>
+                
+                <h3>Primary Overtraining Indicators:</h3>
+                <p>The platform uses multiple metrics to detect overtraining risk:</p>
+                
+                <h4>🚨 High Overtraining Risk (Normalized Divergence < -0.15):</h4>
+                <ul>
+                    <li><strong>Internal stress significantly higher than external work</strong></li>
+                    <li><strong>Indicates:</strong> Poor efficiency, accumulated fatigue, or overtraining</li>
+                    <li><strong>Action Required:</strong> Rest or very light workout only</li>
+                    <li><strong>Recovery Focus:</strong> Allow body to adapt and recover</li>
+                </ul>
+                
+                <h4>⚠️ Moderate Risk (Divergence -0.15 to -0.05):</h4>
+                <ul>
+                    <li><strong>Internal response disproportionately high</strong></li>
+                    <li><strong>Indicates:</strong> Early fatigue or insufficient recovery</li>
+                    <li><strong>Action Required:</strong> Active recovery or easy training</li>
+                    <li><strong>Monitoring:</strong> Watch for progression to high risk</li>
+                </ul>
+                
+                <h3>Red Flag Patterns for Overtraining:</h3>
+                <p>Your Training Monkey identifies dangerous patterns that indicate overtraining risk:</p>
+                
+                <h4>Critical Warning Patterns:</h4>
+                <ul>
+                    <li><strong>Divergence Drift:</strong> Normalized divergence trending negative for 5+ consecutive days</li>
+                    <li><strong>Recovery Failure:</strong> High TRIMP sessions followed by divergence remaining < -0.05 for 48+ hours</li>
+                    <li><strong>Intensity Clustering:</strong> >2 consecutive days TRIMP >70 without intermediate recovery</li>
+                    <li><strong>Chronic Elevation:</strong> ACWR > 1.3 for 5+ consecutive days</li>
+                </ul>
+                
+                <h4>Additional Risk Factors:</h4>
+                <ul>
+                    <li><strong>Volume Sensitivity:</strong> >15% weekly load increases causing immediate ACWR spike</li>
+                    <li><strong>Load Spike Sensitivity:</strong> Single high-volume day (>150% of 7-day average) causing ACWR jump >0.15</li>
+                    <li><strong>HR Drift:</strong> Increasing resting HR or decreased HRV trends</li>
+                </ul>
+                
+                <h3>Subjective Overtraining Symptoms:</h3>
+                <p>Track these symptoms in your training journal:</p>
+                
+                <h4>Physical Symptoms:</h4>
+                <ul>
+                    <li><strong>Persistent Fatigue:</strong> Feeling tired despite adequate sleep</li>
+                    <li><strong>Decreased Performance:</strong> Slower times, reduced power output</li>
+                    <li><strong>Elevated Resting Heart Rate:</strong> 5+ bpm above normal</li>
+                    <li><strong>Muscle Soreness:</strong> Prolonged soreness that doesn't resolve</li>
+                    <li><strong>Frequent Illness:</strong> Increased susceptibility to colds and infections</li>
+                </ul>
+                
+                <h4>Mental/Emotional Symptoms:</h4>
+                <ul>
+                    <li><strong>Mood Changes:</strong> Irritability, depression, or anxiety</li>
+                    <li><strong>Loss of Motivation:</strong> Decreased enthusiasm for training</li>
+                    <li><strong>Sleep Disturbances:</strong> Difficulty falling asleep or staying asleep</li>
+                    <li><strong>Concentration Problems:</strong> Difficulty focusing during workouts</li>
+                </ul>
+                
+                <h3>Prevention Strategies:</h3>
+                
+                <h4>Daily Monitoring:</h4>
+                <ul>
+                    <li><strong>Check Dashboard Daily:</strong> Monitor divergence and ACWR trends</li>
+                    <li><strong>Journal Tracking:</strong> Record energy levels, RPE, and subjective feelings</li>
+                    <li><strong>Follow AI Recommendations:</strong> The system prioritizes recovery when needed</li>
+                    <li><strong>Respect Rest Days:</strong> Take mandatory rest when recommended</li>
+                </ul>
+                
+                <h4>Weekly Planning:</h4>
+                <ul>
+                    <li><strong>Rest Day Planning:</strong> Ensure 1-2 rest days per week</li>
+                    <li><strong>Intensity Distribution:</strong> Maintain 80/20 easy/hard ratio</li>
+                    <li><strong>High-Intensity Limits:</strong> Maximum 2-3 sessions with TRIMP > 70 per week</li>
+                    <li><strong>Step-Back Weeks:</strong> Plan recovery weeks when ACWR trends > 1.2 for 7+ days</li>
+                </ul>
+                
+                <h3>Recovery from Overtraining:</h3>
+                
+                <h4>Immediate Actions:</h4>
+                <ul>
+                    <li><strong>Reduce Training Load:</strong> Cut volume and intensity by 50-70%</li>
+                    <li><strong>Increase Rest:</strong> Add extra rest days to your schedule</li>
+                    <li><strong>Focus on Recovery:</strong> Prioritize sleep, nutrition, and stress management</li>
+                    <li><strong>Monitor Progress:</strong> Track recovery through journal and metrics</li>
+                </ul>
+                
+                <h4>Gradual Return:</h4>
+                <ul>
+                    <li><strong>Start Easy:</strong> Begin with very light, short sessions</li>
+                    <li><strong>Monitor Response:</strong> Watch for return of overtraining symptoms</li>
+                    <li><strong>Progressive Loading:</strong> Gradually increase training stress over weeks</li>
+                    <li><strong>Professional Guidance:</strong> Consider consulting a coach or healthcare provider</li>
+                </ul>
+                
+                <h3>When to Seek Professional Help:</h3>
+                <p><strong>Consult a healthcare provider if you experience:</strong></p>
+                <ul>
+                    <li>Persistent overtraining symptoms despite rest</li>
+                    <li>Signs of overtraining syndrome or burnout</li>
+                    <li>Depression or anxiety related to training</li>
+                    <li>Physical symptoms that concern you</li>
+                    <li>Inability to recover despite following recommendations</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Monitor Overtraining Risk</a>
+                </div>
+            </div>
+
+            <!-- Recovery Optimization -->
+            <div class="tutorial-section" id="recovery-optimization">
+                <h2>Recovery Optimization</h2>
+                <p>Recovery is as important as training itself. Your Training Monkey helps optimize your recovery by monitoring recovery patterns and providing data-driven recommendations for rest and active recovery.</p>
+                
+                <h3>Recovery Assessment Framework:</h3>
+                <p>The platform uses a systematic approach to determine when and how to recover:</p>
+                
+                <h4>1. Safety Check (Priority 1):</h4>
+                <ul>
+                    <li><strong>Days since rest > 7:</strong> Mandatory rest day required</li>
+                    <li><strong>Pain score ≥ 3:</strong> Consecutive days require medical attention</li>
+                    <li><strong>Action:</strong> Complete rest or medical consultation</li>
+                </ul>
+                
+                <h4>2. Recovery Check (Priority 4):</h4>
+                <ul>
+                    <li><strong>Divergence < -0.05 + Days since rest > 5:</strong> Recovery needed</li>
+                    <li><strong>Action:</strong> Active recovery session</li>
+                    <li><strong>Focus:</strong> Low intensity, movement-based recovery</li>
+                </ul>
+                
+                <h3>Types of Recovery:</h3>
+                
+                <h4>🛌 Complete Rest Days:</h4>
+                <ul>
+                    <li><strong>When:</strong> Days since rest > 7, high pain levels, or overtraining risk</li>
+                    <li><strong>Activity:</strong> No training, light movement only</li>
+                    <li><strong>Duration:</strong> 24-48 hours depending on fatigue level</li>
+                    <li><strong>Benefits:</strong> Full physiological and psychological recovery</li>
+                </ul>
+                
+                <h4>🚶 Active Recovery:</h4>
+                <ul>
+                    <li><strong>When:</strong> Divergence < -0.05, moderate fatigue, or between hard sessions</li>
+                    <li><strong>Activity:</strong> Very easy movement, Zone 1 heart rate only</li>
+                    <li><strong>Duration:</strong> 20-45 minutes</li>
+                    <li><strong>Benefits:</strong> Promotes blood flow and recovery without additional stress</li>
+                </ul>
+                
+                <h3>Recovery Timing and Patterns:</h3>
+                
+                <h4>Weekly Recovery Planning:</h4>
+                <ul>
+                    <li><strong>Rest Days:</strong> Ensure 1-2 complete rest days per week</li>
+                    <li><strong>Active Recovery:</strong> Include 2-3 active recovery sessions</li>
+                    <li><strong>Step-Back Weeks:</strong> Plan recovery weeks when ACWR trends > 1.2 for 7+ days</li>
+                    <li><strong>Intensity Distribution:</strong> Maintain 80/20 easy/hard ratio</li>
+                </ul>
+                
+                <h4>Post-Hard Session Recovery:</h4>
+                <ul>
+                    <li><strong>TRIMP > 70 sessions:</strong> Require 36-48 hours for full divergence normalization</li>
+                    <li><strong>Recovery Failure Pattern:</strong> High TRIMP sessions followed by divergence remaining < -0.05 for 48+ hours</li>
+                    <li><strong>Monitoring:</strong> Track recovery response through journal and metrics</li>
+                </ul>
+                
+                <h3>Recovery Optimization Strategies:</h3>
+                
+                <h4>ACWR-Based Recovery:</h4>
+                <ul>
+                    <li><strong>To Decrease ACWR (when > 1.3):</strong> Take rest day (0 miles) to immediately lower 7-day average</li>
+                    <li><strong>Follow-up:</strong> 2-3 easy days (3-5 miles) below current 7-day average</li>
+                    <li><strong>Effect:</strong> 7-day average drops toward 28-day baseline over 4-5 days</li>
+                </ul>
+                
+                <h4>Divergence-Based Recovery:</h4>
+                <ul>
+                    <li><strong>Divergence < -0.15:</strong> High overtraining risk - rest or very light workout only</li>
+                    <li><strong>Divergence -0.15 to -0.05:</strong> Moderate risk - active recovery or easy training</li>
+                    <li><strong>Recovery Target:</strong> Return to divergence > -0.05 before resuming normal training</li>
+                </ul>
+                
+                <h3>Recovery Monitoring:</h3>
+                
+                <h4>Objective Recovery Indicators:</h4>
+                <ul>
+                    <li><strong>Normalized Divergence:</strong> Should return to -0.05 to +0.05 range</li>
+                    <li><strong>ACWR Values:</strong> Both external and internal should return to 0.8-1.3 range</li>
+                    <li><strong>Heart Rate Recovery:</strong> Monitor resting HR and HRV trends</li>
+                    <li><strong>Training Response:</strong> Improved performance and reduced perceived effort</li>
+                </ul>
+                
+                <h4>Subjective Recovery Indicators:</h4>
+                <ul>
+                    <li><strong>Energy Levels:</strong> Should return to 4-5 on 1-5 scale</li>
+                    <li><strong>Sleep Quality:</strong> Improved sleep duration and quality</li>
+                    <li><strong>Mood and Motivation:</strong> Positive outlook and training enthusiasm</li>
+                    <li><strong>Muscle Soreness:</strong> Reduced or eliminated soreness</li>
+                </ul>
+                
+                <h3>Recovery Best Practices:</h3>
+                
+                <h4>Daily Recovery Habits:</h4>
+                <ul>
+                    <li><strong>Sleep:</strong> 7-9 hours of quality sleep per night</li>
+                    <li><strong>Nutrition:</strong> Adequate protein and carbohydrate intake</li>
+                    <li><strong>Hydration:</strong> Maintain proper fluid balance</li>
+                    <li><strong>Stress Management:</strong> Minimize non-training stress</li>
+                </ul>
+                
+                <h4>Weekly Recovery Planning:</h4>
+                <ul>
+                    <li><strong>Rest Day Scheduling:</strong> Plan rest days strategically</li>
+                    <li><strong>Active Recovery:</strong> Include light movement on recovery days</li>
+                    <li><strong>Recovery Activities:</strong> Yoga, stretching, massage, or light walking</li>
+                    <li><strong>Mental Recovery:</strong> Engage in non-training activities</li>
+                </ul>
+                
+                <h3>Recovery from Overtraining:</h3>
+                
+                <h4>Immediate Recovery Actions:</h4>
+                <ul>
+                    <li><strong>Reduce Training Load:</strong> Cut volume and intensity by 50-70%</li>
+                    <li><strong>Increase Rest:</strong> Add extra rest days to schedule</li>
+                    <li><strong>Focus on Recovery:</strong> Prioritize sleep, nutrition, and stress management</li>
+                    <li><strong>Monitor Progress:</strong> Track recovery through journal and metrics</li>
+                </ul>
+                
+                <h4>Gradual Return to Training:</h4>
+                <ul>
+                    <li><strong>Start Easy:</strong> Begin with very light, short sessions</li>
+                    <li><strong>Monitor Response:</strong> Watch for return of overtraining symptoms</li>
+                    <li><strong>Progressive Loading:</strong> Gradually increase training stress over weeks</li>
+                    <li><strong>Professional Guidance:</strong> Consider consulting a coach or healthcare provider</li>
+                </ul>
+                
+                <h3>Recovery Optimization Tips:</h3>
+                <ul>
+                    <li><strong>Listen to Your Body:</strong> Pay attention to subjective recovery indicators</li>
+                    <li><strong>Follow AI Recommendations:</strong> The system prioritizes recovery when needed</li>
+                    <li><strong>Track Recovery Patterns:</strong> Use the journal to identify recovery trends</li>
+                    <li><strong>Plan Recovery:</strong> Schedule recovery as part of your training plan</li>
+                    <li><strong>Quality Over Quantity:</strong> Better to be well-recovered than overtrained</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Optimize Your Recovery</a>
+                </div>
+            </div>
+
+            <!-- Data Export & Analysis -->
+            <div class="tutorial-section" id="data-export-analysis">
+                <h2>Data Export & Analysis</h2>
+                <p>Your Training Monkey provides comprehensive data export and analysis capabilities to help you understand your training patterns and share insights with coaches or training partners.</p>
+                
+                <h3>Available Data Export Features:</h3>
+                <p>The platform offers multiple ways to export and analyze your training data:</p>
+                
+                <h4>📊 Training Data Export:</h4>
+                <ul>
+                    <li><strong>Activity Data:</strong> Export all your training activities with detailed metrics</li>
+                    <li><strong>Metrics Summary:</strong> ACWR, TRIMP, divergence analysis, and training load data</li>
+                    <li><strong>Journal Entries:</strong> Export your training journal observations and notes</li>
+                    <li><strong>AI Recommendations:</strong> Export AI-generated training recommendations and insights</li>
+                </ul>
+                
+                <h4>📈 Analytics Dashboard:</h4>
+                <ul>
+                    <li><strong>Training Trends:</strong> Visual analysis of your training patterns over time</li>
+                    <li><strong>Performance Metrics:</strong> Comprehensive view of your training metrics and progress</li>
+                    <li><strong>Pattern Recognition:</strong> Identification of training patterns and trends</li>
+                    <li><strong>Comparative Analysis:</strong> Compare different time periods and training phases</li>
+                </ul>
+                
+                <h3>Export Formats:</h3>
+                
+                <h4>📄 CSV Export:</h4>
+                <ul>
+                    <li><strong>Raw Data:</strong> Complete activity data in spreadsheet format</li>
+                    <li><strong>Metrics Summary:</strong> Calculated metrics and training load data</li>
+                    <li><strong>Journal Data:</strong> Subjective feedback and observations</li>
+                    <li><strong>Compatibility:</strong> Works with Excel, Google Sheets, and other analysis tools</li>
+                </ul>
+                
+                <h4>📊 Chart Export:</h4>
+                <ul>
+                    <li><strong>PNG Images:</strong> High-quality chart images for presentations</li>
+                    <li><strong>SVG Format:</strong> Scalable vector graphics for web use</li>
+                    <li><strong>PDF Reports:</strong> Comprehensive training reports with charts and analysis</li>
+                    <li><strong>Custom Date Ranges:</strong> Export specific time periods of interest</li>
+                </ul>
+                
+                <h3>Advanced Analysis Features:</h3>
+                
+                <h4>🔍 Pattern Analysis:</h4>
+                <ul>
+                    <li><strong>Training Load Trends:</strong> Identify patterns in your training volume and intensity</li>
+                    <li><strong>Recovery Patterns:</strong> Analyze your recovery response and adaptation</li>
+                    <li><strong>Performance Correlations:</strong> Find relationships between training and performance</li>
+                    <li><strong>Seasonal Analysis:</strong> Compare training across different seasons or phases</li>
+                </ul>
+                
+                <h4>📊 Statistical Analysis:</h4>
+                <ul>
+                    <li><strong>Descriptive Statistics:</strong> Mean, median, standard deviation of key metrics</li>
+                    <li><strong>Trend Analysis:</strong> Identify upward or downward trends in performance</li>
+                    <li><strong>Correlation Analysis:</strong> Find relationships between different training variables</li>
+                    <li><strong>Predictive Insights:</strong> Forecast future performance based on current trends</li>
+                </ul>
+                
+                <h3>Data Privacy and Security:</h3>
+                <ul>
+                    <li><strong>Secure Export:</strong> All data exports are encrypted and secure</li>
+                    <li><strong>User Control:</strong> You control what data is exported and when</li>
+                    <li><strong>Data Retention:</strong> Exported data is not stored on our servers</li>
+                    <li><strong>Privacy Protection:</strong> Personal information is protected in all exports</li>
+                </ul>
+                
+                <h3>Integration with External Tools:</h3>
+                <ul>
+                    <li><strong>Spreadsheet Analysis:</strong> Import data into Excel or Google Sheets for custom analysis</li>
+                    <li><strong>Training Software:</strong> Compatible with popular training analysis tools</li>
+                    <li><strong>Coach Sharing:</strong> Share data with coaches or training partners</li>
+                    <li><strong>Research Use:</strong> Export data for personal research or academic studies</li>
+                </ul>
+                
+                <h3>Getting Started with Data Export:</h3>
+                <ol>
+                    <li><strong>Access Export Features:</strong> Navigate to the analytics or settings section</li>
+                    <li><strong>Select Data Range:</strong> Choose the time period for your export</li>
+                    <li><strong>Choose Format:</strong> Select CSV, PDF, or image format</li>
+                    <li><strong>Download Data:</strong> Save the exported file to your device</li>
+                    <li><strong>Analyze Results:</strong> Use your preferred analysis tools to explore the data</li>
+                </ol>
+                
+                <h3>Best Practices for Data Analysis:</h3>
+                <ul>
+                    <li><strong>Regular Exports:</strong> Export data regularly to track long-term trends</li>
+                    <li><strong>Multiple Timeframes:</strong> Analyze both short-term and long-term patterns</li>
+                    <li><strong>Cross-Reference:</strong> Compare exported data with your training journal</li>
+                    <li><strong>Document Insights:</strong> Keep notes on your analysis findings</li>
+                    <li><strong>Share with Experts:</strong> Consult coaches or sports scientists for interpretation</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Access Data Export</a>
+                </div>
+            </div>
+
+            <!-- Custom Metrics -->
+            <div class="tutorial-section" id="custom-metrics">
+                <h2>Custom Metrics</h2>
+                <p>Your Training Monkey provides advanced custom metrics and personalized calculations to give you deeper insights into your training performance and progress.</p>
+                
+                <h3>Available Custom Metrics:</h3>
+                <p>The platform offers several specialized metrics beyond standard training load analysis:</p>
+                
+                <h4>📈 Advanced Training Metrics:</h4>
+                <ul>
+                    <li><strong>TRIMP (Training Impulse):</strong> Personalized training load calculation based on heart rate zones</li>
+                    <li><strong>ACWR (Acute:Chronic Workload Ratio):</strong> Injury risk assessment through workload balance</li>
+                    <li><strong>Normalized Divergence:</strong> Comparison of internal vs. external training load</li>
+                    <li><strong>Recovery Score:</strong> Personalized recovery assessment based on training history</li>
+                </ul>
+                
+                <h4>🎯 Personalized Calculations:</h4>
+                <ul>
+                    <li><strong>Heart Rate Zone Analysis:</strong> Custom zone calculations based on your fitness level</li>
+                    <li><strong>Training Stress Score:</strong> Individualized stress assessment for each workout</li>
+                    <li><strong>Performance Trends:</strong> Long-term performance analysis and predictions</li>
+                    <li><strong>Injury Risk Scoring:</strong> Personalized risk assessment based on your training patterns</li>
+                </ul>
+                
+                <h3>How to Use Custom Metrics:</h3>
+                <ol>
+                    <li><strong>Configure Your Profile:</strong> Set up your personal information and fitness level</li>
+                    <li><strong>Review Metric Explanations:</strong> Understand what each metric means for your training</li>
+                    <li><strong>Monitor Trends:</strong> Track how your custom metrics change over time</li>
+                    <li><strong>Adjust Training:</strong> Use insights to optimize your training approach</li>
+                </ol>
+                
+                <div class="tutorial-buttons">
+                    <a href="/settings" class="btn btn-primary">Configure Custom Metrics</a>
+                    <a href="/dashboard" class="btn btn-secondary">View Your Metrics</a>
+                </div>
+            </div>
+
+            <!-- Third-party Integrations -->
+            <div class="tutorial-section" id="third-party-integrations">
+                <h2>Third-party Integrations</h2>
+                <p>Your Training Monkey integrates with popular fitness platforms and devices to provide a comprehensive view of your training data.</p>
+                
+                <h3>Supported Integrations:</h3>
+                <p>The platform currently supports integration with:</p>
+                
+                <h4>🏃‍♂️ Strava Integration:</h4>
+                <ul>
+                    <li><strong>Automatic Data Sync:</strong> Import all your training activities automatically</li>
+                    <li><strong>Real-time Updates:</strong> Get the latest data as soon as you finish a workout</li>
+                    <li><strong>Comprehensive Metrics:</strong> Access to heart rate, power, and other detailed data</li>
+                    <li><strong>Activity Types:</strong> Support for running, cycling, swimming, and more</li>
+                </ul>
+                
+                <h4>📱 Device Compatibility:</h4>
+                <ul>
+                    <li><strong>Garmin Devices:</strong> Full compatibility with Garmin watches and bike computers</li>
+                    <li><strong>Polar Devices:</strong> Support for Polar heart rate monitors and watches</li>
+                    <li><strong>Apple Watch:</strong> Integration with Apple Health and Fitness apps</li>
+                    <li><strong>Other Devices:</strong> Support for devices that sync with Strava</li>
+                </ul>
+                
+                <h3>Setting Up Integrations:</h3>
+                <ol>
+                    <li><strong>Connect Strava:</strong> Authorize the connection in your settings</li>
+                    <li><strong>Sync Your Data:</strong> Import your historical training data</li>
+                    <li><strong>Enable Auto-sync:</strong> Set up automatic data synchronization</li>
+                    <li><strong>Verify Data:</strong> Check that all your activities are properly imported</li>
+                </ol>
+                
+                <div class="tutorial-buttons">
+                    <a href="/strava_setup" class="btn btn-primary">Connect Strava</a>
+                    <a href="/settings" class="btn btn-secondary">Manage Integrations</a>
+                </div>
+            </div>
+
+            <!-- Sync Issues -->
+            <div class="tutorial-section" id="sync-issues">
+                <h2>Sync Issues</h2>
+                <p>Having trouble with data synchronization? This guide helps you troubleshoot common sync issues and get your data flowing properly.</p>
+                
+                <h3>Common Sync Issues and Solutions:</h3>
+                
+                <h4>🔄 Data Not Syncing:</h4>
+                <ul>
+                    <li><strong>Check Connection:</strong> Verify your Strava connection is still active</li>
+                    <li><strong>Refresh Token:</strong> Re-authorize the connection if needed</li>
+                    <li><strong>Check Strava:</strong> Ensure your activities are visible on Strava</li>
+                    <li><strong>Wait for Processing:</strong> Allow time for data to be processed and imported</li>
+                </ul>
+                
+                <h4>📊 Missing Data:</h4>
+                <ul>
+                    <li><strong>Activity Privacy:</strong> Check if activities are set to private on Strava</li>
+                    <li><strong>Date Range:</strong> Verify the date range for data import</li>
+                    <li><strong>Activity Type:</strong> Ensure the activity type is supported</li>
+                    <li><strong>Data Quality:</strong> Check if the activity has sufficient data (heart rate, etc.)</li>
+                </ul>
+                
+                <h4>⚠️ Error Messages:</h4>
+                <ul>
+                    <li><strong>Authentication Errors:</strong> Re-connect your Strava account</li>
+                    <li><strong>Rate Limiting:</strong> Wait and try again if you've hit API limits</li>
+                    <li><strong>Data Format Issues:</strong> Contact support for unusual data formats</li>
+                    <li><strong>Network Issues:</strong> Check your internet connection and try again</li>
+                </ul>
+                
+                <h3>Troubleshooting Steps:</h3>
+                <ol>
+                    <li><strong>Check Status:</strong> Look for any error messages in your dashboard</li>
+                    <li><strong>Reconnect:</strong> Try disconnecting and reconnecting Strava</li>
+                    <li><strong>Manual Sync:</strong> Use the manual sync option if available</li>
+                    <li><strong>Contact Support:</strong> Reach out if issues persist</li>
+                </ol>
+                
+                <div class="tutorial-buttons">
+                    <a href="/strava_setup" class="btn btn-primary">Reconnect Strava</a>
+                    <a href="/settings" class="btn btn-secondary">Check Sync Status</a>
+                </div>
+            </div>
+
+            <!-- Data Accuracy -->
+            <div class="tutorial-section" id="data-accuracy">
+                <h2>Data Accuracy</h2>
+                <p>Understanding data accuracy is crucial for making informed training decisions. Learn how Your Training Monkey ensures reliable data and what factors can affect accuracy.</p>
+                
+                <h3>Data Quality Factors:</h3>
+                <p>Several factors influence the accuracy of your training analysis:</p>
+                
+                <h4>📊 Heart Rate Data:</h4>
+                <ul>
+                    <li><strong>Device Quality:</strong> Higher-quality heart rate monitors provide more accurate data</li>
+                    <li><strong>Proper Fit:</strong> Ensure your device fits snugly and is positioned correctly</li>
+                    <li><strong>Battery Level:</strong> Low battery can affect sensor accuracy</li>
+                    <li><strong>Environmental Factors:</strong> Temperature and humidity can impact readings</li>
+                </ul>
+                
+                <h4>🏃‍♂️ Activity Data:</h4>
+                <ul>
+                    <li><strong>GPS Accuracy:</strong> Clear sky conditions improve GPS precision</li>
+                    <li><strong>Device Calibration:</strong> Regular calibration ensures accurate distance and pace</li>
+                    <li><strong>Activity Type:</strong> Proper activity classification affects calculations</li>
+                    <li><strong>Data Completeness:</strong> Missing data points can affect analysis accuracy</li>
+                </ul>
+                
+                <h3>Improving Data Accuracy:</h3>
+                <ol>
+                    <li><strong>Use Quality Devices:</strong> Invest in reliable heart rate monitors and GPS devices</li>
+                    <li><strong>Proper Setup:</strong> Ensure devices are properly configured and calibrated</li>
+                    <li><strong>Consistent Use:</strong> Use the same devices for consistent data collection</li>
+                    <li><strong>Regular Maintenance:</strong> Keep devices clean and batteries charged</li>
+                </ol>
+                
+                <h3>Understanding Limitations:</h3>
+                <p>While Your Training Monkey provides valuable insights, it's important to understand the limitations:</p>
+                <ul>
+                    <li><strong>Individual Variation:</strong> Metrics may vary between individuals</li>
+                    <li><strong>Environmental Factors:</strong> Weather and terrain can affect data</li>
+                    <li><strong>Device Limitations:</strong> No device is 100% accurate</li>
+                    <li><strong>Interpretation:</strong> Use data as guidance, not absolute truth</li>
+                </ul>
+                
+                <div class="tutorial-buttons">
+                    <a href="/settings" class="btn btn-primary">Check Data Quality</a>
+                    <a href="/dashboard" class="btn btn-secondary">View Your Data</a>
+                </div>
+            </div>
+
+            <!-- Performance Tips -->
+            <div class="tutorial-section" id="performance-tips">
+                <h2>Performance Tips</h2>
+                <p>Maximize your training effectiveness with these performance tips and best practices for using Your Training Monkey platform.</p>
+                
+                <h3>Platform Performance:</h3>
+                <p>Optimize your experience with these technical tips:</p>
+                
+                <h4>🚀 Loading Speed:</h4>
+                <ul>
+                    <li><strong>Clear Cache:</strong> Regularly clear your browser cache for faster loading</li>
+                    <li><strong>Stable Connection:</strong> Use a reliable internet connection for best performance</li>
+                    <li><strong>Browser Updates:</strong> Keep your browser updated for optimal compatibility</li>
+                    <li><strong>Close Tabs:</strong> Close unnecessary browser tabs to free up memory</li>
+                </ul>
+                
+                <h4>📱 Mobile Optimization:</h4>
+                <ul>
+                    <li><strong>Responsive Design:</strong> The platform works on all device sizes</li>
+                    <li><strong>Touch Navigation:</strong> Use touch gestures for easy navigation</li>
+                    <li><strong>Offline Access:</strong> Some features work offline for convenience</li>
+                    <li><strong>App Installation:</strong> Consider installing as a web app for better performance</li>
+                </ul>
+                
+                <h3>Training Performance:</h3>
+                <p>Improve your training effectiveness with these strategies:</p>
+                
+                <h4>📈 Data-Driven Decisions:</h4>
+                <ul>
+                    <li><strong>Regular Monitoring:</strong> Check your metrics daily for trends</li>
+                    <li><strong>Goal Alignment:</strong> Ensure your training aligns with your goals</li>
+                    <li><strong>Recovery Focus:</strong> Prioritize recovery as much as training</li>
+                    <li><strong>Progressive Overload:</strong> Gradually increase training intensity</li>
+                </ul>
+                
+                <h4>🎯 Optimization Strategies:</h4>
+                <ul>
+                    <li><strong>Peak Performance:</strong> Train when your metrics indicate readiness</li>
+                    <li><strong>Injury Prevention:</strong> Heed warning signs and adjust training accordingly</li>
+                    <li><strong>Consistency:</strong> Maintain regular training patterns for best results</li>
+                    <li><strong>Adaptation:</strong> Allow time for your body to adapt to training changes</li>
+                </ul>
+                
+                <h3>Best Practices:</h3>
+                <ol>
+                    <li><strong>Daily Check-ins:</strong> Review your dashboard and recommendations daily</li>
+                    <li><strong>Data Validation:</strong> Verify your data accuracy regularly</li>
+                    <li><strong>Goal Review:</strong> Periodically review and adjust your goals</li>
+                    <li><strong>Continuous Learning:</strong> Stay updated with new features and insights</li>
+                </ol>
+                
+                <div class="tutorial-buttons">
+                    <a href="/dashboard" class="btn btn-primary">Optimize Your Training</a>
+                    <a href="/settings" class="btn btn-secondary">Check Performance</a>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Coming Soon Popup -->
+        <div id="coming-soon-overlay" class="popup-overlay popup-hidden"></div>
+        <div id="coming-soon-popup" class="coming-soon-popup popup-hidden">
+            <h3>🚀 Coming Soon!</h3>
+            <p>This tutorial is currently in development. We're working hard to bring you comprehensive guides and resources.</p>
+            <button class="btn" onclick="closeComingSoonPopup()">Got it!</button>
+        </div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Back to top button styling */
+.back-to-top-btn {
+    position: fixed !important;
+    bottom: 30px !important;
+    right: 30px !important;
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border: none !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+    transition: all 0.3s ease !important;
+    z-index: 1000 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(20px) !important;
+}
+
+.back-to-top-btn:hover {
+    transform: translateY(0) scale(1.1) !important;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+}
+
+.back-to-top-btn.visible {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: translateY(0) !important;
+}
+</style>
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+function showComingSoonPopup() {
+    document.getElementById('coming-soon-overlay').classList.remove('popup-hidden');
+    document.getElementById('coming-soon-popup').classList.remove('popup-hidden');
+}
+
+function closeComingSoonPopup() {
+    document.getElementById('coming-soon-overlay').classList.add('popup-hidden');
+    document.getElementById('coming-soon-popup').classList.add('popup-hidden');
+}
+
+// Add click handlers to all tutorial links that have href="#"
+document.addEventListener('DOMContentLoaded', function() {
+    const tutorialLinks = document.querySelectorAll('.tutorial-link[href="#"]');
+    tutorialLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            showComingSoonPopup();
+        });
+    });
+    
+    // Close popup when clicking overlay
+    document.getElementById('coming-soon-overlay').addEventListener('click', closeComingSoonPopup);
+    
+    // Add smooth scrolling to table of contents links
+    const tocLinks = document.querySelectorAll('.toc-container a[href^="#"]');
+    
+    tocLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href').substring(1);
+            const targetElement = document.getElementById(targetId);
+            
+            if (targetElement) {
+                // Calculate the exact position we want
+                const rect = targetElement.getBoundingClientRect();
+                const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const targetScrollTop = currentScrollTop + rect.top - 71; // 71px for nav height
+                
+                // Scroll to the calculated position
+                window.scrollTo({
+                    top: targetScrollTop,
+                    behavior: 'smooth'
+                });
+                
+                // Optional: Add visual feedback by highlighting the target section
+                targetElement.style.transition = 'background-color 0.3s ease';
+                targetElement.style.backgroundColor = '#f0f8ff';
+                setTimeout(() => {
+                    targetElement.style.backgroundColor = '';
+                }, 2000);
+            }
+        });
+    });
+    
+    // Create and add "Back to Top" button
+    const backToTopButton = document.createElement('button');
+    backToTopButton.innerHTML = '↑';
+    backToTopButton.className = 'back-to-top-btn';
+    backToTopButton.setAttribute('aria-label', 'Back to top');
+    
+    // Show/hide button based on scroll position
+    function toggleBackToTopButton() {
+        if (window.pageYOffset > 300) {
+            backToTopButton.classList.add('visible');
+        } else {
+            backToTopButton.classList.remove('visible');
+        }
+    }
+    
+    // Back to top functionality
+    backToTopButton.addEventListener('click', function() {
+        // Try multiple methods to ensure instant scroll to top
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        document.querySelector('html').scrollTop = 0;
+    });
+    
+    // Add scroll event listener
+    window.addEventListener('scroll', toggleBackToTopButton);
+    
+    // Add button to page
+    document.body.appendChild(backToTopButton);
+});
+</script>
+{% endblock %}

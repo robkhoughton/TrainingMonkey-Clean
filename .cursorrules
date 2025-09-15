@@ -140,4 +140,17 @@ GOOGLE_CLOUD_PROJECT=dev-ruler-460822-e8
 - Direct cloud database connection working
 - All changes properly documented
 
+## 💬 Communication Guidelines
+
+### Response Style
+- **No excessive agreement**: Avoid phrases like "You're absolutely right!" or "Perfect!"
+- **No excuses**: Don't make excuses for errors or mistakes
+- **Direct and factual**: State what needs to be done without unnecessary validation
+- **Focus on solutions**: Address issues directly without over-explaining
+
+### Error Handling
+- Acknowledge errors briefly
+- Fix the issue
+- Move forward without dwelling on the mistake
+
 Remember: **These rules prevent production issues and ensure database compatibility. Follow them strictly.**
