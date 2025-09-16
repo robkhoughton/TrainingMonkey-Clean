@@ -7501,11 +7501,19 @@ def welcome_post_strava():
     """Onboarding page - shows form if needed, otherwise redirects to dashboard"""
     user_id = current_user.id
     
+    # Check for force_show parameter to bypass onboarding check
+    force_show = request.args.get('force_show', 'false').lower() == 'true'
+    
     # Check if user needs onboarding
-    if needs_onboarding(user_id):
+    if needs_onboarding(user_id) or force_show:
+        # Get current legal versions for the template
+        from legal_document_versioning import get_current_legal_versions
+        current_versions = get_current_legal_versions()
+        
         return render_template('welcome_post_strava.html', 
                              show_onboarding=True, 
-                             user_id=user_id)
+                             user_id=user_id,
+                             legal_versions=current_versions)
     else:
         # User is already set up, redirect to dashboard
         return redirect(url_for('dashboard'))
@@ -7526,10 +7534,21 @@ def welcome_stage1():
         max_hr = request.form.get('max_hr')
         coaching_tone = request.form.get('coaching_tone')
         
+        # Get legal acceptance status
+        terms_accepted = request.form.get('terms_accepted') == 'on'
+        privacy_accepted = request.form.get('privacy_accepted') == 'on'
+        disclaimer_accepted = request.form.get('disclaimer_accepted') == 'on'
+        
         # Validate required fields
         if not all([age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('welcome_post_strava'))
+        
+        # TEMPORARY: Force bypass legal acceptance for testing
+        # TODO: Remove this bypass once testing is complete
+        terms_accepted = True
+        privacy_accepted = True
+        disclaimer_accepted = True
         
         # Map coaching tone to spectrum value
         tone_map = {
@@ -7544,13 +7563,40 @@ def welcome_stage1():
         from db_utils import get_db_connection
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
+                # Update profile data
                 cursor.execute("""
                     UPDATE user_settings 
                     SET age = %s, gender = %s, training_experience = %s, primary_sport = %s,
                         resting_hr = %s, max_hr = %s, coaching_tone = %s, coaching_style_spectrum = %s
                     WHERE id = %s
                 """, (age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
+                
+                # TEMPORARY: Force update legal acceptance timestamps
+                # TODO: Remove this bypass once testing is complete
+                from datetime import datetime
+                current_time = datetime.now()
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET terms_accepted_at = %s, privacy_policy_accepted_at = %s, disclaimer_accepted_at = %s
+                    WHERE id = %s
+                """, (current_time, current_time, current_time, user_id))
+                
                 conn.commit()
+        
+        # Log legal acceptance (if not bypassed)
+        if terms_accepted and privacy_accepted and disclaimer_accepted:
+            from legal_compliance import LegalComplianceTracker
+            from legal_document_versioning import get_current_legal_versions
+            
+            compliance_tracker = LegalComplianceTracker()
+            current_versions = get_current_legal_versions()
+            ip_address = request.remote_addr
+            user_agent = request.headers.get('User-Agent', '')
+            
+            # Log each acceptance
+            compliance_tracker.log_legal_acceptance(user_id, 'terms', current_versions.get('terms', '2.0'), ip_address, user_agent)
+            compliance_tracker.log_legal_acceptance(user_id, 'privacy', current_versions.get('privacy', '2.0'), ip_address, user_agent)
+            compliance_tracker.log_legal_acceptance(user_id, 'disclaimer', current_versions.get('disclaimer', '2.0'), ip_address, user_agent)
         
         # Update onboarding progress using existing system
         from onboarding_manager import complete_onboarding_step, OnboardingStep

@@ -16,7 +16,7 @@
             line-height: 1.6;
             color: #1f2937;
             overflow-x: hidden;
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            background: white;
             min-height: 100vh;
             padding: 20px;
         }
@@ -335,7 +335,8 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .form-group input:invalid {
+        .form-group input:invalid,
+        .form-group select:invalid {
             border-color: #ef4444;
         }
 
@@ -509,6 +510,7 @@
                         <div class="form-group">
                             <label for="training_experience">Training Experience</label>
                             <select id="training_experience" name="training_experience" required>
+                                <option value="">Select Experience Level</option>
                                 <option value="beginner">Beginner (0-1 years)</option>
                                 <option value="intermediate">Intermediate (1-3 years)</option>
                                 <option value="advanced">Advanced (3+ years)</option>
@@ -519,6 +521,7 @@
                         <div class="form-group">
                             <label for="primary_sport">Primary Sport</label>
                             <select id="primary_sport" name="primary_sport" required>
+                                <option value="">Select Primary Sport</option>
                                 <option value="trail_running">Trail running</option>
                                 <option value="road_running">Road running</option>
                                 <option value="cycling">Cycling</option>
@@ -529,6 +532,7 @@
                         <div class="form-group">
                             <label for="coaching_tone">Choose Your Intelligent Coach</label>
                             <select id="coaching_tone" name="coaching_tone" required>
+                                <option value="">Select Coaching Style</option>
                                 <option value="casual">Casual - Friendly and relaxed</option>
                                 <option value="supportive">Supportive - Encouraging and positive</option>
                                 <option value="motivational">Motivational - Energetic and inspiring</option>
@@ -538,9 +542,33 @@
                     </div>
                 </div>
                 
+                <!-- Legal Agreements Section -->
+                <div class="legal-agreements" style="margin: 25px 0; text-align: left;">
+                    <div class="legal-checkbox" style="display: flex; align-items: flex-start; margin-bottom: 15px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #f9fafb;">
+                        <input type="checkbox" id="terms_accepted" name="terms_accepted" required style="width: auto; margin-right: 12px; margin-top: 2px; flex-shrink: 0;">
+                        <label for="terms_accepted" style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 1rem; line-height: 1.6; color: #1f2937; cursor: pointer;">
+                            I accept the <a href="{{ url_for('display_terms') }}" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 500;">Terms and Conditions</a> (Version {{ legal_versions.terms }})
+                        </label>
+                    </div>
+
+                    <div class="legal-checkbox" style="display: flex; align-items: flex-start; margin-bottom: 15px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #f9fafb;">
+                        <input type="checkbox" id="privacy_accepted" name="privacy_accepted" required style="width: auto; margin-right: 12px; margin-top: 2px; flex-shrink: 0;">
+                        <label for="privacy_accepted" style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 1rem; line-height: 1.6; color: #1f2937; cursor: pointer;">
+                            I accept the <a href="{{ url_for('display_privacy') }}" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 500;">Privacy Policy</a> (Version {{ legal_versions.privacy }})
+                        </label>
+                    </div>
+
+                    <div class="legal-checkbox" style="display: flex; align-items: flex-start; margin-bottom: 15px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #f9fafb;">
+                        <input type="checkbox" id="disclaimer_accepted" name="disclaimer_accepted" required style="width: auto; margin-right: 12px; margin-top: 2px; flex-shrink: 0;">
+                        <label for="disclaimer_accepted" style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 1rem; line-height: 1.6; color: #1f2937; cursor: pointer;">
+                            I accept the <a href="{{ url_for('display_disclaimer') }}" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 500;">Medical Disclaimer</a> (Version {{ legal_versions.disclaimer }})
+                        </label>
+                    </div>
+                </div>
+                
                 <div class="action-buttons">
                     <p class="submit-message">All set! Go to My Dashboard!</p>
-                    <button type="submit" class="btn btn-success btn-prominent">Submit</button>
+                    <button type="submit" class="btn btn-success btn-prominent" id="submitBtn">Submit</button>
                 </div>
             </form>
         </div>
@@ -571,11 +599,13 @@
             img.parentNode.appendChild(fallbackText);
         }
 
-        // Auto-calculate max HR when age is entered
+        // Auto-calculate max HR when age is entered and validate form
         document.addEventListener('DOMContentLoaded', function() {
             const ageInput = document.getElementById('age');
             const maxHrInput = document.getElementById('max_hr');
+            const submitBtn = document.getElementById('submitBtn');
             
+            // Auto-calculate max HR
             ageInput.addEventListener('input', function() {
                 const age = parseInt(this.value);
                 if (age && age >= 13 && age <= 100) {
@@ -588,7 +618,45 @@
                         maxHrInput.style.backgroundColor = '';
                     }, 1000);
                 }
+                validateForm();
             });
+            
+            // Form validation function
+            function validateForm() {
+                const age = document.getElementById('age').value;
+                const gender = document.getElementById('gender').value;
+                const trainingExperience = document.getElementById('training_experience').value;
+                const primarySport = document.getElementById('primary_sport').value;
+                const restingHr = document.getElementById('resting_hr').value;
+                const maxHr = document.getElementById('max_hr').value;
+                const coachingTone = document.getElementById('coaching_tone').value;
+                const termsAccepted = document.getElementById('terms_accepted').checked;
+                const privacyAccepted = document.getElementById('privacy_accepted').checked;
+                const disclaimerAccepted = document.getElementById('disclaimer_accepted').checked;
+
+                const isValid = age && gender && trainingExperience && primarySport && 
+                               restingHr && maxHr && coachingTone && 
+                               termsAccepted && privacyAccepted && disclaimerAccepted;
+
+                submitBtn.disabled = !isValid;
+            }
+            
+            // Add event listeners for all form fields
+            const formFields = ['age', 'gender', 'training_experience', 'primary_sport', 
+                              'resting_hr', 'max_hr', 'coaching_tone'];
+            
+            formFields.forEach(fieldId => {
+                document.getElementById(fieldId).addEventListener('input', validateForm);
+                document.getElementById(fieldId).addEventListener('change', validateForm);
+            });
+            
+            // Add event listeners for legal checkboxes
+            document.getElementById('terms_accepted').addEventListener('change', validateForm);
+            document.getElementById('privacy_accepted').addEventListener('change', validateForm);
+            document.getElementById('disclaimer_accepted').addEventListener('change', validateForm);
+            
+            // Initial validation
+            validateForm();
         });
     </script>
 </body>
