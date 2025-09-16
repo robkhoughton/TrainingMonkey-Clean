@@ -35,6 +35,11 @@ from sync_fix import apply_sync_fix
 # Import utility functions
 from utils import ensure_date_serialization, aggregate_daily_activities_with_rest, is_feature_enabled, get_secret
 
+# Import database optimization modules
+from db_connection_manager import initialize_database_pool, get_database_manager
+from optimized_token_management import OptimizedTokenManager, batch_refresh_all_tokens
+from optimized_acwr_service import OptimizedACWRService, batch_recalculate_all_acwr
+
 # Import Strava processing functions
 from strava_training_load import (
     connect_to_strava,
@@ -56,6 +61,31 @@ logger = logging.getLogger(__name__)
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Initialize database connection pool
+@app.before_first_request
+def initialize_database_pool():
+    """Initialize database connection pool for improved performance"""
+    try:
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url:
+            success = initialize_database_pool(database_url)
+            if success:
+                logger.info("✅ Database connection pool initialized successfully")
+            else:
+                logger.error("❌ Failed to initialize database connection pool")
+        else:
+            logger.error("❌ DATABASE_URL environment variable not found")
+    except Exception as e:
+        logger.error(f"❌ Error initializing database connection pool: {str(e)}")
+
+# Cleanup database pool on app shutdown
+@app.teardown_appcontext
+def cleanup_database_pool(error):
+    """Cleanup database connection pool on app shutdown"""
+    if error:
+        logger.error(f"Application error detected: {str(error)}")
+    # Note: Connection pool cleanup is handled automatically by the pool manager
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -1064,9 +1094,97 @@ def token_health_report():
         logger.error(f"Token health report error: {str(e)}")
         return jsonify(error_report), 500
 
+@login_required
+@app.route('/admin/database-optimization-status', methods=['GET'])
+def database_optimization_status():
+    """Get database optimization status and performance metrics"""
+    try:
+        # Get connection pool status
+        db_manager = get_database_manager()
+        pool_status = db_manager.get_pool_status()
+        
+        # Get token health summary
+        from optimized_token_management import get_token_health_summary
+        token_health = get_token_health_summary()
+        
+        # Get ACWR calculation status
+        from optimized_acwr_service import get_acwr_calculation_status
+        acwr_status = get_acwr_calculation_status()
+        
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'connection_pool': pool_status,
+            'token_health': token_health,
+            'acwr_calculations': acwr_status,
+            'optimization_status': {
+                'connection_pooling': pool_status.get('status') == 'active',
+                'batch_operations': True,
+                'performance_monitoring': True
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting database optimization status: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@login_required
+@app.route('/admin/batch-refresh-tokens', methods=['POST'])
+def admin_batch_refresh_tokens():
+    """Admin endpoint to batch refresh all tokens"""
+    try:
+        result = batch_refresh_all_tokens()
+        
+        return jsonify({
+            'success': result['success'],
+            'message': result['message'],
+            'users_checked': result.get('users_checked', 0),
+            'users_refreshed': result.get('users_refreshed', 0),
+            'users_failed': result.get('users_failed', 0),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in batch token refresh: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@login_required
+@app.route('/admin/batch-recalculate-acwr', methods=['POST'])
+def admin_batch_recalculate_acwr():
+    """Admin endpoint to batch recalculate ACWR values"""
+    try:
+        days_back = request.json.get('days_back', 30) if request.is_json else 30
+        result = batch_recalculate_all_acwr(days_back)
+        
+        return jsonify({
+            'success': result['success'],
+            'message': result.get('message', 'ACWR recalculation completed'),
+            'activities_processed': result.get('activities_processed', 0),
+            'users_processed': result.get('users_processed', 0),
+            'calculations_successful': result.get('calculations_successful', 0),
+            'database_updates': result.get('database_updates', 0),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in batch ACWR recalculation: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with database optimization status"""
     logger.info("Health check starting...")
     db_status = "not connected"
     activity_count_status = "unknown"
@@ -1074,11 +1192,21 @@ def health_check():
     current_db_user = "not_available"
     found_tables = []
     tables_total_count = 0
+    pool_status = "not_initialized"
 
     try:
         logger.info("Testing database connection...")
         db_utils.execute_query("SELECT 1;")
         db_status = "connected"
+
+        # Get database connection pool status
+        try:
+            db_manager = get_database_manager()
+            pool_status_info = db_manager.get_pool_status()
+            pool_status = pool_status_info.get('status', 'unknown')
+        except Exception as e:
+            logger.warning(f"Could not get pool status: {e}")
+            pool_status = "error"
 
         # Get current database name (PostgreSQL only)
         db_name_result = db_utils.execute_query("SELECT current_database();", fetch=True)
@@ -1123,6 +1251,7 @@ def health_check():
         "timestamp": datetime.now().strftime("%m/%d/%Y %I:%M:%S %p"),
         "use_postgres": True,
         "database_connection_status": db_status,
+        "connection_pool_status": pool_status,
         "current_database_name": current_db_name,
         "current_database_user": current_db_user,
         "tables_in_schema": found_tables,
@@ -1404,6 +1533,19 @@ def dashboard():
 
 # Flask's default static file serving will handle /static/ requests
 # No custom route needed since files are now in the default static folder
+
+@app.route('/test-image')
+def test_image():
+    """Test route to verify training-monkey-runner.webp is accessible"""
+    try:
+        import os
+        static_path = os.path.join(app.static_folder, 'training-monkey-runner.webp')
+        if os.path.exists(static_path):
+            return f"Image exists at: {static_path}<br>Size: {os.path.getsize(static_path)} bytes"
+        else:
+            return f"Image NOT found at: {static_path}<br>Static folder: {app.static_folder}<br>Contents: {os.listdir(app.static_folder) if os.path.exists(app.static_folder) else 'Static folder not found'}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 @app.route('/favicon.ico')
 def favicon():

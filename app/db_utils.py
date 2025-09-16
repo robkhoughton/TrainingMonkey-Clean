@@ -9,6 +9,9 @@ import re
 import psycopg2
 import psycopg2.extras
 
+# Import connection pool manager
+from db_connection_manager import db_manager, initialize_database_pool
+
 # Configure logger for db_utils.py
 logger = logging.getLogger(__name__) # <--- Ensure this line is here, after import logging
 
@@ -111,41 +114,24 @@ def get_db_connection():
 
 
 def execute_query(query, params=(), fetch=False):
-    """Execute a database query with optional parameter binding."""
+    """Execute a database query with optional parameter binding using connection pooling."""
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SET search_path TO public;")  # Explicitly set search path
-
-            # Convert ? placeholders to %s for PostgreSQL
-            if '?' in query:
-                # Count the number of ? to ensure we have the right number of %s
-                param_count = query.count('?')
-                query = query.replace('?', '%s')
-                logger.debug(f"db_utils: Converted {param_count} placeholders for PostgreSQL")
-
-            logger.debug(f"db_utils: Executing: {query}")
-            logger.debug(f"db_utils: Parameters: {params}")
-
-            cursor.execute(query, params)
-
-            if fetch:
-                result = cursor.fetchall()
-                logger.debug(f"db_utils: Fetched {len(result)} rows")
-                return result
-
-            conn.commit()
-            logger.debug("db_utils: Query committed successfully")
-
-            # Return row count for PostgreSQL
-            return cursor.rowcount
-
+        # Use connection pool manager for better performance
+        return db_manager.execute_query(query, params, fetch)
     except Exception as e:
         logger.error(f"db_utils: Query failed: {str(e)}")
         logger.error(f"db_utils: Query was: {query}")
         logger.error(f"db_utils: Params were: {params}")
         raise
 
+
+def execute_batch_queries(queries_with_params):
+    """Execute multiple queries in single connection for better performance"""
+    try:
+        return db_manager.execute_batch_queries(queries_with_params)
+    except Exception as e:
+        logger.error(f"db_utils: Batch query execution failed: {str(e)}")
+        raise
 
 def safe_execute_query(query, params=(), fetch=False): #
     """Execute a query with proper error handling""" #
@@ -988,6 +974,7 @@ def delete_hr_stream_data(activity_id, user_id=None):
 __all__ = [
     'get_db_connection',
     'execute_query',
+    'execute_batch_queries',
     'initialize_db',
     'validate_database',
     'configure_database',
