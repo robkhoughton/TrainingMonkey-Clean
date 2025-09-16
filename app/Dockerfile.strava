@@ -116,20 +116,23 @@ COPY config.json .
 COPY strava_config.json .
 COPY Training_Metrics_Reference_Guide.md .
 
-# Create the static directory structure that Flask expects
+# Create the directory structure that Flask expects
 RUN mkdir -p /app/static
+RUN mkdir -p /app/build
 
 # Copy React build files to the correct location for Flask
-COPY build/ /app/static/
+COPY build/ /app/build/
 COPY static/ /app/static/
 
 # Verify the structure is correct
-RUN echo "=== Verifying static file structure ===" && \
-    ls -la /app/static/ && \
+RUN echo "=== Verifying build file structure ===" && \
+    ls -la /app/build/ && \
     echo "=== Checking for index.html ===" && \
-    ls -la /app/static/index.html || echo "index.html not found" && \
+    ls -la /app/build/index.html || echo "index.html not found" && \
     echo "=== Checking static subdirectory ===" && \
-    ls -la /app/static/static/ || echo "static subdirectory not found" && \
+    ls -la /app/build/static/ || echo "static subdirectory not found" && \
+    echo "=== Verifying static file structure ===" && \
+    ls -la /app/static/ && \
     echo "=== Checking images directory ===" && \
     ls -la /app/static/images/ || echo "images directory not found"
 

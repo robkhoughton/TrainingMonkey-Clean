@@ -213,7 +213,7 @@ class OnboardingManager:
                     SET onboarding_step = %s, 
                         onboarding_completed_at = NULL,
                         last_onboarding_activity = %s
-                    WHERE user_id = %s
+                    WHERE id = %s
                 """, (OnboardingStep.WELCOME.value, datetime.now(), user_id))
                 
                 # Log onboarding start
@@ -248,7 +248,7 @@ class OnboardingManager:
                     SELECT onboarding_step, onboarding_completed_at, 
                            last_onboarding_activity, created_at
                     FROM user_settings 
-                    WHERE user_id = %s
+                    WHERE id = %s
                 """, (user_id,))
                 
                 result = cursor.fetchone()
@@ -303,7 +303,7 @@ class OnboardingManager:
                     UPDATE user_settings 
                     SET onboarding_step = %s, 
                         last_onboarding_activity = %s
-                    WHERE user_id = %s
+                    WHERE id = %s
                 """, (step.value, datetime.now(), user_id))
                 
                 # Log step completion
@@ -396,7 +396,7 @@ class OnboardingManager:
                     cursor.execute("""
                         UPDATE user_settings 
                         SET features_unlocked = %s
-                        WHERE user_id = %s
+                        WHERE id = %s
                     """, (json.dumps(unlocked_features), user_id))
                 
                 # Log feature unlock
@@ -472,7 +472,7 @@ class OnboardingManager:
                 
                 # PostgreSQL syntax
                 cursor.execute("""
-                    SELECT features_unlocked FROM user_settings WHERE user_id = %s
+                    SELECT features_unlocked FROM user_settings WHERE id = %s
                 """, (user_id,))
                 
                 result = cursor.fetchone()
@@ -510,7 +510,7 @@ class OnboardingManager:
                 
                 # PostgreSQL syntax
                 cursor.execute("""
-                    SELECT features_unlocked FROM user_settings WHERE user_id = %s
+                    SELECT features_unlocked FROM user_settings WHERE id = %s
                 """, (user_id,))
                 
                 result = cursor.fetchone()
@@ -560,7 +560,7 @@ class OnboardingManager:
                         cursor = conn.cursor()
                         # PostgreSQL syntax
                         cursor.execute("""
-                            SELECT strava_athlete_id FROM user_settings WHERE user_id = %s
+                            SELECT strava_athlete_id FROM user_settings WHERE id = %s
                         """, (user_id,))
                         
                         result = cursor.fetchone()
@@ -597,7 +597,7 @@ class OnboardingManager:
                     UPDATE user_settings 
                     SET onboarding_completed_at = %s,
                         account_status = 'active'
-                    WHERE user_id = %s
+                    WHERE id = %s
                 """, (datetime.now(), user_id))
                 
                 # Log onboarding completion

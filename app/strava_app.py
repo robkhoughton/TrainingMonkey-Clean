@@ -68,6 +68,31 @@ def load_user(user_id):
     """Required by Flask-Login to reload user from session"""
     return User.get(user_id)
 
+def needs_onboarding(user_id):
+    """Check if user needs to complete onboarding"""
+    try:
+        from db_utils import get_db_connection
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone
+                    FROM user_settings 
+                    WHERE id = %s
+                """, (user_id,))
+                
+                data = cursor.fetchone()
+                
+                if not data or not all([data['age'], data['gender'], data['training_experience'], 
+                                      data['primary_sport'], data['resting_hr'], 
+                                      data['max_hr'], data['coaching_tone']]):
+                    return True  # Needs onboarding
+                
+                return False  # Onboarding complete
+                
+    except Exception as e:
+        logger.error(f"Error checking onboarding status: {e}")
+        return True  # Default to needing onboarding on error
+
 # Register blueprints
 from acwr_feature_flag_admin import acwr_feature_flag_admin
 from acwr_configuration_admin import acwr_configuration_admin
@@ -115,7 +140,7 @@ def sync_strava_data():
 
         # Get HR config from request or use defaults
         hr_config = data.get('hr_config', {
-            'resting_hr': 44,  # Your values from testing
+            'resting_hr': 44,
             'max_hr': 178,
             'gender': 'male'
         })
@@ -146,7 +171,7 @@ def sync_strava_data():
             athlete = client.get_athlete()
             logger.info(f"Connected to Strava as {athlete.firstname} {athlete.lastname}")
         except Exception as e:
-            logger.error(f"Strava connection test failed: {str(e)}")
+            logger.error(f"Strava connection failed: {str(e)}")
             return jsonify({'error': 'Failed to connect to Strava'}), 400
 
         # Calculate date range
@@ -361,7 +386,7 @@ def get_token_status():
         return jsonify({
             'success': True,
             'token_status': status,
-            'user_id': current_user.id,  # Add for debugging
+            'user_id': current_user.id,
             'timestamp': datetime.now().isoformat()
         })
 
@@ -1109,18 +1134,7 @@ def health_check():
 @login_required
 @app.route('/strava-setup', methods=['GET', 'POST'])
 def strava_setup():
-    """
-    LEGACY FALLBACK: Manual Strava credential entry
-    This route is maintained as an emergency fallback only.
-    Primary OAuth flow should use /auth/strava-signup with centralized app.
-    
-    Use cases:
-    - Emergency fallback if centralized system fails
-    - Development/testing with custom Strava apps
-    - Edge cases where centralized OAuth doesn't work
-    
-    TODO: Consider removing in future version if centralized system proves stable
-    """
+    """Strava connection setup where users provide their own app credentials"""
     if request.method == 'POST':
         # Handle the form submission
         client_id = request.form.get('client_id')
@@ -1388,52 +1402,8 @@ def dashboard():
 # =============================================================================
 # Routes for serving static files, favicon, manifest, etc.
 
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    """Serve React static files (CSS, JS, etc.)"""
-    try:
-        logger.info(f"Serving static file: {filename}")
-        # Handle files that are in the build root (not in build/static/)
-        if filename in ['index.html', 'manifest.json'] or filename.endswith(('.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico')):
-            try:
-                logger.info(f"Trying to serve {filename} from build/")
-                return send_from_directory('build', filename)
-            except Exception as e:
-                logger.info(f"Failed to serve {filename} from build/: {e}")
-                pass  # Fall through to try build/static
-        
-        logger.info(f"Trying to serve {filename} from build/static/")
-        return send_from_directory('build/static', filename)
-    except Exception as e:
-        logger.error(f"Static file error: {str(e)}")
-        return f"Error serving {filename}: {str(e)}", 404
-
-@app.route('/static/static/<path:filename>')
-def serve_static_double(filename):
-    """Handle double /static/static/ paths from React build"""
-    try:
-        return send_from_directory('build/static', filename)
-    except Exception as e:
-        logger.error(f"Static file error: {str(e)}")
-        return f"Error serving {filename}: {str(e)}", 404
-
-@app.route('/static/manifest.json')
-def serve_static_manifest():
-    """Serve manifest.json from /static/ path"""
-    try:
-        return send_from_directory('build', 'manifest.json')
-    except Exception as e:
-        logger.error(f"Manifest file error: {str(e)}")
-        return f"Error serving manifest.json: {str(e)}", 404
-
-@app.route('/static/training-monkey-runner.webp')
-def serve_static_runner_image():
-    """Serve training-monkey-runner.webp from /static/ path"""
-    try:
-        return send_from_directory('build', 'training-monkey-runner.webp')
-    except Exception as e:
-        logger.error(f"Runner image error: {str(e)}")
-        return f"Error serving training-monkey-runner.webp: {str(e)}", 404
+# Flask's default static file serving will handle /static/ requests
+# No custom route needed since files are now in the default static folder
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1455,7 +1425,7 @@ def manifest():
 def logo192():
     """Serve logo192.png"""
     try:
-        return send_from_directory('build', 'logo192.png')
+        return send_from_directory('static', 'logo192.png')
     except:
         return '', 404
 
@@ -1620,9 +1590,9 @@ def login():
             logger.info(f"User {email} logged in successfully")
 
             if request.is_json:
-                return jsonify({'success': True, 'redirect': '/dashboard'})
+                return jsonify({'success': True, 'redirect': '/static/index.html'})
             else:
-                return redirect('/dashboard')
+                return redirect('/static/index.html')
         else:
             if request.is_json:
                 return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
@@ -2017,7 +1987,7 @@ def get_detailed_funnel():
 def first_time_dashboard():
     """Special dashboard experience for new users from landing page"""
     if not session.get('new_user_onboarding'):
-        return redirect('/dashboard')
+        return redirect('/static/index.html')
 
     try:
         # Use correct date formatting pattern
@@ -2037,7 +2007,7 @@ def first_time_dashboard():
 
         if days_of_data and days_of_data.get('days', 0) >= 14:
             session.pop('new_user_onboarding', None)
-            return redirect('/dashboard?highlight=divergence&new_user=true')
+            return redirect('/static/index.html?highlight=divergence&new_user=true')
         else:
             return render_template('onboarding.html',
                                    days_needed=max(0, 28 - days_of_data.get('days', 0)) if days_of_data else 28,
@@ -2045,7 +2015,7 @@ def first_time_dashboard():
 
     except Exception as e:
         logger.error(f"Error checking user data: {str(e)}")
-        return redirect('/dashboard')
+        return redirect('/static/index.html')
 
 # Removed duplicate / route - keeping only the first one
 # FIXED: There were two @app.route('/') definitions causing conflicts
@@ -2094,15 +2064,15 @@ def getting_started_resources():
                         'completed': 'Completed'
                     }
                     
-                    # Determine next steps based on current step - aligned with 4-step getting started flow
+                    # Determine next steps based on current step
                     next_steps_map = {
                         'welcome': 'Create Your Account',
-                        'strava_connected': 'Connect with Strava', 
-                        'first_activity': 'Set your training goals',      # After Strava connection
-                        'data_sync': 'Set your training goals',           # After data sync
-                        'goals_setup': 'View your training analysis',     # After goals setup
+                        'strava_connected': 'Connect with Strava',
+                        'first_activity': 'Your first activity has been synced',
+                        'data_sync': 'Your data analysis is ready',
                         'dashboard_intro': 'Explore your training dashboard',
                         'features_tour': 'Learn about advanced features',
+                        'goals_setup': 'Set your training goals',
                         'first_recommendation': 'Review your AI recommendations',
                         'journal_intro': 'Start tracking your training journal',
                         'completed': 'You\'re all set! Explore all features'
@@ -3074,7 +3044,6 @@ def get_unified_recommendation_for_date(date_obj, user_id):
                 fetch=True
             )
 
-            # Add comprehensive logging for debugging
             if recommendation and recommendation[0]:
                 recommendation_text = dict(recommendation[0])['daily_recommendation']
                 logger.info(
@@ -3090,15 +3059,15 @@ def get_unified_recommendation_for_date(date_obj, user_id):
             else:
                 logger.warning(f"NO recommendation found for user {user_id} on {date_str}")
 
-                # Verify what data exists for debugging
-                debug_query = db_utils.execute_query(
+                # Check what recommendations exist
+                available_recommendations = db_utils.execute_query(
                     "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = %s ORDER BY id DESC LIMIT 5",
                     (user_id,),
                     fetch=True
                 )
 
-                if debug_query:
-                    logger.info(f"Available recommendations for user {user_id}: {[dict(row) for row in debug_query]}")
+                if available_recommendations:
+                    logger.info(f"Available recommendations for user {user_id}: {[dict(row) for row in available_recommendations]}")
                 else:
                     logger.warning(f"NO recommendations exist for user {user_id}")
 
@@ -3950,7 +3919,6 @@ def generate_daily_recommendation_only(user_id, target_date=None):
         if target_date is None:
             target_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
 
-        logger.info(f"DEBUG: target_date value: {target_date}, type: {type(target_date)}")
         logger.info(f"Generating daily recommendation for user {user_id}, target_date {target_date}")
 
         # Get current date for generation_date
@@ -4739,7 +4707,7 @@ def update_settings():
 
             logger.info(f"🔍 CHANGE DETECTION RESULT: {list(changed_fields.keys())}")
 
-            # Log specific HR changes for debugging
+            # Log specific HR changes
             if 'resting_hr' in changed_fields:
                 logger.info(
                     f"🔍 RESTING HR CHANGED: {changed_fields['resting_hr']['old']} → {changed_fields['resting_hr']['new']}")
@@ -6364,7 +6332,7 @@ def recalculate_trimp():
             }
         }
         
-        # Add detailed results for first few activities (for debugging)
+        # Add sample results for first few activities
         if result.results:
             response_data['sample_results'] = [
                 {
@@ -7530,8 +7498,101 @@ def admin_trimp_settings():
 @app.route('/welcome-post-strava')
 @login_required
 def welcome_post_strava():
-    """Welcome page shown after successful Strava connection"""
-    return render_template('welcome_post_strava.html')
+    """Onboarding page - shows form if needed, otherwise redirects to dashboard"""
+    user_id = current_user.id
+    
+    # Check if user needs onboarding
+    if needs_onboarding(user_id):
+        return render_template('welcome_post_strava.html', 
+                             show_onboarding=True, 
+                             user_id=user_id)
+    else:
+        # User is already set up, redirect to dashboard
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/welcome-stage1', methods=['POST'])
+@login_required
+def welcome_stage1():
+    """Handle Stage 1 form submission (Essential Setup) using existing onboarding system"""
+    user_id = current_user.id
+    
+    try:
+        age = request.form.get('age')
+        gender = request.form.get('gender')
+        training_experience = request.form.get('training_experience')
+        primary_sport = request.form.get('primary_sport')
+        resting_hr = request.form.get('resting_hr')
+        max_hr = request.form.get('max_hr')
+        coaching_tone = request.form.get('coaching_tone')
+        
+        # Validate required fields
+        if not all([age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone]):
+            flash('Please fill in all required fields.', 'error')
+            return redirect(url_for('welcome_post_strava'))
+        
+        # Map coaching tone to spectrum value
+        tone_map = {
+            'casual': 12,
+            'supportive': 37,
+            'motivational': 62,
+            'analytical': 87
+        }
+        coaching_style_spectrum = tone_map.get(coaching_tone, 50)
+        
+        # Update user settings with all required data
+        from db_utils import get_db_connection
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET age = %s, gender = %s, training_experience = %s, primary_sport = %s,
+                        resting_hr = %s, max_hr = %s, coaching_tone = %s, coaching_style_spectrum = %s
+                    WHERE id = %s
+                """, (age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
+                conn.commit()
+        
+        # Update onboarding progress using existing system
+        from onboarding_manager import complete_onboarding_step, OnboardingStep
+        complete_onboarding_step(user_id, OnboardingStep.STRAVA_CONNECTED)
+        
+        flash('Welcome! Your profile is set up. Let\'s explore your training dashboard!', 'success')
+        return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        logger.error(f"Error updating Stage 1 data: {e}")
+        flash('Error saving your information. Please try again.', 'error')
+        return redirect(url_for('welcome_post_strava'))
+
+@app.route('/welcome-skip-stage3')
+@login_required
+def welcome_skip_stage3():
+    """Skip Stage 3 and go directly to dashboard using existing onboarding system"""
+    user_id = current_user.id
+    
+    try:
+        # Set default values for Stage 3 fields
+        from db_utils import get_db_connection
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET acwr_alert_threshold = 1.3, injury_risk_alerts = true
+                    WHERE id = %s
+                """, (user_id,))
+                conn.commit()
+        
+        # Complete onboarding using existing system
+        from onboarding_manager import complete_onboarding_step, OnboardingStep
+        complete_onboarding_step(user_id, OnboardingStep.FEATURES_TOUR)
+        
+        flash('Welcome to TrainingMonkey! You can adjust advanced settings later.', 'success')
+        return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        logger.error(f"Error skipping Stage 3: {e}")
+        flash('Error completing setup. Please try again.', 'error')
+        return redirect(url_for('welcome_post_strava'))
 
 @app.route('/goals-setup', methods=['GET', 'POST'])
 @login_required
@@ -7565,8 +7626,8 @@ def goals_setup():
             """, (goal_type, target_value, timeframe, user_id))
             
             # Mark onboarding step as complete
-            from onboarding_manager import onboarding_manager, OnboardingStep
-            onboarding_manager.complete_onboarding_step(user_id, OnboardingStep.GOALS_SETUP)
+            from onboarding_manager import onboarding_manager
+            onboarding_manager.complete_step(user_id, 'goals_configured')
             
             # Track analytics (real data this time!)
             track_analytics_event('goals_setup_completed', {
@@ -7576,7 +7637,8 @@ def goals_setup():
             })
             
             flash('Goals set successfully! 🎯', 'success')
-            return redirect(url_for('dashboard'))
+            # Redirect back to welcome page to continue onboarding flow
+            return redirect(url_for('welcome_post_strava'))
             
         except Exception as e:
             flash('Error saving goals. Please try again.', 'error')
