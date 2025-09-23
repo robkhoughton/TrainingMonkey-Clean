@@ -1,59 +1,47 @@
 #!/usr/bin/env python3
 """
-Test database connection and schema verification
+Test database connection with explicit environment variable
 """
 
-from app.db_utils import get_db_connection
+import os
+from dotenv import load_dotenv
 
-def test_database_connection():
-    """Test database connection and list tables"""
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cursor:
-                # Get all tables
-                cursor.execute("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    ORDER BY table_name
-                """)
-                tables = cursor.fetchall()
-                
-                print("Available tables:")
-                table_names = []
-                for table in tables:
-                    table_name = table['table_name']
-                    table_names.append(table_name)
-                    print(f"  - {table_name}")
-                
-                # Check if hr_streams table exists
-                hr_streams_exists = 'hr_streams' in table_names
-                print(f"\nhr_streams table exists: {hr_streams_exists}")
-                
-                # Check activities table structure
-                cursor.execute("""
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns 
-                    WHERE table_name = 'activities'
-                    ORDER BY ordinal_position
-                """)
-                activities_columns = cursor.fetchall()
-                
-                print(f"\nActivities table columns ({len(activities_columns)} total):")
-                for col in activities_columns:
-                    print(f"  - {col['column_name']} ({col['data_type']}) - nullable: {col['is_nullable']}")
-                
-                # Check for TRIMP-related columns
-                trimp_columns = [col for col in activities_columns if 'trimp' in col['column_name'].lower()]
-                print(f"\nTRIMP-related columns:")
-                for col in trimp_columns:
-                    print(f"  - {col['column_name']} ({col['data_type']})")
-                
-                return True
-                
-    except Exception as e:
-        print(f"Database connection error: {e}")
-        return False
+# Load environment variables
+load_dotenv()
 
-if __name__ == "__main__":
-    test_database_connection()
+# Explicitly set the correct DATABASE_URL
+os.environ['DATABASE_URL'] = 'postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d'
+
+print("Testing database connection...")
+print(f"DATABASE_URL: {os.environ.get('DATABASE_URL', 'NOT SET')[:50]}...")
+
+try:
+    from db_utils import get_db_connection
+    
+    with get_db_connection() as conn:
+        print("✅ Database connection successful!")
+        
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT version();")
+            version = cursor.fetchone()
+            print(f"PostgreSQL version: {version[0]}")
+            
+            cursor.execute("SELECT current_database(), current_user;")
+            db_info = cursor.fetchone()
+            print(f"Database: {db_info[0]}, User: {db_info[1]}")
+            
+except Exception as e:
+    print(f"❌ Database connection failed: {e}")
+
+print("\nStarting Flask app...")
+from strava_app import app
+
+if __name__ == '__main__':
+    print("Available routes:")
+    for rule in app.url_map.iter_rules():
+        print(f"  {rule.rule} -> {rule.endpoint}")
+    
+    print("\nStarting server on http://localhost:5001")
+    print("Press Ctrl+C to stop")
+    
+    app.run(debug=True, host='0.0.0.0', port=5001)

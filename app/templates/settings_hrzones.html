@@ -1,0 +1,391 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}Heart Rate Zones Settings - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Configure your heart rate zones for accurate TRIMP calculations and training load analysis.{% endblock %}
+
+{% block header_title %}
+<h1>Heart Rate Zones Settings</h1>
+<p class="subtitle">Configure Your Heart Rate Zones</p>
+<p class="description">Set up your heart rate zones for accurate training load analysis and personalized training recommendations.</p>
+{% endblock %}
+
+{% block navigation %}
+<!-- Settings Navigation -->
+<nav class="nav">
+    <div class="nav-content">
+        <a href="/" class="nav-logo">Your Training Monkey</a>
+        <ul class="nav-links">
+            <li><a href="/settings/profile">Profile</a></li>
+            <li><a href="/settings/hrzones" class="active">HR Zones</a></li>
+            <li><a href="/settings/training">Training</a></li>
+            <li><a href="/settings/coaching">Coaching</a></li>
+            <li><a href="/settings/acwr">ACWR</a></li>
+        </ul>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<!-- Heart Rate Configuration Section -->
+<section class="setup-section">
+    <h2>❤️ Heart Rate Configuration</h2>
+    
+    <form id="hrzonesForm" method="POST" action="/api/settings/heart-rate-zones">
+        <div class="form-container">
+            <div class="form-group">
+                <label for="resting_hr">Resting Heart Rate (bpm)</label>
+                <input type="number" id="resting_hr" name="resting_hr" min="30" max="100" value="{{ user.resting_hr if user else '' }}" required>
+                <small style="color: #6b7280; font-size: 0.875rem;">Your resting heart rate in beats per minute</small>
+            </div>
+
+            <div class="form-group">
+                <label for="max_hr">Maximum Heart Rate (bpm)</label>
+                <input type="number" id="max_hr" name="max_hr" min="120" max="220" value="{{ user.max_hr if user else '' }}" required>
+                <small style="color: #6b7280; font-size: 0.875rem;">Your maximum heart rate in beats per minute</small>
+            </div>
+
+            <div class="form-group">
+                <label for="hr_zones_method">Heart Rate Zone Calculation Method</label>
+                <select id="hr_zones_method" name="hr_zones_method" required>
+                    <option value="percentage" {% if user and user.hr_zones_method == 'percentage' %}selected{% endif %}>Percentage of Max HR</option>
+                    <option value="karvonen" {% if user and user.hr_zones_method == 'karvonen' %}selected{% endif %}>Karvonen (Heart Rate Reserve)</option>
+                </select>
+                <small style="color: #6b7280; font-size: 0.875rem;">💡 Changes will recalculate all your past training data. <a href="/tutorials#heart-rate-zones-setup" target="_blank" style="color: #3b82f6; text-decoration: none;">Learn more about methods</a></small>
+            </div>
+        </div>
+
+        <div class="button-container">
+            <button type="submit" class="btn">
+                💾 Save HR Zone Settings
+            </button>
+            <a href="/tutorials#heart-rate-zones-setup" class="btn btn-secondary" target="_blank">
+                📚 Learn About HR Zones
+            </a>
+        </div>
+    </form>
+</section>
+
+<!-- Heart Rate Zones Comparison Table -->
+<section class="setup-section" id="zonesComparison" style="display: none;">
+    <h2>🎯 Your Heart Rate Zones Comparison</h2>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div></div>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <button id="toggleFormulas" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem 1rem;">
+                Show Formulas
+            </button>
+            <button id="resetZones" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem 1rem;">
+                Reset Zones
+            </button>
+            <button id="saveCustomZones" class="btn" style="font-size: 0.8rem; padding: 0.5rem 1rem; display: none;">
+                Save Zone Changes
+            </button>
+        </div>
+    </div>
+
+    <div style="background: white; border-radius: 0.75rem; border: 1px solid #e5e7eb; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+            <thead>
+                <tr style="background: #f8fafc;">
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 15%;">Zone</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 15%;">Purpose</th>
+                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 20%;">Percentage Method<br><small style="font-weight: 400; color: #6b7280;">(% of Max HR)</small></th>
+                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 20%;">Karvonen Method<br><small style="font-weight: 400; color: #6b7280;">(HR Reserve)</small></th>
+                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; background: #fef3c7; width: 15%; border: 2px solid #dc2626;">Your Active Zones<br><small style="font-weight: 400;">Current Method</small></th>
+                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 15%;">Custom Override</th>
+                </tr>
+            </thead>
+            <tbody id="zonesTableBody">
+                <!-- Zones will be populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Restore original selector box styling -->
+<style>
+    .form-container {
+        max-width: 350px; /* Adjusted width */
+        margin: 0 auto;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1.5rem;
+    }
+
+    .button-container {
+        display: flex;
+        flex-direction: column; /* Stack buttons vertically */
+        gap: 1rem;
+        margin-top: 2rem;
+        align-items: center; /* Center buttons horizontally */
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group select {
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.2s ease;
+        background-color: white;
+        width: 100%;
+        max-width: 100%; /* Adjusted max-width */
+        min-width: 200px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #3182ce;
+        box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+    }
+
+    .form-group small {
+        color: #718096;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        font-style: italic;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn:not(.btn-secondary) {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn:not(.btn-secondary):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #f7fafc;
+        color: #4a5568;
+        border: 2px solid #e2e8f0;
+    }
+
+    .btn-secondary:hover {
+        background: #edf2f7;
+        border-color: #cbd5e0;
+    }
+
+    /* Responsive design for form inputs */
+    @media (max-width: 768px) {
+        .form-container {
+            max-width: 100%;
+            padding: 0 1rem;
+        }
+        
+        .form-group input,
+        .form-group select {
+            min-width: 150px;
+            max-width: 100%;
+        }
+
+        .button-container {
+            flex-direction: column;
+            align-items: center;
+        }
+    }
+</style>
+
+<script>
+    let showFormulas = false;
+    let customZones = {};
+    let zonesData = null;
+
+    // Load heart rate zones when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadHeartRateZones();
+    });
+
+    // Handle form submission
+    document.getElementById('hrzonesForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+        
+        try {
+            const response = await fetch('/api/settings/heart-rate-zones', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showAlert('Heart rate zone settings saved successfully!', 'success');
+                loadHeartRateZones(); // Reload zones after saving
+            } else {
+                const error = await response.json();
+                showAlert(error.message || 'Failed to save heart rate zone settings', 'error');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'error');
+        }
+    });
+
+    // Load heart rate zones
+    async function loadHeartRateZones() {
+        try {
+            const response = await fetch('/api/settings/heart-rate-zones');
+            if (response.ok) {
+                zonesData = await response.json();
+                displayZonesTable();
+                document.getElementById('zonesComparison').style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error loading heart rate zones:', error);
+        }
+    }
+
+    // Display zones table
+    function displayZonesTable() {
+        if (!zonesData) return;
+
+        const tbody = document.getElementById('zonesTableBody');
+        tbody.innerHTML = '';
+
+        const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444'];
+        const zoneNames = ['Recovery', 'Aerobic Base', 'Aerobic', 'Threshold', 'VO2 Max'];
+
+        Object.entries(zonesData.zones).forEach(([zoneKey, zone], index) => {
+            const zoneNumber = parseInt(zoneKey.replace('zone', ''));
+            const zoneColor = zoneColors[index];
+            const zoneName = zoneNames[index];
+
+            const row = document.createElement('tr');
+            row.style.borderBottom = index < 4 ? '1px solid #f3f4f6' : 'none';
+            row.style.backgroundColor = index % 2 === 0 ? '#fafafa' : 'white';
+
+            const isEditing = customZones[zoneKey];
+            const displayMin = isEditing?.min ?? zone.min;
+            const displayMax = isEditing?.max ?? zone.max;
+
+            row.innerHTML = `
+                <td style="padding: 0.75rem; font-weight: 600; color: ${zoneColor};">Zone ${zoneNumber}</td>
+                <td style="padding: 0.75rem; color: #374151;">${zoneName}</td>
+                <td style="padding: 0.75rem; text-align: center; color: #374151;">
+                    <div style="font-weight: 600;">${Math.round(zonesData.max_hr * (0.5 + index * 0.1))} - ${Math.round(zonesData.max_hr * (0.6 + index * 0.1))}</div>
+                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${50 + index * 10}-${60 + index * 10}%</div>` : ''}
+                </td>
+                <td style="padding: 0.75rem; text-align: center; color: #374151;">
+                    <div style="font-weight: 600;">${Math.round(zonesData.resting_hr + (zonesData.max_hr - zonesData.resting_hr) * (0.5 + index * 0.1))} - ${Math.round(zonesData.resting_hr + (zonesData.max_hr - zonesData.resting_hr) * (0.6 + index * 0.1))}</div>
+                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${zonesData.resting_hr} + ${50 + index * 10}-${60 + index * 10}% × ${zonesData.max_hr - zonesData.resting_hr}</div>` : ''}
+                </td>
+                <td style="padding: 0.75rem; text-align: center; background: #fef3c7; color: #374151; font-weight: 600; border: 2px solid #dc2626; border-top: none;">${displayMin} - ${displayMax}</td>
+                <td style="padding: 0.5rem; text-align: center;">
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <input type="number" value="${displayMin}" onchange="handleZoneEdit('${zoneKey}', 'min', this.value)" style="width: 60px; padding: 0.25rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-size: 0.75rem; text-align: center;" placeholder="Min">
+                        <input type="number" value="${displayMax}" onchange="handleZoneEdit('${zoneKey}', 'max', this.value)" style="width: 60px; padding: 0.25rem; border: 1px solid #d1d5db; border-radius: 0.25rem; font-size: 0.75rem; text-align: center;" placeholder="Max">
+                    </div>
+                </td>
+            `;
+
+            tbody.appendChild(row);
+        });
+    }
+
+    // Handle zone editing
+    function handleZoneEdit(zoneKey, field, value) {
+        if (!customZones[zoneKey]) {
+            customZones[zoneKey] = {};
+        }
+        customZones[zoneKey][field] = parseInt(value);
+        
+        // Show save button if there are changes
+        const saveButton = document.getElementById('saveCustomZones');
+        if (Object.keys(customZones).length > 0) {
+            saveButton.style.display = 'flex';
+        }
+        
+        displayZonesTable(); // Refresh table
+    }
+
+    // Toggle formulas
+    document.getElementById('toggleFormulas').addEventListener('click', function() {
+        showFormulas = !showFormulas;
+        this.textContent = showFormulas ? 'Hide Formulas' : 'Show Formulas';
+        displayZonesTable();
+    });
+
+    // Reset zones
+    document.getElementById('resetZones').addEventListener('click', function() {
+        customZones = {};
+        document.getElementById('saveCustomZones').style.display = 'none';
+        displayZonesTable();
+    });
+
+    // Save custom zones
+    document.getElementById('saveCustomZones').addEventListener('click', async function() {
+        if (Object.keys(customZones).length === 0) return;
+
+        try {
+            const response = await fetch('/api/settings/heart-rate-zones', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ custom_zones: customZones })
+            });
+            
+            if (response.ok) {
+                showAlert('Custom heart rate zones saved successfully!', 'success');
+                customZones = {};
+                this.style.display = 'none';
+                loadHeartRateZones();
+            } else {
+                const error = await response.json();
+                showAlert(error.message || 'Failed to save custom zones', 'error');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'error');
+        }
+    });
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type}`;
+        alertDiv.textContent = message;
+        
+        const form = document.getElementById('hrzonesForm');
+        form.parentNode.insertBefore(alertDiv, form);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+</script>
+{% endblock %}

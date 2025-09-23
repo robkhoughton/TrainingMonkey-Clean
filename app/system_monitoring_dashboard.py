@@ -118,7 +118,7 @@ class SystemMonitoringDashboard:
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=1)
             
-            # Get calculation metrics for last hour
+            # Get calculation metrics for last hour (exclude rest days)
             query = """
             SELECT 
                 COUNT(*) as total_calculations,
@@ -128,6 +128,7 @@ class SystemMonitoringDashboard:
                 COUNT(CASE WHEN trimp_calculation_method = 'average_hr' THEN 1 END) as average_calculations
             FROM activities 
             WHERE trimp_processed_at >= %s AND trimp_processed_at <= %s
+            AND activity_id > 0
             """
             
             results = execute_query(query, (start_time.isoformat(), end_time.isoformat()), fetch=True)

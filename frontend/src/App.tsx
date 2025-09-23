@@ -1,5 +1,5 @@
 // App.tsx - UPDATED with compact file folder tab styling
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import TrainingLoadDashboard from './TrainingLoadDashboard';
 import ActivitiesPage from './ActivitiesPage';
@@ -7,7 +7,23 @@ import JournalPage from './JournalPage';
 import SettingsPage from './SettingsPage';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Get initial tab from URL parameters
+  const getInitialTab = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    return tabParam || 'dashboard';
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialTab());
+
+  // Update tab when URL parameters change
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [activeTab]);
 
   const renderTabContent = () => {
     switch(activeTab) {
@@ -17,6 +33,10 @@ function App() {
         return <ActivitiesPage />;
       case 'journal':
         return <JournalPage />;
+      case 'guide':
+        // Redirect to the guide page
+        window.location.href = '/guide';
+        return null;
       case 'settings':
         return <SettingsPage />;
       default:
@@ -40,10 +60,11 @@ function App() {
           zIndex: 10
         }}>
           {[
-            { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-            { key: 'activities', label: 'Activities', icon: '🏃' },
-            { key: 'journal', label: 'Journal', icon: '📝' },
-            { key: 'settings', label: 'Settings', icon: '⚙️' }
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'activities', label: 'Activities' },
+            { key: 'journal', label: 'Journal' },
+            { key: 'guide', label: 'Guide' },
+            { key: 'settings', label: 'Settings' }
           ].map((tab, index) => (
             <button
               key={tab.key}
@@ -73,7 +94,6 @@ function App() {
                 boxShadow: activeTab === tab.key ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none'
               }}
             >
-              <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           ))}

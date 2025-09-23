@@ -6,6 +6,7 @@ Flask routes for serving the interactive visualization dashboard
 
 import logging
 from flask import Blueprint, render_template, jsonify, request
+from flask_login import login_required
 from acwr_visualization_service import ACWRVisualizationService
 from acwr_configuration_service import ACWRConfigurationService
 
@@ -194,17 +195,32 @@ def visualization_dashboard():
         return f"Error loading dashboard: {str(e)}", 500
 
 @acwr_visualization_routes.route('/api/visualization/users', methods=['GET'])
+@login_required
 def get_users():
-    """Get list of users for visualization"""
+    """Get list of users for visualization - admin sees all users, regular users see only themselves"""
     try:
+        from flask_login import current_user
+        
         # Fetch real users from database
         import db_utils
-        query = """
-            SELECT id, email, is_admin, registration_date
-            FROM user_settings 
-            ORDER BY registration_date DESC
-        """
-        result = db_utils.execute_query(query, fetch=True)
+        
+        # Check if current user is admin
+        if current_user.is_admin:
+            # Admin users can see all users
+            query = """
+                SELECT id, email, is_admin, registration_date
+                FROM user_settings 
+                ORDER BY registration_date DESC
+            """
+            result = db_utils.execute_query(query, fetch=True)
+        else:
+            # Non-admin users can only see themselves
+            query = """
+                SELECT id, email, is_admin, registration_date
+                FROM user_settings 
+                WHERE id = %s
+            """
+            result = db_utils.execute_query(query, (current_user.id,), fetch=True)
         
         users = []
         for row in result:
@@ -218,7 +234,8 @@ def get_users():
         
         return jsonify({
             'success': True,
-            'users': users
+            'users': users,
+            'is_admin': current_user.is_admin
         })
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")

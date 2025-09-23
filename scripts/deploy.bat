@@ -56,6 +56,15 @@ if %errorlevel% gtr 7 (
 )
 echo Build files copied successfully.
 
+echo Copying static files for local development...
+robocopy frontend\build\static app\static /E /NFL /NDL /NJH /NJS /nc /ns /np
+if %errorlevel% gtr 7 (
+    echo Error: Failed to copy static files
+    pause
+    exit /b 1
+)
+echo Static files copied successfully.
+
 echo.
 echo Step 3: Deploying to Cloud Run...
 cd /d "C:\Users\robho\Documents\TrainingMonkey-Clean\app"

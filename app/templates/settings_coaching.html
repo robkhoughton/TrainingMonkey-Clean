@@ -1,0 +1,635 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}Coaching Settings - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Configure your AI coaching preferences, alert settings, and notification preferences for personalized training guidance.{% endblock %}
+
+{% block header_title %}
+<h1>Coaching Settings</h1>
+<p class="subtitle">AI Coaching & Alert Configuration</p>
+<p class="description">Customize your AI coaching experience with personalized alert settings and notification preferences.</p>
+{% endblock %}
+
+{% block navigation %}
+<!-- Settings Navigation -->
+<nav class="nav">
+    <div class="nav-content">
+        <a href="/" class="nav-logo">Your Training Monkey</a>
+        <ul class="nav-links">
+            <li><a href="/settings/profile">Profile</a></li>
+            <li><a href="/settings/hrzones">HR Zones</a></li>
+            <li><a href="/settings/training">Training</a></li>
+            <li><a href="/settings/coaching" class="active">Coaching</a></li>
+            <li><a href="/settings/acwr">ACWR</a></li>
+        </ul>
+    </div>
+</nav>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Prevent flash of unstyled content for form inputs -->
+<style>
+    input, select {
+        font-family: inherit !important;
+        font-size: 1rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Coaching Style Section -->
+<section class="setup-section">
+    <h2>🤖 AI Coaching Style</h2>
+    
+    <form id="coachingForm" method="POST" action="/api/settings/coaching">
+        <div class="form-container">
+        <div class="form-group">
+            <label for="coaching_tone">Coaching Communication Style</label>
+            <select id="coaching_tone" name="coaching_tone" required>
+                <option value="">Select Your Preferred Style</option>
+                <option value="casual" {% if user and user.coaching_tone == 'casual' %}selected{% endif %}>Casual & Friendly</option>
+                <option value="supportive" {% if user and user.coaching_tone == 'supportive' %}selected{% endif %}>Supportive & Encouraging</option>
+                <option value="direct" {% if user and user.coaching_tone == 'direct' %}selected{% endif %}>Direct & Straightforward</option>
+                <option value="technical" {% if user and user.coaching_tone == 'technical' %}selected{% endif %}>Analytical</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">How the AI communicates training advice and feedback</small>
+        </div>
+
+        <!-- Coaching Style Spectrum Visualization -->
+        <div class="spectrum-container" id="coaching-spectrum">
+            <div class="spectrum-line">
+                <div class="spectrum-point" data-style="casual">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Casual & Friendly</div>
+                    <div class="spectrum-description">Relaxed, conversational</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="supportive">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Supportive & Encouraging</div>
+                    <div class="spectrum-description">Positive, motivational</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="direct">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Direct & Straightforward</div>
+                    <div class="spectrum-description">Clear, no-nonsense</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="technical">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Analytical</div>
+                    <div class="spectrum-description">Data-driven, scientific</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="recommendation_style">Recommendation Style</label>
+            <select id="recommendation_style" name="recommendation_style" required>
+                <option value="">Select Recommendation Style</option>
+                <option value="conservative" {% if user and user.recommendation_style == 'conservative' %}selected{% endif %}>Conservative & Safe</option>
+                <option value="balanced" {% if user and user.recommendation_style == 'balanced' %}selected{% endif %}>Balanced Approach</option>
+                <option value="adaptive" {% if user and user.recommendation_style == 'adaptive' %}selected{% endif %}>Adaptive & Flexible</option>
+                <option value="aggressive" {% if user and user.recommendation_style == 'aggressive' %}selected{% endif %}>Aggressive & Challenging</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">How the AI balances risk vs. performance in recommendations</small>
+        </div>
+
+        <!-- Recommendation Style Spectrum Visualization -->
+        <div class="spectrum-container" id="recommendation-spectrum">
+            <div class="spectrum-line">
+                <div class="spectrum-point" data-style="conservative">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Conservative & Safe</div>
+                    <div class="spectrum-description">Low risk, gradual progress</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="balanced">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Balanced Approach</div>
+                    <div class="spectrum-description">Moderate risk, steady progress</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="adaptive">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Adaptive & Flexible</div>
+                    <div class="spectrum-description">Adjusts based on response</div>
+                </div>
+                
+                <div class="spectrum-point" data-style="aggressive">
+                    <div class="spectrum-dot"></div>
+                    <div class="spectrum-label">Aggressive & Challenging</div>
+                    <div class="spectrum-description">High risk, fast progress</div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <div class="button-container">
+            <button type="submit" class="btn">
+                💾 Save Coaching Settings
+            </button>
+            <a href="/tutorials#coaching-settings-guide" class="btn btn-secondary" target="_blank">
+                📚 Learn More About Coaching Settings
+            </a>
+        </div>
+    </form>
+</section>
+
+<!-- Alert Settings Section -->
+<section class="setup-section">
+    <h2>🔔 Alert & Notification Settings</h2>
+    
+    <form id="alertsForm" method="POST" action="/api/settings/alerts">
+        <div class="form-container">
+        <div class="form-group">
+            <label for="acwr_alert_threshold">ACWR Alert Threshold</label>
+            <select id="acwr_alert_threshold" name="acwr_alert_threshold" required>
+                <option value="1.2" {% if user and user.acwr_alert_threshold == 1.2 %}selected{% endif %}>1.2 (Conservative)</option>
+                <option value="1.3" {% if user and user.acwr_alert_threshold == 1.3 %}selected{% endif %}>1.3 (Moderate)</option>
+                <option value="1.4" {% if user and user.acwr_alert_threshold == 1.4 %}selected{% endif %}>1.4 (Aggressive)</option>
+                <option value="1.5" {% if user and user.acwr_alert_threshold == 1.5 %}selected{% endif %}>1.5 (Very Aggressive)</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Lower values trigger earlier overtraining alerts</small>
+        </div>
+
+        <div class="form-group">
+            <label for="injury_risk_alerts">Injury Risk Alerts</label>
+            <select id="injury_risk_alerts" name="injury_risk_alerts" required>
+                <option value="true" {% if user and user.injury_risk_alerts == true %}selected{% endif %}>Enabled</option>
+                <option value="false" {% if user and user.injury_risk_alerts == false %}selected{% endif %}>Disabled</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Receive alerts about injury risk based on training load</small>
+        </div>
+        </div>
+
+        <div class="button-container">
+            <button type="submit" class="btn">
+                💾 Save Alert Settings
+            </button>
+            <a href="/tutorials#coaching-settings-guide" class="btn btn-secondary" target="_blank">
+                📚 Learn More About Coaching Settings
+            </a>
+        </div>
+    </form>
+</section>
+
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Restore original selector box styling -->
+<style>
+    .form-container {
+        max-width: 700px; /* Widened for spectrum content */
+        margin: 0 auto;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1.5rem;
+    }
+
+    .button-container {
+        display: flex;
+        flex-direction: column; /* Stack buttons vertically */
+        gap: 1rem;
+        margin-top: 2rem;
+        align-items: center; /* Center buttons horizontally */
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group select {
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+        transition: border-color 0.2s ease;
+        background-color: white;
+        width: 100%;
+        max-width: 100%; /* Adjusted max-width */
+        min-width: 200px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #3182ce;
+        box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+    }
+
+    .form-group small {
+        color: #718096;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        font-style: italic;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn:not(.btn-secondary) {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn:not(.btn-secondary):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #f7fafc;
+        color: #4a5568;
+        border: 2px solid #e2e8f0;
+    }
+
+    .btn-secondary:hover {
+        background: #edf2f7;
+        border-color: #cbd5e0;
+    }
+
+    /* Coaching Style Spectrum Styling */
+    .spectrum-container {
+        margin: 1.5rem 0;
+        padding: 1rem 0;
+    }
+
+    .spectrum-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        position: relative;
+        margin-bottom: 2rem;
+    }
+
+    .spectrum-line::before {
+        content: '';
+        position: absolute;
+        top: 20px;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #22c55e 0%, #3b82f6 33%, #f59e0b 66%, #ef4444 100%);
+        border-radius: 2px;
+        z-index: 1;
+    }
+
+    .spectrum-point {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        max-width: 150px;
+    }
+
+    .spectrum-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 3px solid white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        margin-bottom: 0.5rem;
+        transition: transform 0.2s ease;
+    }
+
+    .spectrum-point[data-style="casual"] .spectrum-dot {
+        background: #22c55e;
+    }
+
+    .spectrum-point[data-style="supportive"] .spectrum-dot {
+        background: #3b82f6;
+    }
+
+    .spectrum-point[data-style="direct"] .spectrum-dot {
+        background: #f59e0b;
+    }
+
+    .spectrum-point[data-style="technical"] .spectrum-dot {
+        background: #ef4444;
+    }
+
+    /* Recommendation spectrum colors */
+    .spectrum-point[data-style="conservative"] .spectrum-dot {
+        background: #10b981;
+    }
+
+    .spectrum-point[data-style="balanced"] .spectrum-dot {
+        background: #3b82f6;
+    }
+
+    .spectrum-point[data-style="adaptive"] .spectrum-dot {
+        background: #f59e0b;
+    }
+
+    .spectrum-point[data-style="aggressive"] .spectrum-dot {
+        background: #ef4444;
+    }
+
+    .spectrum-point:hover .spectrum-dot {
+        transform: scale(1.2);
+    }
+
+    .spectrum-point.selected .spectrum-dot {
+        transform: scale(1.3);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .spectrum-point.selected .spectrum-label {
+        color: #1e40af;
+        font-weight: 700;
+    }
+
+    .spectrum-point {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .spectrum-point:hover {
+        transform: translateY(-2px);
+    }
+
+    .spectrum-label {
+        font-weight: 600;
+        color: #1e293b;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+        line-height: 1.2;
+    }
+
+    .spectrum-description {
+        font-size: 0.8rem;
+        color: #64748b;
+        line-height: 1.3;
+    }
+
+
+    /* Responsive design for form inputs */
+    @media (max-width: 768px) {
+        .form-container {
+            max-width: 100%;
+            padding: 0 1rem;
+        }
+        
+        .form-group input,
+        .form-group select {
+            min-width: 150px;
+            max-width: 100%;
+        }
+
+        .button-container {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .spectrum-container {
+            padding: 0.5rem 0;
+        }
+
+        .spectrum-line {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .spectrum-point {
+            max-width: calc(50% - 0.25rem);
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .spectrum-dot {
+            margin-bottom: 0.25rem;
+        }
+
+        .spectrum-label {
+            font-size: 0.8rem;
+        }
+
+        .spectrum-description {
+            font-size: 0.7rem;
+        }
+    }
+</style>
+
+<script>
+    // Handle coaching form submission
+    document.getElementById('coachingForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+        
+        console.log('Submitting coaching settings:', data);
+        
+        try {
+            const response = await fetch('/api/settings/coaching', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Settings saved successfully:', result);
+                showAlert('Coaching settings saved successfully!', 'success');
+                
+                // Refresh the page after a short delay to show updated values
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                const error = await response.json();
+                console.error('Failed to save settings:', error);
+                showAlert(error.message || 'Failed to save coaching settings', 'error');
+            }
+        } catch (error) {
+            console.error('Network error:', error);
+            showAlert('Network error. Please try again.', 'error');
+        }
+    });
+
+    // Handle alerts form submission
+    document.getElementById('alertsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+        
+        // Convert string values to appropriate types
+        data.acwr_alert_threshold = parseFloat(data.acwr_alert_threshold);
+        data.injury_risk_alerts = data.injury_risk_alerts === 'true';
+        
+        try {
+            const response = await fetch('/api/settings/alerts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showAlert('Alert settings saved successfully!', 'success');
+            } else {
+                const error = await response.json();
+                showAlert(error.message || 'Failed to save alert settings', 'error');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'error');
+        }
+    });
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type}`;
+        alertDiv.textContent = message;
+        
+        const form = document.getElementById('coachingForm');
+        form.parentNode.insertBefore(alertDiv, form);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+
+    // Handle spectrum visualization
+    document.addEventListener('DOMContentLoaded', function() {
+        // Coaching tone spectrum
+        const coachingToneSelect = document.getElementById('coaching_tone');
+        const coachingSpectrumPoints = document.querySelectorAll('#coaching-spectrum .spectrum-point');
+        
+        // Recommendation style spectrum
+        const recommendationSelect = document.getElementById('recommendation_style');
+        const recommendationSpectrumPoints = document.querySelectorAll('#recommendation-spectrum .spectrum-point');
+        
+        // Debug: Check if elements are found
+        console.log('Coaching tone select found:', !!coachingToneSelect);
+        console.log('Coaching spectrum points found:', coachingSpectrumPoints.length);
+        console.log('Recommendation select found:', !!recommendationSelect);
+        console.log('Recommendation spectrum points found:', recommendationSpectrumPoints.length);
+        
+        // Function to update coaching spectrum highlighting
+        function updateCoachingSpectrumHighlight() {
+            if (!coachingToneSelect || coachingSpectrumPoints.length === 0) {
+                console.error('Cannot update coaching spectrum - elements not found');
+                return;
+            }
+            
+            const selectedValue = coachingToneSelect.value;
+            console.log('Updating coaching spectrum highlight for value:', selectedValue);
+            
+            coachingSpectrumPoints.forEach(point => {
+                const style = point.getAttribute('data-style');
+                if (style === selectedValue) {
+                    point.classList.add('selected');
+                    console.log('Selected point:', style);
+                } else {
+                    point.classList.remove('selected');
+                }
+            });
+        }
+        
+        // Function to update recommendation spectrum highlighting
+        function updateRecommendationSpectrumHighlight() {
+            if (!recommendationSelect || recommendationSpectrumPoints.length === 0) {
+                console.error('Cannot update recommendation spectrum - elements not found');
+                return;
+            }
+            
+            const selectedValue = recommendationSelect.value;
+            console.log('Updating recommendation spectrum highlight for value:', selectedValue);
+            
+            recommendationSpectrumPoints.forEach(point => {
+                const style = point.getAttribute('data-style');
+                if (style === selectedValue) {
+                    point.classList.add('selected');
+                    console.log('Selected recommendation point:', style);
+                } else {
+                    point.classList.remove('selected');
+                }
+            });
+        }
+        
+        // Update spectrums when selects change
+        if (coachingToneSelect) {
+            coachingToneSelect.addEventListener('change', updateCoachingSpectrumHighlight);
+        }
+        if (recommendationSelect) {
+            recommendationSelect.addEventListener('change', updateRecommendationSpectrumHighlight);
+        }
+        
+        // Initial updates
+        if (coachingToneSelect) {
+            console.log('Initial coaching_tone value:', coachingToneSelect.value);
+            updateCoachingSpectrumHighlight();
+        }
+        if (recommendationSelect) {
+            console.log('Initial recommendation_style value:', recommendationSelect.value);
+            updateRecommendationSpectrumHighlight();
+        }
+        
+        // Add click handlers to coaching spectrum points
+        if (coachingSpectrumPoints.length > 0) {
+            coachingSpectrumPoints.forEach(point => {
+                point.addEventListener('click', function() {
+                    const style = this.getAttribute('data-style');
+                    console.log('Clicked coaching spectrum point:', style);
+                    if (coachingToneSelect) {
+                        coachingToneSelect.value = style;
+                        updateCoachingSpectrumHighlight();
+                    }
+                });
+            });
+        } else {
+            console.error('No coaching spectrum points found!');
+        }
+        
+        // Add click handlers to recommendation spectrum points
+        if (recommendationSpectrumPoints.length > 0) {
+            recommendationSpectrumPoints.forEach(point => {
+                point.addEventListener('click', function() {
+                    const style = this.getAttribute('data-style');
+                    console.log('Clicked recommendation spectrum point:', style);
+                    if (recommendationSelect) {
+                        recommendationSelect.value = style;
+                        updateRecommendationSpectrumHighlight();
+                    }
+                });
+            });
+        } else {
+            console.error('No recommendation spectrum points found!');
+        }
+    });
+</script>
+{% endblock %}

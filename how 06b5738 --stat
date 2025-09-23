@@ -1,0 +1,30 @@
+[33mcommit 06b57388f445a046b128cdf61d8687add98f5cb0[m
+Author: robkhoughton <rob.houghton.ca@gmail.com>
+Date:   Fri Sep 5 16:42:37 2025 -0700
+
+    feat: Enhance TRIMP calculation with heart rate stream processing
+    
+    - Enhanced TRIMP calculation function to use heart rate stream data when available
+    - Added fallback to average heart rate method for backward compatibility
+    - Implemented comprehensive validation and error handling for HR stream data
+    - Added database schema changes for TRIMP calculation tracking:
+      * New fields: trimp_calculation_method, hr_stream_sample_count, trimp_processed_at
+      * New hr_streams table for efficient HR data storage
+      * Performance indexes for optimized queries
+    - Added schema validation functions and HR stream data management helpers
+    - Maintained backward compatibility with existing function calls
+    - Added comprehensive logging for calculation method tracking
+    - Updated .gitignore to exclude logs/ directory
+    
+    Tasks completed:
+    - Task 1.0: Enhanced TRIMP Calculation Function
+    - Task 2.0: Implemented Database Schema Changes
+    
+    This addresses TRIMP calculation discrepancies by using more accurate
+    heart rate stream processing while maintaining system stability.
+
+.gitignore
+app/db_utils.py
+app/strava_training_load.py
+tasks/prd-trimp-enhancement.md
+tasks/tasks-prd-trimp-enhancement.md

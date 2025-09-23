@@ -531,8 +531,20 @@ const getRecommendationDateContext = (recommendation) => {
 
           const result = await response.json();
 
+          // Handle no data case gracefully - check if we can sync instead of throwing error
           if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
-            throw new Error("No data returned from API");
+            console.log("No training data found, checking sync capabilities...");
+            
+            // If we can sync, show the no-data state with sync button
+            if (result.can_sync) {
+              console.log("User can sync data - showing no-data state");
+              setData([]); // Set empty data array
+              setIsLoading(false);
+              return; // Exit early, let the no-data state render
+            } else {
+              // Only throw error if we truly can't get data and can't sync
+              throw new Error("No data returned from API and sync not available");
+            }
           }
 
           console.log(`Successfully received ${result.data.length} records from Strava`);
@@ -664,14 +676,62 @@ const getRecommendationDateContext = (recommendation) => {
   if (filtered.length === 0) {
     return (
       <div className={styles.noData}>
-        <h1 className={styles.title}>No Data Available</h1>
+        <h1 className={styles.title}>No Training Data Available</h1>
         <p>No training data found for the selected time period.</p>
-        <button
-          onClick={() => setDateRange('90')}
-          className={styles.retryButton}
-        >
-          View Last 90 Days
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+          <button
+            onClick={() => setDateRange('90')}
+            className={styles.retryButton}
+          >
+            View Last 90 Days
+          </button>
+          {/* Show sync button if user has Strava connected */}
+          <button
+            onClick={async () => {
+              try {
+                console.log('Starting Strava sync from no-data state...');
+                const response = await fetch('/sync-with-auto-refresh', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                console.log('Sync result:', result);
+                
+                if (result.success) {
+                  console.log('Sync started successfully, reloading page...');
+                  // Wait a moment for sync to start, then reload
+                  setTimeout(() => {
+                    window.location.reload();
+                  }, 2000);
+                } else {
+                  console.error('Sync failed:', result.error);
+                  alert(`Sync failed: ${result.error}`);
+                }
+              } catch (error) {
+                console.error('Error starting sync:', error);
+                alert('Error starting sync. Please try again.');
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
+              borderRadius: '0.375rem',
+              border: 'none',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+              backgroundColor: '#FC5200',
+              color: 'white',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <span>🔄</span>
+            Sync Strava Data
+          </button>
+        </div>
       </div>
     );
   }

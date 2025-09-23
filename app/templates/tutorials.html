@@ -17,9 +17,16 @@
 {% endblock %}
 
 {% block content %}
-        <!-- Table of Contents -->
+        <!-- Search and Table of Contents -->
         <section class="setup-section">
-            <h2>Table of Contents</h2>
+            <div class="search-toc-header">
+                <h2>Table of Contents</h2>
+                <div class="search-container">
+                    <input type="text" id="tutorialSearch" placeholder="Search tutorials..." class="search-input">
+                    <button id="searchButton" class="search-button">🔍</button>
+                </div>
+            </div>
+            <div id="searchResults" class="search-results" style="display: none;"></div>
             <div class="toc-container">
                 <div class="toc-category">
                     <h3>🎯 Getting Started</h3>
@@ -27,6 +34,7 @@
                         <li><a href="#getting-started-guide">Getting Started Guide</a></li>
                         <li><a href="#frequently-asked-questions">Frequently Asked Questions</a></li>
                         <li><a href="#dashboard-overview">Dashboard Overview</a></li>
+                        <li><a href="#why-this-information-matters">Why This Information Matters</a></li>
                     </ul>
                 </div>
                 <div class="toc-category">
@@ -46,6 +54,8 @@
                         <li><a href="#journal-tracking">Journal & Tracking</a></li>
                         <li><a href="#ai-recommendations">AI Recommendations Guide</a></li>
                         <li><a href="#training-optimization">Training Optimization</a></li>
+                        <li><a href="#training-settings-guide">Training Settings Guide</a></li>
+                        <li><a href="#coaching-settings-guide">Coaching Settings Guide</a></li>
                     </ul>
                 </div>
                 <div class="toc-category">
@@ -100,6 +110,52 @@
                     <li><strong>Explore Dashboard:</strong> Review your training load analysis</li>
                     <li><strong>Use Journal:</strong> Track subjective feedback and get AI insights</li>
                 </ol>
+            </div>
+
+            <!-- Why This Information Matters -->
+            <div class="tutorial-section" id="why-this-information-matters">
+                <h2>Why This Information Matters</h2>
+                <p>Understanding why we collect specific information helps you make informed decisions about your training data and ensures you get the most accurate analysis possible.</p>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>🎂 Age</h3>
+                        <p>Your age is used to calculate maximum heart rate estimates and adjust training recommendations for your life stage. Age affects your cardiovascular capacity, recovery time, and optimal training intensity zones.</p>
+                        <ul>
+                            <li><strong>Heart Rate Calculations:</strong> Age-based formulas help estimate your maximum heart rate</li>
+                            <li><strong>Training Recommendations:</strong> Age-appropriate intensity and volume guidelines</li>
+                            <li><strong>Recovery Time:</strong> Older athletes typically need longer recovery periods</li>
+                            <li><strong>Risk Assessment:</strong> Age factors into injury risk calculations</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>⚧ Gender</h3>
+                        <p>Gender affects TRIMP calculations and helps provide more accurate training load analysis based on physiological differences. This information ensures personalized and scientifically accurate recommendations.</p>
+                        <ul>
+                            <li><strong>TRIMP Calculations:</strong> Gender-specific coefficients for training impulse calculations</li>
+                            <li><strong>Physiological Differences:</strong> Accounts for variations in heart rate response and recovery</li>
+                            <li><strong>Training Load Analysis:</strong> More accurate internal vs external load comparisons</li>
+                            <li><strong>Injury Risk:</strong> Gender-specific risk patterns and prevention strategies</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>📧 Email</h3>
+                        <p>Your email is used for account management and important training alerts about injury risk or overtraining. Stay informed about critical changes in your training status.</p>
+                        <ul>
+                            <li><strong>Account Management:</strong> Password resets, account updates, and security notifications</li>
+                            <li><strong>Training Alerts:</strong> Immediate notifications about high injury risk or overtraining</li>
+                            <li><strong>Weekly Reports:</strong> Summary of your training progress and recommendations</li>
+                            <li><strong>System Updates:</strong> Important platform updates and new feature announcements</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="privacy-note">
+                    <h3>🔒 Privacy & Security</h3>
+                    <p>Your personal information is protected with industry-standard encryption and is never shared with third parties. We only use this data to provide you with accurate training analysis and personalized recommendations.</p>
+                </div>
             </div>
 
             <!-- Understanding Divergence -->
@@ -1403,6 +1459,98 @@
             </div>
         </section>
 
+        <!-- Training Settings Guide -->
+        <div class="tutorial-section" id="training-settings-guide">
+            <h2>Training Settings Guide</h2>
+            <p>Understanding how your training settings affect your training load analysis and personalized recommendations.</p>
+            
+            <div class="info-grid">
+                <div class="info-card">
+                    <h3>🎯 Training Goals</h3>
+                    <p>Your goals determine the focus of training recommendations and the balance between intensity and volume.</p>
+                    <ul>
+                        <li><strong>Primary Sport:</strong> Your main training focus for load calculations</li>
+                        <li><strong>Secondary Sport:</strong> Additional sport for cross-training analysis</li>
+                        <li><strong>Training Experience:</strong> Used to adjust training load recommendations and progression rates</li>
+                        <li><strong>Weekly Hours:</strong> Average hours per week for training load calculations</li>
+                    </ul>
+                </div>
+                
+                <div class="info-card">
+                    <h3>📈 Experience Level</h3>
+                    <p>More experienced athletes can handle higher training loads and faster progression rates.</p>
+                    <ul>
+                        <li><strong>Beginner (0-1 years):</strong> Conservative progression, focus on consistency</li>
+                        <li><strong>Intermediate (1-3 years):</strong> Moderate progression, balanced training</li>
+                        <li><strong>Advanced (3-5 years):</strong> Aggressive progression, high training loads</li>
+                        <li><strong>Elite (5+ years):</strong> Maximum progression, elite-level training</li>
+                    </ul>
+                </div>
+                
+                <div class="info-card">
+                    <h3>⚖️ Training Phase</h3>
+                    <p>Your current periodization phase influences training recommendations and load management.</p>
+                    <ul>
+                        <li><strong>Base Building:</strong> Focus on aerobic development and volume</li>
+                        <li><strong>Build Phase:</strong> Increase intensity and specific training</li>
+                        <li><strong>Peak Phase:</strong> Maximum intensity and race preparation</li>
+                        <li><strong>Race Phase:</strong> Taper and race-specific training</li>
+                        <li><strong>Recovery:</strong> Active recovery and regeneration</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="privacy-note">
+                <h3>🔒 How This Affects Your Training</h3>
+                <p>These settings directly influence how the AI interprets your training data, calculates training loads, and provides personalized recommendations. More experienced athletes receive more aggressive training suggestions, while beginners get conservative, safety-focused guidance.</p>
+            </div>
+        </div>
+
+        <!-- Coaching Settings Guide -->
+        <div class="tutorial-section" id="coaching-settings-guide">
+            <h2>Coaching Settings Guide</h2>
+            <p>Understanding how your coaching settings affect your AI coaching experience and personalized training guidance.</p>
+            
+            <div class="info-grid">
+                <div class="info-card">
+                    <h3>🤖 AI Coaching Style</h3>
+                    <p>Your coaching communication style determines how the AI delivers training advice and feedback.</p>
+                    <ul>
+                        <li><strong>Supportive & Encouraging:</strong> Positive, motivational coaching approach</li>
+                        <li><strong>Direct & Straightforward:</strong> Clear, no-nonsense communication</li>
+                        <li><strong>Technical & Detailed:</strong> In-depth explanations with scientific backing</li>
+                        <li><strong>Casual & Friendly:</strong> Relaxed, conversational coaching style</li>
+                    </ul>
+                </div>
+                
+                <div class="info-card">
+                    <h3>📊 Recommendation Style</h3>
+                    <p>How the AI balances risk vs. performance in training recommendations.</p>
+                    <ul>
+                        <li><strong>Balanced Approach:</strong> Moderate risk with steady progress</li>
+                        <li><strong>Conservative & Safe:</strong> Low risk, gradual progression</li>
+                        <li><strong>Aggressive & Challenging:</strong> High risk, fast progression</li>
+                        <li><strong>Adaptive & Flexible:</strong> Adjusts based on your response</li>
+                    </ul>
+                </div>
+                
+                <div class="info-card">
+                    <h3>🔔 Alert & Notification Settings</h3>
+                    <p>Configure when and how you receive training alerts and notifications.</p>
+                    <ul>
+                        <li><strong>ACWR Alert Threshold:</strong> When to warn about overtraining risk</li>
+                        <li><strong>Injury Risk Alerts:</strong> Notifications about potential injury risks</li>
+                        <li><strong>Real-Time Monitoring:</strong> Immediate feedback on training decisions</li>
+                        <li><strong>Personalized Thresholds:</strong> Customized to your experience level</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="privacy-note">
+                <h3>🔒 How This Affects Your Coaching</h3>
+                <p>These settings directly influence how the AI communicates with you, balances risk in recommendations, and alerts you to potential issues. The AI adapts its coaching style to match your preferences while maintaining scientific accuracy in all training advice.</p>
+            </div>
+        </div>
 
         <!-- Coming Soon Popup -->
         <div id="coming-soon-overlay" class="popup-overlay popup-hidden"></div>
@@ -1415,6 +1563,151 @@
 
 {% block extra_head %}
 <style>
+/* Search and TOC header styling */
+.search-toc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.search-toc-header h2 {
+    margin: 0;
+    flex: 1;
+}
+
+.search-container {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.search-input {
+    width: 200px;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #3182ce;
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.search-button {
+    padding: 0.5rem 0.75rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 40px;
+}
+
+.search-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Responsive design for search header */
+@media (max-width: 768px) {
+    .search-toc-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .search-toc-header h2 {
+        margin-bottom: 0;
+    }
+    
+    .search-container {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .search-input {
+        width: 150px;
+    }
+}
+
+.search-results {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #3182ce;
+}
+
+/* Info grid styling for Why This Information Matters */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.info-card {
+    padding: 1.5rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    border-left: 4px solid #3b82f6;
+    transition: transform 0.2s ease;
+}
+
+.info-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.info-card h3 {
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.info-card p {
+    color: #64748b;
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.info-card ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.info-card li {
+    color: #64748b;
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+}
+
+.privacy-note {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%);
+    border-radius: 8px;
+    border-left: 4px solid #10b981;
+}
+
+.privacy-note h3 {
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+}
+
+.privacy-note p {
+    color: #64748b;
+    margin: 0;
+    line-height: 1.6;
+}
+
 /* Back to top button styling */
 .back-to-top-btn {
     position: fixed !important;
@@ -1465,6 +1758,60 @@ function closeComingSoonPopup() {
 
 // Add click handlers to all tutorial links that have href="#"
 document.addEventListener('DOMContentLoaded', function() {
+    // Search functionality
+    const searchInput = document.getElementById('tutorialSearch');
+    const searchButton = document.getElementById('searchButton');
+    const searchResults = document.getElementById('searchResults');
+    
+    function performSearch() {
+        const query = searchInput.value.toLowerCase().trim();
+        if (query === '') {
+            searchResults.style.display = 'none';
+            return;
+        }
+        
+        const tutorialSections = document.querySelectorAll('.tutorial-section');
+        const results = [];
+        
+        tutorialSections.forEach(section => {
+            const title = section.querySelector('h2').textContent.toLowerCase();
+            const content = section.textContent.toLowerCase();
+            
+            if (title.includes(query) || content.includes(query)) {
+                const id = section.id;
+                const titleText = section.querySelector('h2').textContent;
+                results.push({ id, title: titleText });
+            }
+        });
+        
+        if (results.length > 0) {
+            searchResults.innerHTML = `
+                <h4>Search Results (${results.length} found):</h4>
+                <ul>
+                    ${results.map(result => `<li><a href="#${result.id}" onclick="scrollToSection('${result.id}')">${result.title}</a></li>`).join('')}
+                </ul>
+            `;
+            searchResults.style.display = 'block';
+        } else {
+            searchResults.innerHTML = '<p>No results found. Try different keywords.</p>';
+            searchResults.style.display = 'block';
+        }
+    }
+    
+    searchButton.addEventListener('click', performSearch);
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+    });
+    
+    // Clear search when input is empty
+    searchInput.addEventListener('input', function() {
+        if (this.value.trim() === '') {
+            searchResults.style.display = 'none';
+        }
+    });
+    
     const tutorialLinks = document.querySelectorAll('.tutorial-link[href="#"]');
     tutorialLinks.forEach(link => {
         link.addEventListener('click', function(e) {

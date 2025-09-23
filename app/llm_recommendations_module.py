@@ -388,7 +388,7 @@ def create_recent_activities_summary(activities):
             if activity_type.lower() == 'rest' or activity.get('activity_id', 0) == 0:
                 summary_lines.append(f"{date}: Rest day")
             else:
-                div_str = f", Divergence: {divergence:.2f}" if divergence is not None else ""
+                div_str = f", Divergence: {divergence:.2f}" if divergence is not None and divergence != 0 else ""
                 summary_lines.append(
                     f"{date}: {activity_type} - {distance:.1f}mi, {elevation:.0f}ft, "
                     f"TRIMP: {trimp:.0f}, ACWR: {acwr_ext:.2f}/{acwr_int:.2f}{div_str}"
@@ -535,10 +535,10 @@ def create_autopsy_prompt(date_str, prescribed_action, actual_activities, observ
 ### TRAINING AUTOPSY ANALYSIS
 **Date:** {date_str}
 **Athlete Metrics Context:**
-- External ACWR: {current_metrics.get('external_acwr', 0):.2f}
-- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f}
-- Days Since Rest: {current_metrics.get('days_since_rest', 0)}
+- External ACWR: {current_metrics.get('external_acwr') or 0:.2f}
+- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f}
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f}
+- Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 ### PRESCRIBED VS ACTUAL COMPARISON
 
@@ -1401,10 +1401,10 @@ def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, act
 {tone_section}ANALYSIS DATE: {date_str}
 
 CURRENT ATHLETE CONTEXT:
-- External ACWR: {current_metrics.get('external_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f} (Balance: -0.05 to +0.05)
-- Days Since Rest: {current_metrics.get('days_since_rest', 0)}
+- External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
+- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} (Balance: -0.05 to +0.05)
+- Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 PRESCRIBED TRAINING DECISION:
 {prescribed_action}
@@ -1667,10 +1667,10 @@ ACTUAL: {activity_summary}
 USER OBSERVATIONS: {observations_text}
 
 CURRENT TRAINING METRICS:
-- External ACWR: {current_metrics.get('external_acwr', 0):.2f}
-- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f}
-- Days Since Rest: {current_metrics.get('days_since_rest', 0)}
+- External ACWR: {current_metrics.get('external_acwr') or 0:.2f}
+- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f}
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f}
+- Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 ### TRAINING REFERENCE FRAMEWORK
 {training_guide}
@@ -1737,11 +1737,11 @@ COACHING STRATEGY: Standard evidence-based recommendation without learning conte
 TARGET DATE: {target_date_str} ({day_name})
 
 CURRENT METRICS:
-- External ACWR: {current_metrics.get('external_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f} (Optimal: 0.8-1.3)  
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f} (Balance: -0.05 to +0.05)
-- Days Since Rest: {current_metrics.get('days_since_rest', 0)}
-- 7-day Avg Load: {current_metrics.get('seven_day_avg_load', 0):.2f} miles/day
+- External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
+- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)  
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} (Balance: -0.05 to +0.05)
+- Days Since Rest: {current_metrics.get('days_since_rest') or 0}
+- 7-day Avg Load: {current_metrics.get('seven_day_avg_load') or 0:.2f} miles/day
 
 {autopsy_context}
 

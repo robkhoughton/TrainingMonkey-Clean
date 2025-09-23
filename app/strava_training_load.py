@@ -680,16 +680,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             hr_stream_data = streams['heartrate'].data
             logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
             
-            # Save HR stream data to database for future enhanced TRIMP calculations
-            try:
-                from db_utils import save_hr_stream_data
-                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
-                if save_result:
-                    logger.info(f"Successfully saved HR stream data for activity {activity_id}")
-                else:
-                    logger.warning(f"Failed to save HR stream data for activity {activity_id}")
-            except Exception as save_error:
-                logger.error(f"Error saving HR stream data for activity {activity_id}: {str(save_error)}")
+            # Note: HR stream data will be saved after the main activity record is created
+            # to avoid foreign key constraint violations
         else:
             logger.warning(f"No heartrate stream data available for activity {activity_id}")
             
@@ -711,7 +703,13 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     trimp_calculation_method = 'average'  # Default method
     hr_stream_sample_count = 0
     
-    if avg_hr > 0 and duration_minutes > 0:
+    # REST DAY VALIDATION: Skip TRIMP calculation for rest days (negative activity IDs)
+    if activity_id < 0:
+        logger.info(f"SKIPPING TRIMP calculation for rest day activity {activity_id}: '{activity_name}'")
+        trimp = 0
+        trimp_calculation_method = 'rest_day'
+        hr_stream_sample_count = 0
+    elif avg_hr > 0 and duration_minutes > 0:
         # Check if enhanced TRIMP calculation is enabled for this user
         enhanced_trimp_enabled = is_feature_enabled('enhanced_trimp_calculation', user_id)
         
@@ -782,7 +780,9 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         # TRIMP enhancement metadata
         'trimp_calculation_method': trimp_calculation_method,
         'hr_stream_sample_count': hr_stream_sample_count,
-        'trimp_processed_at': datetime.now().isoformat()
+        'trimp_processed_at': datetime.now().isoformat(),
+        # HR stream data for saving after main activity record is created
+        'hr_stream_data': hr_stream_data
     }
 
     logger.info(
@@ -1278,64 +1278,8 @@ def estimate_hr_zones_from_average_hr(avg_hr, duration_minutes, max_hr=180, rest
 def save_training_load(load_data, filename=None):
     """Save training load data to database."""
     try:
-        # DIAGNOSTIC LOGGING - START
-        logger.info(f"DIAGNOSIS: Starting save_training_load for activity {load_data.get('activity_id')}")
-
-        # Extract data types for logging (avoiding backslash in f-string)
-        input_types = [(k, type(v).__name__) for k, v in load_data.items()]
-        logger.info(f"DIAGNOSIS: Input data types: {input_types}")
-
-        # Check for specific numpy types in the data
-        numpy_types_found = []
-        for k, v in load_data.items():
-            type_str = str(type(v))
-            if type_str.startswith('<class \'numpy.'):
-                numpy_types_found.append(f"{k}: {type(v)}")
-
-        if numpy_types_found:
-            logger.warning(f"DIAGNOSIS: NumPy types detected BEFORE conversion: {numpy_types_found}")
-        else:
-            logger.info("DIAGNOSIS: No NumPy types detected in input data")
-
-        # Test if convert_numpy_types function is accessible
-        try:
-            logger.info("DIAGNOSIS: Testing convert_numpy_types function access...")
-            test_result = convert_numpy_types({'test': 42})
-            logger.info(f"DIAGNOSIS: convert_numpy_types function is accessible, test result: {test_result}")
-        except Exception as func_error:
-            logger.error(f"DIAGNOSIS: convert_numpy_types function failed: {func_error}")
-            raise
-
-        # In save_training_load(), before conversion:
-        numpy_fields = {k: type(v) for k, v in load_data.items() if 'numpy' in str(type(v))}
-        if numpy_fields:
-            logger.warning(f"SPECIFIC NumPy fields detected: {numpy_fields}")
-
-        # Perform the actual conversion
-        try:
-            logger.info("DIAGNOSIS: Starting numpy type conversion...")
-            load_data = convert_numpy_types(load_data)
-            logger.info("DIAGNOSIS: Conversion completed successfully")
-        except Exception as conv_error:
-            logger.error(f"DIAGNOSIS: Conversion failed with error: {conv_error}")
-            raise
-
-        # Check data types after conversion
-        after_types = [(k, type(v).__name__) for k, v in load_data.items()]
-        logger.info(f"DIAGNOSIS: After conversion types: {after_types}")
-
-        # Check for remaining numpy types after conversion
-        remaining_numpy_types = []
-        for k, v in load_data.items():
-            type_str = str(type(v))
-            if type_str.startswith('<class \'numpy.'):
-                remaining_numpy_types.append(f"{k}: {type(v)}")
-
-        if remaining_numpy_types:
-            logger.error(f"DIAGNOSIS: NumPy types STILL PRESENT after conversion: {remaining_numpy_types}")
-        else:
-            logger.info("DIAGNOSIS: All NumPy types successfully converted")
-        # DIAGNOSTIC LOGGING - END
+        # Convert numpy types to native Python types
+        load_data = convert_numpy_types(load_data)
 
         # Check if this activity is already in the database
         activity_id = load_data['activity_id']
@@ -1350,46 +1294,35 @@ def save_training_load(load_data, filename=None):
             logger.info(f"Activity {activity_id} already in database - skipping")
             return
 
+        # Extract hr_stream_data before insertion (it goes to hr_streams table, not activities table)
+        hr_stream_data = load_data.pop('hr_stream_data', None)
+
         # Build the INSERT query
         columns = ', '.join(load_data.keys())
-        placeholders = ', '.join(['?'] * len(load_data))
+        placeholders = ', '.join(['%s'] * len(load_data))
         values = tuple(load_data.values())
 
-        # DIAGNOSTIC LOGGING - SQL PREPARATION
-        logger.info(f"DIAGNOSIS: SQL columns: {columns}")
-        logger.info(f"DIAGNOSIS: SQL placeholders: {placeholders}")
-
-        # Extract types for logging
-        sql_value_types = [type(v).__name__ for v in values]
-        logger.info(f"DIAGNOSIS: Final SQL values types: {sql_value_types}")
-
-        # Check for numpy types in final SQL values
-        sql_numpy_types = []
-        problematic_values = []
-        for i, v in enumerate(values):
-            type_str = str(type(v))
-            if type_str.startswith('<class \'numpy.'):
-                sql_numpy_types.append(f"Position {i}: {type(v)}")
-                problematic_values.append(v)
-
-        if sql_numpy_types:
-            logger.error(f"DIAGNOSIS: NumPy types in FINAL SQL VALUES: {sql_numpy_types}")
-            logger.error(f"DIAGNOSIS: Problematic values: {problematic_values}")
-        else:
-            logger.info("DIAGNOSIS: No NumPy types in final SQL values - should work")
-
         # Insert the record
-        logger.info("DIAGNOSIS: About to execute SQL INSERT...")
         execute_query(
             f"INSERT INTO activities ({columns}) VALUES ({placeholders})",
             values
         )
 
-        logger.info(f"DIAGNOSIS: Successfully saved training load data for activity {activity_id}")
         logger.info(f"Saved training load data for activity {activity_id} to database")
+        
+        # Save HR stream data if available (after main activity record is created)
+        if hr_stream_data is not None:
+            try:
+                from db_utils import save_hr_stream_data
+                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
+                if save_result:
+                    logger.info(f"Successfully saved HR stream data for activity {activity_id}")
+                else:
+                    logger.warning(f"Failed to save HR stream data for activity {activity_id}")
+            except Exception as save_error:
+                logger.error(f"Error saving HR stream data for activity {activity_id}: {str(save_error)}")
 
     except Exception as e:
-        logger.error(f"DIAGNOSIS: Error in save_training_load: {str(e)}")
         logger.error(f"Error saving training load to database: {str(e)}")
         raise
 

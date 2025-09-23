@@ -68,7 +68,7 @@ def save_activity_safely(load_data):
 
         # Build INSERT query
         columns = ', '.join(load_data.keys())
-        placeholders = ', '.join(['?'] * len(load_data))
+        placeholders = ', '.join(['%s'] * len(load_data))
         values = tuple(load_data.values())
 
         execute_query(

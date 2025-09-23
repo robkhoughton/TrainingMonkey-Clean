@@ -131,28 +131,9 @@ class SimpleTokenManager:
         try:
             logger.info(f"Saving tokens to database for user {self.user_id}")
 
-            # Try secure storage first
-            try:
-                from secure_token_storage import SecureTokenStorage
-                secure_storage = SecureTokenStorage(self.user_id)
-                
-                # Get context information for audit logging
-                context = {
-                    'operation': 'oauth_callback',
-                    'user_id': self.user_id,
-                    'athlete_id': athlete_id,
-                    'source': 'enhanced_token_management'
-                }
-                
-                success = secure_storage.save_tokens_secure(tokens, athlete_id, context)
-                if success:
-                    logger.info(f"Tokens saved securely for user {self.user_id}")
-                    return True
-                else:
-                    logger.warning(f"Secure storage failed, falling back to basic storage for user {self.user_id}")
-                    
-            except Exception as secure_error:
-                logger.warning(f"Secure storage not available, using basic storage: {str(secure_error)}")
+            # TEMPORARY FIX: Skip secure storage for existing users to avoid encryption issues
+            # TODO: Implement proper token migration from plain text to encrypted storage
+            logger.info(f"Using basic storage for user {self.user_id} (secure storage temporarily disabled)")
 
             # Fallback to basic storage
             query = """
@@ -182,27 +163,9 @@ class SimpleTokenManager:
     def load_tokens_from_database(self):
         """Load tokens from database with secure storage integration"""
         try:
-            # Try secure storage first
-            try:
-                from secure_token_storage import SecureTokenStorage
-                secure_storage = SecureTokenStorage(self.user_id)
-                
-                # Get context information for audit logging
-                context = {
-                    'operation': 'token_load',
-                    'user_id': self.user_id,
-                    'source': 'enhanced_token_management'
-                }
-                
-                tokens = secure_storage.load_tokens_secure(context)
-                if tokens:
-                    logger.info(f"Tokens loaded securely for user {self.user_id}")
-                    return tokens
-                else:
-                    logger.info(f"No secure tokens found for user {self.user_id}")
-                    
-            except Exception as secure_error:
-                logger.warning(f"Secure storage failed for user {self.user_id}, falling back to basic storage: {str(secure_error)}")
+            # TEMPORARY FIX: Skip secure storage for existing users to avoid encryption issues
+            # TODO: Implement proper token migration from plain text to encrypted storage
+            logger.info(f"Using basic storage for user {self.user_id} (secure storage temporarily disabled)")
 
             # Fallback to basic storage
             query = """

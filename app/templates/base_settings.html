@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Settings - Your Training Monkey{% endblock %}</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="{% block meta_description %}Configure your Training Monkey settings for optimal training analysis and injury prevention.{% endblock %}">
+    <meta name="keywords" content="{% block meta_keywords %}training settings, heart rate zones, ACWR, training configuration, TrainingMonkey settings{% endblock %}">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{{ self.meta_description() }}{% endblock %}">
+    <meta property="og:url" content="{{ request.url }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+
+    <!-- Getting Started CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/getting_started.css') }}">
+    
+    <!-- Monkey Mascot Styles -->
+    <style>
+        /* Monkey mascot styling with circular text */
+        .monkey-mascot {
+            position: relative;
+            z-index: 2;
+            width: 120px;
+            height: 120px;
+            margin-left: 2rem;
+            filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+            transition: transform 0.3s ease;
+        }
+
+        .monkey-mascot:hover {
+            transform: scale(1.05) rotate(5deg);
+        }
+
+        .monkey-mascot img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Circular text around monkey mascot */
+        .circular-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .circular-text svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .circular-text text {
+            fill: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-weight: 600;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .monkey-mascot {
+                width: 80px;
+                height: 80px;
+                margin-left: 1rem;
+            }
+
+            .circular-text {
+                width: 140px;
+                height: 140px;
+                font-size: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .monkey-mascot {
+                width: 60px;
+                height: 60px;
+                margin-left: 0.5rem;
+            }
+
+            .circular-text {
+                width: 100px;
+                height: 100px;
+                font-size: 10px;
+            }
+        }
+
+        /* Main Dashboard Navigation Bar (Upper Left) */
+        .main-dashboard-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 0.5rem 1rem;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .main-dashboard-nav-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .main-dashboard-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background-color: transparent;
+            color: #1f2937;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            text-decoration: none;
+            border-radius: 6px;
+            min-width: 120px;
+        }
+
+        .main-dashboard-nav a:hover {
+            color: #667eea;
+            background-color: rgba(102, 126, 234, 0.1);
+        }
+
+        .main-dashboard-nav a.active {
+            color: #667eea;
+            font-weight: 600;
+            background-color: rgba(102, 126, 234, 0.15);
+        }
+
+        /* Header Styling */
+        .header {
+            margin-left: 200px; /* Make room for fixed main nav */
+        }
+
+        /* Settings Sub-Navigation Bar (Inline with header) */
+        .settings-nav {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(8px);
+            padding: 1rem 2rem;
+            margin-left: 200px; /* Make room for fixed main nav */
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .settings-nav-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+            gap: 2rem;
+        }
+
+        .settings-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+            background-color: transparent;
+            color: #1f2937;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: color 0.3s ease;
+            position: relative;
+            text-decoration: none;
+        }
+
+        .settings-nav a:hover {
+            color: #667eea;
+        }
+
+        .settings-nav a.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .settings-nav a.active::after {
+            content: '';
+            position: absolute;
+            bottom: -0.5rem;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+            border-radius: 1px;
+        }
+
+        /* Settings Content Styling */
+        .settings-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            margin-left: 200px; /* Make room for fixed main nav */
+            padding: 2rem;
+        }
+
+        .settings-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .settings-section h2 {
+            color: #1e293b;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: border-color 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: #3b82f6;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+        }
+
+        .alert-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body data-user-authenticated="{{ 'true' if user_context and user_context.is_authenticated else 'false' }}">
+    <!-- Header -->
+    <header class="header">
+        <div class="monkey-mascot">
+            <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="Your Training Monkey Mascot">
+            <div class="circular-text">
+                <svg viewBox="0 0 200 200">
+                    <defs>
+                        <!-- Drop shadow filter -->
+                        <filter id="textShadow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.3)"/>
+                        </filter>
+                        <!-- Upper half circle path -->
+                        <path id="upperCircle" d="M 20, 100 A 80,80 0 0,1 180, 100"/>
+                        <!-- Lower half circle path (reversed for upright text) -->
+                        <path id="lowerCircle" d="M 20, 100 A 80,80 0 0,0 180, 100"/>
+                    </defs>
+                    <!-- Upper text -->
+                    <text font-size="18" font-weight="700" filter="url(#textShadow)">
+                        <textPath href="#upperCircle" startOffset="50%" text-anchor="middle">
+                            Your Training Monkey
+                        </textPath>
+                    </text>
+                    <!-- Lower text (upright) -->
+                    <text>
+                        <textPath href="#lowerCircle" startOffset="50%" text-anchor="middle">
+                            Prevent Injuries - Train Smarter
+                        </textPath>
+                    </text>
+                </svg>
+            </div>
+        </div>
+        <div class="header-content">
+            {% block header_title %}
+            <h1>Settings</h1>
+            <p class="subtitle">Configure Your Training Analysis</p>
+            <p class="description">Personalize your Training Monkey experience with custom settings for optimal training load analysis and injury prevention.</p>
+            {% endblock %}
+        </div>
+    </header>
+
+    <!-- Main Dashboard Navigation (Upper Left) -->
+    <div class="main-dashboard-nav">
+        <div class="main-dashboard-nav-content">
+            <a href="/dashboard">
+                <span>📊</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="/activities">
+                <span>🏃</span>
+                <span>Activities</span>
+            </a>
+            <a href="/journal">
+                <span>📝</span>
+                <span>Journal</span>
+            </a>
+            <a href="/guide">
+                <span>📚</span>
+                <span>Guide</span>
+            </a>
+            <a href="/settings/profile" class="active">
+                <span>⚙️</span>
+                <span>Settings</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Settings Sub-Navigation (Inline with header) -->
+    <div class="settings-nav">
+        <div class="settings-nav-content">
+            <a href="/settings/profile" {% if active_section == 'profile' %}class="active"{% endif %}>
+                <span>👤</span>
+                <span>Profile</span>
+            </a>
+            <a href="/settings/hrzones" {% if active_section == 'hrzones' %}class="active"{% endif %}>
+                <span>❤️</span>
+                <span>HR Zones</span>
+            </a>
+            <a href="/settings/training" {% if active_section == 'training' %}class="active"{% endif %}>
+                <span>🏃</span>
+                <span>Training</span>
+            </a>
+            <a href="/settings/coaching" {% if active_section == 'alerts' %}class="active"{% endif %}>
+                <span>🔔</span>
+                <span>Coaching</span>
+            </a>
+            <a href="/acwr-visualization" {% if active_section == 'acwr' %}class="active"{% endif %}>
+                <span>📊</span>
+                <span>ACWR</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="settings-content">
+            {% block content %}
+            <!-- Settings content goes here -->
+            {% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 TrainingMonkey. All rights reserved.</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Add smooth transitions for navigation
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.dashboard-nav a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // Add transition effect
+                    document.body.style.transition = 'opacity 0.3s ease';
+                    document.body.style.opacity = '0.7';
+                });
+            });
+        });
+    </script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

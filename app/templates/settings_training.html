@@ -1,0 +1,306 @@
+{% extends "base_getting_started.html" %}
+
+{% block title %}Training Settings - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Configure your training goals, experience level, and training preferences for personalized recommendations.{% endblock %}
+
+{% block header_title %}
+<h1>Training Settings</h1>
+<p class="subtitle">Training Goals & Experience Configuration</p>
+<p class="description">Set up your training goals, experience level, and preferences to receive personalized training recommendations.</p>
+{% endblock %}
+
+{% block navigation %}
+<!-- Settings Navigation -->
+<nav class="nav">
+    <div class="nav-content">
+        <a href="/" class="nav-logo">Your Training Monkey</a>
+        <ul class="nav-links">
+            <li><a href="/settings/profile">Profile</a></li>
+            <li><a href="/settings/hrzones">HR Zones</a></li>
+            <li><a href="/settings/training" class="active">Training</a></li>
+            <li><a href="/settings/coaching">Coaching</a></li>
+            <li><a href="/settings/acwr">ACWR</a></li>
+        </ul>
+    </div>
+</nav>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Prevent flash of unstyled content for date inputs -->
+<style>
+    input[type="date"] {
+        font-family: inherit !important;
+        font-size: 1rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: textfield !important;
+        appearance: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Training Goals Section -->
+<section class="setup-section">
+    <h2>🎯 Training Goals & Experience</h2>
+    
+    <form id="trainingForm" method="POST" action="/api/settings/training">
+        <div class="form-container">
+        <div class="form-group">
+            <label for="primary_sport">Primary Sport</label>
+            <select id="primary_sport" name="primary_sport" required>
+                <option value="">Select Your Primary Sport</option>
+                <option value="running" {% if user and user.primary_sport == 'running' %}selected{% endif %}>Running</option>
+                <option value="cycling" {% if user and user.primary_sport == 'cycling' %}selected{% endif %}>Cycling</option>
+                <option value="swimming" {% if user and user.primary_sport == 'swimming' %}selected{% endif %}>Swimming</option>
+                <option value="triathlon" {% if user and user.primary_sport == 'triathlon' %}selected{% endif %}>Triathlon</option>
+                <option value="strength" {% if user and user.primary_sport == 'strength' %}selected{% endif %}>Strength Training</option>
+                <option value="other" {% if user and user.primary_sport == 'other' %}selected{% endif %}>Other</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Your main training focus for load calculations</small>
+        </div>
+
+        <div class="form-group">
+            <label for="secondary_sport">Secondary Sport</label>
+            <select id="secondary_sport" name="secondary_sport">
+                <option value="">Select Secondary Sport (Optional)</option>
+                <option value="running" {% if user and user.secondary_sport == 'running' %}selected{% endif %}>Running</option>
+                <option value="cycling" {% if user and user.secondary_sport == 'cycling' %}selected{% endif %}>Cycling</option>
+                <option value="swimming" {% if user and user.secondary_sport == 'swimming' %}selected{% endif %}>Swimming</option>
+                <option value="triathlon" {% if user and user.secondary_sport == 'triathlon' %}selected{% endif %}>Triathlon</option>
+                <option value="strength" {% if user and user.secondary_sport == 'strength' %}selected{% endif %}>Strength Training</option>
+                <option value="other" {% if user and user.secondary_sport == 'other' %}selected{% endif %}>Other</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Additional sport for cross-training analysis</small>
+        </div>
+
+        <div class="form-group">
+            <label for="training_experience">Training Experience Level</label>
+            <select id="training_experience" name="training_experience" required>
+                <option value="">Select Your Experience Level</option>
+                <option value="beginner" {% if user and user.training_experience == 'beginner' %}selected{% endif %}>Beginner (0-1 years)</option>
+                <option value="intermediate" {% if user and user.training_experience == 'intermediate' %}selected{% endif %}>Intermediate (1-3 years)</option>
+                <option value="advanced" {% if user and user.training_experience == 'advanced' %}selected{% endif %}>Advanced (3-5 years)</option>
+                <option value="elite" {% if user and user.training_experience == 'elite' %}selected{% endif %}>Elite (5+ years)</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Used to adjust training load recommendations and progression rates</small>
+        </div>
+
+        <div class="form-group">
+            <label for="weekly_training_hours">Weekly Training Hours</label>
+            <input type="number" id="weekly_training_hours" name="weekly_training_hours" min="1" max="40" value="{{ user.weekly_training_hours if user else '8' }}" required>
+            <small style="color: #6b7280; font-size: 0.875rem;">Average hours per week for training load calculations</small>
+        </div>
+
+        <div class="form-group">
+            <label for="current_phase">Current Training Phase</label>
+            <select id="current_phase" name="current_phase" required>
+                <option value="">Select Training Phase</option>
+                <option value="base" {% if user and user.current_phase == 'base' %}selected{% endif %}>Base Building</option>
+                <option value="build" {% if user and user.current_phase == 'build' %}selected{% endif %}>Build Phase</option>
+                <option value="peak" {% if user and user.current_phase == 'peak' %}selected{% endif %}>Peak Phase</option>
+                <option value="race" {% if user and user.current_phase == 'race' %}selected{% endif %}>Race Phase</option>
+                <option value="recovery" {% if user and user.current_phase == 'recovery' %}selected{% endif %}>Recovery</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Current periodization phase for training recommendations</small>
+        </div>
+
+        <div class="form-group">
+            <label for="race_goal_date">Race Goal Date (Optional)</label>
+            <input type="date" id="race_goal_date" name="race_goal_date" value="{{ user.race_goal_date.strftime('%Y-%m-%d') if user and user.race_goal_date else '' }}">
+            <small style="color: #6b7280; font-size: 0.875rem;">Target race date for periodization planning</small>
+        </div>
+        </div>
+
+        <div class="button-container">
+            <button type="submit" class="btn">
+                💾 Save Training Settings
+            </button>
+            <a href="/tutorials#training-settings-guide" class="btn btn-secondary" target="_blank">
+                📚 Learn More About Training Settings
+            </a>
+        </div>
+    </form>
+</section>
+
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Restore original selector box styling -->
+<style>
+    .form-container {
+        max-width: 350px; /* Adjusted width */
+        margin: 0 auto;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1.5rem;
+    }
+
+    .button-container {
+        display: flex;
+        flex-direction: column; /* Stack buttons vertically */
+        gap: 1rem;
+        margin-top: 2rem;
+        align-items: center; /* Center buttons horizontally */
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group select {
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+        transition: border-color 0.2s ease;
+        background-color: white;
+        width: 100%;
+        max-width: 100%; /* Adjusted max-width */
+        min-width: 200px;
+    }
+
+    /* Specific styling for date inputs to ensure consistent font */
+    .form-group input[type="date"] {
+        font-family: inherit !important;
+        font-size: 1rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: textfield !important;
+        appearance: none !important;
+    }
+
+    /* Prevent flash of unstyled content for date inputs */
+    input[type="date"] {
+        font-family: inherit !important;
+        font-size: 1rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #3182ce;
+        box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+    }
+
+    .form-group small {
+        color: #718096;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        font-style: italic;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn:not(.btn-secondary) {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn:not(.btn-secondary):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #f7fafc;
+        color: #4a5568;
+        border: 2px solid #e2e8f0;
+    }
+
+    .btn-secondary:hover {
+        background: #edf2f7;
+        border-color: #cbd5e0;
+    }
+
+    /* Responsive design for form inputs */
+    @media (max-width: 768px) {
+        .form-container {
+            max-width: 100%;
+            padding: 0 1rem;
+        }
+        
+        .form-group input,
+        .form-group select {
+            min-width: 150px;
+            max-width: 100%;
+        }
+
+        .button-container {
+            flex-direction: column;
+            align-items: center;
+        }
+    }
+</style>
+
+<script>
+    // Handle training form submission
+    document.getElementById('trainingForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+        
+        try {
+            const response = await fetch('/api/settings/training', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                showAlert('Training settings saved successfully!', 'success');
+            } else {
+                const error = await response.json();
+                showAlert(error.message || 'Failed to save training settings', 'error');
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'error');
+        }
+    });
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type}`;
+        alertDiv.textContent = message;
+        
+        const form = document.getElementById('trainingForm');
+        form.parentNode.insertBefore(alertDiv, form);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+</script>
+{% endblock %}

@@ -32,6 +32,9 @@ RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.pytho
 COPY strava_app.py .
 COPY strava_training_load.py .
 COPY db_utils.py .
+COPY db_connection_manager.py .
+COPY optimized_token_management.py .
+COPY optimized_acwr_service.py .
 COPY llm_recommendations_module.py .
 COPY unified_metrics_service.py .
 COPY enhanced_token_management.py .
@@ -75,6 +78,8 @@ COPY migration_notification_system.py .
 COPY historical_trimp_recalculation.py .
 COPY trimp_deployment_monitor.py .
 COPY deploy_trimp_enhancement.py .
+COPY enhanced_trimp_metrics.py .
+COPY comprehensive_admin_dashboard.py .
 
 # Copy ACWR Configuration and Calculation Services
 COPY acwr_calculation_service.py .
@@ -133,6 +138,8 @@ RUN echo "=== Verifying build file structure ===" && \
     ls -la /app/build/static/ || echo "static subdirectory not found" && \
     echo "=== Verifying static file structure ===" && \
     ls -la /app/static/ && \
+    echo "=== Checking for training-monkey-runner.webp ===" && \
+    ls -la /app/static/training-monkey-runner.webp || echo "training-monkey-runner.webp not found" && \
     echo "=== Checking images directory ===" && \
     ls -la /app/static/images/ || echo "images directory not found"
 

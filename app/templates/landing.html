@@ -208,6 +208,8 @@
         .step-card .step-description { margin-top: 0.35rem; }
         .mini-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .mini-chart-card { background: rgba(255, 255, 255, 0.95); border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; backdrop-filter: blur(2px); }
+        .demo-chart-container { padding: 1rem; border-bottom: 1px solid #e2e8f0; }
+        .demo-chart-card { background: rgba(255, 255, 255, 0.95); border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; backdrop-filter: blur(2px); }
 
         /* Unified demo panel */
         .demo-panel { background: rgba(255, 255, 255, 0.95); border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06); overflow: hidden; backdrop-filter: blur(2px); padding: 1.0rem; }
@@ -792,20 +794,36 @@
 </head>
 <body>
     <div class="above-fold">
-        <nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10;">
+        <nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10; display: flex; flex-direction: column; gap: 0.5rem;">
             <a href="/login" style="
                 display: inline-block;
                 background: rgba(255,255,255,0.9);
                 color: #1e293b;
-                padding: 0.75rem 1.5rem;
+                padding: 0.5rem 1rem;
                 border-radius: 8px;
                 text-decoration: none;
                 font-weight: 600;
                 backdrop-filter: blur(10px);
                 border: 1px solid rgba(255,255,255,0.2);
                 transition: all 0.2s ease;
+                text-align: center;
             " onmouseover="this.style.background='rgba(255,255,255,1)'" onmouseout="this.style.background='rgba(255,255,255,0.9)'">
                 Sign In
+            </a>
+            <a href="#" onclick="scrollToStravaButton(); return false;" style="
+                display: inline-block;
+                background: rgba(255,255,255,0.9);
+                color: #1e293b;
+                padding: 0.5rem 1rem;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 600;
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.2);
+                transition: all 0.2s ease;
+                text-align: center;
+            " onmouseover="this.style.background='rgba(255,255,255,1)'" onmouseout="this.style.background='rgba(255,255,255,0.9)'">
+                Sign Up
             </a>
         </nav>
         <!-- Flash Messages -->
@@ -854,6 +872,23 @@
                 <h1>Your Training Monkey</h1>
                 <p class="subtitle">Prevent Injuries — Train Smarter</p>
                 <p class="description">The only platform with patent-pending <strong>normalized divergence analysis</strong> that reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
+                <div style="margin-top: 1.5rem;">
+                    <a href="/tutorials" class="btn btn-learn-more" style="
+                        display: inline-block;
+                        padding: 0.75rem 1.5rem;
+                        background: rgba(255, 255, 255, 0.2);
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        font-size: 1rem;
+                        border: 2px solid rgba(255, 255, 255, 0.3);
+                        transition: all 0.3s ease;
+                        backdrop-filter: blur(10px);
+                    " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.5)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(0)'">
+                        📚 Learn More
+                    </a>
+                </div>
             </div>
         </section>
 
@@ -865,7 +900,7 @@
             <div class="hero-demo-container">
                 <!-- Left: TAKE ACTION -->
                 <div>
-                    <div class="band-label band-action" style="background: rgba(139, 92, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem;">Take Action</div>
+                    <div class="band-label band-action" id="take-action-header" style="background: rgba(139, 92, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem; cursor: pointer; transition: all 0.3s ease;" onclick="scrollToStravaButton()" onmouseover="this.style.background='rgba(139, 92, 246, 1)'; this.style.transform='scale(1.05)'" onmouseout="this.style.background='rgba(139, 92, 246, 0.9)'; this.style.transform='scale(1)'">Take Action</div>
                     <h2 class="demo-title">Are YOU At Risk? <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="🐒" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-left: 0.5rem; border: 2px solid rgba(139, 92, 246, 0.3);"></h2>
                     <p class="demo-subtitle">Explore how <i>Your Training Monkey</i> analyzes your training balance in real-time to assess your risk of overtraining or injury.</p>
                     <div class="steps-stack" style="margin-top: 0.75rem;">
@@ -879,12 +914,9 @@
                 <div>
                     <div class="demo-panel">
                         <div class="band-label band-demo" style="background: rgba(59, 130, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem;">Patent-Pending Technology</div>
-                        <div class="mini-charts-grid">
-                            <div class="mini-chart-card">
-                                <img src="{{ url_for('serve_landing_static', filename='images/acwr-chart-screenshot.png') }}" alt="ACWR Chart" style="width: 100%; height: 240px; object-fit: cover; display: block;">
-                            </div>
-                            <div class="mini-chart-card">
-                                <img src="{{ url_for('serve_landing_static', filename='images/tim-chart-screenshot.png') }}" alt="Training Monkey Index" style="width: 100%; height: 240px; object-fit: cover; display: block;">
+                        <div class="demo-chart-container">
+                            <div class="demo-chart-card">
+                                <img src="{{ url_for('serve_landing_static', filename='images/overtraining-risk-chart.png') }}" alt="Overtraining Risk Analysis" style="width: 100%; height: 300px; object-fit: cover; display: block;">
                             </div>
                         </div>
                         <div class="analysis-card">
@@ -946,7 +978,7 @@
             <p class="cta-description">Connect <i>Your Training Monkey</i> to your Strava account and get instant access to training insights you can't find anywhere else. No commitment 30-day free trial.</p>
 
             <!-- Primary CTA: Strava Connect -->
-            <a href="/auth/strava-signup" onclick="trackCTAClick()" style="display: inline-block; margin-right: 1rem;">
+            <a href="/auth/strava-signup" id="strava-connect-button" onclick="trackCTAClick()" style="display: inline-block;">
                 <img src="{{ url_for('serve_landing_static', filename='btn_strava_connect_with_orange_x2.svg') }}"
                      alt="Connect with Strava"
                      style="height: 48px; width: auto; transition: transform 0.2s ease;"
@@ -954,16 +986,14 @@
                      onmouseout="this.style.transform='translateY(0)'">
             </a>
 
-            <!-- Secondary CTA: See How It Works -->
-            <a href="/getting-started?source=landing" onclick="trackGettingStartedClick()" 
-               style="display: inline-block; background: rgba(255,255,255,0.2); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; border: 2px solid rgba(255,255,255,0.3); transition: all 0.3s ease; backdrop-filter: blur(10px);"
-               onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.borderColor='rgba(255,255,255,0.5)'; this.style.transform='translateY(-2px)'"
-               onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.borderColor='rgba(255,255,255,0.3)'; this.style.transform='translateY(0)'">
-                See How It Works
-            </a>
-
             <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
                 Requires 28+ days of training data for reliable analysis
+            </p>
+            <p style="margin-top: 0.5rem; opacity: 0.7; font-size: 0.85rem; color: #6b7280;">
+                ⚡ Authorization expires quickly - please complete the process promptly
+            </p>
+            <p style="margin-top: 0.5rem; opacity: 0.8; font-size: 0.9rem;">
+                Contact: <a href="mailto:support@yourtrainingmonkey.com" style="color: #1e40af; text-decoration: none; font-weight: 500;">support@yourtrainingmonkey.com</a>
             </p>
         </div>
     </section>
@@ -1197,6 +1227,42 @@
                 startAutoCycle();
             }
         });
+
+        // Scroll to Strava button and highlight it
+        function scrollToStravaButton() {
+            const stravaButton = document.getElementById('strava-connect-button');
+            if (stravaButton) {
+                // Smooth scroll to the button
+                stravaButton.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+                
+                // Add highlighting effect
+                stravaButton.style.transition = 'all 0.5s ease';
+                stravaButton.style.transform = 'scale(1.1)';
+                stravaButton.style.boxShadow = '0 0 20px rgba(255, 165, 0, 0.8)';
+                stravaButton.style.borderRadius = '8px';
+                stravaButton.style.padding = '8px';
+                stravaButton.style.backgroundColor = 'rgba(255, 165, 0, 0.1)';
+                
+                // Remove highlight after 3 seconds
+                setTimeout(() => {
+                    stravaButton.style.transform = 'scale(1)';
+                    stravaButton.style.boxShadow = 'none';
+                    stravaButton.style.backgroundColor = 'transparent';
+                    stravaButton.style.padding = '0';
+                }, 3000);
+                
+                // Track analytics
+                if (typeof gtag !== 'undefined') {
+                    gtag('event', 'click', {
+                        event_category: 'CTA',
+                        event_label: 'Take Action Header'
+                    });
+                }
+            }
+        }
     </script>
 </body>
 </html>

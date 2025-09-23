@@ -62,22 +62,123 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# API Logging Middleware for Performance Monitoring
+@app.before_request
+def log_request_start():
+    """Log the start of each API request"""
+    request.start_time = time.time()
+    request.request_size = len(request.get_data()) if request.get_data() else 0
+
+@app.after_request
+def log_request_end(response):
+    """Log the completion of each API request"""
+    try:
+        # Calculate response time
+        response_time_ms = int((time.time() - getattr(request, 'start_time', time.time())) * 1000)
+        
+        # Get request details
+        endpoint = request.endpoint or request.path
+        method = request.method
+        status_code = response.status_code
+        user_id = getattr(current_user, 'id', None) if hasattr(current_user, 'id') else None
+        
+        # Get response size (handle direct passthrough mode)
+        try:
+            response_data = response.get_data()
+            response_size = len(response_data) if response_data else 0
+        except Exception:
+            # Handle direct passthrough mode or other response types
+            response_size = 0
+        
+        # Get client info
+        user_agent = request.headers.get('User-Agent', '')
+        ip_address = request.remote_addr
+        
+        # Log to database (async to avoid blocking response)
+        log_api_request_async(
+            endpoint=endpoint,
+            method=method,
+            response_time_ms=response_time_ms,
+            status_code=status_code,
+            user_id=user_id,
+            request_size=request.request_size,
+            response_size=response_size,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            error_message=None if status_code < 400 else f"HTTP {status_code}"
+        )
+        
+    except Exception as e:
+        # Don't let logging errors break the response
+        logger.warning(f"API logging error: {str(e)}")
+    
+    return response
+
+def log_api_request_async(endpoint, method, response_time_ms, status_code, user_id=None, 
+                         request_size=0, response_size=0, user_agent='', ip_address='', error_message=None):
+    """Log API request to database (non-blocking)"""
+    try:
+        from db_utils import execute_query
+        
+        execute_query("""
+            INSERT INTO api_logs (
+                endpoint, method, response_time_ms, status_code, user_id,
+                request_size_bytes, response_size_bytes, user_agent, ip_address, error_message
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, params=(
+            endpoint, method, response_time_ms, status_code, user_id,
+            request_size, response_size, user_agent, ip_address, error_message
+        ))
+        
+    except Exception as e:
+        # Log to application logger if database logging fails
+        logger.error(f"Failed to log API request to database: {str(e)}")
+
 # Initialize database connection pool
-@app.before_first_request
-def initialize_database_pool():
-    """Initialize database connection pool for improved performance"""
+def initialize_database_pool_on_startup():
+    """Initialize database connection pool for improved performance with robust error handling"""
     try:
         database_url = os.environ.get('DATABASE_URL')
-        if database_url:
-            success = initialize_database_pool(database_url)
-            if success:
-                logger.info("✅ Database connection pool initialized successfully")
-            else:
-                logger.error("❌ Failed to initialize database connection pool")
-        else:
+        if not database_url:
             logger.error("❌ DATABASE_URL environment variable not found")
+            logger.warning("⚠️  Falling back to direct database connections")
+            return False
+            
+        logger.info(f"🔗 Initializing database connection pool...")
+        logger.info(f"📊 Database URL: {database_url[:50]}...")
+        
+        # Try to initialize the connection pool
+        success = initialize_database_pool(database_url)
+        
+        if success:
+            # Test the connection pool
+            try:
+                from db_connection_manager import db_manager
+                with db_manager.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("SELECT 1")
+                        result = cursor.fetchone()
+                        if result:
+                            logger.info("✅ Database connection pool initialized and tested successfully")
+                            return True
+                        else:
+                            logger.error("❌ Connection pool test failed - no result returned")
+                            return False
+            except Exception as test_error:
+                logger.error(f"❌ Connection pool test failed: {str(test_error)}")
+                return False
+        else:
+            logger.error("❌ Failed to initialize database connection pool")
+            logger.warning("⚠️  Falling back to direct database connections")
+            return False
+            
     except Exception as e:
         logger.error(f"❌ Error initializing database connection pool: {str(e)}")
+        logger.warning("⚠️  Falling back to direct database connections")
+        return False
+
+# Initialize database pool immediately after app creation
+initialize_database_pool_on_startup()
 
 # Cleanup database pool on app shutdown
 @app.teardown_appcontext
@@ -99,28 +200,34 @@ def load_user(user_id):
     return User.get(user_id)
 
 def needs_onboarding(user_id):
-    """Check if user needs to complete onboarding"""
+    """Check if user needs to complete onboarding with robust error handling"""
     try:
-        from db_utils import get_db_connection
-        with get_db_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone
-                    FROM user_settings 
-                    WHERE id = %s
-                """, (user_id,))
-                
-                data = cursor.fetchone()
-                
-                if not data or not all([data['age'], data['gender'], data['training_experience'], 
-                                      data['primary_sport'], data['resting_hr'], 
-                                      data['max_hr'], data['coaching_tone']]):
-                    return True  # Needs onboarding
-                
-                return False  # Onboarding complete
+        # Use connection pool for onboarding operations
+        data = db_utils.execute_query_for_onboarding("""
+            SELECT age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone
+            FROM user_settings 
+            WHERE id = %s
+        """, (user_id,), fetch=True)
+        
+        if not data or len(data) == 0:
+            logger.info(f"User {user_id} not found in database - needs onboarding")
+            return True  # Needs onboarding
+            
+        user_data = data[0]
+        
+        # Check if all required fields are present
+        required_fields = ['age', 'gender', 'training_experience', 'primary_sport', 'resting_hr', 'max_hr', 'coaching_tone']
+        missing_fields = [field for field in required_fields if not user_data.get(field)]
+        
+        if missing_fields:
+            logger.info(f"User {user_id} missing onboarding fields: {missing_fields}")
+            return True  # Needs onboarding
+        
+        logger.info(f"User {user_id} onboarding complete")
+        return False  # Onboarding complete
                 
     except Exception as e:
-        logger.error(f"Error checking onboarding status: {e}")
+        logger.error(f"Error checking onboarding status for user {user_id}: {e}")
         return True  # Default to needing onboarding on error
 
 # Register blueprints
@@ -287,11 +394,22 @@ def oauth_callback():
         client = Client()
 
         # Exchange code for tokens
-        token_response = client.exchange_code_for_token(
-            client_id=client_id,
-            client_secret=client_secret,
-            code=auth_code
-        )
+        try:
+            token_response = client.exchange_code_for_token(
+                client_id=client_id,
+                client_secret=client_secret,
+                code=auth_code
+            )
+        except Exception as token_error:
+            error_msg = str(token_error).lower()
+            if 'expired' in error_msg or 'invalid' in error_msg or 'code' in error_msg:
+                logger.warning(f"OAuth code expired or invalid: {str(token_error)}")
+                flash('The authorization code has expired. Please try connecting to Strava again.', 'warning')
+                return redirect('/')
+            else:
+                logger.error(f"Token exchange failed: {str(token_error)}")
+                flash('Unable to connect to Strava. Please try again.', 'danger')
+                return redirect('/')
 
         # Get athlete info
         temp_client = Client(access_token=token_response['access_token'])
@@ -363,33 +481,66 @@ def oauth_callback():
         resting_hr = getattr(athlete, 'resting_hr', None) or 44
         max_hr = getattr(athlete, 'max_hr', None) or 178
         
-        # Create new user
-        result = db_utils.execute_query(
-            """INSERT INTO user_settings (
-                email, password_hash, is_admin, 
-                resting_hr, max_hr, gender,
-                strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (
-                email, password_hash, False,
-                resting_hr, max_hr, gender,
-                int(athlete_id), token_response['access_token'],
-                token_response['refresh_token'], token_response['expires_at']
-            ),
-            fetch=True
-        )
+        # Create new user and immediately retrieve it in the same connection
+        from db_utils import get_db_connection
         
-        if not result:
-            logger.error("Failed to create new user account")
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Insert user
+                cursor.execute(
+                    """INSERT INTO user_settings (
+                        email, password_hash, is_admin, 
+                        resting_hr, max_hr, gender,
+                        strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (
+                        email, password_hash, False,
+                        resting_hr, max_hr, gender,
+                        int(athlete_id), token_response['access_token'],
+                        token_response['refresh_token'], token_response['expires_at']
+                    )
+                )
+                
+                result = cursor.fetchone()
+                if not result:
+                    logger.error("Failed to create new user account")
+                    flash('Error creating user account. Please try again.', 'danger')
+                    return redirect('/')
+                
+                new_user_id = result['id']
+                logger.info(f"Created user with ID {new_user_id}, now retrieving...")
+                
+                # Immediately retrieve the user in the same connection
+                cursor.execute(
+                    "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin FROM user_settings WHERE id = %s",
+                    (new_user_id,)
+                )
+                
+                user_data = cursor.fetchone()
+                if not user_data:
+                    logger.error(f"Could not retrieve newly created user ID {new_user_id}")
+                    flash('Error logging in. Please try again.', 'danger')
+                    return redirect('/')
+                
+                # Convert to User object
+                user_dict = dict(user_data)
+                new_user = User(
+                    id=user_dict['id'],
+                    email=user_dict['email'],
+                    password_hash=user_dict['password_hash'],
+                    resting_hr=user_dict.get('resting_hr'),
+                    max_hr=user_dict.get('max_hr'),
+                    gender=user_dict.get('gender'),
+                    is_admin=user_dict.get('is_admin', False)
+                )
+                
+                logger.info(f"Successfully created and loaded user {new_user_id}")
+                
+        except Exception as db_error:
+            logger.error(f"Database error during user creation: {str(db_error)}")
             flash('Error creating user account. Please try again.', 'danger')
-            return redirect('/')
-        
-        new_user_id = result[0]['id']
-        new_user = User.get(new_user_id)
-        
-        if not new_user:
-            logger.error(f"Failed to load new user object for user ID {new_user_id}")
-            flash('Error logging in. Please try again.', 'danger')
             return redirect('/')
         
         # Log in the new user
@@ -397,13 +548,93 @@ def oauth_callback():
         session['is_first_login'] = True
         session['signup_source'] = 'landing_page'
         
-        flash(f'Welcome to Your Training Monkey, {first_name}! Let\'s analyze your training data.', 'success')
+        # Start Strava sync immediately after OAuth success
+        try:
+            logger.info(f"Starting Strava sync for new user {new_user.id}")
+            # Trigger sync in background for 28 days of data
+            import threading
+            def sync_new_user_data():
+                try:
+                    # Import the sync function
+                    from strava_training_load import process_activities_for_date_range
+                    from stravalib.client import Client
+                    from datetime import datetime, timedelta
+                    
+                    # Calculate date range (28 days back)
+                    end_date = datetime.now().date()
+                    start_date = end_date - timedelta(days=28)
+                    
+                    # Load tokens from database for this specific user (same as existing users)
+                    user_data = db_utils.execute_query(
+                        "SELECT strava_access_token, strava_refresh_token, strava_token_expires_at FROM user_settings WHERE id = %s",
+                        (new_user.id,),
+                        fetch=True
+                    )
+                    
+                    if not user_data or not user_data[0].get('strava_access_token'):
+                        logger.error(f"No Strava tokens found for new user {new_user.id}")
+                        session['strava_sync_failed'] = True
+                        return
+                    
+                    tokens = user_data[0]
+                    logger.info(f"Loaded tokens for new user {new_user.id}, expires at: {tokens.get('strava_token_expires_at')}")
+                    
+                    # Create Strava client with user's tokens
+                    client = Client(access_token=tokens['strava_access_token'])
+                    
+                    # Test connection
+                    try:
+                        athlete = client.get_athlete()
+                        logger.info(f"Connected to Strava as {athlete.firstname} {athlete.lastname} for new user {new_user.id}")
+                    except Exception as conn_error:
+                        logger.error(f"Strava connection failed for new user {new_user.id}: {str(conn_error)}")
+                        session['strava_sync_failed'] = True
+                        return
+                    
+                    # Process activities for this user
+                    process_activities_for_date_range(
+                        client=client,
+                        start_date=start_date.strftime('%Y-%m-%d'),
+                        end_date=end_date.strftime('%Y-%m-%d'),
+                        user_id=new_user.id
+                    )
+                    logger.info(f"Strava sync completed for new user {new_user.id}")
+                    # Note: Cannot update session from background thread
+                    
+                except Exception as sync_error:
+                    logger.error(f"Strava sync failed for new user {new_user.id}: {str(sync_error)}")
+                    # Note: Cannot update session from background thread
+            
+            # Start sync in background thread
+            sync_thread = threading.Thread(target=sync_new_user_data)
+            sync_thread.daemon = True
+            sync_thread.start()
+            
+            # Set sync status in session
+            session['strava_sync_in_progress'] = True
+            session['strava_sync_complete'] = False
+            session['strava_sync_failed'] = False
+            
+            flash('✅ Strava Connection Successful! Syncing your training data...', 'success')
+        except Exception as sync_error:
+            logger.error(f"Error starting Strava sync for user {new_user.id}: {str(sync_error)}")
+            flash('✅ Strava Connection Successful! You can sync your data from the dashboard.', 'success')
+        
         return redirect('/welcome-post-strava')
 
     except Exception as e:
         error_msg = f"OAuth callback error: {str(e)}"
         logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
+        
+        # Provide user-friendly error messages based on error type
+        if 'expired' in str(e).lower() or 'invalid' in str(e).lower():
+            flash('The authorization code has expired. Please try connecting to Strava again.', 'warning')
+        elif 'network' in str(e).lower() or 'connection' in str(e).lower():
+            flash('Network error connecting to Strava. Please check your connection and try again.', 'danger')
+        else:
+            flash('Unable to connect to Strava. Please try again.', 'danger')
+        
+        return redirect('/')
 
 
 @login_required
@@ -1306,6 +1537,18 @@ def get_training_data():
         logger.info(f"Getting training data for user {current_user.id}, range: {date_range} days, "
                     f"sport breakdown: {include_sport_breakdown}")
 
+        logger.info(f"Executing database query for user {current_user.id} with date filter: {start_date_str}")
+        
+        # Try a simpler query first to avoid potential locks
+        logger.info(f"Testing simple count query first...")
+        count_result = db_utils.execute_query(
+            "SELECT COUNT(*) as count FROM activities WHERE user_id = %s",
+            (current_user.id,),
+            fetch=True
+        )
+        logger.info(f"Count query result: {count_result}")
+        
+        # Now try the full query
         activities = db_utils.execute_query(
             """
             SELECT * FROM activities 
@@ -1316,14 +1559,31 @@ def get_training_data():
             (current_user.id, start_date_str),
             fetch=True
         )
+        logger.info(f"Database query completed. Found {len(activities) if activities else 0} activities")
 
         if not activities:
+            logger.info(f"No activities found for user {current_user.id} - returning empty response")
+            
+            # Check if user has Strava access token (can sync)
+            user_data = db_utils.execute_query(
+                "SELECT strava_access_token, strava_athlete_id FROM user_settings WHERE id = %s",
+                (current_user.id,),
+                fetch=True
+            )
+            
+            has_strava_token = user_data and user_data[0].get('strava_access_token')
+            strava_athlete_id = user_data[0].get('strava_athlete_id') if user_data else None
+            
             response_data = {
                 'success': True,
                 'message': 'No activities found',
                 'data': [],
                 'count': 0,
-                'raw_count': 0
+                'raw_count': 0,
+                'can_sync': has_strava_token,
+                'strava_athlete_id': strava_athlete_id,
+                'has_data': False,
+                'needs_sync': has_strava_token
             }
 
             # Add sport breakdown fields even when no data
@@ -1333,6 +1593,7 @@ def get_training_data():
                     'sport_summary': []
                 })
 
+            logger.info(f"Returning empty response for user {current_user.id} (can_sync: {has_strava_token})")
             return jsonify(response_data)
 
         # Convert to list of dictionaries
@@ -1451,7 +1712,8 @@ def get_stats():
                     'sevenDayAvgLoad': 0,
                     'sevenDayAvgTrimp': 0,
                     'normalizedDivergence': 0
-                }
+                },
+                'dashboard_config': None
             })
 
         # Count total real activities for the current user
@@ -1469,6 +1731,23 @@ def get_stats():
         else:
             total_activities = 0
 
+        # Get user's dashboard configuration
+        dashboard_config = None
+        try:
+            config_result = db_utils.execute_query("""
+                SELECT chronic_period_days, decay_rate, is_active
+                FROM user_dashboard_configs 
+                WHERE user_id = %s AND is_active = TRUE
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (current_user.id,), fetch=True)
+            
+            if config_result:
+                dashboard_config = config_result[0]
+                logger.info(f"User {current_user.id} has custom dashboard config: {dashboard_config}")
+        except Exception as e:
+            logger.warning(f"Could not check dashboard config for user {current_user.id}: {str(e)}")
+
         # Build response using unified metrics
         stats = {
             'totalActivities': total_activities,
@@ -1480,7 +1759,8 @@ def get_stats():
                 'sevenDayAvgLoad': round(unified_metrics.get('seven_day_avg_load', 0), 2),
                 'sevenDayAvgTrimp': round(unified_metrics.get('seven_day_avg_trimp', 0), 1),
                 'normalizedDivergence': round(unified_metrics.get('normalized_divergence', 0), 3)
-            }
+            },
+            'dashboard_config': dashboard_config  # Include config info for frontend
         }
 
         # CRITICAL FIX: Apply date serialization BEFORE returning JSON
@@ -1501,7 +1781,8 @@ def get_stats():
                 'sevenDayAvgLoad': 0,
                 'sevenDayAvgTrimp': 0,
                 'normalizedDivergence': 0
-            }
+            },
+            'dashboard_config': None
         }), 500
 
 
@@ -1732,9 +2013,9 @@ def login():
             logger.info(f"User {email} logged in successfully")
 
             if request.is_json:
-                return jsonify({'success': True, 'redirect': '/static/index.html'})
+                return jsonify({'success': True, 'redirect': '/dashboard'})
             else:
-                return redirect('/static/index.html')
+                return redirect('/dashboard')
         else:
             if request.is_json:
                 return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
@@ -1817,8 +2098,12 @@ def landing_analytics():
         event_type = data.get('event_type')
         event_data = data.get('event_data', {})
         
-        # Import analytics tracker
-        from analytics_tracker import track_analytics_event, EventType, IntegrationPoint
+        # Import analytics tracker with fallback
+        try:
+            from analytics_tracker import track_analytics_event, EventType, IntegrationPoint
+        except ImportError:
+            logger.warning("analytics_tracker module not available - skipping analytics tracking")
+            return jsonify({'success': True, 'message': 'Analytics tracking disabled'})
         
         # Map event types to analytics tracker types
         event_type_mapping = {
@@ -1890,8 +2175,12 @@ def landing_analytics():
 def get_click_through_rates():
     """Get click-through rate analytics for integration points"""
     try:
-        from analytics_tracker import analytics_tracker
-        from dataclasses import asdict
+        try:
+            from analytics_tracker import analytics_tracker
+            from dataclasses import asdict
+        except ImportError:
+            logger.warning("analytics_tracker module not available - returning empty analytics")
+            return jsonify({'success': True, 'data': []})
         
         # Get query parameters
         time_period = request.args.get('time_period', '7d')
@@ -1918,7 +2207,11 @@ def get_click_through_rates():
 def get_user_journey_funnel():
     """Get user journey conversion funnel analytics"""
     try:
-        from analytics_tracker import analytics_tracker
+        try:
+            from analytics_tracker import analytics_tracker
+        except ImportError:
+            logger.warning("analytics_tracker module not available - returning empty funnel data")
+            return jsonify({'success': True, 'data': []})
         
         # Get query parameters
         time_period = request.args.get('time_period', '7d')
@@ -1941,7 +2234,11 @@ def get_user_journey_funnel():
 def get_tutorial_analytics():
     """Get tutorial analytics and completion rates"""
     try:
-        from analytics_tracker import analytics_tracker
+        try:
+            from analytics_tracker import analytics_tracker
+        except ImportError:
+            logger.warning("analytics_tracker module not available - returning empty tutorial data")
+            return jsonify({'success': True, 'data': []})
         
         # Get query parameters
         time_period = request.args.get('time_period', '7d')
@@ -2096,7 +2393,11 @@ def get_tutorial_stats():
 def get_detailed_funnel():
     """Get detailed funnel analysis with cohort tracking"""
     try:
-        from analytics_tracker import analytics_tracker
+        try:
+            from analytics_tracker import analytics_tracker
+        except ImportError:
+            logger.warning("analytics_tracker module not available - returning empty funnel data")
+            return jsonify({'success': True, 'data': []})
         
         # Get query parameters
         time_period = request.args.get('time_period', '7d')
@@ -2129,7 +2430,7 @@ def get_detailed_funnel():
 def first_time_dashboard():
     """Special dashboard experience for new users from landing page"""
     if not session.get('new_user_onboarding'):
-        return redirect('/static/index.html')
+        return redirect('/dashboard')
 
     try:
         # Use correct date formatting pattern
@@ -2149,7 +2450,7 @@ def first_time_dashboard():
 
         if days_of_data and days_of_data.get('days', 0) >= 14:
             session.pop('new_user_onboarding', None)
-            return redirect('/static/index.html?highlight=divergence&new_user=true')
+            return redirect('/dashboard?highlight=divergence&new_user=true')
         else:
             return render_template('onboarding.html',
                                    days_needed=max(0, 28 - days_of_data.get('days', 0)) if days_of_data else 28,
@@ -2157,7 +2458,7 @@ def first_time_dashboard():
 
     except Exception as e:
         logger.error(f"Error checking user data: {str(e)}")
-        return redirect('/static/index.html')
+        return redirect('/dashboard')
 
 # Removed duplicate / route - keeping only the first one
 # FIXED: There were two @app.route('/') definitions causing conflicts
@@ -2617,6 +2918,111 @@ def onboarding_status():
     except Exception as e:
         logger.error(f"Error getting onboarding status: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync-status')
+@login_required
+def sync_status():
+    """API endpoint to check Strava sync status"""
+    try:
+        sync_status = {
+            'in_progress': session.get('strava_sync_in_progress', False),
+            'complete': session.get('strava_sync_complete', False),
+            'failed': session.get('strava_sync_failed', False)
+        }
+        
+        return jsonify(sync_status)
+    except Exception as e:
+        logger.error(f"Error getting sync status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync-strava-data', methods=['POST'])
+@login_required
+def sync_strava_data_for_user():
+    """API endpoint for existing users to sync their Strava data"""
+    try:
+        user_id = current_user.id
+        logger.info(f"Starting Strava sync for existing user {user_id}")
+        
+        # Check if user has Strava access token
+        user_data = db_utils.execute_query(
+            "SELECT strava_access_token, strava_athlete_id FROM user_settings WHERE id = %s",
+            (user_id,),
+            fetch=True
+        )
+        
+        if not user_data or not user_data[0].get('strava_access_token'):
+            return jsonify({'success': False, 'error': 'No Strava access token found. Please reconnect Strava.'}), 400
+        
+        # Set sync status in session
+        session['strava_sync_in_progress'] = True
+        session['strava_sync_complete'] = False
+        session['strava_sync_failed'] = False
+        
+        # Trigger sync in background for 28 days of data
+        import threading
+        def sync_existing_user_data():
+            try:
+                # Import the sync function
+                from strava_training_load import process_activities_for_date_range
+                from stravalib.client import Client
+                from datetime import datetime, timedelta
+                
+                # Calculate date range (28 days back)
+                end_date = datetime.now().date()
+                start_date = end_date - timedelta(days=28)
+                
+                # Load tokens from database for this specific user
+                user_data = db_utils.execute_query(
+                    "SELECT strava_access_token, strava_refresh_token, strava_token_expires_at FROM user_settings WHERE id = %s",
+                    (user_id,),
+                    fetch=True
+                )
+                
+                if not user_data or not user_data[0].get('strava_access_token'):
+                    logger.error(f"No Strava tokens found for user {user_id}")
+                    return
+                
+                tokens = user_data[0]
+                logger.info(f"Loaded tokens for user {user_id}, expires at: {tokens.get('strava_token_expires_at')}")
+                
+                # Create Strava client with user's tokens
+                client = Client(access_token=tokens['strava_access_token'])
+                
+                # Test connection
+                try:
+                    athlete = client.get_athlete()
+                    logger.info(f"Connected to Strava as {athlete.firstname} {athlete.lastname} for user {user_id}")
+                except Exception as conn_error:
+                    logger.error(f"Strava connection failed for user {user_id}: {str(conn_error)}")
+                    return
+                
+                # Process activities for this user
+                process_activities_for_date_range(
+                    client=client,
+                    start_date=start_date.strftime('%Y-%m-%d'),
+                    end_date=end_date.strftime('%Y-%m-%d'),
+                    user_id=user_id
+                )
+                logger.info(f"Strava sync completed for existing user {user_id}")
+                
+            except Exception as sync_error:
+                logger.error(f"Strava sync failed for user {user_id}: {str(sync_error)}")
+                # Note: Cannot update session from background thread
+        
+        # Start sync in background thread
+        sync_thread = threading.Thread(target=sync_existing_user_data)
+        sync_thread.daemon = True
+        sync_thread.start()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Strava sync started. This may take a few minutes.',
+            'sync_in_progress': True
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting Strava sync for user {user_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 
@@ -4808,18 +5214,18 @@ def update_settings():
         update_values = []
 
         for field, value in data.items():
-            if field in ['resting_hr', 'max_hr', 'gender', 'hr_zones_method', 'primary_sport',
+            if field in ['resting_hr', 'max_hr', 'gender', 'age', 'hr_zones_method', 'primary_sport',
                          'secondary_sport', 'training_experience', 'current_phase', 'race_goal_date',
                          'weekly_training_hours', 'acwr_alert_threshold', 'injury_risk_alerts',
                          'recommendation_style', 'coaching_tone']:
-                update_fields.append(f"{field} = ?")
+                update_fields.append(f"{field} = %s")
                 update_values.append(value)
 
         if not update_fields:
             return jsonify({'error': 'No valid fields to update'}), 400
 
         # Add updated_at timestamp
-        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        update_fields.append("updated_at = NOW()")
         update_values.append(current_user.id)
 
         # Execute update with proper logging
@@ -5167,6 +5573,179 @@ def get_heart_rate_zones():
     except Exception as e:
         logger.error(f"Error calculating heart rate zones for user {current_user.id}: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+# New Settings API endpoints
+@app.route('/api/settings/profile', methods=['POST'])
+@login_required
+def update_profile_settings():
+    """Update profile settings (age, gender, email)"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['email', 'age', 'gender']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'error': f'{field} is required'}), 400
+        
+        # Validate age
+        age = int(data['age'])
+        if age < 13 or age > 100:
+            return jsonify({'error': 'Age must be between 13 and 100'}), 400
+        
+        # Validate gender
+        if data['gender'] not in ['male', 'female', 'other']:
+            return jsonify({'error': 'Invalid gender selection'}), 400
+        
+        # Update user profile
+        db_utils.execute_query("""
+            UPDATE user_settings 
+            SET email = %s, age = %s, gender = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (data['email'], age, data['gender'], current_user.id))
+        
+        return jsonify({'success': True, 'message': 'Profile settings updated successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating profile settings: {str(e)}")
+        return jsonify({'error': 'Failed to update profile settings'}), 500
+
+@app.route('/api/settings/training', methods=['POST'])
+@login_required
+def update_training_settings():
+    """Update training settings (goals, experience, frequency, activities)"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['primary_sport', 'training_experience']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'error': f'{field} is required'}), 400
+        
+        # Validate primary sport
+        valid_sports = ['running', 'cycling', 'swimming', 'triathlon', 'strength', 'other']
+        if data['primary_sport'] not in valid_sports:
+            return jsonify({'error': 'Invalid primary sport selection'}), 400
+        
+        # Validate training experience
+        valid_levels = ['beginner', 'intermediate', 'advanced', 'elite']
+        if data['training_experience'] not in valid_levels:
+            return jsonify({'error': 'Invalid experience level selection'}), 400
+        
+        # Validate secondary sport (optional)
+        secondary_sport = data.get('secondary_sport', '')
+        if secondary_sport and secondary_sport not in valid_sports:
+            return jsonify({'error': 'Invalid secondary sport selection'}), 400
+        
+        # Validate weekly training hours
+        weekly_hours = int(data.get('weekly_training_hours', 8))
+        if weekly_hours < 1 or weekly_hours > 40:
+            return jsonify({'error': 'Weekly training hours must be between 1 and 40'}), 400
+        
+        # Validate current phase
+        valid_phases = ['base', 'build', 'peak', 'race', 'recovery']
+        current_phase = data.get('current_phase', 'base')
+        if current_phase not in valid_phases:
+            return jsonify({'error': 'Invalid training phase selection'}), 400
+        
+        # Handle race goal date (optional)
+        race_goal_date = data.get('race_goal_date', '')
+        if race_goal_date:
+            try:
+                from datetime import datetime
+                race_goal_date = datetime.strptime(race_goal_date, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': 'Invalid date format for race goal date'}), 400
+        else:
+            race_goal_date = None
+        
+        # Update user training settings
+        db_utils.execute_query("""
+            UPDATE user_settings 
+            SET primary_sport = %s, secondary_sport = %s, training_experience = %s, 
+                weekly_training_hours = %s, current_phase = %s, race_goal_date = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (data['primary_sport'], secondary_sport, data['training_experience'], 
+              weekly_hours, current_phase, race_goal_date, current_user.id))
+        
+        return jsonify({'success': True, 'message': 'Training settings updated successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating training settings: {str(e)}")
+        return jsonify({'error': 'Failed to update training settings'}), 500
+
+
+@app.route('/api/settings/coaching', methods=['POST'])
+@login_required
+def update_coaching_settings():
+    """Update coaching settings (style, frequency, focus)"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['coaching_tone', 'recommendation_style']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'error': f'{field} is required'}), 400
+        
+        # Validate coaching tone
+        valid_tones = ['supportive', 'direct', 'technical', 'casual']
+        if data['coaching_tone'] not in valid_tones:
+            return jsonify({'error': 'Invalid coaching tone selection'}), 400
+        
+        # Validate recommendation style
+        valid_styles = ['balanced', 'conservative', 'aggressive', 'adaptive']
+        if data['recommendation_style'] not in valid_styles:
+            return jsonify({'error': 'Invalid recommendation style selection'}), 400
+        
+        # Update user coaching settings
+        db_utils.execute_query("""
+            UPDATE user_settings 
+            SET coaching_tone = %s, recommendation_style = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (data['coaching_tone'], data['recommendation_style'], current_user.id))
+        
+        return jsonify({'success': True, 'message': 'Coaching settings updated successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating coaching settings: {str(e)}")
+        return jsonify({'error': 'Failed to update coaching settings'}), 500
+
+@app.route('/api/settings/alerts', methods=['POST'])
+@login_required
+def update_alert_settings():
+    """Update alert settings (overtraining, injury risk, progress, notification methods)"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['acwr_alert_threshold', 'injury_risk_alerts']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'{field} is required'}), 400
+        
+        # Validate ACWR alert threshold
+        acwr_threshold = float(data['acwr_alert_threshold'])
+        if acwr_threshold < 1.0 or acwr_threshold > 2.0:
+            return jsonify({'error': 'ACWR alert threshold must be between 1.0 and 2.0'}), 400
+        
+        # Validate injury risk alerts (boolean)
+        injury_risk_alerts = bool(data['injury_risk_alerts'])
+        
+        # Update user alert settings
+        db_utils.execute_query("""
+            UPDATE user_settings 
+            SET acwr_alert_threshold = %s, injury_risk_alerts = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (acwr_threshold, injury_risk_alerts, current_user.id))
+        
+        return jsonify({'success': True, 'message': 'Alert settings updated successfully'})
+        
+    except Exception as e:
+        app.logger.error(f"Error updating alert settings: {str(e)}")
+        return jsonify({'error': 'Failed to update alert settings'}), 500
 
 
 @app.route('/api/settings/heart-rate-zones', methods=['POST'])
@@ -6989,128 +7568,623 @@ def get_trimp_calculation_stats():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@app.route('/api/admin/trimp-performance-metrics', methods=['GET'])
+@app.route('/api/admin/comprehensive-dashboard', methods=['GET'])
 @login_required
-def get_trimp_performance_metrics():
-    """Get TRIMP calculation performance metrics (admin only)"""
+def get_comprehensive_dashboard():
+    """Get comprehensive admin dashboard data (admin only)"""
     try:
         # Check if user is admin
         if not current_user.is_admin:
             return jsonify({'error': 'Admin access required'}), 403
         
-        from db_utils import execute_query
-        from datetime import datetime, timedelta
+        from comprehensive_admin_dashboard import dashboard
         
-        # Get performance metrics for the last 24 hours
-        end_time = datetime.now()
-        start_time = end_time - timedelta(hours=24)
+        # Get force refresh parameter
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
         
-        # Get calculation performance metrics
-        performance_query = """
-        SELECT 
-            trimp_calculation_method,
-            COUNT(*) as total_calculations,
-            AVG(CASE WHEN trimp_processed_at IS NOT NULL THEN 1 ELSE 0 END) as success_rate,
-            AVG(hr_stream_sample_count) as avg_hr_samples,
-            AVG(trimp) as avg_trimp_value
-        FROM activities 
-        WHERE trimp_processed_at >= %s
-        AND trimp_processed_at <= %s
-        GROUP BY trimp_calculation_method
-        """
+        # Get dashboard data
+        dashboard_data = dashboard.get_dashboard_data(force_refresh)
         
-        performance_results = execute_query(performance_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
+        # Check if user wants HTML format
+        if request.args.get('format') == 'html':
+            return _render_comprehensive_dashboard_html(dashboard_data)
         
-        # Get hourly trends for the last 24 hours
-        hourly_query = """
-        SELECT 
-            EXTRACT(HOUR FROM trimp_processed_at) as hour,
-            trimp_calculation_method,
-            COUNT(*) as calculations_count,
-            AVG(hr_stream_sample_count) as avg_hr_samples
-        FROM activities 
-        WHERE trimp_processed_at >= %s
-        AND trimp_processed_at <= %s
-        GROUP BY EXTRACT(HOUR FROM trimp_processed_at), trimp_calculation_method
-        ORDER BY hour
-        """
-        
-        hourly_results = execute_query(hourly_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
-        
-        # Get error rates
-        error_query = """
-        SELECT 
-            trimp_calculation_method,
-            COUNT(*) as total_attempts,
-            SUM(CASE WHEN trimp IS NULL OR trimp <= 0 THEN 1 ELSE 0 END) as error_count
-        FROM activities 
-        WHERE trimp_processed_at >= %s
-        AND trimp_processed_at <= %s
-        GROUP BY trimp_calculation_method
-        """
-        
-        error_results = execute_query(error_query, (start_time.isoformat(), end_time.isoformat()), fetch=True)
-        
-        # Get system load metrics (simulated for now)
-        system_metrics = {
-            'cpu_usage': 45.2,
-            'memory_usage': 67.8,
-            'database_connections': 12,
-            'active_users': 8,
-            'response_time_ms': 125.5,
-            'throughput_per_minute': 15.3
-        }
-        
-        # Generate performance alerts
-        alerts = []
-        
-        # Check for high error rates
-        for error_result in error_results:
-            error_rate = (error_result['error_count'] / error_result['total_attempts'] * 100) if error_result['total_attempts'] > 0 else 0
-            if error_rate > 5:
-                alerts.append({
-                    'type': 'warning',
-                    'message': f"High error rate for {error_result['trimp_calculation_method']}: {error_rate:.1f}%"
-                })
-        
-        # Check for performance issues
-        if system_metrics['response_time_ms'] > 200:
-            alerts.append({
-                'type': 'warning',
-                'message': f"High response time: {system_metrics['response_time_ms']}ms"
-            })
-        
-        if system_metrics['cpu_usage'] > 80:
-            alerts.append({
-                'type': 'danger',
-                'message': f"High CPU usage: {system_metrics['cpu_usage']}%"
-            })
-        
-        # Check for low throughput
-        if system_metrics['throughput_per_minute'] < 5:
-            alerts.append({
-                'type': 'info',
-                'message': f"Low throughput: {system_metrics['throughput_per_minute']} calculations/minute"
-            })
-        
+        # Return JSON data
         return jsonify({
             'success': True,
-            'performance_metrics': {
-                'calculation_performance': performance_results,
-                'hourly_trends': hourly_results,
-                'error_rates': error_results,
-                'system_metrics': system_metrics,
-                'alerts': alerts,
-                'time_range': {
-                    'start': start_time.isoformat(),
-                    'end': end_time.isoformat()
-                }
+            'data': {
+                'overall_health_score': dashboard_data.overall_health_score,
+                'total_alerts': dashboard_data.total_alerts,
+                'critical_alerts': dashboard_data.critical_alerts,
+                'components': [
+                    {
+                        'component': comp.component.value,
+                        'status': comp.status,
+                        'health_score': comp.health_score,
+                        'last_updated': comp.last_updated.isoformat(),
+                        'metrics': comp.metrics,
+                        'alerts': [
+                            {
+                                'id': alert.id,
+                                'severity': alert.severity.value,
+                                'title': alert.title,
+                                'message': alert.message,
+                                'timestamp': alert.timestamp.isoformat(),
+                                'acknowledged': alert.acknowledged,
+                                'resolved': alert.resolved,
+                                'details': alert.details
+                            }
+                            for alert in comp.alerts
+                        ]
+                    }
+                    for comp in dashboard_data.components
+                ],
+                'recent_errors': [
+                    {
+                        'timestamp': error['timestamp'].isoformat() if isinstance(error['timestamp'], datetime) else error['timestamp'],
+                        'component': error['component'],
+                        'error_type': error['error_type'],
+                        'details': error['details'],
+                        'user_id': error['user_id']
+                    }
+                    for error in dashboard_data.recent_errors
+                ],
+                'performance_trends': dashboard_data.performance_trends,
+                'last_updated': dashboard_data.last_updated.isoformat()
             }
         })
         
     except Exception as e:
+        logger.error(f"Error getting comprehensive dashboard: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/admin/trimp-performance-metrics', methods=['GET'])
+@login_required
+def get_trimp_performance_metrics():
+    """Get enhanced TRIMP calculation performance metrics (admin only)"""
+    try:
+        # Check if user is admin
+        if not current_user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        from enhanced_trimp_metrics import get_enhanced_trimp_metrics
+        
+        # Get hours parameter (default 24)
+        hours_back = request.args.get('hours', 24, type=int)
+        if hours_back > 168:  # Max 1 week
+            hours_back = 168
+        
+        # Get enhanced metrics
+        metrics = get_enhanced_trimp_metrics(hours_back)
+        
+        # Check if user wants HTML format
+        if request.args.get('format') == 'html':
+            return _render_metrics_html(metrics)
+        
+        return jsonify(metrics)
+        
+    except Exception as e:
         logger.error(f"Error getting TRIMP performance metrics: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+def _render_metrics_html(metrics):
+    """Render metrics as HTML for better readability"""
+    if not metrics.get('success'):
+        return f"<h1>Error</h1><p>{metrics.get('error', 'Unknown error')}</p>"
+    
+    summary = metrics.get('summary', {})
+    detailed = metrics.get('detailed_metrics', {})
+    errors = metrics.get('error_analysis', {})
+    system_health = metrics.get('system_health', {})
+    recommendations = metrics.get('recommendations', [])
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>TRIMP Performance Metrics</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+            .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .header {{ text-align: center; margin-bottom: 30px; }}
+            .status {{ font-size: 24px; font-weight: bold; margin: 10px 0; }}
+            .status.healthy {{ color: #28a745; }}
+            .status.warning {{ color: #ffc107; }}
+            .status.error {{ color: #dc3545; }}
+            .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }}
+            .metric-card {{ background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }}
+            .metric-title {{ font-weight: bold; margin-bottom: 10px; color: #333; }}
+            .metric-value {{ font-size: 18px; color: #007bff; }}
+            .recommendations {{ margin-top: 30px; }}
+            .recommendation {{ background: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; margin: 10px 0; border-radius: 4px; }}
+            .recommendation.high {{ border-color: #dc3545; background: #f8d7da; }}
+            .recommendation.medium {{ border-color: #ffc107; background: #fff3cd; }}
+            .recommendation.info {{ border-color: #17a2b8; background: #d1ecf1; }}
+            .time-range {{ text-align: center; color: #666; margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+            th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>TRIMP Performance Metrics</h1>
+                <div class="time-range">
+                    {metrics.get('time_range', {}).get('start', 'N/A')} to {metrics.get('time_range', {}).get('end', 'N/A')}
+                    ({metrics.get('time_range', {}).get('hours_analyzed', 'N/A')} hours analyzed)
+                </div>
+                <div class="status {'healthy' if 'Healthy' in summary.get('status', '') else 'warning' if 'Issues' in summary.get('status', '') else 'error'}">
+                    {summary.get('status', 'Unknown Status')}
+                </div>
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-title">Activities Processed</div>
+                    <div class="metric-value">{detailed.get('total_activities_processed', 0)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Success Rate</div>
+                    <div class="metric-value">{detailed.get('overall_success_rate', 0)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Error Rate</div>
+                    <div class="metric-value">{errors.get('overall_error_rate', 0)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">System Health</div>
+                    <div class="metric-value">{system_health.get('health_score', 'Unknown')}</div>
+                </div>
+            </div>
+            
+            <h2>Calculation Methods</h2>
+            <table>
+                <tr><th>Method</th><th>Calculations</th><th>Success Rate</th><th>Avg HR Samples</th><th>Avg TRIMP</th></tr>
+    """
+    
+    for method, data in detailed.get('calculation_methods', {}).items():
+        html += f"""
+                <tr>
+                    <td>{method}</td>
+                    <td>{data.get('total_calculations', 0)}</td>
+                    <td>{data.get('success_rate_percent', 0)}%</td>
+                    <td>{data.get('avg_hr_samples', 0)}</td>
+                    <td>{data.get('avg_trimp_value', 0)}</td>
+                </tr>
+        """
+    
+    html += """
+            </table>
+            
+            <h2>Recommendations</h2>
+            <div class="recommendations">
+    """
+    
+    for rec in recommendations:
+        priority_class = rec.get('priority', 'info').lower()
+        html += f"""
+                <div class="recommendation {priority_class}">
+                    <strong>{rec.get('category', 'Unknown')} - {rec.get('priority', 'Info')} Priority</strong><br>
+                    <strong>Issue:</strong> {rec.get('issue', 'N/A')}<br>
+                    <strong>Recommendation:</strong> {rec.get('recommendation', 'N/A')}<br>
+                    <strong>Action:</strong> {rec.get('action', 'N/A')}
+                </div>
+        """
+    
+    html += """
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px; color: #666;">
+                <p>Generated at: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
+                <p><a href="?format=json">View as JSON</a> | <a href="?hours=1">Last Hour</a> | <a href="?hours=24">Last 24 Hours</a> | <a href="?hours=168">Last Week</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+def _render_comprehensive_dashboard_html(dashboard_data):
+    """Render comprehensive dashboard as HTML"""
+    # Calculate status colors
+    def get_status_color(status):
+        if status == "healthy":
+            return "#28a745"
+        elif status == "warning":
+            return "#ffc107"
+        else:
+            return "#dc3545"
+    
+    def get_health_score_color(score):
+        if score >= 90:
+            return "#28a745"
+        elif score >= 70:
+            return "#ffc107"
+        else:
+            return "#dc3545"
+    
+    # Generate component cards
+    component_cards = ""
+    for comp in dashboard_data.components:
+        status_color = get_status_color(comp.status)
+        health_color = get_health_score_color(comp.health_score)
+        
+        # Generate alerts HTML
+        alerts_html = ""
+        for alert in comp.alerts:
+            severity_color = {
+                'critical': '#dc3545',
+                'high': '#fd7e14',
+                'medium': '#ffc107',
+                'low': '#17a2b8',
+                'info': '#6c757d'
+            }.get(alert.severity.value, '#6c757d')
+            
+            alerts_html += f"""
+                <div class="alert-item" style="border-left: 3px solid {severity_color}; padding: 8px; margin: 5px 0; background: #f8f9fa;">
+                    <strong>{alert.title}</strong><br>
+                    <small>{alert.message}</small>
+                    <div style="float: right; font-size: 0.8em; color: #666;">
+                        {alert.timestamp.strftime('%H:%M:%S')}
+                    </div>
+                </div>
+            """
+        
+        component_cards += f"""
+            <div class="component-card" style="background: white; border-radius: 8px; padding: 20px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: #333;">{comp.component.value.replace('_', ' ').title()}</h3>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="padding: 4px 8px; border-radius: 4px; background: {status_color}; color: white; font-size: 0.8em;">
+                            {comp.status.upper()}
+                        </span>
+                        <span style="font-size: 1.2em; font-weight: bold; color: {health_color};">
+                            {comp.health_score}%
+                        </span>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <strong>Key Metrics:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+        """
+        
+        # Add key metrics
+        for key, value in comp.metrics.items():
+            if key != 'error' and not isinstance(value, dict):
+                component_cards += f"<li>{key.replace('_', ' ').title()}: {value}</li>"
+        
+        component_cards += """
+                    </ul>
+                </div>
+        """
+        
+        # Add alerts if any
+        if comp.alerts:
+            component_cards += f"""
+                <div>
+                    <strong>Active Alerts ({len(comp.alerts)}):</strong>
+                    {alerts_html}
+                </div>
+            """
+        
+        component_cards += """
+                <div style="margin-top: 10px; font-size: 0.8em; color: #666;">
+                    Last updated: """ + comp.last_updated.strftime('%Y-%m-%d %H:%M:%S') + """
+                </div>
+            </div>
+        """
+    
+    # Generate recent errors HTML
+    recent_errors_html = ""
+    for error in dashboard_data.recent_errors[:10]:  # Show last 10 errors
+        timestamp = error['timestamp']
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        
+        recent_errors_html += f"""
+            <tr>
+                <td>{timestamp.strftime('%H:%M:%S')}</td>
+                <td>{error['component']}</td>
+                <td>{error['error_type']}</td>
+                <td>{error['details']}</td>
+                <td>{error['user_id'] or 'N/A'}</td>
+            </tr>
+        """
+    
+    # Generate performance trends HTML
+    trends_html = ""
+    if dashboard_data.performance_trends.get('trimp_trends'):
+        trends_html += "<h4>TRIMP Performance (Last 7 Days)</h4><table class='trends-table'><tr><th>Date</th><th>Calculations</th><th>Success Rate</th><th>Errors</th></tr>"
+        for trend in dashboard_data.performance_trends['trimp_trends'][:7]:
+            trends_html += f"""
+                <tr>
+                    <td>{trend['date']}</td>
+                    <td>{trend['total_calculations']}</td>
+                    <td>{trend['success_rate']:.1%}</td>
+                    <td>{trend['error_count']}</td>
+                </tr>
+            """
+        trends_html += "</table>"
+    
+    if dashboard_data.performance_trends.get('acwr_trends'):
+        trends_html += "<h4>ACWR Performance (Last 7 Days)</h4><table class='trends-table'><tr><th>Date</th><th>Calculations</th><th>Avg Time (ms)</th><th>Slow Calculations</th></tr>"
+        for trend in dashboard_data.performance_trends['acwr_trends'][:7]:
+            trends_html += f"""
+                <tr>
+                    <td>{trend['date']}</td>
+                    <td>{trend['total_calculations']}</td>
+                    <td>{trend['avg_calculation_time']:.0f}</td>
+                    <td>{trend['slow_calculations']}</td>
+                </tr>
+            """
+        trends_html += "</table>"
+    
+    # Main dashboard HTML
+    overall_color = get_health_score_color(dashboard_data.overall_health_score)
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Comprehensive Admin Dashboard</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                margin: 0; 
+                padding: 20px; 
+                background-color: #f5f7fa; 
+                color: #333;
+            }}
+            .container {{ 
+                max-width: 1400px; 
+                margin: 0 auto; 
+                background: white; 
+                border-radius: 12px; 
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+                overflow: hidden;
+            }}
+            .header {{ 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                color: white; 
+                padding: 30px; 
+                text-align: center;
+            }}
+            .header h1 {{ margin: 0; font-size: 2.5em; font-weight: 300; }}
+            .header .subtitle {{ margin: 10px 0 0 0; opacity: 0.9; font-size: 1.1em; }}
+            .status-overview {{ 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+                gap: 20px; 
+                padding: 30px; 
+                background: #f8f9fa;
+            }}
+            .status-card {{ 
+                background: white; 
+                padding: 20px; 
+                border-radius: 8px; 
+                text-align: center; 
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            .status-card .value {{ 
+                font-size: 2.5em; 
+                font-weight: bold; 
+                margin: 10px 0;
+            }}
+            .status-card .label {{ 
+                color: #666; 
+                font-size: 0.9em; 
+                text-transform: uppercase; 
+                letter-spacing: 0.5px;
+            }}
+            .content {{ padding: 30px; }}
+            .section {{ margin-bottom: 40px; }}
+            .section h2 {{ 
+                color: #333; 
+                border-bottom: 2px solid #e9ecef; 
+                padding-bottom: 10px; 
+                margin-bottom: 20px;
+            }}
+            .component-card {{ 
+                background: white; 
+                border-radius: 8px; 
+                padding: 20px; 
+                margin: 15px 0; 
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                border-left: 4px solid #007bff;
+            }}
+            .alert-item {{ 
+                border-left: 3px solid #ffc107; 
+                padding: 10px; 
+                margin: 8px 0; 
+                background: #fff3cd; 
+                border-radius: 4px;
+            }}
+            .alert-item.critical {{ border-left-color: #dc3545; background: #f8d7da; }}
+            .alert-item.high {{ border-left-color: #fd7e14; background: #ffeaa7; }}
+            .alert-item.medium {{ border-left-color: #ffc107; background: #fff3cd; }}
+            .alert-item.low {{ border-left-color: #17a2b8; background: #d1ecf1; }}
+            .alert-item.info {{ border-left-color: #6c757d; background: #e2e3e5; }}
+            table {{ 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin: 15px 0; 
+                background: white;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            th, td {{ 
+                padding: 12px; 
+                text-align: left; 
+                border-bottom: 1px solid #e9ecef;
+            }}
+            th {{ 
+                background: #f8f9fa; 
+                font-weight: 600; 
+                color: #495057;
+            }}
+            .trends-table {{ 
+                margin: 20px 0; 
+                font-size: 0.9em;
+            }}
+            .controls {{ 
+                text-align: center; 
+                padding: 20px; 
+                background: #f8f9fa; 
+                border-top: 1px solid #e9ecef;
+            }}
+            .btn {{ 
+                background: #007bff; 
+                color: white; 
+                border: none; 
+                padding: 10px 20px; 
+                border-radius: 5px; 
+                cursor: pointer; 
+                margin: 0 5px; 
+                text-decoration: none;
+                display: inline-block;
+            }}
+            .btn:hover {{ background: #0056b3; }}
+            .btn-secondary {{ background: #6c757d; }}
+            .btn-secondary:hover {{ background: #545b62; }}
+            .auto-refresh {{ 
+                position: fixed; 
+                top: 20px; 
+                right: 20px; 
+                background: #28a745; 
+                color: white; 
+                padding: 10px 15px; 
+                border-radius: 5px; 
+                font-size: 0.9em;
+            }}
+            .auto-refresh.warning {{ background: #ffc107; color: #333; }}
+            .auto-refresh.error {{ background: #dc3545; }}
+            @media (max-width: 768px) {{
+                .status-overview {{ grid-template-columns: 1fr; }}
+                .container {{ margin: 10px; }}
+                .content {{ padding: 20px; }}
+            }}
+        </style>
+        <script>
+            let autoRefreshInterval;
+            let lastUpdate = new Date();
+            
+            function startAutoRefresh() {{
+                autoRefreshInterval = setInterval(() => {{
+                    location.reload();
+                }}, 30000); // Refresh every 30 seconds
+                updateRefreshStatus();
+            }}
+            
+            function stopAutoRefresh() {{
+                if (autoRefreshInterval) {{
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }}
+                updateRefreshStatus();
+            }}
+            
+            function updateRefreshStatus() {{
+                const statusEl = document.getElementById('refresh-status');
+                if (autoRefreshInterval) {{
+                    statusEl.textContent = 'Auto-refresh: ON (30s)';
+                    statusEl.className = 'auto-refresh';
+                }} else {{
+                    statusEl.textContent = 'Auto-refresh: OFF';
+                    statusEl.className = 'auto-refresh warning';
+                }}
+            }}
+            
+            function forceRefresh() {{
+                window.location.href = '?refresh=true&format=html';
+            }}
+            
+            // Start auto-refresh on page load
+            document.addEventListener('DOMContentLoaded', function() {{
+                startAutoRefresh();
+            }});
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Comprehensive Admin Dashboard</h1>
+                <p class="subtitle">System Health & Performance Monitoring</p>
+                <div id="refresh-status" class="auto-refresh">Auto-refresh: ON (30s)</div>
+            </div>
+            
+            <div class="status-overview">
+                <div class="status-card">
+                    <div class="value" style="color: {overall_color};">{dashboard_data.overall_health_score}%</div>
+                    <div class="label">Overall Health</div>
+                </div>
+                <div class="status-card">
+                    <div class="value" style="color: #dc3545;">{dashboard_data.critical_alerts}</div>
+                    <div class="label">Critical Alerts</div>
+                </div>
+                <div class="status-card">
+                    <div class="value" style="color: #ffc107;">{dashboard_data.total_alerts}</div>
+                    <div class="label">Total Alerts</div>
+                </div>
+                <div class="status-card">
+                    <div class="value" style="color: #007bff;">{len(dashboard_data.components)}</div>
+                    <div class="label">Components</div>
+                </div>
+            </div>
+            
+            <div class="content">
+                <div class="section">
+                    <h2>System Components</h2>
+                    {component_cards}
+                </div>
+                
+                <div class="section">
+                    <h2>Recent Errors</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Component</th>
+                                <th>Error Type</th>
+                                <th>Details</th>
+                                <th>User ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {recent_errors_html}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="section">
+                    <h2>Performance Trends</h2>
+                    {trends_html}
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn" onclick="forceRefresh()">Force Refresh</button>
+                <button class="btn btn-secondary" onclick="startAutoRefresh()">Start Auto-Refresh</button>
+                <button class="btn btn-secondary" onclick="stopAutoRefresh()">Stop Auto-Refresh</button>
+                <a href="?format=json" class="btn btn-secondary">View JSON</a>
+                <a href="/api/admin/trimp-performance-metrics?format=html" class="btn btn-secondary">TRIMP Metrics</a>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px; color: #666; font-size: 0.9em;">
+            Last updated: {dashboard_data.last_updated.strftime('%Y-%m-%d %H:%M:%S')} | 
+            Generated by Comprehensive Admin Dashboard
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
 
 
 @app.route('/api/admin/trimp-comparison', methods=['POST'])
@@ -7621,6 +8695,112 @@ def collect_metrics():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+# Settings page routes
+@app.route('/settings/profile', methods=['GET'])
+@login_required
+def settings_profile():
+    """Profile settings page"""
+    try:
+        # Load complete user settings from database
+        user_settings = db_utils.execute_query("""
+            SELECT * FROM user_settings WHERE id = %s
+        """, (current_user.id,), fetch=True)
+        
+        if user_settings and user_settings[0]:
+            user_data = user_settings[0]
+        else:
+            user_data = current_user
+        
+        return render_template('settings_profile.html', 
+                             user=user_data, 
+                             active_section='profile',
+                             user_context={'is_authenticated': True, 'user': user_data})
+    except Exception as e:
+        app.logger.error(f"Error rendering profile settings: {str(e)}")
+        return render_template('error.html', error="Failed to load profile settings"), 500
+
+@app.route('/settings/hrzones', methods=['GET'])
+@login_required
+def settings_hrzones():
+    """Heart Rate Zones settings page"""
+    try:
+        # Load complete user settings from database
+        user_settings = db_utils.execute_query("""
+            SELECT * FROM user_settings WHERE id = %s
+        """, (current_user.id,), fetch=True)
+        
+        if user_settings and user_settings[0]:
+            user_data = user_settings[0]
+        else:
+            user_data = current_user
+        
+        return render_template('settings_hrzones.html', 
+                             user=user_data, 
+                             active_section='hrzones',
+                             user_context={'is_authenticated': True, 'user': user_data})
+    except Exception as e:
+        app.logger.error(f"Error rendering HR zones settings: {str(e)}")
+        return render_template('error.html', error="Failed to load HR zones settings"), 500
+
+@app.route('/settings/training', methods=['GET'])
+@login_required
+def settings_training():
+    """Training settings page"""
+    try:
+        # Load complete user settings from database
+        user_settings = db_utils.execute_query("""
+            SELECT * FROM user_settings WHERE id = %s
+        """, (current_user.id,), fetch=True)
+        
+        if user_settings and user_settings[0]:
+            user_data = user_settings[0]
+        else:
+            user_data = current_user
+        
+        return render_template('settings_training.html', 
+                             user=user_data, 
+                             active_section='training',
+                             user_context={'is_authenticated': True, 'user': user_data})
+    except Exception as e:
+        app.logger.error(f"Error rendering training settings: {str(e)}")
+        return render_template('error.html', error="Failed to load training settings"), 500
+
+@app.route('/settings/coaching', methods=['GET'])
+@login_required
+def settings_coaching():
+    """Coaching settings page"""
+    try:
+        # Load complete user settings from database
+        user_settings = db_utils.execute_query("""
+            SELECT * FROM user_settings WHERE id = %s
+        """, (current_user.id,), fetch=True)
+        
+        if user_settings and user_settings[0]:
+            user_data = user_settings[0]
+        else:
+            user_data = current_user
+        
+        return render_template('settings_coaching.html', 
+                             user=user_data, 
+                             active_section='coaching',
+                             user_context={'is_authenticated': True, 'user': user_data})
+    except Exception as e:
+        app.logger.error(f"Error rendering coaching settings: {str(e)}")
+        return render_template('error.html', error="Failed to load coaching settings"), 500
+
+@app.route('/settings/acwr', methods=['GET'])
+@login_required
+def settings_acwr():
+    """ACWR visualization settings page"""
+    try:
+        return render_template('settings_acwr.html', 
+                             user=current_user, 
+                             active_section='acwr',
+                             user_context={'is_authenticated': True, 'user': current_user})
+    except Exception as e:
+        app.logger.error(f"Error rendering ACWR settings: {str(e)}")
+        return render_template('error.html', error="Failed to load ACWR settings"), 500
+
 @app.route('/admin/trimp-settings', methods=['GET'])
 @login_required
 def admin_trimp_settings():
@@ -7645,17 +8825,26 @@ def welcome_post_strava():
     
     # Check for force_show parameter to bypass onboarding check
     force_show = request.args.get('force_show', 'false').lower() == 'true'
+    sync_wait = request.args.get('sync_wait', 'false').lower() == 'true'
     
     # Check if user needs onboarding
-    if needs_onboarding(user_id) or force_show:
+    if needs_onboarding(user_id) or force_show or sync_wait:
         # Get current legal versions for the template
         from legal_document_versioning import get_current_legal_versions
         current_versions = get_current_legal_versions()
         
+        # Check sync status
+        sync_status = {
+            'in_progress': session.get('strava_sync_in_progress', False),
+            'complete': session.get('strava_sync_complete', False),
+            'failed': session.get('strava_sync_failed', False)
+        }
+        
         return render_template('welcome_post_strava.html', 
                              show_onboarding=True, 
                              user_id=user_id,
-                             legal_versions=current_versions)
+                             legal_versions=current_versions,
+                             sync_status=sync_status)
     else:
         # User is already set up, redirect to dashboard
         return redirect(url_for('dashboard'))
@@ -7744,7 +8933,27 @@ def welcome_stage1():
         from onboarding_manager import complete_onboarding_step, OnboardingStep
         complete_onboarding_step(user_id, OnboardingStep.STRAVA_CONNECTED)
         
-        flash('Welcome! Your profile is set up. Let\'s explore your training dashboard!', 'success')
+        # Check if Strava sync is still in progress
+        if session.get('strava_sync_in_progress') and not session.get('strava_sync_complete'):
+            flash('Welcome! Your profile is set up. Strava sync is still in progress - please wait...', 'info')
+            return redirect(url_for('welcome_post_strava', sync_wait=True))
+        
+        # Check if Strava sync completed successfully
+        if session.get('strava_sync_complete'):
+            flash('Welcome! Your profile is set up and Strava sync is complete. Let\'s explore your training dashboard!', 'success')
+            # Clear sync status from session
+            session.pop('strava_sync_in_progress', None)
+            session.pop('strava_sync_complete', None)
+            session.pop('strava_sync_failed', None)
+        elif session.get('strava_sync_failed'):
+            flash('Welcome! Your profile is set up. Strava sync encountered an issue - you can sync from the dashboard.', 'warning')
+            # Clear sync status from session
+            session.pop('strava_sync_in_progress', None)
+            session.pop('strava_sync_complete', None)
+            session.pop('strava_sync_failed', None)
+        else:
+            flash('Welcome! Your profile is set up. Let\'s explore your training dashboard!', 'success')
+        
         return redirect(url_for('dashboard'))
         
     except Exception as e:

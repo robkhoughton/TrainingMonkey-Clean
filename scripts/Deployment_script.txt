@@ -9,8 +9,14 @@ npm run build
 cmd
 cd..
 xcopy frontend\build\* app\build\ /E /Y
-cd
-3. Deploy
+xcopy frontend\build\static\* app\static\ /E /Y
+copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runner.webp
+
+## 3. Deployment
 cmd
 cd app
 deploy_strava_simple.bat
+
+## Alternative: Use Automated Scripts
+scripts\deploy.bat          # For production deployment
+scripts\deploy_local.bat    # For local development

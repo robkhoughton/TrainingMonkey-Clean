@@ -113,16 +113,77 @@ def get_db_connection():
             logger.info("db_utils: Database connection closed.")
 
 
-def execute_query(query, params=(), fetch=False):
-    """Execute a database query with optional parameter binding using connection pooling."""
+def execute_query_direct(query, params=(), fetch=False):
+    """Execute a database query using direct connection (fallback when pool is unavailable)."""
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable not found")
+    
     try:
-        # Use connection pool manager for better performance
-        return db_manager.execute_query(query, params, fetch)
+        with psycopg2.connect(database_url, cursor_factory=RealDictCursor) as conn:
+            with conn.cursor() as cursor:
+                # Convert ? placeholders to %s for PostgreSQL compatibility
+                if '?' in query:
+                    param_count = query.count('?')
+                    query = query.replace('?', '%s')
+                    logger.debug(f"Converted {param_count} placeholders for PostgreSQL")
+                
+                logger.debug(f"Executing direct query: {query[:100]}...")
+                cursor.execute(query, params)
+                
+                if fetch:
+                    result = cursor.fetchall()
+                    logger.debug(f"Direct query fetched {len(result)} rows")
+                    return result
+                
+                conn.commit()
+                return cursor.rowcount
+                
     except Exception as e:
-        logger.error(f"db_utils: Query failed: {str(e)}")
-        logger.error(f"db_utils: Query was: {query}")
-        logger.error(f"db_utils: Params were: {params}")
+        logger.error(f"Direct query failed: {str(e)}")
+        logger.error(f"Query was: {query[:200]}...")
+        logger.error(f"Params were: {params}")
         raise
+
+def execute_query(query, params=(), fetch=False, use_pool=False):
+    """
+    Execute a database query with optional parameter binding.
+    
+    Args:
+        query: SQL query string
+        params: Query parameters
+        fetch: Whether to fetch results
+        use_pool: Whether to use connection pool (for onboarding operations)
+    """
+    if use_pool:
+        # Use connection pool for onboarding and user management operations
+        try:
+            logger.debug("Using connection pool for operation")
+            return db_manager.execute_query(query, params, fetch)
+        except Exception as e:
+            logger.warning(f"Connection pool failed, falling back to direct connection: {str(e)}")
+            return execute_query_direct(query, params, fetch)
+    else:
+        # Use direct connection for sync operations (more reliable)
+        logger.debug("Using direct connection for sync operations")
+        return execute_query_direct(query, params, fetch)
+
+def execute_query_for_onboarding(query, params=(), fetch=False):
+    """
+    Execute a database query using connection pool for onboarding operations.
+    This is a convenience function for onboarding-related database operations.
+    """
+    return execute_query(query, params, fetch, use_pool=True)
+
+def execute_query_for_sync(query, params=(), fetch=False):
+    """
+    Execute a database query using direct connection for sync operations.
+    This is a convenience function for sync-related database operations.
+    """
+    return execute_query(query, params, fetch, use_pool=False)
 
 
 def execute_batch_queries(queries_with_params):
@@ -216,6 +277,7 @@ def initialize_db(force=False):
                 id SERIAL PRIMARY KEY,
                 email TEXT UNIQUE,
                 password_hash TEXT,
+                age INTEGER,
                 resting_hr INTEGER,
                 max_hr INTEGER,
                 gender TEXT,
@@ -840,8 +902,8 @@ def update_activity_trimp_metadata(activity_id, user_id, calculation_method, sam
         if not activity_id or not user_id:
             raise ValueError("activity_id and user_id are required")
         
-        if calculation_method not in ['stream', 'average']:
-            raise ValueError("calculation_method must be 'stream' or 'average'")
+        if calculation_method not in ['stream', 'average', 'rest_day']:
+            raise ValueError("calculation_method must be 'stream', 'average', or 'rest_day'")
         
         if not isinstance(sample_count, int) or sample_count < 0:
             raise ValueError("sample_count must be a non-negative integer")
@@ -894,6 +956,7 @@ def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
                 FROM activities 
                 WHERE user_id = %s 
                 AND date >= CURRENT_DATE - INTERVAL '{} days'
+                AND activity_id > 0
                 AND (
                     trimp IS NULL 
                     OR trimp_calculation_method = 'average'
@@ -909,6 +972,7 @@ def get_activities_needing_trimp_recalculation(user_id=None, days_back=30):
                        hr_stream_sample_count, trimp_processed_at
                 FROM activities 
                 WHERE date >= CURRENT_DATE - INTERVAL '{} days'
+                AND activity_id > 0
                 AND (
                     trimp IS NULL 
                     OR trimp_calculation_method = 'average'

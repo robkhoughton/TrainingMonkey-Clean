@@ -113,7 +113,7 @@ class UserAccountManager:
                 current_time, current_time
             )
             
-            result = execute_query(query, params, fetch=True)
+            result = execute_query_for_onboarding(query, params, fetch=True)
             
             if result and len(result) > 0:
                 return result[0]['id']
