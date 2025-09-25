@@ -488,6 +488,10 @@ def oauth_callback():
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
+                # Log user creation attempt
+                logger.info(f"Attempting to create user with email: {email}, athlete_id: {athlete_id}")
+                logger.info(f"Token data - access_token length: {len(token_response['access_token'])}, refresh_token length: {len(token_response['refresh_token'])}, expires_at: {token_response['expires_at']}")
+                
                 # Insert user
                 cursor.execute(
                     """INSERT INTO user_settings (
@@ -505,12 +509,22 @@ def oauth_callback():
                 
                 result = cursor.fetchone()
                 if not result:
-                    logger.error("Failed to create new user account")
+                    logger.error("Failed to create new user account - no ID returned")
                     flash('Error creating user account. Please try again.', 'danger')
                     return redirect('/')
                 
-                new_user_id = result['id']
+                # Handle both dictionary and tuple results
+                if isinstance(result, dict):
+                    new_user_id = result['id']
+                else:
+                    new_user_id = result[0]
+                
                 logger.info(f"Created user with ID {new_user_id}, now retrieving...")
+                logger.info(f"Result type: {type(result)}, Result: {result}")
+                
+                # Commit the transaction explicitly
+                conn.commit()
+                logger.info(f"Database transaction committed for user {new_user_id}")
                 
                 # Immediately retrieve the user in the same connection
                 cursor.execute(
@@ -540,7 +554,25 @@ def oauth_callback():
                 
         except Exception as db_error:
             logger.error(f"Database error during user creation: {str(db_error)}")
-            flash('Error creating user account. Please try again.', 'danger')
+            logger.error(f"Database error details: {type(db_error).__name__}: {str(db_error)}")
+            logger.error(f"Email: {email}, Athlete ID: {athlete_id}")
+            
+            # Provide more specific error messages based on error type
+            if 'onboarding_step' in str(db_error):
+                logger.error("OAuth callback failed due to corrupted onboarding_step data")
+                flash('System error: Database corruption detected. Please contact support.', 'danger')
+            elif 'connection' in str(db_error).lower():
+                flash('Database connection error. Please try again in a few moments.', 'danger')
+            elif 'constraint' in str(db_error).lower() or 'duplicate' in str(db_error).lower():
+                logger.error(f"Database constraint violation: {str(db_error)}")
+                flash('Account already exists. Please try logging in instead.', 'warning')
+            elif 'unique' in str(db_error).lower():
+                logger.error(f"Unique constraint violation: {str(db_error)}")
+                flash('Account already exists. Please try logging in instead.', 'warning')
+            else:
+                logger.error(f"Unexpected database error: {str(db_error)}")
+                flash('Error creating user account. Please try again.', 'danger')
+            
             return redirect('/')
         
         # Log in the new user
@@ -553,7 +585,10 @@ def oauth_callback():
             logger.info(f"Starting Strava sync for new user {new_user.id}")
             # Trigger sync in background for 28 days of data
             import threading
+            import time
             def sync_new_user_data():
+                # Small delay to ensure database transaction is committed
+                time.sleep(1)
                 try:
                     # Import the sync function
                     from strava_training_load import process_activities_for_date_range
@@ -571,9 +606,16 @@ def oauth_callback():
                         fetch=True
                     )
                     
+                    # Log database query result
+                    logger.info(f"Database query result for user {new_user.id}: {user_data}")
+                    if user_data and len(user_data) > 0:
+                        logger.info(f"Token data: access_token exists: {bool(user_data[0].get('strava_access_token'))}, refresh_token exists: {bool(user_data[0].get('strava_refresh_token'))}")
+                    else:
+                        logger.error(f"No user data found for user {new_user.id}")
+                    
                     if not user_data or not user_data[0].get('strava_access_token'):
                         logger.error(f"No Strava tokens found for new user {new_user.id}")
-                        session['strava_sync_failed'] = True
+                        # Don't access session in background thread - just log the error
                         return
                     
                     tokens = user_data[0]
@@ -588,7 +630,7 @@ def oauth_callback():
                         logger.info(f"Connected to Strava as {athlete.firstname} {athlete.lastname} for new user {new_user.id}")
                     except Exception as conn_error:
                         logger.error(f"Strava connection failed for new user {new_user.id}: {str(conn_error)}")
-                        session['strava_sync_failed'] = True
+                        # Don't access session in background thread - just log the error
                         return
                     
                     # Process activities for this user
@@ -939,9 +981,19 @@ def sync_with_automatic_token_management():
                     refresh_result = token_manager.refresh_strava_tokens()
                     
                     if refresh_result:
-                        logger.info(f"✅ Proactive token refresh successful for user {user_id}")
-                        token_status_after = token_manager.get_simple_token_status()
-                        logger.info(f"Token status after proactive refresh: {token_status_after}")
+                        # Check if refresh result indicates re-authentication needed
+                        if isinstance(refresh_result, dict) and refresh_result.get('needs_reauth'):
+                            logger.error(f"❌ Token refresh failed - invalid tokens for user {user_id}")
+                            return jsonify({
+                                'success': False,
+                                'error': refresh_result.get('error', 'Invalid tokens - re-authentication required'),
+                                'needs_reauth': True,
+                                'token_status': token_status_before
+                            }), 401
+                        else:
+                            logger.info(f"✅ Proactive token refresh successful for user {user_id}")
+                            token_status_after = token_manager.get_simple_token_status()
+                            logger.info(f"Token status after proactive refresh: {token_status_after}")
                     else:
                         logger.error(f"❌ Proactive token refresh failed for user {user_id}")
                         return jsonify({
@@ -4229,14 +4281,14 @@ def save_journal_entry():
         # Database save logic - PostgreSQL only
         query = """
             INSERT INTO journal_entries (user_id, date, energy_level, rpe_score, pain_percentage, notes, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (user_id, date)
             DO UPDATE SET
                 energy_level = EXCLUDED.energy_level,
                 rpe_score = EXCLUDED.rpe_score,
                 pain_percentage = EXCLUDED.pain_percentage,
                 notes = EXCLUDED.notes,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = NOW()
         """
 
         db_utils.execute_query(query, (
@@ -4387,7 +4439,7 @@ def generate_autopsy_for_date(date_str, user_id):
                 actual_activities = EXCLUDED.actual_activities,
                 autopsy_analysis = EXCLUDED.autopsy_analysis,
                 alignment_score = EXCLUDED.alignment_score,
-                generated_at = CURRENT_TIMESTAMP
+                generated_at = NOW()
         """
 
         db_utils.execute_query(query, (
@@ -4587,6 +4639,41 @@ def daily_recommendations_cron():
     except Exception as e:
         logger.error(f"Error in daily recommendations cron: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/cron/token-refresh', methods=['POST'])
+def token_refresh_cron():
+    """
+    Proactive token refresh for all users.
+    This endpoint is called by Cloud Scheduler daily at 5 AM UTC.
+    """
+    try:
+        # Verify this is coming from Cloud Scheduler
+        if not request.headers.get('X-Cloudscheduler'):
+            logger.warning("Unauthorized token refresh request")
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        logger.info("=== STARTING PROACTIVE TOKEN REFRESH CRON JOB ===")
+        
+        from enhanced_token_management import proactive_token_refresh_for_all_users
+        
+        # Run proactive token refresh for all users
+        result = proactive_token_refresh_for_all_users()
+        
+        logger.info(f"Token refresh cron completed: {result}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Proactive token refresh completed',
+            'result': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in token refresh cron: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/cron/weekly-comprehensive', methods=['POST'])
@@ -5867,7 +5954,7 @@ def save_custom_heart_rate_zones():
         custom_zones_json = json.dumps(merged_zones) if merged_zones else None
 
         db_utils.execute_query(
-            "UPDATE user_settings SET %s = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+            "UPDATE user_settings SET %s = %s, updated_at = NOW() WHERE id = %s",
             (custom_zones_json, current_user.id)
         )
 
@@ -8284,7 +8371,7 @@ def compare_trimp_calculation_methods():
             # Get HR stream data if available
             hr_stream_data = hr_stream_lookup.get(activity_id)
             
-            # Debug logging for HR stream data
+            # Log HR stream data processing
             logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data available: {hr_stream_data is not None}")
             if hr_stream_data:
                 logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - HR stream data type: {type(hr_stream_data)}")
@@ -8351,7 +8438,7 @@ def compare_trimp_calculation_methods():
             
             logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Difference: {difference:.2f} ({percentage_difference:.1f}%)")
             
-            # Debug logging for TRIMP values
+            # Log TRIMP calculation results
             logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Enhanced TRIMP: {enhanced_trimp}, Average TRIMP: {average_trimp}")
             logger.info(f"TRIMP_COMPARISON: Activity {activity_id} - Difference: {difference}, Percentage: {percentage_difference}%")
             
@@ -8828,7 +8915,21 @@ def welcome_post_strava():
     sync_wait = request.args.get('sync_wait', 'false').lower() == 'true'
     
     # Check if user needs onboarding
-    if needs_onboarding(user_id) or force_show or sync_wait:
+    # First check if onboarding is already completed
+    from db_utils import execute_query
+    onboarding_data = execute_query("""
+        SELECT onboarding_completed, onboarding_step 
+        FROM user_settings 
+        WHERE id = %s
+    """, (user_id,), fetch=True)
+    
+    onboarding_completed = False
+    if onboarding_data and len(onboarding_data) > 0:
+        onboarding_completed = onboarding_data[0].get('onboarding_completed', False) or onboarding_data[0].get('onboarding_step') == 'completed'
+    
+    logger.info(f"Welcome page check for user {user_id}: needs_onboarding={needs_onboarding(user_id)}, onboarding_completed={onboarding_completed}, force_show={force_show}, sync_wait={sync_wait}")
+    
+    if (needs_onboarding(user_id) and not onboarding_completed) or force_show or (sync_wait and not onboarding_completed):
         # Get current legal versions for the template
         from legal_document_versioning import get_current_legal_versions
         current_versions = get_current_legal_versions()
@@ -8875,11 +8976,10 @@ def welcome_stage1():
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('welcome_post_strava'))
         
-        # TEMPORARY: Force bypass legal acceptance for testing
-        # TODO: Remove this bypass once testing is complete
-        terms_accepted = True
-        privacy_accepted = True
-        disclaimer_accepted = True
+        # Validate legal acceptance
+        if not all([terms_accepted, privacy_accepted, disclaimer_accepted]):
+            flash('Please accept all legal agreements to continue.', 'error')
+            return redirect(url_for('welcome_post_strava'))
         
         # Map coaching tone to spectrum value
         tone_map = {
@@ -8902,8 +9002,7 @@ def welcome_stage1():
                     WHERE id = %s
                 """, (age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
                 
-                # TEMPORARY: Force update legal acceptance timestamps
-                # TODO: Remove this bypass once testing is complete
+                # Update legal acceptance timestamps
                 from datetime import datetime
                 current_time = datetime.now()
                 cursor.execute("""
@@ -8914,47 +9013,59 @@ def welcome_stage1():
                 
                 conn.commit()
         
-        # Log legal acceptance (if not bypassed)
+        # Log legal acceptance - OPTIMIZED VERSION
         if terms_accepted and privacy_accepted and disclaimer_accepted:
-            from legal_compliance import LegalComplianceTracker
-            from legal_document_versioning import get_current_legal_versions
-            
-            compliance_tracker = LegalComplianceTracker()
-            current_versions = get_current_legal_versions()
-            ip_address = request.remote_addr
-            user_agent = request.headers.get('User-Agent', '')
-            
-            # Log each acceptance
-            compliance_tracker.log_legal_acceptance(user_id, 'terms', current_versions.get('terms', '2.0'), ip_address, user_agent)
-            compliance_tracker.log_legal_acceptance(user_id, 'privacy', current_versions.get('privacy', '2.0'), ip_address, user_agent)
-            compliance_tracker.log_legal_acceptance(user_id, 'disclaimer', current_versions.get('disclaimer', '2.0'), ip_address, user_agent)
+            try:
+                from legal_document_versioning import get_current_legal_versions
+                from db_utils import get_db_connection
+                
+                current_versions = get_current_legal_versions()
+                ip_address = request.remote_addr
+                user_agent = request.headers.get('User-Agent', '')
+                current_time = datetime.now()
+                
+                # Batch all legal compliance logging in a single database transaction
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Insert all three legal acceptances in one transaction
+                    cursor.execute("""
+                        INSERT INTO legal_compliance 
+                        (user_id, document_type, version, accepted_at, ip_address, user_agent, created_at)
+                        VALUES 
+                        (%s, 'terms', %s, %s, %s, %s, %s),
+                        (%s, 'privacy', %s, %s, %s, %s, %s),
+                        (%s, 'disclaimer', %s, %s, %s, %s, %s)
+                    """, (
+                        user_id, current_versions.get('terms', '2.0'), current_time, ip_address, user_agent, current_time,
+                        user_id, current_versions.get('privacy', '2.0'), current_time, ip_address, user_agent, current_time,
+                        user_id, current_versions.get('disclaimer', '2.0'), current_time, ip_address, user_agent, current_time
+                    ))
+                    
+                    conn.commit()
+                    logger.info(f"Logged legal compliance for user {user_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error logging legal compliance for user {user_id}: {e}")
+                # Don't fail the form submission if legal logging fails
         
         # Update onboarding progress using existing system
-        from onboarding_manager import complete_onboarding_step, OnboardingStep
-        complete_onboarding_step(user_id, OnboardingStep.STRAVA_CONNECTED)
+        from user_account_manager import user_account_manager
+        success = user_account_manager.complete_onboarding(user_id)
         
-        # Check if Strava sync is still in progress
-        if session.get('strava_sync_in_progress') and not session.get('strava_sync_complete'):
-            flash('Welcome! Your profile is set up. Strava sync is still in progress - please wait...', 'info')
-            return redirect(url_for('welcome_post_strava', sync_wait=True))
-        
-        # Check if Strava sync completed successfully
-        if session.get('strava_sync_complete'):
-            flash('Welcome! Your profile is set up and Strava sync is complete. Let\'s explore your training dashboard!', 'success')
-            # Clear sync status from session
+        if success:
+            # Onboarding completed successfully - always redirect to dashboard
+            # Clear any sync status from session since onboarding is complete
             session.pop('strava_sync_in_progress', None)
             session.pop('strava_sync_complete', None)
             session.pop('strava_sync_failed', None)
-        elif session.get('strava_sync_failed'):
-            flash('Welcome! Your profile is set up. Strava sync encountered an issue - you can sync from the dashboard.', 'warning')
-            # Clear sync status from session
-            session.pop('strava_sync_in_progress', None)
-            session.pop('strava_sync_complete', None)
-            session.pop('strava_sync_failed', None)
-        else:
+            
             flash('Welcome! Your profile is set up. Let\'s explore your training dashboard!', 'success')
-        
-        return redirect(url_for('dashboard'))
+            return redirect(url_for('dashboard'))
+        else:
+            # Onboarding completion failed - stay on welcome page
+            flash('Error completing your setup. Please try again.', 'error')
+            return redirect(url_for('welcome_post_strava'))
         
     except Exception as e:
         logger.error(f"Error updating Stage 1 data: {e}")
@@ -9054,7 +9165,7 @@ def track_analytics_event(event_name, data):
         """, (data.get('user_id'), event_name, json.dumps(data)))
     except Exception as e:
         # Fallback to logging
-        print(f"Analytics tracking error: {e}")
+        logger.error(f"Analytics tracking error: {e}")
 
 @login_required
 @app.route('/proactive-token-refresh', methods=['POST'])

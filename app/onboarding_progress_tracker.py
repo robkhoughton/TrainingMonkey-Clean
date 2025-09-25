@@ -916,8 +916,7 @@ class OnboardingProgressTracker:
     def _save_progress(self, progress: OnboardingProgress):
         """Save progress to database"""
         try:
-            # In practice, this would save to a dedicated progress table
-            # For now, we'll use the existing user_settings table
+            # Save progress data to the onboarding_analytics table instead of non-existent column
             progress_data = {
                 'user_id': progress.user_id,
                 'current_step': progress.current_step.value,
@@ -933,18 +932,27 @@ class OnboardingProgressTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # PostgreSQL syntax
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET onboarding_progress = %s
-                        WHERE user_id = %s
-                    """, (json.dumps(progress_data), progress.user_id))
-                else:
-                    cursor.execute("""
-                        UPDATE user_settings 
-                        SET %s = %s
-                        WHERE user_id = %s
-                    """, (json.dumps(progress_data), progress.user_id))
+                # Use onboarding_analytics table for detailed progress tracking
+                cursor.execute("""
+                    INSERT INTO onboarding_analytics (user_id, event_type, event_data, timestamp)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id, event_type, timestamp) 
+                    DO UPDATE SET event_data = %s
+                """, (
+                    progress.user_id, 
+                    'progress_update', 
+                    json.dumps(progress_data), 
+                    progress.last_activity,
+                    json.dumps(progress_data)
+                ))
+                
+                # Also update the main user_settings table with current step
+                cursor.execute("""
+                    UPDATE user_settings 
+                    SET onboarding_step = %s, 
+                        last_onboarding_activity = %s
+                    WHERE id = %s
+                """, (progress.current_step.value, progress.last_activity, progress.user_id))
             
         except Exception as e:
             logger.error(f"Error saving progress: {str(e)}")
@@ -955,20 +963,41 @@ class OnboardingProgressTracker:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT onboarding_progress FROM user_settings 
-                        WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT onboarding_progress FROM user_settings 
-                        WHERE user_id = %s
-                    """, (user_id,))
+                # Load from onboarding_analytics table (most recent progress update)
+                cursor.execute("""
+                    SELECT event_data FROM onboarding_analytics 
+                    WHERE user_id = %s AND event_type = 'progress_update'
+                    ORDER BY timestamp DESC 
+                    LIMIT 1
+                """, (user_id,))
                 
                 result = cursor.fetchone()
                 if not result or not result[0]:
-                    return None
+                    # Fallback: create basic progress from user_settings
+                    cursor.execute("""
+                        SELECT onboarding_step, last_onboarding_activity, created_at
+                        FROM user_settings 
+                        WHERE id = %s
+                    """, (user_id,))
+                    
+                    user_result = cursor.fetchone()
+                    if not user_result:
+                        return None
+                    
+                    onboarding_step, last_activity, created_at = user_result
+                    
+                    # Create basic progress object
+                    return OnboardingProgress(
+                        user_id=user_id,
+                        current_step=OnboardingStep(onboarding_step) if onboarding_step else OnboardingStep.WELCOME,
+                        completed_steps=[],
+                        unlocked_features=[],
+                        current_tier=FeatureTier.BASIC,
+                        progress_percentage=0,
+                        started_at=created_at or datetime.now(),
+                        last_activity=last_activity or datetime.now(),
+                        status=OnboardingStatus.IN_PROGRESS
+                    )
                 
                 progress_data = json.loads(result[0])
                 

@@ -141,7 +141,7 @@ class SimpleTokenManager:
                 SET strava_access_token = %s, strava_refresh_token = %s,
                     strava_token_expires_at = %s,
                     strava_athlete_id = %s,
-                    strava_token_created_at = CURRENT_TIMESTAMP
+                    strava_token_created_at = NOW()
                 WHERE id = %s
             """
 
@@ -265,9 +265,14 @@ class SimpleTokenManager:
                                 logger.error(f"Max retries reached for user {self.user_id}: {refresh_result['error']}")
                                 return None
                         else:
-                            # Non-retryable error
-                            logger.error(f"Non-retryable error for user {self.user_id}: {refresh_result['error']}")
-                            return None
+                            # Non-retryable error - check if it's an invalid refresh token
+                            error_message = refresh_result['error']
+                            if 'invalid refresh token' in error_message.lower() or 'invalid' in error_message.lower():
+                                # Handle invalid refresh token specifically
+                                return self._handle_invalid_refresh_token(error_message)
+                            else:
+                                logger.error(f"Non-retryable error for user {self.user_id}: {error_message}")
+                                return None
 
                 except Exception as e:
                     logger.error(f"Unexpected error during refresh attempt {attempt + 1} for user {self.user_id}: {str(e)}")
@@ -433,6 +438,52 @@ class SimpleTokenManager:
         
         # Default to retryable for unknown errors
         return True
+
+    def _handle_invalid_refresh_token(self, error_message):
+        """Handle invalid refresh token by cleaning up and marking for re-auth"""
+        try:
+            logger.warning(f"Handling invalid refresh token for user {self.user_id}: {error_message}")
+            
+            # Clear invalid tokens from database
+            self._clear_invalid_tokens()
+            
+            # Log the cleanup action
+            logger.info(f"Cleared invalid tokens for user {self.user_id} - re-authentication required")
+            
+            return {
+                'success': False,
+                'error': 'Refresh token is invalid - re-authentication required',
+                'needs_reauth': True,
+                'cleaned_up': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error handling invalid refresh token for user {self.user_id}: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Error handling invalid token: {str(e)}',
+                'needs_reauth': True,
+                'cleaned_up': False
+            }
+
+    def _clear_invalid_tokens(self):
+        """Clear invalid tokens from database"""
+        try:
+            query = """
+                UPDATE user_settings 
+                SET strava_access_token = NULL, 
+                    strava_refresh_token = NULL,
+                    strava_token_expires_at = NULL,
+                    strava_token_created_at = NULL
+                WHERE id = %s
+            """
+            
+            db_utils.execute_query(query, (self.user_id,))
+            logger.info(f"Cleared invalid tokens for user {self.user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error clearing invalid tokens for user {self.user_id}: {str(e)}")
+            raise
 
 
 

@@ -28,7 +28,7 @@ def create_user():
             cursor = conn.cursor()
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 email TEXT UNIQUE,
                 password_hash TEXT,
                 resting_hr INTEGER,

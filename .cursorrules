@@ -1,156 +1,39 @@
-# TrainingMonkey Project Rules
+# TrainingMonkey Project Rules for Cursor
 
-## 🎯 Core Project Principles
+## 🗄️ Database Standards (CRITICAL)
+- **PostgreSQL ONLY**: Use `%s` placeholders (NOT `?`), `SERIAL PRIMARY KEY` (NOT `AUTOINCREMENT`), `NOW()` (NOT `CURRENT_TIMESTAMP`)
+- **Schema Changes**: Use SQL Editor ONLY, never modify schema in code
+- **Date Operations**: Use `datetime.now().date()` for date-only operations, `'YYYY-MM-DD'` format for APIs
+- **Connection**: Direct cloud PostgreSQL connection: `postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d`
 
-This project uses **PostgreSQL exclusively** with direct cloud database connection for local development. All database and date handling must follow strict standards to prevent production issues.
+## 🔧 Code Quality Standards
+- **Public APIs**: Use intended public methods, avoid private method calls
+- **Error Handling**: Provide meaningful error messages, fail gracefully
+- **SQL Injection**: Always use parameterized queries with `%s` placeholders
+- **Transactions**: Use explicit commits and context managers for database connections
 
-## 🗄️ Database Rules (CRITICAL)
+## 🚀 Development Workflow
+- **Root Cause Analysis**: Check database state before making assumptions
+- **End-to-End Testing**: Test complete user flows, not just components
+- **Validation**: Run `validate_sql_syntax.py` before commits
+- **Clean Code**: Remove debugging artifacts, use proper validation
 
-### Database Platform
-- **PostgreSQL ONLY**: No SQLite, no sqlite3 imports, no SQLite syntax
-- **Cloud Database**: Direct connection to Google Cloud SQL (train-monk-db-v3)
-- **Connection**: `postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d`
+## 📋 Timezone & Date Standards
+- **Storage**: UTC timestamps in database
+- **Application**: Use `get_app_current_date()` for consistent date handling
+- **APIs**: Return dates in `'YYYY-MM-DD'` format
+- **Debugging**: Use `log_timezone_debug()` for timezone issues
 
-### SQL Syntax Requirements
-- **Placeholders**: Use `%s` (NOT `?`) for all parameter binding
-- **Data Types**: Use PostgreSQL types only:
-  - `SERIAL PRIMARY KEY` (NOT `INTEGER PRIMARY KEY AUTOINCREMENT`)
-  - `VARCHAR(n)` (NOT `TEXT` for limited strings)
-  - `JSONB` for JSON data
-  - `TIMESTAMP DEFAULT NOW()` (NOT `DEFAULT CURRENT_TIMESTAMP`)
-
-### Schema Management
-- **Schema Changes**: Use SQL Editor ONLY, never in code
-- **One-time Operations**: SQL Editor for table creation, column additions, indexes
-- **Runtime Validation**: Code can check if columns exist during startup
-- **Documentation**: All schema changes must be documented in `docs/database_changes.md`
-
-### Database Connection
-- **Local Development**: Connect directly to cloud PostgreSQL
-- **No Local Database**: Do not create local SQLite or PostgreSQL instances
-- **Testing**: Defer database-dependent tests to post-deployment
-- **Environment**: Use `DATABASE_URL` in `.env` file
-
-## 📅 Date Format Rules (CRITICAL)
-
-### Date Operations
-- **Date-only Operations**: Use `datetime.now().date()` (NOT `datetime.now()`)
-- **Database Queries**: Use `date = %s` for DATE column comparisons
-- **API Format**: All dates in `'YYYY-MM-DD'` format
-- **Parameter Binding**: Pass date objects or YYYY-MM-DD strings directly
-
-### Date Conversion
-- **Database Results**: Use robust conversion handling all object types
-- **User Input**: Use `safe_date_parse()` for validation
-- **API Responses**: Use `strftime('%Y-%m-%d')` for consistent formatting
-- **Frontend**: Expect `'YYYY-MM-DD'` format from all APIs
-
-### Common Mistakes to Avoid
-- ❌ Using `datetime.now()` for date-only operations
-- ❌ Using `?` placeholders in SQL queries
-- ❌ Using SQLite data types (AUTOINCREMENT, INTEGER PRIMARY KEY)
-- ❌ Using `date::text` casting in queries
-- ❌ Inconsistent date formats in API responses
-
-## 🛠️ Development Workflow
-
-### Before Making Changes
-1. **Verify Database Schema**: Check field names and types in cloud database
-2. **Use SQL Editor**: For any schema modifications
-3. **Follow Date Standards**: Use `datetime.date` for date operations
-4. **Test Locally**: Against live cloud database
-
-### Code Review Checklist
-- [ ] All SQL uses `%s` placeholders
-- [ ] PostgreSQL data types used (SERIAL, VARCHAR, JSONB)
-- [ ] Date operations use `datetime.date`
-- [ ] No SQLite imports or syntax
-- [ ] Schema changes documented
-- [ ] API responses use consistent date format
-
-### Testing Approach
-- **Unit Tests**: Mock database interactions
-- **Integration Tests**: Defer to post-deployment
-- **Database Tests**: Use live cloud database for development
-- **No Local Database**: Do not create local database replicas
-
-## 🚨 Enforcement Rules
-
-### Immediate Actions Required
-- **Stop deployment** if SQLite syntax found
-- **Fix all violations** before proceeding
-- **Use SQL Editor** for schema changes
-- **Document all changes** in appropriate docs
-
-### Validation Commands
-```bash
-# Run before every commit
-python scripts/validate_sql_syntax.py
-python scripts/pre-commit-hooks.py
-```
-
-## 📁 File Organization
-
-### Database Files
-- `app/db_utils.py` - Database utilities and connection management
-- `sql/*.sql` - Schema definitions and migrations (PostgreSQL syntax)
-- `docs/database_changes.md` - Schema change log
-
-### Date Handling
-- Use `datetime.date` objects for date-only operations
-- Use `strftime('%Y-%m-%d')` for string formatting
-- Handle all date object types robustly in conversion functions
-
-## 🔧 Environment Setup
-
-### Required Environment Variables
-```bash
-DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d
-GOOGLE_CLOUD_PROJECT=dev-ruler-460822-e8
-```
-
-### Database Instance Details
-- **Instance**: train-monk-db-v3
-- **Public IP**: 35.223.144.85
-- **Database**: train-d
-- **User**: appuser
-
-## 📚 Key Documentation
-
-- `docs/database_schema_rules.md` - Detailed database rules
-- `docs/DATE_FORMAT_STANDARDS.md` - Complete date handling standards
-- `docs/DATABASE_RULES_UPDATED.md` - Direct connection approach
-- `docs/PROJECT_RULES_ENFORCEMENT.md` - Enforcement mechanisms
-
-## ⚠️ Critical Reminders
-
-1. **PostgreSQL syntax is MANDATORY** - no exceptions
-2. **Use SQL Editor for schema changes** - never in code
-3. **Date operations must use `datetime.date`** - prevents timezone issues
-4. **All APIs return `'YYYY-MM-DD'` format** - ensures consistency
-5. **Connect directly to cloud database** - no local database setup
-6. **Document all schema changes** - maintain audit trail
+## ❌ Common Mistakes to Avoid
+- Using SQLite syntax (`?`, `AUTOINCREMENT`, `CURRENT_TIMESTAMP`)
+- Calling private methods from outside their class
+- Making schema changes in application code
+- Using `datetime.now()` for date-only operations
+- Inconsistent date formats in API responses
 
 ## 🎯 Success Criteria
-
-- Zero SQLite syntax in codebase
+- All SQL queries use PostgreSQL syntax
 - All date operations use proper date objects
+- All APIs return consistent formats
 - All schema changes via SQL Editor
-- Consistent date formats across all APIs
-- Direct cloud database connection working
-- All changes properly documented
-
-## 💬 Communication Guidelines
-
-### Response Style
-- **No excessive agreement**: Avoid phrases like "You're absolutely right!" or "Perfect!"
-- **No excuses**: Don't make excuses for errors or mistakes
-- **Direct and factual**: State what needs to be done without unnecessary validation
-- **Focus on solutions**: Address issues directly without over-explaining
-
-### Error Handling
-- Acknowledge errors briefly
-- Fix the issue
-- Move forward without dwelling on the mistake
-
-Remember: **These rules prevent production issues and ensure database compatibility. Follow them strictly.**
+- Clean error handling and logging

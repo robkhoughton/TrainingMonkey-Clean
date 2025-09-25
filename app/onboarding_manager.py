@@ -596,7 +596,9 @@ class OnboardingManager:
                 cursor.execute("""
                     UPDATE user_settings 
                     SET onboarding_completed_at = %s,
-                        account_status = 'active'
+                        account_status = 'active',
+                        onboarding_completed = true,
+                        onboarding_step = 'completed'
                     WHERE id = %s
                 """, (datetime.now(), user_id))
                 

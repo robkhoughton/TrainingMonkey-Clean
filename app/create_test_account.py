@@ -133,10 +133,9 @@ class TestAccountCreator:
     def _setup_test_onboarding_progress(self, user_id: int):
         """Set up realistic onboarding progress for test account"""
         try:
-            # Set onboarding to 80% complete (step 5 of 6)
+            # Set onboarding to goals_setup step (step 5 of 6)
             onboarding_data = {
                 'onboarding_step': 'goals_setup',
-                'onboarding_progress': 80,
                 'onboarding_started_date': datetime.now() - timedelta(days=2),
                 'onboarding_completed_date': None,
                 'last_onboarding_activity': datetime.now() - timedelta(hours=3)
@@ -144,7 +143,7 @@ class TestAccountCreator:
             
             query = """
                 UPDATE user_settings 
-                SET %s = %s, 
+                SET onboarding_step = %s, 
                     onboarding_started_date = %s, onboarding_completed_date = %s,
                     last_onboarding_activity = %s, updated_at = %s
                 WHERE id = %s
@@ -152,7 +151,6 @@ class TestAccountCreator:
             
             execute_query(query, (
                 onboarding_data['onboarding_step'],
-                onboarding_data['onboarding_progress'],
                 onboarding_data['onboarding_started_date'],
                 onboarding_data['onboarding_completed_date'],
                 onboarding_data['last_onboarding_activity'],
@@ -325,7 +323,7 @@ class TestAccountCreator:
         """List all test accounts in the system"""
         try:
             query = """
-                SELECT id, email, account_status, onboarding_step, onboarding_progress,
+                SELECT id, email, account_status, onboarding_step, last_onboarding_activity,
                        goals_configured, created_at, updated_at
                 FROM user_settings 
                 WHERE email LIKE '%test%' OR email LIKE '%@trainingmonkey.com'

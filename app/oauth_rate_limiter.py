@@ -499,7 +499,7 @@ def create_oauth_security_tables():
             timestamp TIMESTAMP NOT NULL,
             ip_address VARCHAR(45),
             user_agent TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT NOW()
         )
         """
         

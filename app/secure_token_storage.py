@@ -194,7 +194,7 @@ class SecureTokenStorage:
                 SET strava_access_token = %s, strava_refresh_token = %s,
                     strava_token_expires_at = %s,
                     strava_athlete_id = %s,
-                    strava_token_created_at = CURRENT_TIMESTAMP,
+                    strava_token_created_at = NOW(),
                     access_token_hash = %s,
                     refresh_token_hash = %s,
                     token_metadata = %s

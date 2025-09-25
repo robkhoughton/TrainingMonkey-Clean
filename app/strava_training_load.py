@@ -330,7 +330,7 @@ def get_activities(client, start_date, end_date=None, limit=200):
 
         logger.info(f"Found {len(activities)} activities")
 
-        # DEBUG: Log each activity's date to verify coverage
+        # Log activity date coverage
         for activity in activities:
             local_date = activity.start_date_local.strftime('%Y-%m-%d')
             utc_date = activity.start_date.strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -387,8 +387,8 @@ def determine_specific_activity_type(activity):
 
         logger.info(f"Determining activity type for {activity_id}: '{activity_name}'")
 
-        # DEBUG: Log all available activity attributes for troubleshooting
-        logger.info(f"DEBUG: Activity {activity_id} attributes:")
+        # Log activity attributes for analysis
+        logger.info(f"Activity {activity_id} attributes:")
         logger.info(f"  - sport_type: {getattr(activity, 'sport_type', 'None')}")
         logger.info(f"  - type: {getattr(activity, 'type', 'None')}")
         logger.info(f"  - trainer: {getattr(activity, 'trainer', 'None')}")
@@ -600,13 +600,13 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     activity_date = activity.start_date.strftime('%Y-%m-%d')
     activity_name = activity.name
 
-    logger.info(f"DEBUG: Starting calculate_training_load for activity {activity_id}: '{activity_name}'")
+    logger.info(f"Calculating training load for activity {activity_id}: '{activity_name}'")
 
     # Get the specific activity type and determine sport classification
     specific_activity_type = determine_specific_activity_type(activity)
     sport_type = determine_sport_type(activity)  # NEW: Get sport classification
 
-    logger.info(f"DEBUG: Activity {activity_id} type: '{specific_activity_type}' -> sport: '{sport_type}'")
+    logger.info(f"Activity {activity_id} type: '{specific_activity_type}' -> sport: '{sport_type}'")
 
     # Get distance, elevation, and duration
     distance_meters = float(activity.distance or 0)
@@ -631,7 +631,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     average_speed_mph = None
     if distance_miles > 0 and duration_seconds > 0:
         average_speed_mph = distance_miles / (duration_seconds / 3600.0)
-        logger.info(f"DEBUG: Calculated average speed: {average_speed_mph:.2f} mph")
+        logger.info(f"Calculated average speed: {average_speed_mph:.2f} mph")
 
     # NEW: Calculate external load based on sport type
     cycling_equivalent_miles = None
@@ -639,7 +639,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
 
     if sport_type == 'cycling':
         # NEW: Cycling-specific calculation
-        logger.info("DEBUG: Using cycling-specific external load calculation")
+        logger.info("Using cycling-specific external load calculation")
         running_equiv_distance, elevation_load_miles, total_load_miles = calculate_cycling_external_load(
             distance_miles, average_speed_mph, elevation_gain_feet
         )
@@ -648,12 +648,12 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
 
     else:
         # EXISTING: Running calculation (unchanged for safety)
-        logger.info("DEBUG: Using running external load calculation")
+        logger.info("Using running external load calculation")
         elevation_load_miles = elevation_gain_feet / 750.0
         total_load_miles = distance_miles + elevation_load_miles
         # cycling fields remain None for running activities
 
-    logger.info(f"DEBUG: External load calculated: distance={distance_miles:.2f}, "
+    logger.info(f"External load calculated: distance={distance_miles:.2f}, "
                 f"elevation_load={elevation_load_miles:.2f}, total={total_load_miles:.2f}")
 
     # Get heart rate data (UNCHANGED - your existing logic)
@@ -742,8 +742,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             )
             trimp_calculation_method = 'average'
 
-    # Enhanced debug logging (UNCHANGED - your existing logic)
-    logger.info(f"DEBUG: Activity {activity_id} final data:")
+    # Log final activity data
+    logger.info(f"Activity {activity_id} final data:")
     logger.info(f"  - Name: '{activity_name}'")
     logger.info(f"  - Type: '{specific_activity_type}' (Sport: {sport_type})")  # Enhanced
     logger.info(f"  - Distance: {distance_miles:.2f} miles")
@@ -786,7 +786,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     }
 
     logger.info(
-        f"DEBUG: Returning result for activity {activity_id} with type='{result['type']}', sport='{result['sport_type']}'")
+        f"Completed activity {activity_id}: type='{result['type']}', sport='{result['sport_type']}'")
     return result
 
 
@@ -1403,7 +1403,7 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
                     }
 
                     columns = ', '.join(new_record.keys())
-                    placeholders = ', '.join(['?'] * len(new_record))
+                    placeholders = ', '.join(['%s'] * len(new_record))
 
                     execute_query(
                         f"INSERT INTO activities ({columns}) VALUES ({placeholders})",

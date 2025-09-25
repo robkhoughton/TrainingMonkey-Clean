@@ -451,7 +451,7 @@ class ACWRConfigurationService:
             
             for field, value in kwargs.items():
                 if field in allowed_fields:
-                    updates.append(f"{field} = ?")
+                    updates.append(f"{field} = %s")
                     values.append(value)
             
             if not updates:
@@ -680,11 +680,11 @@ class ACWRConfigurationService:
             params = []
             
             if user_id:
-                conditions.append("ah.user_id = ?")
+                conditions.append("ah.user_id = %s")
                 params.append(user_id)
             
             if configuration_id:
-                conditions.append("ah.configuration_id = ?")
+                conditions.append("ah.configuration_id = %s")
                 params.append(configuration_id)
             
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""

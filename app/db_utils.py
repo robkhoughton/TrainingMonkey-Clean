@@ -263,7 +263,7 @@ def initialize_db(force=False):
                 notes TEXT,
                 trimp_calculation_method VARCHAR(20) DEFAULT 'average',
                 hr_stream_sample_count INTEGER DEFAULT 0,
-                trimp_processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                trimp_processed_at TIMESTAMP DEFAULT NOW()
             );
             '''
 
@@ -290,7 +290,7 @@ def initialize_db(force=False):
                 strava_refresh_token TEXT,
                 strava_token_expires_at BIGINT,
                 strava_athlete_id BIGINT,
-                strava_token_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                strava_token_created_at TIMESTAMP DEFAULT NOW(),
                 user_strava_client_id VARCHAR(255),
                 user_strava_client_secret VARCHAR(255),
                 terms_accepted_at TIMESTAMP,
@@ -298,7 +298,7 @@ def initialize_db(force=False):
                 disclaimer_accepted_at TIMESTAMP,
                 onboarding_completed_at TIMESTAMP,
                 account_status VARCHAR(20) DEFAULT 'pending_verification',
-                registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                registration_date TIMESTAMP DEFAULT NOW()
             );
             '''
 
@@ -321,7 +321,7 @@ def initialize_db(force=False):
                 weekly_recommendation TEXT,
                 pattern_insights TEXT,
                 raw_response TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT NOW()
             );
             '''
 
@@ -336,10 +336,10 @@ def initialize_db(force=False):
                 user_id INTEGER REFERENCES user_settings(id),
                 document_type VARCHAR(50) NOT NULL,
                 version VARCHAR(20) NOT NULL,
-                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                accepted_at TIMESTAMP DEFAULT NOW(),
                 ip_address INET,
                 user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT NOW()
             );
             '''
 
@@ -591,7 +591,7 @@ def migrate_user_settings_schema():
             "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS disclaimer_accepted_at TIMESTAMP;",
             "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP;",
             "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'pending_verification';",
-            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+            "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS registration_date TIMESTAMP DEFAULT NOW();"
         ]
         
         for query in migration_queries:
@@ -624,7 +624,7 @@ def migrate_legal_compliance_table():
             user_id INTEGER REFERENCES user_settings(id),
             document_type VARCHAR(50) NOT NULL,
             version VARCHAR(20) NOT NULL,
-            accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            accepted_at TIMESTAMP DEFAULT NOW(),
             ip_address INET,
             user_agent TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -803,7 +803,7 @@ def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0):
         # Insert HR stream data
         query = """
             INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
         """
         
         params = (activity_id, user_id, hr_data_json, sample_rate)
@@ -916,7 +916,7 @@ def update_activity_trimp_metadata(activity_id, user_id, calculation_method, sam
             UPDATE activities 
             SET %s = %s, trimp_calculation_method = %s, 
                 hr_stream_sample_count = %s, 
-                trimp_processed_at = CURRENT_TIMESTAMP
+                trimp_processed_at = NOW()
             WHERE activity_id = %s AND user_id = %s
         """
         

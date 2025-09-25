@@ -278,22 +278,32 @@ class UserAccountManager:
         
         Args:
             user_id: User ID
-            step: New onboarding step
+            step: New onboarding step (must be valid OnboardingStep enum value)
             
         Returns:
             True if successful, False otherwise
         """
         try:
+            # Validate step is a valid OnboardingStep enum value
+            from onboarding_manager import OnboardingStep
+            try:
+                valid_step = OnboardingStep(step)
+            except ValueError:
+                logger.error(f"Invalid onboarding step: {step}. Must be one of: {[s.value for s in OnboardingStep]}")
+                return False
+            
+            # Use proper SQL syntax with fixed column names
             query = """
                 UPDATE user_settings 
-                SET %s = %s
+                SET onboarding_step = %s, 
+                    last_onboarding_activity = %s
                 WHERE id = %s
             """
             
             current_time = datetime.now()
-            execute_query(query, (step, current_time, user_id))
+            execute_query(query, (valid_step.value, current_time, user_id))
             
-            logger.info(f"Updated onboarding progress for user {user_id}: {step}")
+            logger.info(f"Updated onboarding progress for user {user_id}: {valid_step.value}")
             return True
             
         except Exception as e:
@@ -311,15 +321,18 @@ class UserAccountManager:
             True if successful, False otherwise
         """
         try:
-            # Update onboarding step and activate account
+            # Update onboarding step and activate account with proper SQL syntax
             query = """
                 UPDATE user_settings 
-                SET %s = %s
+                SET onboarding_step = %s, 
+                    account_status = %s,
+                    onboarding_completed_at = %s,
+                    onboarding_completed = true
                 WHERE id = %s
             """
             
             current_time = datetime.now()
-            execute_query(query, ('onboarding_complete', 'active', current_time, user_id))
+            execute_query(query, ('completed', 'active', current_time, user_id))
             
             logger.info(f"Completed onboarding for user {user_id}")
             return True

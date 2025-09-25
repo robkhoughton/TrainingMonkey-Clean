@@ -80,7 +80,7 @@ class RegistrationStatusTracker:
             
             # Update user status to pending
             success = user_account_manager.update_onboarding_progress(
-                user_id, 'registration_started'
+                user_id, 'welcome'
             )
             
             if success:
@@ -114,7 +114,7 @@ class RegistrationStatusTracker:
             
             # Update onboarding progress
             success = user_account_manager.update_onboarding_progress(
-                user_id, 'account_created'
+                user_id, 'welcome'
             )
             
             if success:
@@ -150,7 +150,7 @@ class RegistrationStatusTracker:
             
             # Update onboarding progress
             success = user_account_manager.update_onboarding_progress(
-                user_id, 'email_verification_sent'
+                user_id, 'welcome'
             )
             
             if success:
@@ -184,7 +184,7 @@ class RegistrationStatusTracker:
             
             # Update onboarding progress
             success = user_account_manager.update_onboarding_progress(
-                user_id, 'email_verified'
+                user_id, 'welcome'
             )
             
             if success:
@@ -258,7 +258,7 @@ class RegistrationStatusTracker:
             
             # Update onboarding progress
             success = user_account_manager.update_onboarding_progress(
-                user_id, 'onboarding_started'
+                user_id, 'welcome'
             )
             
             if success:

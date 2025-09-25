@@ -33,7 +33,7 @@ class OptimizedTokenManager:
                     """UPDATE user_settings 
                        SET strava_access_token = %s, strava_refresh_token = %s,
                            strava_token_expires_at = %s, strava_athlete_id = %s,
-                           strava_token_created_at = CURRENT_TIMESTAMP
+                           strava_token_created_at = NOW()
                        WHERE id = %s""",
                     (tokens['access_token'], tokens.get('refresh_token'),
                      tokens.get('expires_at'), athlete_id, user_id)
