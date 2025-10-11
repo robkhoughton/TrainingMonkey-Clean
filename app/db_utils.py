@@ -465,6 +465,38 @@ def save_llm_recommendation(recommendation):
         raise
 
 
+def cleanup_old_recommendations(user_id, keep_days=14):
+    """
+    Remove old recommendations, keeping only those from the last N days.
+    This prevents database bloat while maintaining enough history for the Journal page.
+    
+    Args:
+        user_id: The user ID to clean up recommendations for
+        keep_days: Number of days of history to retain (default 14)
+    """
+    try:
+        from datetime import timedelta
+        from timezone_utils import get_user_current_date
+        
+        user_current_date = get_user_current_date(user_id)
+        cutoff_date = (user_current_date - timedelta(days=keep_days)).strftime('%Y-%m-%d')
+        
+        # Delete recommendations older than the cutoff date
+        query = """
+            DELETE FROM llm_recommendations
+            WHERE user_id = %s AND target_date < %s
+        """
+        
+        result = execute_query(query, (user_id, cutoff_date))
+        logger.info(f"Cleaned up recommendations older than {cutoff_date} for user {user_id} (keeping {keep_days} days)")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up old recommendations for user {user_id}: {str(e)}")
+        # Don't raise - cleanup failure shouldn't break recommendation generation
+        return None
+
+
 def get_latest_recommendation(user_id=None):
     """Get the most recent LLM recommendation from the database for a specific user."""
     if user_id is None:
@@ -540,7 +572,16 @@ def recommendation_needs_update(user_id=None):
 # Replace the existing clear_old_recommendations function with this version:
 
 def clear_old_recommendations(keep_count=10, user_id=None):
-    """Clean up old recommendations for a specific user, keeping only the most recent ones."""
+    """
+    DEPRECATED: Use cleanup_old_recommendations() instead.
+    
+    This function is kept for backward compatibility but should not be used.
+    Use cleanup_old_recommendations(user_id, keep_days=14) for date-based retention.
+    
+    Old behavior: Keeps N most recent recommendations by generation_date (not target_date).
+    """
+    logger.warning("clear_old_recommendations() is DEPRECATED. Use cleanup_old_recommendations() instead.")
+    
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 

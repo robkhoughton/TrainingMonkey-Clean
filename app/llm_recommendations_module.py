@@ -159,9 +159,17 @@ def get_api_key():
     return api_key
 
 
-def analyze_pattern_flags(activities, current_metrics):
-    """Analyze training patterns for red flags and positive adaptations."""
+def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=None):
+    """Analyze training patterns for red flags and positive adaptations with user-specific thresholds."""
     try:
+        # Get user-specific thresholds if not provided
+        if thresholds is None and user_id is not None:
+            recommendation_style = get_user_recommendation_style(user_id)
+            thresholds = get_adjusted_thresholds(recommendation_style)
+        elif thresholds is None:
+            # Default to balanced thresholds
+            thresholds = get_adjusted_thresholds('balanced')
+        
         flags = {
             'red_flags': [],
             'positive_patterns': [],
@@ -174,16 +182,17 @@ def analyze_pattern_flags(activities, current_metrics):
         if len(recent_data) < 7:
             return flags
 
-        # Check for chronic ACWR elevation
+        # Check for chronic ACWR elevation (using adjusted threshold)
         high_acwr_days = 0
+        acwr_threshold = thresholds['acwr_high_risk']
         for activity in recent_data[-7:]:  # Last 7 days
             ext_acwr = activity.get('acute_chronic_ratio', 0)
             int_acwr = activity.get('trimp_acute_chronic_ratio', 0)
-            if ext_acwr > 1.3 or int_acwr > 1.3:
+            if ext_acwr > acwr_threshold or int_acwr > acwr_threshold:
                 high_acwr_days += 1
 
         if high_acwr_days >= 5:
-            flags['red_flags'].append("Chronic ACWR elevation (>1.3) for 5+ consecutive days")
+            flags['red_flags'].append(f"Chronic ACWR elevation (>{acwr_threshold}) for 5+ consecutive days")
 
         # FIXED: Check for consecutive negative divergence days
         divergence_trend = []
@@ -223,13 +232,15 @@ def analyze_pattern_flags(activities, current_metrics):
                 flags['positive_patterns'].append(
                     f"Efficient adaptation - {consecutive_positive_days} consecutive days of positive divergence indicates excellent load tolerance")
 
-        # Check for load spike sensitivity
+        # Check for load spike sensitivity (using adjusted threshold)
         daily_loads = [act.get('total_load_miles', 0) for act in recent_data[-7:]]
         if daily_loads:
             avg_load = sum(daily_loads) / len(daily_loads)
             max_load = max(daily_loads)
-            if max_load > avg_load * 1.5:  # 150% spike
-                flags['warnings'].append("Significant load spike detected - monitor response carefully")
+            load_spike_threshold = thresholds['load_spike_percent']
+            if max_load > avg_load * load_spike_threshold:
+                spike_percent = int((max_load / avg_load - 1) * 100)
+                flags['warnings'].append(f"Significant load spike detected ({spike_percent}% above average) - monitor response carefully")
 
         return flags
 
@@ -249,7 +260,12 @@ def create_enhanced_prompt(current_metrics, activities, pattern_analysis, traini
 
     # Get athlete profile and pattern flags
     athlete_profile = classify_athlete_profile(user_id)  # Pass user_id here
-    pattern_flags = analyze_pattern_flags(activities, current_metrics)
+    
+    # Get user's recommendation style and adjusted thresholds
+    recommendation_style = get_user_recommendation_style(user_id)
+    thresholds = get_adjusted_thresholds(recommendation_style)
+    
+    pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
 
     # Get date information
     current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
@@ -280,26 +296,28 @@ def create_enhanced_prompt(current_metrics, activities, pattern_analysis, traini
     logger.info(f"  Divergence: {formatted_metrics['normalized_divergence']}")
     logger.info(f"  Days since rest: {formatted_metrics['days_since_rest']}")
 
-    # Determine primary assessment category based on metrics
+    # Determine primary assessment category based on metrics (using adjusted thresholds)
     days_since_rest = current_metrics.get('days_since_rest', 0)
     external_acwr = current_metrics.get('external_acwr', 0)
     internal_acwr = current_metrics.get('internal_acwr', 0)
     normalized_divergence = current_metrics.get('normalized_divergence', 0)
 
     assessment_category = "normal_progression"
-    if days_since_rest > 7:
+    if days_since_rest > thresholds['days_since_rest_max']:
         assessment_category = "mandatory_rest"
-    elif normalized_divergence < -0.15:
+    elif normalized_divergence < thresholds['divergence_overtraining']:
         assessment_category = "overtraining_risk"
-    elif external_acwr > 1.3 and internal_acwr > 1.3:
+    elif external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
         assessment_category = "high_acwr_risk"
-    elif normalized_divergence < -0.05 and days_since_rest > 5:
+    elif normalized_divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
         assessment_category = "recovery_needed"
-    elif external_acwr < 0.8 and internal_acwr < 0.8:
+    elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         assessment_category = "undertraining_opportunity"
 
-    # Build the enhanced prompt (rest stays the same)
+    # Build the enhanced prompt with risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations. You have access to comprehensive training metrics and established guidelines for safe, effective training progression.
+
+ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
 
 ### ATHLETE PROFILE
 Athlete Type: {athlete_profile}
@@ -667,8 +685,9 @@ def generate_recommendations(force=False, user_id=None):
             logger.error("Training guide not available - falling back to basic recommendations")
             return None
 
-        # Get current date information - USE PACIFIC TIMEZONE
-        current_date = get_app_current_date()
+        # Get current date information - USE USER'S TIMEZONE
+        from timezone_utils import get_user_current_date
+        current_date = get_user_current_date(user_id)
         current_date_str = current_date.strftime('%Y-%m-%d')
 
         # CRITICAL FIX: Proper target_date logic based on activity status
@@ -682,6 +701,21 @@ def generate_recommendations(force=False, user_id=None):
             # User has NOT worked out today → recommendation is for TODAY
             target_date = current_date_str
             logger.info(f"User {user_id} has NO activity for {current_date_str}, targeting today: {target_date}")
+
+        # CRITICAL FIX: Check if recommendation already exists for this target_date
+        # This prevents overwriting historical recommendations
+        existing_recommendation = db_utils.execute_query(
+            """
+            SELECT id FROM llm_recommendations 
+            WHERE user_id = %s AND target_date = %s
+            """,
+            (user_id, target_date),
+            fetch=True
+        )
+
+        if existing_recommendation:
+            logger.info(f"Recommendation already exists for target_date {target_date}, skipping generation to preserve historical record")
+            return get_latest_recommendation(user_id)
 
         # For historical record keeping - no expiration for date-specific recommendations
         valid_until = None
@@ -748,6 +782,10 @@ def generate_recommendations(force=False, user_id=None):
         logger.info(
             f"Saved enhanced recommendation with ID {recommendation_id} for user {user_id} with target_date {target_date}")
 
+        # Clean up old recommendations (keep last 14 days)
+        from db_utils import cleanup_old_recommendations
+        cleanup_old_recommendations(user_id, keep_days=14)
+
         # Add the ID to the recommendation
         recommendation['id'] = recommendation_id
 
@@ -764,7 +802,12 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 
     # Get athlete profile and pattern flags
     athlete_profile = classify_athlete_profile(user_id)
-    pattern_flags = analyze_pattern_flags(activities, current_metrics)
+    
+    # Get user's recommendation style and adjusted thresholds
+    recommendation_style = get_user_recommendation_style(user_id)
+    thresholds = get_adjusted_thresholds(recommendation_style)
+    
+    pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
 
     # Get date information
     current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
@@ -794,29 +837,36 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     logger.info(f"  Internal ACWR: {formatted_metrics['internal_acwr']}")
     logger.info(f"  Divergence: {formatted_metrics['normalized_divergence']}")
     logger.info(f"  Days since rest: {formatted_metrics['days_since_rest']}")
+    logger.info(f"  Risk tolerance: {recommendation_style} (ACWR threshold: {thresholds['acwr_high_risk']})")
 
-    # Determine primary assessment category based on metrics
+    # Determine primary assessment category based on metrics (using adjusted thresholds)
     days_since_rest = current_metrics.get('days_since_rest', 0)
     external_acwr = current_metrics.get('external_acwr', 0)
     internal_acwr = current_metrics.get('internal_acwr', 0)
     normalized_divergence = current_metrics.get('normalized_divergence', 0)
 
     assessment_category = "normal_progression"
-    if days_since_rest > 7:
+    if days_since_rest > thresholds['days_since_rest_max']:
         assessment_category = "mandatory_rest"
-    elif normalized_divergence < -0.15:
+    elif normalized_divergence < thresholds['divergence_overtraining']:
         assessment_category = "overtraining_risk"
-    elif external_acwr > 1.3 and internal_acwr > 1.3:
+    elif external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
         assessment_category = "high_acwr_risk"
-    elif normalized_divergence < -0.05 and days_since_rest > 5:
+    elif normalized_divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
         assessment_category = "recovery_needed"
-    elif external_acwr < 0.8 and internal_acwr < 0.8:
+    elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         assessment_category = "undertraining_opportunity"
 
-    # Build the enhanced prompt with tone integration
+    # Build the enhanced prompt with tone integration and risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
 
 {tone_instructions}
+
+ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
+- ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
+- Load Spike Warning: >{int((thresholds['load_spike_percent']-1)*100)}% above 7-day average
+- Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
+- Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
 ### ATHLETE PROFILE
 Athlete Type: {athlete_profile}
@@ -854,28 +904,31 @@ Using the Training Reference Framework above and applying the specified coaching
 
 **DAILY RECOMMENDATION:**
 - Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression)
+- Use the athlete's risk tolerance thresholds listed above (NOT the standard guide thresholds)
 - Use the specified coaching tone throughout your guidance
-- Reference specific metric thresholds from the guide
+- Reference the athlete's specific ACWR threshold ({thresholds['acwr_high_risk']}) and divergence limits
 - Include specific volume/intensity targets based on current 7-day averages
 - Use the scenario examples as formatting templates
 
 **WEEKLY PLANNING:**
 - Apply weekly planning priorities from the guide with your coaching style
+- Adjust recommendations to match the athlete's {recommendation_style} risk tolerance
 - Address any red flags or leverage positive patterns identified
-- Include specific ACWR management strategies if needed
+- Include specific ACWR management strategies based on athlete's thresholds
 - Reference athlete profile considerations
 
 **PATTERN INSIGHTS:**
 - Identify 2-3 specific observations using the pattern recognition framework
 - Apply your coaching tone to the delivery of insights
-- Reference optimal ranges and provide context for current metrics
+- Interpret metrics relative to this athlete's personalized thresholds
 - Include forward-looking trend analysis based on recent patterns
 
 CRITICAL REQUIREMENTS:
+- Use the ATHLETE'S PERSONALIZED THRESHOLDS, not the standard guide thresholds
 - Apply the specified coaching tone consistently throughout all sections
 - Keep each section focused and actionable
 - Reference specific numbers from the metrics and use established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide
-- Maintain evidence-based analysis while adapting communication style
+- Maintain evidence-based analysis while adapting communication style and risk tolerance
 """
 
     return prompt
@@ -1341,6 +1394,84 @@ TONE & APPROACH for ANALYTICAL COACHING:
 - Reference specific training science principles
 - Give clear, actionable technical adjustments
         """
+
+
+def get_user_recommendation_style(user_id):
+    """Get user's recommendation style preference (conservative/balanced/adaptive/aggressive)"""
+    try:
+        result = execute_query("""
+            SELECT recommendation_style 
+            FROM user_settings 
+            WHERE id = %s
+        """, (user_id,), fetch=True)
+
+        if result and len(result) > 0:
+            style = result[0].get('recommendation_style', 'balanced')
+            logger.info(f"User {user_id} recommendation_style: {style}")
+            return style
+        else:
+            logger.info(f"No recommendation_style found for user {user_id}, defaulting to 'balanced'")
+            return 'balanced'
+
+    except Exception as e:
+        logger.error(f"Error fetching recommendation_style for user {user_id}: {str(e)}")
+        return 'balanced'
+
+
+def get_adjusted_thresholds(recommendation_style):
+    """
+    Get risk thresholds adjusted based on user's training philosophy.
+    
+    Returns a dict with adjusted thresholds for:
+    - ACWR high risk level
+    - Load spike percentage
+    - Days since rest mandatory
+    - Divergence overtraining threshold
+    - Divergence moderate risk threshold
+    """
+    thresholds = {
+        'conservative': {
+            'acwr_high_risk': 1.2,          # Trigger warnings earlier
+            'load_spike_percent': 1.4,       # 140% spike triggers warning
+            'days_since_rest_max': 6,        # Enforce rest after 6 days
+            'divergence_overtraining': -0.10,  # More sensitive to fatigue
+            'divergence_moderate_risk': -0.03, # Earlier recovery warnings
+            'acwr_undertraining': 0.85,      # Less aggressive push for more load
+            'description': 'Lower risk tolerance, earlier warnings, more recovery emphasis'
+        },
+        'balanced': {
+            'acwr_high_risk': 1.3,          # Standard evidence-based threshold
+            'load_spike_percent': 1.5,       # 150% spike (current default)
+            'days_since_rest_max': 7,        # Standard rest enforcement
+            'divergence_overtraining': -0.15,  # Standard threshold
+            'divergence_moderate_risk': -0.05, # Standard recovery threshold
+            'acwr_undertraining': 0.8,       # Standard progression opportunity
+            'description': 'Evidence-based thresholds, balanced risk approach'
+        },
+        'adaptive': {
+            'acwr_high_risk': 1.35,         # Slightly more flexible
+            'load_spike_percent': 1.55,      # 155% spike tolerance
+            'days_since_rest_max': 7,        # Same as balanced but recommendations adapt
+            'divergence_overtraining': -0.15,  # Same as balanced
+            'divergence_moderate_risk': -0.05, # Same as balanced
+            'acwr_undertraining': 0.8,       # Same as balanced
+            'description': 'Adjusts based on individual response patterns and recovery'
+        },
+        'aggressive': {
+            'acwr_high_risk': 1.5,          # Higher risk tolerance
+            'load_spike_percent': 1.7,       # 170% spike before warning
+            'days_since_rest_max': 8,        # Allow more consecutive training days
+            'divergence_overtraining': -0.20,  # Higher fatigue tolerance
+            'divergence_moderate_risk': -0.08, # Less conservative recovery warnings
+            'acwr_undertraining': 0.75,      # More aggressive progression push
+            'description': 'Higher risk tolerance, aggressive progression, performance-focused'
+        }
+    }
+    
+    selected_thresholds = thresholds.get(recommendation_style, thresholds['balanced'])
+    logger.info(f"Using {recommendation_style} thresholds: {selected_thresholds['description']}")
+    
+    return selected_thresholds
 
 
 def get_coaching_style_from_spectrum(spectrum_value):
@@ -1833,29 +1964,58 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
 
                     # STEP 2: Generate new decision for tomorrow with autopsy learning
                     tomorrow = app_current_date + timedelta(days=1)
+                    tomorrow_str = tomorrow.strftime('%Y-%m-%d')
+
+                    # CRITICAL FIX: Check if recommendation already exists for target_date
+                    existing_rec = execute_query(
+                        """
+                        SELECT id FROM llm_recommendations 
+                        WHERE user_id = %s AND target_date = %s
+                        """,
+                        (user_id, tomorrow_str),
+                        fetch=True
+                    )
+
+                    if existing_rec:
+                        logger.info(f"Recommendation already exists for {tomorrow_str}, skipping autopsy-informed update to preserve historical record")
+                        return {
+                            'autopsy_generated': True,
+                            'alignment_score': autopsy_result['alignment_score'],
+                            'decision_updated': False,
+                            'reason': 'Recommendation already exists for target date'
+                        }
+
                     new_decision = generate_autopsy_informed_daily_decision(user_id, tomorrow)
 
                     if new_decision:
+                        # Get current metrics for snapshot
+                        from unified_metrics_service import UnifiedMetricsService
+                        current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id) or {}
 
                         recommendation_data = {
                             'generation_date': app_current_date.strftime('%Y-%m-%d'),
-                            'valid_until': tomorrow.strftime('%Y-%m-%d'),
+                            'target_date': tomorrow_str,  # CRITICAL FIX: Add target_date field
+                            'valid_until': None,  # FIXED: Use None for date-specific recommendations
+                            'data_start_date': app_current_date.strftime('%Y-%m-%d'),
+                            'data_end_date': app_current_date.strftime('%Y-%m-%d'),
+                            'metrics_snapshot': current_metrics,  # FIXED: Add metrics snapshot
                             'daily_recommendation': new_decision,
                             'weekly_recommendation': 'See previous weekly guidance',
                             'pattern_insights': f"Generated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
+                            'raw_response': new_decision,  # FIXED: Add raw response
                             'user_id': user_id
                         }
 
                         recommendation_data = fix_dates_for_json(recommendation_data)
                         save_llm_recommendation(recommendation_data)
 
-                        logger.info(f"Generated new decision for tomorrow ({tomorrow}) incorporating autopsy learning")
+                        logger.info(f"Generated new decision for tomorrow ({tomorrow_str}) incorporating autopsy learning")
 
                         return {
                             'autopsy_generated': True,
                             'alignment_score': autopsy_result['alignment_score'],
                             'decision_updated': True,
-                            'next_recommendation_date': tomorrow.strftime('%Y-%m-%d')
+                            'next_recommendation_date': tomorrow_str
                         }
 
         return {

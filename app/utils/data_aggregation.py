@@ -26,8 +26,10 @@ def aggregate_daily_activities_with_rest(activities):
                 # Initialize sport breakdown fields for rest days
                 daily_aggregates[date]['running_load'] = 0
                 daily_aggregates[date]['cycling_load'] = 0
+                daily_aggregates[date]['swimming_load'] = 0
                 daily_aggregates[date]['running_distance'] = 0
                 daily_aggregates[date]['cycling_distance'] = 0
+                daily_aggregates[date]['swimming_distance'] = 0
                 daily_aggregates[date]['sport_types'] = []
                 daily_aggregates[date]['activities'] = []
                 daily_aggregates[date]['day_type'] = 'rest'
@@ -41,8 +43,10 @@ def aggregate_daily_activities_with_rest(activities):
                 # Initialize sport breakdown fields for rest days
                 daily_aggregates[date]['running_load'] = 0
                 daily_aggregates[date]['cycling_load'] = 0
+                daily_aggregates[date]['swimming_load'] = 0
                 daily_aggregates[date]['running_distance'] = 0
                 daily_aggregates[date]['cycling_distance'] = 0
+                daily_aggregates[date]['swimming_distance'] = 0
                 daily_aggregates[date]['sport_types'] = []
                 daily_aggregates[date]['activities'] = []
                 daily_aggregates[date]['day_type'] = 'rest'
@@ -71,14 +75,26 @@ def aggregate_daily_activities_with_rest(activities):
                 if sport_type == 'cycling':
                     daily_aggregates[date]['cycling_load'] = activity.get('total_load_miles', 0)
                     daily_aggregates[date]['running_load'] = 0
+                    daily_aggregates[date]['swimming_load'] = 0
                     daily_aggregates[date]['cycling_distance'] = activity.get('distance_miles', 0)
                     daily_aggregates[date]['running_distance'] = 0
+                    daily_aggregates[date]['swimming_distance'] = 0
                     daily_aggregates[date]['day_type'] = 'cycling'
+                elif sport_type == 'swimming':
+                    daily_aggregates[date]['swimming_load'] = activity.get('total_load_miles', 0)
+                    daily_aggregates[date]['running_load'] = 0
+                    daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['swimming_distance'] = activity.get('distance_miles', 0)
+                    daily_aggregates[date]['running_distance'] = 0
+                    daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['day_type'] = 'swimming'
                 else:  # running or other
                     daily_aggregates[date]['running_load'] = activity.get('total_load_miles', 0)
                     daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['swimming_load'] = 0
                     daily_aggregates[date]['running_distance'] = activity.get('distance_miles', 0)
                     daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['swimming_distance'] = 0
                     daily_aggregates[date]['day_type'] = 'running'
 
             else:
@@ -143,6 +159,9 @@ def aggregate_daily_activities_with_rest(activities):
                 if sport_type == 'cycling':
                     existing['cycling_load'] = existing.get('cycling_load', 0) + activity.get('total_load_miles', 0)
                     existing['cycling_distance'] = existing.get('cycling_distance', 0) + activity.get('distance_miles', 0)
+                elif sport_type == 'swimming':
+                    existing['swimming_load'] = existing.get('swimming_load', 0) + activity.get('total_load_miles', 0)
+                    existing['swimming_distance'] = existing.get('swimming_distance', 0) + activity.get('distance_miles', 0)
                 else:  # running or other
                     existing['running_load'] = existing.get('running_load', 0) + activity.get('total_load_miles', 0)
                     existing['running_distance'] = existing.get('running_distance', 0) + activity.get('distance_miles', 0)
@@ -164,6 +183,8 @@ def aggregate_daily_activities_with_rest(activities):
                     existing['day_type'] = 'mixed'
                 elif 'cycling' in existing.get('sport_types', []):
                     existing['day_type'] = 'cycling'
+                elif 'swimming' in existing.get('sport_types', []):
+                    existing['day_type'] = 'swimming'
                 else:
                     existing['day_type'] = 'running'
 
@@ -176,10 +197,14 @@ def aggregate_daily_activities_with_rest(activities):
             daily_data['running_load'] = daily_data.get('total_load_miles', 0) if not daily_data.get('is_rest_day') else 0
         if 'cycling_load' not in daily_data:
             daily_data['cycling_load'] = 0
+        if 'swimming_load' not in daily_data:
+            daily_data['swimming_load'] = 0
         if 'running_distance' not in daily_data:
             daily_data['running_distance'] = daily_data.get('distance_miles', 0) if not daily_data.get('is_rest_day') else 0
         if 'cycling_distance' not in daily_data:
             daily_data['cycling_distance'] = 0
+        if 'swimming_distance' not in daily_data:
+            daily_data['swimming_distance'] = 0
         if 'sport_types' not in daily_data:
             daily_data['sport_types'] = [] if daily_data.get('is_rest_day') else ['running']
         if 'activities' not in daily_data:

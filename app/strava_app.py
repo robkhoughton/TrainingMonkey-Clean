@@ -311,13 +311,15 @@ def sync_strava_data():
             logger.error(f"Strava connection failed: {str(e)}")
             return jsonify({'error': 'Failed to connect to Strava'}), 400
 
-        # Calculate date range
-        end_date = datetime.now().date()
+        # Calculate date range using user's timezone
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(user_id)
+        end_date = user_current_date
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
 
-        logger.info(f"Processing activities from {start_date_str} to {end_date_str}")
+        logger.info(f"Processing activities from {start_date_str} to {end_date_str} (user timezone)")
 
         # Process activities
         logger.info("Starting activity processing...")
@@ -1042,14 +1044,16 @@ def sync_with_automatic_token_management():
                     'needs_reauth': False
                 }), 500
 
-            # Calculate date range
+            # Calculate date range using user's timezone
             try:
-                end_date = datetime.now()
+                from timezone_utils import get_user_current_date
+                user_current_date = get_user_current_date(user_id)
+                end_date = user_current_date
                 start_date = end_date - timedelta(days=days)
                 start_date_str = start_date.strftime('%Y-%m-%d')
                 end_date_str = end_date.strftime('%Y-%m-%d')
-                logger.info(f"Processing activities from {start_date_str} to {end_date_str}")
-                logger.info(f"Current time: {end_date}")
+                logger.info(f"Processing activities from {start_date_str} to {end_date_str} (user timezone)")
+                logger.info(f"User current date: {user_current_date}")
             except Exception as e:
                 logger.error(f"❌ Date calculation failed: {str(e)}")
                 return jsonify({'error': f'Date calculation error: {str(e)}'}), 500
@@ -1192,13 +1196,15 @@ def process_user_sync(user_id, days):
         if token_was_refreshed:
             logger.info(f"Tokens were automatically refreshed for user {user_id}")
 
-        # Calculate date range
-        end_date = datetime.now().date()
+        # Calculate date range using user's timezone
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(user_id)
+        end_date = user_current_date
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
 
-        logger.info(f"Processing activities for user {user_id} from {start_date_str} to {end_date_str}")
+        logger.info(f"Processing activities for user {user_id} from {start_date_str} to {end_date_str} (user timezone)")
 
         # Process activities using existing function
         from strava_training_load import process_activities_for_date_range
@@ -1580,14 +1586,16 @@ def get_training_data():
         date_range = request.args.get('range', '90')  # days
         include_sport_breakdown = request.args.get('include_sport_breakdown', 'false').lower() == 'true'
 
-        # Calculate date filter
+        # Calculate date filter using user's timezone
         from datetime import datetime, timedelta
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(current_user.id)
+        end_date = user_current_date
         start_date = end_date - timedelta(days=int(date_range))
         start_date_str = start_date.strftime('%Y-%m-%d')
 
         logger.info(f"Getting training data for user {current_user.id}, range: {date_range} days, "
-                    f"sport breakdown: {include_sport_breakdown}")
+                    f"sport breakdown: {include_sport_breakdown} (user timezone)")
 
         logger.info(f"Executing database query for user {current_user.id} with date filter: {start_date_str}")
         
@@ -1642,6 +1650,7 @@ def get_training_data():
             if include_sport_breakdown:
                 response_data.update({
                     'has_cycling_data': False,
+                    'has_swimming_data': False,
                     'sport_summary': []
                 })
 
@@ -1669,18 +1678,22 @@ def get_training_data():
             # Use enhanced aggregation that provides sport breakdown
             aggregated_data = aggregate_daily_activities_with_rest(activity_list)
 
-            # Get sport summary and cycling data flag
+            # Get sport summary and multi-sport data flags
             from unified_metrics_service import UnifiedMetricsService
             has_cycling_data = UnifiedMetricsService.has_cycling_data(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
             )
+            has_swimming_data = UnifiedMetricsService.has_swimming_data(
+                current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
+            )
             sport_summary = UnifiedMetricsService.get_sport_summary(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
-            ) if has_cycling_data else []
+            ) if (has_cycling_data or has_swimming_data) else []
         else:
             # Use existing aggregation for backward compatibility
             aggregated_data = aggregate_daily_activities_with_rest(activity_list)
             has_cycling_data = False
+            has_swimming_data = False
             sport_summary = []
 
         # CRITICAL FIX: Apply date serialization AFTER aggregation too
@@ -1723,10 +1736,11 @@ def get_training_data():
         if include_sport_breakdown:
             response_data.update({
                 'has_cycling_data': has_cycling_data,
+                'has_swimming_data': has_swimming_data,
                 'sport_summary': sport_summary
             })
 
-            logger.info(f"Sport breakdown enabled: cycling data={has_cycling_data}, "
+            logger.info(f"Sport breakdown enabled: cycling data={has_cycling_data}, swimming data={has_swimming_data}, "
                         f"sport summary entries={len(sport_summary)}")
 
         return jsonify(response_data)
@@ -3462,12 +3476,13 @@ def get_journal_entries():
     try:
         logger.info(f"Fetching journal entries for user {current_user.id}")
 
-        # Get date parameter or use current date
+        # Get date parameter or use current date (user timezone)
+        from timezone_utils import get_user_current_date
         date_param = request.args.get('date')
         if date_param:
             center_date = datetime.strptime(date_param, '%Y-%m-%d').date()
         else:
-            center_date = get_app_current_date()
+            center_date = get_user_current_date(current_user.id)
 
         # Calculate date range (today + 6 preceding days)
         start_date = center_date - timedelta(days=6)
@@ -3533,11 +3548,11 @@ def get_journal_entries():
         # Generate 7-day journal structure
         journal_entries = []
         current_date = start_date
-        app_current_date = get_app_current_date()
+        user_current_date = get_user_current_date(current_user.id)
 
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
-            is_today = current_date == app_current_date
+            is_today = current_date == user_current_date
 
             # FIXED: Use unified function that matches Dashboard logic
             todays_decision = get_unified_recommendation_for_date(current_date, current_user.id)
@@ -3580,13 +3595,16 @@ def get_journal_entries():
         journal_entries = [ensure_date_serialization(entry) for entry in journal_entries]
         journal_entries.sort(key=lambda x: x['date'], reverse=True)
 
+        from timezone_utils import get_user_timezone
+        user_tz = get_user_timezone(current_user.id)
+        
         response = {
             'success': True,
             'data': journal_entries,
             'center_date': center_date.strftime('%Y-%m-%d'),
             'date_range': f"{start_date} to {end_date}",
-            'app_current_date': app_current_date.strftime('%Y-%m-%d'),
-            'timezone_info': 'Pacific'
+            'user_current_date': user_current_date.strftime('%Y-%m-%d'),
+            'timezone_info': str(user_tz)
         }
 
         logger.info(f"Successfully returned {len(journal_entries)} journal entries for user {current_user.id}")
@@ -3611,12 +3629,13 @@ def get_unified_recommendation_for_date(date_obj, user_id):
     """
     try:
         date_str = date_obj.strftime('%Y-%m-%d')
-        app_current_date = get_app_current_date()
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(user_id)
 
-        logger.info(f"Getting unified recommendation for user {user_id} on date {date_str}")
+        logger.info(f"Getting unified recommendation for user {user_id} on date {date_str} (user timezone)")
 
         # CRITICAL: Use the SAME logic as Dashboard for ALL dates
-        if date_obj == app_current_date:
+        if date_obj == user_current_date:
             # For TODAY: Use same logic as Dashboard (get latest record)
             from db_utils import get_latest_recommendation
             latest_rec = get_latest_recommendation(user_id)
@@ -3650,7 +3669,7 @@ def get_unified_recommendation_for_date(date_obj, user_id):
                     f"FOUND recommendation for user {user_id} on {date_str}: {len(recommendation_text)} characters")
 
                 # Determine appropriate label
-                if date_obj < app_current_date:
+                if date_obj < user_current_date:
                     date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
                 else:
                     date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
@@ -3672,7 +3691,7 @@ def get_unified_recommendation_for_date(date_obj, user_id):
                     logger.warning(f"NO recommendations exist for user {user_id}")
 
                 # Determine appropriate label for "no recommendation" message
-                if date_obj < app_current_date:
+                if date_obj < user_current_date:
                     date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
                 else:
                     date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
@@ -3923,12 +3942,13 @@ def get_todays_decision_for_date(date_obj, user_id):
             fetch=True
         )
 
-        app_current_date = get_app_current_date()
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(user_id)
 
         # Determine appropriate label
-        if date_obj == app_current_date:
+        if date_obj == user_current_date:
             date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
-        elif date_obj < app_current_date:
+        elif date_obj < user_current_date:
             date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
         else:
             date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
@@ -4007,13 +4027,14 @@ def trigger_autopsy_and_update_recommendations(user_id, completed_date):
     try:
 
 
-        app_current_date = get_app_current_date()
+        from timezone_utils import get_user_current_date
+        user_current_date = get_user_current_date(user_id)
         completed_date_obj = datetime.strptime(completed_date, '%Y-%m-%d').date()
 
         logger.info(f"Triggering autopsy workflow for user {user_id}, completed date {completed_date}")
 
         # STEP 1: Generate autopsy for the completed workout
-        if completed_date_obj <= app_current_date:
+        if completed_date_obj <= user_current_date:
             logger.info(f"Generating autopsy for completed workout: {completed_date}")
 
             # Generate enhanced autopsy
@@ -4023,7 +4044,7 @@ def trigger_autopsy_and_update_recommendations(user_id, completed_date):
                 logger.info(f"✅ Autopsy generated for {completed_date}")
 
                 # STEP 2: Update tomorrow's recommendation with autopsy learning
-                tomorrow = app_current_date + timedelta(days=1)
+                tomorrow = user_current_date + timedelta(days=1)
                 logger.info(f"Updating recommendation for {tomorrow} with autopsy learning")
 
                 # Trigger learning-based recommendation update
@@ -4518,6 +4539,20 @@ def generate_daily_recommendation_only(user_id, target_date=None):
         # If no target_date provided, generate for tomorrow (next day's workout)
         if target_date is None:
             target_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # CRITICAL FIX: Check if recommendation already exists for this target_date
+        existing_recommendation = db_utils.execute_query(
+            """
+            SELECT id FROM llm_recommendations 
+            WHERE user_id = %s AND target_date = %s
+            """,
+            (user_id, target_date),
+            fetch=True
+        )
+
+        if existing_recommendation:
+            logger.info(f"Recommendation already exists for target_date {target_date}, skipping daily generation to preserve historical record")
+            return db_utils.get_latest_recommendation(user_id)
 
         logger.info(f"Generating daily recommendation for user {user_id}, target_date {target_date}")
 
@@ -5211,6 +5246,7 @@ def get_settings():
             'resting_hr': user.get('resting_hr', 65),
             'max_hr': user.get('max_hr', 185),
             'gender': user.get('gender', 'male'),
+            'timezone': user.get('timezone', 'US/Pacific'),
             'hr_zones_method': user.get('hr_zones_method', 'percentage'),
             'primary_sport': user.get('primary_sport', 'running'),
             'secondary_sport': user.get('secondary_sport'),
@@ -5282,6 +5318,15 @@ def update_settings():
                 # Empty string or null - set to None to clear the date
                 data['race_goal_date'] = None
 
+        # Validate timezone
+        if 'timezone' in data:
+            from timezone_utils import validate_timezone, clear_timezone_cache
+            if not validate_timezone(data['timezone']):
+                errors.append('Invalid timezone. Please select a valid US timezone.')
+            else:
+                # Clear cache when timezone changes to ensure fresh lookups
+                clear_timezone_cache(current_user.id)
+
         if errors:
             return jsonify({'success': False, 'errors': errors}), 400
 
@@ -5301,7 +5346,7 @@ def update_settings():
         update_values = []
 
         for field, value in data.items():
-            if field in ['resting_hr', 'max_hr', 'gender', 'age', 'hr_zones_method', 'primary_sport',
+            if field in ['resting_hr', 'max_hr', 'gender', 'age', 'timezone', 'hr_zones_method', 'primary_sport',
                          'secondary_sport', 'training_experience', 'current_phase', 'race_goal_date',
                          'weekly_training_hours', 'acwr_alert_threshold', 'injury_risk_alerts',
                          'recommendation_style', 'coaching_tone']:
@@ -6358,7 +6403,8 @@ def recalculate_acwr_with_config(aggregated_data, config, user_id):
         
         # Get all activities for the user to calculate proper chronic averages
         # We need more data than what's in aggregated_data to calculate chronic properly
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(user_id)
         start_date = end_date - timedelta(days=chronic_period_days + 30)  # Extra buffer
         
         activities = db_utils.execute_query("""

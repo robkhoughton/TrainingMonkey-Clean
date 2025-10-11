@@ -7,6 +7,7 @@ interface UserSettings {
   resting_hr: number;
   max_hr: number;
   gender: string;
+  timezone: string;
   hr_zones_method: string;
   primary_sport: string;
   secondary_sport?: string;
@@ -302,6 +303,23 @@ export const SettingsPage: React.FC = () => {
                   <option value="female">Female</option>
                   <option value="other">Other</option>
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="timezone">Timezone</label>
+                <select
+                  id="timezone"
+                  value={settings.timezone || 'US/Pacific'}
+                  onChange={(e) => handleInputChange('timezone', e.target.value)}
+                >
+                  <option value="US/Pacific">Pacific Time (US/Pacific)</option>
+                  <option value="US/Mountain">Mountain Time (US/Mountain)</option>
+                  <option value="US/Central">Central Time (US/Central)</option>
+                  <option value="US/Eastern">Eastern Time (US/Eastern)</option>
+                  <option value="US/Alaska">Alaska Time (US/Alaska)</option>
+                  <option value="US/Hawaii">Hawaii Time (US/Hawaii)</option>
+                </select>
+                <small>Used for activity timing and daily recommendations</small>
               </div>
 
               <div className="form-group">

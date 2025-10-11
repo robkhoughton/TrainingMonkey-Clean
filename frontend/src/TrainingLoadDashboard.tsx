@@ -86,8 +86,9 @@ const TrainingLoadDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renderKey, setRenderKey] = useState(0);
-  const [selectedSports, setSelectedSports] = useState(['running', 'cycling']);
+  const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming']);
   const [hasCyclingData, setHasCyclingData] = useState(false);
+  const [hasSwimmingData, setHasSwimmingData] = useState(false);
   const [sportSummary, setSportSummary] = useState([]);
 
   // Recommendation state variables from recommendations_component.ts
@@ -581,6 +582,9 @@ const getRecommendationDateContext = (recommendation) => {
           if (result.has_cycling_data !== undefined) {
             setHasCyclingData(result.has_cycling_data);
           }
+          if (result.has_swimming_data !== undefined) {
+            setHasSwimmingData(result.has_swimming_data);
+          }
           if (result.sport_summary) {
             setSportSummary(result.sport_summary);
           }
@@ -790,8 +794,8 @@ const getRecommendationDateContext = (recommendation) => {
             </div>
           </div>
 
-          {/* Right side: Show Sports (only if cycling data exists) */}
-          {hasCyclingData && (
+          {/* Right side: Show Sports (only if multi-sport data exists) */}
+          {(hasCyclingData || hasSwimmingData) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ fontWeight: '500', color: '#374151' }}>Show Sports:</span>
               <div style={{ display: 'flex', gap: '1rem' }}>
@@ -805,16 +809,30 @@ const getRecommendationDateContext = (recommendation) => {
                   />
                   <span style={{ color: '#2ecc71' }}>Running</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedSports.includes('cycling')}
-                    onChange={() => setSelectedSports(prev =>
-                      prev.includes('cycling') ? prev.filter(s => s !== 'cycling') : [...prev, 'cycling']
-                    )}
-                  />
-                  <span style={{ color: '#3498db' }}>Cycling</span>
-                </label>
+                {hasCyclingData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSports.includes('cycling')}
+                      onChange={() => setSelectedSports(prev =>
+                        prev.includes('cycling') ? prev.filter(s => s !== 'cycling') : [...prev, 'cycling']
+                      )}
+                    />
+                    <span style={{ color: '#3498db' }}>Cycling</span>
+                  </label>
+                )}
+                {hasSwimmingData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSports.includes('swimming')}
+                      onChange={() => setSelectedSports(prev =>
+                        prev.includes('swimming') ? prev.filter(s => s !== 'swimming') : [...prev, 'swimming']
+                      )}
+                    />
+                    <span style={{ color: '#e67e22' }}>Swimming</span>
+                  </label>
+                )}
               </div>
             </div>
           )}
@@ -1094,7 +1112,7 @@ const getRecommendationDateContext = (recommendation) => {
                 isAnimationActive={false}
               />
 
-              {/* NEW: Cycling load bars - separate from running stack */}
+              {/* Cycling load bars - separate from running stack */}
               {hasCyclingData && (
                 <Bar
                   yAxisId="miles"
@@ -1103,6 +1121,19 @@ const getRecommendationDateContext = (recommendation) => {
                   fill="#3498db"
                   barSize={chartDimensions.barSize}
                   opacity={selectedSports.includes('cycling') ? 0.7 : 0.3}
+                  isAnimationActive={false}
+                />
+              )}
+
+              {/* Swimming load bars - separate from running stack */}
+              {hasSwimmingData && (
+                <Bar
+                  yAxisId="miles"
+                  dataKey="swimming_load"
+                  name="Swimming Load (running equiv)"
+                  fill="#e67e22"
+                  barSize={chartDimensions.barSize}
+                  opacity={selectedSports.includes('swimming') ? 0.7 : 0.3}
                   isAnimationActive={false}
                 />
               )}

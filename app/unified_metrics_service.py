@@ -229,6 +229,42 @@ class UnifiedMetricsService:
             return False
 
     @staticmethod
+    def has_swimming_data(user_id, start_date=None, end_date=None):
+        """
+        Check if user has any swimming activities in the specified date range
+        Used for progressive enhancement - only show swimming features if relevant
+        """
+        if user_id is None:
+            raise ValueError("user_id is required for multi-user support")
+
+        try:
+            date_filter = ""
+            params = [user_id]
+
+            if start_date and end_date:
+                date_filter = "AND date BETWEEN %s AND %s"
+                params.extend([start_date, end_date])
+
+            result = execute_query(
+                f"""
+                SELECT COUNT(*) as swimming_count
+                FROM activities 
+                WHERE user_id = %s 
+                AND sport_type = 'swimming'
+                {date_filter}
+                """,
+                params,
+                fetch=True
+            )
+
+            swimming_count = result[0]['swimming_count'] if result else 0
+            return swimming_count > 0
+
+        except Exception as e:
+            logger.error(f"Error checking swimming data for user {user_id}: {str(e)}")
+            return False
+
+    @staticmethod
     def get_latest_complete_metrics(user_id):
         """
         Get the most recent complete set of training metrics for a specific user.
@@ -319,9 +355,9 @@ class UnifiedMetricsService:
 
         try:
             # Import timezone utilities
-            from timezone_utils import get_app_current_date, log_timezone_debug
+            from timezone_utils import get_user_current_date, log_timezone_debug
 
-            logger.info(f"Calculating days since last recorded rest day for user {user_id}")
+            logger.info(f"Calculating days since last recorded rest day for user {user_id} (user timezone)")
 
             # Find the most recent date explicitly marked as a rest day for this user
             last_rest_day_record = execute_query(
@@ -350,8 +386,8 @@ class UnifiedMetricsService:
                 else:
                     first_date = first_date_str
 
-                # FIXED: Use app timezone instead of server UTC
-                today = get_app_current_date()
+                # FIXED: Use user timezone instead of Pacific-only
+                today = get_user_current_date(user_id)
 
                 days_since_first_record = (today - first_date).days
                 logger.warning(
@@ -368,8 +404,8 @@ class UnifiedMetricsService:
                 # It's already a date object
                 last_rest_date = last_rest_date_str
 
-            # FIXED: Use app timezone instead of server UTC
-            today = get_app_current_date()
+            # FIXED: Use user timezone instead of Pacific-only
+            today = get_user_current_date(user_id)
 
             days_since = (today - last_rest_date).days
 
@@ -430,7 +466,8 @@ class UnifiedMetricsService:
             raise ValueError("user_id is required for multi-user support")
 
         try:
-            current_date = datetime.now()
+            from timezone_utils import get_user_current_date
+            current_date = get_user_current_date(user_id)
             start_date = (current_date - timedelta(days=days)).strftime('%Y-%m-%d')
 
             activities = execute_query(

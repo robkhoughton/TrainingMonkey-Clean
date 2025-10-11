@@ -47,17 +47,21 @@ DEFAULT_GENDER = 'male'
 
 
 def is_supported_activity(activity_type):
-    """Check if activity type should be processed by the app (running, cycling, walking, hiking)."""
+    """Check if activity type should be processed by the app (running, cycling, swimming, walking, hiking)."""
     supported_types = {
         # Running activities
         'Trail Run', 'Road Run', 'Treadmill Run', 'Track Run',
         'VirtualRun', 'Run', 'run',
         "root='Run'",
 
-        # Cycling activities - NEW
+        # Cycling activities
         'Ride', 'Road Bike', 'Mountain Bike', 'Gravel Bike', 'Cyclocross',
         'Hand Cycle', 'Bike', 'Cycling', 'Indoor Bike', 'Virtual Bike',
         'E-Bike', 'E-Mountain Bike', 'Velomobile', 'ride',
+
+        # Swimming activities
+        'Swim', 'Swimming', 'swim', 'Pool Swim', 'Open Water Swim',
+        'Lap Swimming', 'OpenWaterSwim', 'PoolSwim', 'OpenWater',
 
         # Walking and hiking activities (relevant for trail runners)
         'Walk', 'walk', 'Hike', 'hike'
@@ -482,13 +486,13 @@ def determine_specific_activity_type(activity):
 
 def determine_sport_type(activity):
     """
-    Classify activity as 'running' or 'cycling' based on Strava activity type
+    Classify activity as 'running', 'cycling', or 'swimming' based on Strava activity type
 
     Args:
         activity: Strava activity object
 
     Returns:
-        str: 'running' | 'cycling' | 'other'
+        str: 'running' | 'cycling' | 'swimming'
     """
     try:
         # Use existing function to get the specific activity type
@@ -507,12 +511,22 @@ def determine_sport_type(activity):
             'trail run', 'road run', 'track run', 'treadmill run'
         ]
 
+        # Define swimming keywords (from Strava activity types)
+        swimming_keywords = [
+            'swim', 'swimming', 'pool', 'open water', 'openwater',
+            'lap swimming', 'pool swim', 'open water swim'
+        ]
+
         activity_lower = activity_type.lower()
 
         # Check for cycling keywords
         if any(keyword in activity_lower for keyword in cycling_keywords):
             logger.info(f"Activity classified as 'cycling': {activity_type}")
             return 'cycling'
+        # Check for swimming keywords
+        elif any(keyword in activity_lower for keyword in swimming_keywords):
+            logger.info(f"Activity classified as 'swimming': {activity_type}")
+            return 'swimming'
         # Check for running keywords
         elif any(keyword in activity_lower for keyword in running_keywords):
             logger.info(f"Activity classified as 'running': {activity_type}")
@@ -583,6 +597,60 @@ def calculate_cycling_external_load(distance_miles, average_speed_mph=None, elev
         return 0.0, 0.0, 0.0
 
 
+def calculate_swimming_external_load(distance_miles, activity_type=None):
+    """
+    Convert swimming activity to running-equivalent external load
+    
+    Based on aerobic equivalency research:
+    - Swimming requires ~25% of the energy per unit distance compared to running
+    - Due to buoyancy support and reduced impact forces
+    - Conversion factor: 1 mile swimming ≈ 4 miles running
+    
+    Args:
+        distance_miles (float): Swimming distance in miles
+        activity_type (str, optional): Type of swimming (pool vs open water)
+    
+    Returns:
+        tuple: (running_equivalent_distance, elevation_load_miles, total_external_load)
+    """
+    try:
+        logger.info(f"Calculating swimming external load: {distance_miles} miles, type={activity_type}")
+        
+        # Base conversion: 1 mile swimming = 4 miles running
+        # Based on metabolic equivalent (MET) research:
+        # - Running: 8-16 METs depending on pace
+        # - Swimming: 6-11 METs depending on intensity
+        # - Average ratio ~4:1 for equivalent aerobic training effect
+        base_conversion_factor = 4.0
+        
+        # Adjust for open water (slightly higher effort due to conditions)
+        if activity_type and ('open water' in activity_type.lower() or 'openwater' in activity_type.lower()):
+            conversion_factor = 4.2  # 5% increase for open water conditions
+            logger.info("Open water swim detected - using 4.2:1 conversion ratio")
+        else:
+            conversion_factor = base_conversion_factor
+            logger.info("Pool swim - using 4.0:1 conversion ratio")
+        
+        # Convert swimming distance to running equivalent
+        running_equivalent_distance = distance_miles * conversion_factor
+        
+        # Swimming has no elevation component (horizontal movement only)
+        elevation_load_miles = 0.0
+        
+        # Total external load (running equivalent)
+        total_external_load = running_equivalent_distance + elevation_load_miles
+        
+        logger.info(f"Swimming conversion results: running_equiv={running_equivalent_distance:.2f}, "
+                    f"total={total_external_load:.2f}")
+        
+        return running_equivalent_distance, elevation_load_miles, total_external_load
+    
+    except Exception as e:
+        logger.error(f"Error calculating swimming external load: {e}")
+        # Return safe defaults
+        return 0.0, 0.0, 0.0
+
+
 def calculate_training_load(activity, client, hr_config=None, user_id=None):
     """
     Calculate custom training load based on Strava activity data.
@@ -633,12 +701,13 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         average_speed_mph = distance_miles / (duration_seconds / 3600.0)
         logger.info(f"Calculated average speed: {average_speed_mph:.2f} mph")
 
-    # NEW: Calculate external load based on sport type
+    # Calculate external load based on sport type
     cycling_equivalent_miles = None
+    swimming_equivalent_miles = None
     cycling_elevation_factor = None
 
     if sport_type == 'cycling':
-        # NEW: Cycling-specific calculation
+        # Cycling-specific calculation
         logger.info("Using cycling-specific external load calculation")
         running_equiv_distance, elevation_load_miles, total_load_miles = calculate_cycling_external_load(
             distance_miles, average_speed_mph, elevation_gain_feet
@@ -646,12 +715,20 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         cycling_equivalent_miles = running_equiv_distance
         cycling_elevation_factor = 1100.0
 
+    elif sport_type == 'swimming':
+        # Swimming-specific calculation
+        logger.info("Using swimming-specific external load calculation")
+        running_equiv_distance, elevation_load_miles, total_load_miles = calculate_swimming_external_load(
+            distance_miles, specific_activity_type
+        )
+        swimming_equivalent_miles = running_equiv_distance
+
     else:
-        # EXISTING: Running calculation (unchanged for safety)
+        # Running calculation (unchanged for safety)
         logger.info("Using running external load calculation")
         elevation_load_miles = elevation_gain_feet / 750.0
         total_load_miles = distance_miles + elevation_load_miles
-        # cycling fields remain None for running activities
+        # cycling and swimming fields remain None for running activities
 
     logger.info(f"External load calculated: distance={distance_miles:.2f}, "
                 f"elevation_load={elevation_load_miles:.2f}, total={total_load_miles:.2f}")
@@ -764,10 +841,10 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'elevation_gain_feet': float(round(elevation_gain_feet, 2)),
         'elevation_load_miles': float(round(elevation_load_miles, 2)),
         'total_load_miles': float(round(total_load_miles, 2)),
-        'average_speed_mph': float(round(average_speed_mph, 2)) if average_speed_mph else None,  # NEW
+        'average_speed_mph': float(round(average_speed_mph, 2)) if average_speed_mph else None,
         'cycling_equivalent_miles': float(round(cycling_equivalent_miles, 2)) if cycling_equivalent_miles else None,
-        # NEW
-        'cycling_elevation_factor': float(cycling_elevation_factor) if cycling_elevation_factor else None,  # NEW
+        'swimming_equivalent_miles': float(round(swimming_equivalent_miles, 2)) if swimming_equivalent_miles else None,
+        'cycling_elevation_factor': float(cycling_elevation_factor) if cycling_elevation_factor else None,
         'avg_heart_rate': float(avg_hr),
         'max_heart_rate': float(max_hr),
         'duration_minutes': float(round(duration_minutes, 2)),
@@ -1345,9 +1422,10 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
 
     logger.info(f"Ensuring daily records from {start_date_str} to {end_date_str} for user {user_id}")
 
-    # Get current app date for comparison
-    app_current_date = get_app_current_date()
-    logger.info(f"Current app date (Pacific): {app_current_date}")
+    # Get current user date for comparison
+    from timezone_utils import get_user_current_date, should_create_rest_day_for_user
+    user_current_date = get_user_current_date(user_id)
+    logger.info(f"Current user date (user timezone): {user_current_date}")
 
     while current_date <= end_date:
         date_str = current_date.strftime('%Y-%m-%d')
@@ -1360,8 +1438,8 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
         )
 
         if not existing_record_for_date:
-            # CRITICAL FIX: Only create rest days for dates that are actually in the past
-            if should_create_rest_day(date_str):
+            # CRITICAL FIX: Only create rest days for dates that are actually in the past (user timezone)
+            if should_create_rest_day_for_user(user_id, date_str):
                 # Double-check that no rest day already exists for this user and date
                 existing_rest_day = execute_query(
                     "SELECT 1 FROM activities WHERE date = %s AND user_id = %s AND activity_id < 0",
@@ -1372,7 +1450,7 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
                 if existing_rest_day:
                     logger.info(f"Rest day already exists for user {user_id} on {date_str} - skipping")
                 else:
-                    logger.info(f"Creating rest day for user {user_id} on {date_str} (date is in the past)")
+                    logger.info(f"Creating rest day for user {user_id} on {date_str} (date is in the past - user timezone)")
 
                     # Generate a unique negative activity_id for rest days
                     rest_day_activity_id = -(current_date.toordinal() * 1000 + user_id)
@@ -1412,7 +1490,7 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
 
                     logger.info(f"Created rest day record for user {user_id} on {date_str}")
             else:
-                logger.info(f"Skipping rest day creation for user {user_id} on {date_str} (date is today or in future)")
+                logger.info(f"Skipping rest day creation for user {user_id} on {date_str} (date is today or in future - user timezone)")
 
         current_date += timedelta(days=1)
 
