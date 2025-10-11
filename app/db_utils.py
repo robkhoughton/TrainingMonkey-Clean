@@ -497,6 +497,60 @@ def cleanup_old_recommendations(user_id, keep_days=14):
         return None
 
 
+def cleanup_api_logs(days_to_keep=90):
+    """
+    Remove old API logs, keeping only the last N days for performance monitoring.
+    Retains sufficient data for debugging, security analysis, and trend monitoring.
+    
+    Args:
+        days_to_keep: Number of days of logs to retain (default 90)
+        
+    Returns:
+        Number of rows deleted, or None if error
+    """
+    try:
+        query = """
+            DELETE FROM api_logs 
+            WHERE timestamp < NOW() - INTERVAL '%s days'
+        """ % days_to_keep
+        
+        result = execute_query(query)
+        logger.info(f"Cleaned up api_logs older than {days_to_keep} days (deleted {result} rows)")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up old api_logs: {str(e)}")
+        # Don't raise - cleanup failure shouldn't break application
+        return None
+
+
+def cleanup_analytics_events(days_to_keep=90):
+    """
+    Remove old analytics events, keeping only the last N days for analysis.
+    Retains sufficient data for quarterly trend analysis.
+    
+    Args:
+        days_to_keep: Number of days of analytics to retain (default 90)
+        
+    Returns:
+        Number of rows deleted, or None if error
+    """
+    try:
+        query = """
+            DELETE FROM analytics_events 
+            WHERE timestamp < NOW() - INTERVAL '%s days'
+        """ % days_to_keep
+        
+        result = execute_query(query)
+        logger.info(f"Cleaned up analytics_events older than {days_to_keep} days (deleted {result} rows)")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up old analytics_events: {str(e)}")
+        # Don't raise - cleanup failure shouldn't break application
+        return None
+
+
 def get_latest_recommendation(user_id=None):
     """Get the most recent LLM recommendation from the database for a specific user."""
     if user_id is None:

@@ -2866,36 +2866,53 @@ def get_available_tutorials():
     try:
         user_id = current_user.id
         
-        # Import tutorial system
-        from onboarding_tutorial_system import get_available_tutorials, get_recommended_tutorials
-        
-        # Get all available tutorials
-        available_tutorials = get_available_tutorials(user_id)
-        
-        # Get recommended tutorials
-        recommended_tutorials = get_recommended_tutorials(user_id, limit=3)
-        
-        # Organize tutorials by category
-        tutorials_by_category = {}
-        for tutorial in available_tutorials:
-            category = tutorial.get('category', 'general')
-            if category not in tutorials_by_category:
-                tutorials_by_category[category] = []
-            tutorials_by_category[category].append(tutorial)
-        
-        return jsonify({
-            'success': True,
-            'tutorials': available_tutorials,
-            'recommended': recommended_tutorials,
-            'by_category': tutorials_by_category
-        })
+        # Import tutorial system with graceful fallback
+        try:
+            from onboarding_tutorial_system import get_available_tutorials as get_tutorials_func
+            from onboarding_tutorial_system import get_recommended_tutorials as get_recommended_func
+            
+            # Get all available tutorials
+            available_tutorials = get_tutorials_func(user_id)
+            
+            # Get recommended tutorials
+            recommended_tutorials = get_recommended_func(user_id, limit=3)
+            
+            # Organize tutorials by category
+            tutorials_by_category = {}
+            for tutorial in available_tutorials:
+                category = tutorial.get('category', 'general')
+                if category not in tutorials_by_category:
+                    tutorials_by_category[category] = []
+                tutorials_by_category[category].append(tutorial)
+            
+            return jsonify({
+                'success': True,
+                'tutorials': available_tutorials,
+                'recommended': recommended_tutorials,
+                'by_category': tutorials_by_category
+            })
+            
+        except ImportError as import_err:
+            # Tutorial system not available - return empty data
+            logger.warning(f"Tutorial system not available (import error): {str(import_err)}")
+            return jsonify({
+                'success': True,
+                'tutorials': [],
+                'recommended': [],
+                'by_category': {},
+                'message': 'Tutorial system is currently unavailable'
+            })
         
     except Exception as e:
-        logger.error(f"Error getting available tutorials: {str(e)}")
+        logger.error(f"Error getting available tutorials: {str(e)}", exc_info=True)
+        # Return empty tutorials rather than 500 error for better UX
         return jsonify({
-            'success': False,
-            'error': 'Internal server error'
-        }), 500
+            'success': True,
+            'tutorials': [],
+            'recommended': [],
+            'by_category': {},
+            'message': 'Tutorials temporarily unavailable'
+        })
 
 
 @app.route('/api/tutorials/content/<tutorial_id>', methods=['GET'])
