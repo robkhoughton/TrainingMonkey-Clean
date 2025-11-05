@@ -17,6 +17,7 @@
 - **End-to-End Testing**: Test complete user flows, not just components
 - **Validation**: Run `validate_sql_syntax.py` before commits
 - **Clean Code**: Remove debugging artifacts, use proper validation
+- **Deployment**: User handles all deployments. Assistant prepares code changes but NEVER runs deployment commands
 
 ## 📋 Timezone & Date Standards
 - **Storage**: UTC timestamps in database

@@ -1,5 +1,7 @@
 # Journal Date Fix - 14-Day Recommendation Retention
 
+**⚠️ UPDATE (October 17, 2025):** This fix was incomplete. A timezone-based date attribution bug was discovered and fixed separately. See `TIMEZONE_DATE_ATTRIBUTION_FIX.md` for the complete solution.
+
 ## Problem Identified
 Training recommendations were being overwritten when new activities were logged, causing the Journal page to show incorrect recommendations for historical dates. For example, Friday's recommendation would show Saturday's workout because after logging Friday's activity, the system generated a new recommendation for Saturday that replaced or obscured Friday's original recommendation.
 
@@ -163,10 +165,20 @@ cleanup_old_recommendations(user_id, keep_days=14)  # Change 14 to desired days
 1. `app/db_utils.py` - Added `cleanup_old_recommendations()` function
 2. `app/llm_recommendations_module.py` - Added duplicate check and cleanup call
 
+## Related Fixes
+
+**IMPORTANT:** This fix addressed recommendation retention and duplicate prevention, but a **second issue** was discovered related to timezone-based date attribution:
+
+- **This Document:** Prevents duplicate recommendations and implements 14-day retention
+- **`TIMEZONE_DATE_ATTRIBUTION_FIX.md`:** Fixes Journal page showing wrong date's recommendation due to timezone handling
+
+Both fixes are required for correct Journal page behavior.
+
 ## Deployment Notes
 
 - No database schema changes required
 - Existing recommendations remain intact
 - Cleanup only affects recommendations older than 14 days
 - Changes are backward compatible
+- ⚠️ **Additional fix required:** See `TIMEZONE_DATE_ATTRIBUTION_FIX.md`
 

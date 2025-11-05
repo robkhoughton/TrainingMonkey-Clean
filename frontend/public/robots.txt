@@ -1,3 +1,21 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /welcome-post-strava
+Disallow: /oauth-callback
+Disallow: /strava-setup
+
+# Allow public pages
+Allow: /
+Allow: /landing
+Allow: /guide
+Allow: /getting-started
+Allow: /login
+Allow: /signup
+Allow: /terms-and-conditions
+Allow: /privacy-policy
+Allow: /medical-disclaimer
+
+# Sitemap location
+Sitemap: https://yourtrainingmonkey.com/sitemap.xml

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './TrainingLoadDashboard.module.css'; // Reuse existing styles
+import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 
 interface JournalEntry {
   date: string;
   is_today: boolean;
+  is_future?: boolean;  // NEW: indicates if entry is for a future date
+  is_tomorrow?: boolean;  // NEW: indicates if entry is for tomorrow
   todays_decision: string;
   activity_summary: {
     type: string;
@@ -11,7 +14,7 @@ interface JournalEntry {
     elevation: number;
     workout_classification: string;
     total_trimp: number;
-  };
+  } | null;  // Can be null for future dates
   observations: {
     energy_level: number | null;
     rpe_score: number | null;
@@ -34,6 +37,10 @@ interface JournalResponse {
 }
 
 const JournalPage: React.FC = () => {
+  // Performance monitoring
+  usePagePerformanceMonitoring('journal');
+  const perfMonitor = useComponentPerformanceMonitoring('JournalPage');
+
   const [journalData, setJournalData] = useState<JournalEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +92,7 @@ const JournalPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
+      perfMonitor.trackFetchStart();
       const url = date ? `/api/journal?date=${date}` : '/api/journal';
       const response = await fetch(url);
 
@@ -93,6 +101,7 @@ const JournalPage: React.FC = () => {
       }
 
       const result: JournalResponse = await response.json();
+      perfMonitor.trackFetchEnd();
 
       if (result.success) {
         setJournalData(result.data);
@@ -109,11 +118,13 @@ const JournalPage: React.FC = () => {
           }
         });
         setSavedEntries(newSavedEntries);
+        perfMonitor.reportMetrics(result.data.length);
       } else {
         throw new Error(result.error || 'Unknown error');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load journal data');
+      perfMonitor.reportMetrics(0, err instanceof Error ? err.message : 'Failed to load journal data');
     } finally {
       setIsLoading(false);
     }
@@ -211,6 +222,52 @@ const JournalPage: React.FC = () => {
     const entry = journalData.find(e => e.date === date);
     if (entry) {
       saveJournalEntry(date, entry.observations);
+    }
+  };
+
+  // NEW: Handle marking rest day
+  const handleMarkRestDay = async (date: string) => {
+    try {
+      setIsSaving(date);
+
+      const response = await fetch('/api/journal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: date,
+          is_rest_day: true,
+          notes: 'Rest Day'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to mark rest day');
+      }
+
+      const result = await response.json();
+      console.log('Rest day marked successfully:', result);
+
+      if (result.user_message) {
+        alert(result.user_message);
+      }
+
+      // Mark as saved
+      setSavedEntries(prev => new Set(prev).add(date));
+
+      // Refresh journal data to get tomorrow's updated recommendation
+      try {
+        await fetchJournalData(centerDate);
+      } catch (refreshErr) {
+        console.error('Failed to refresh data after rest day:', refreshErr);
+      }
+
+    } catch (error) {
+      console.error('Error marking rest day:', error);
+      alert(`Failed to mark rest day: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSaving(null);
     }
   };
 
@@ -349,46 +406,166 @@ const JournalPage: React.FC = () => {
             <tbody>
               {journalData.map((entry) => (
                 <React.Fragment key={entry.date}>
-                  {/* Main data row */}
-                  <tr style={{
-                    borderBottom: '1px solid #e5e7eb',
-                    backgroundColor: entry.is_today ? '#f0f9ff' : 'white'
-                  }}>
-                    {/* Date Column */}
-                    <td style={{ padding: '12px 8px', verticalAlign: 'top' }}>
-                      <div style={{ fontWeight: entry.is_today ? '600' : 'normal' }}>
-                        {formatDate(entry.date)}
-                      </div>
-                    </td>
+                  {/* Tomorrow's row - special rendering */}
+                  {entry.is_tomorrow ? (
+                    <tr style={{
+                      borderBottom: '2px solid #3b82f6',
+                      backgroundColor: '#eff6ff'
+                    }}>
+                      {/* Date Column */}
+                      <td style={{ padding: '16px 8px', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: '600', color: '#3b82f6' }}>
+                          {formatDate(entry.date)}
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>
+                            NEXT WORKOUT
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Today's Training Decision */}
-                    <td style={{ padding: '12px 8px', verticalAlign: 'top' }}>
-                      <div style={{
-                        fontSize: '0.875rem',
-                        lineHeight: '1.4',
-                        maxHeight: '100px',
-                        overflowY: 'auto',
-                        color: '#374151',
-                        textAlign: 'left',
-                        width: '350px',
-                        minWidth: '350px',
-                        maxWidth: '500px'
-                      }}>
-                        {entry.todays_decision || 'No AI recommendation available'}
-                      </div>
-                    </td>
-
-
-                    <td style={{ padding: '12px 4px', verticalAlign: 'top' }}>
-                      <div style={{ fontSize: '0.875rem', lineHeight: '1.4', color: '#374151' }}>
-                        {/* IMPROVED: Check for activity type properly */}
-                        {!entry.activity_summary.type || entry.activity_summary.type === 'rest' ? (
-                          <span style={{ fontStyle: 'italic', color: '#6b7280' }}>Rest Day</span>
+                      {/* Tomorrow's Recommendation - spans multiple columns */}
+                      <td colSpan={8} style={{ padding: '16px', verticalAlign: 'top' }}>
+                        {entry.todays_decision && !entry.todays_decision.includes('No recommendation available') ? (
+                          /* Has actual recommendation */
+                          <div style={{
+                            border: '2px solid #3b82f6',
+                            borderRadius: '8px',
+                            padding: '16px',
+                            backgroundColor: 'white'
+                          }}>
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              marginBottom: '12px',
+                              gap: '8px'
+                            }}>
+                              <span style={{ 
+                                fontSize: '1.1rem', 
+                                fontWeight: '600',
+                                color: '#1f2937'
+                              }}>
+                                Training Decision for Tomorrow
+                              </span>
+                              <span style={{
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                padding: '4px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.75rem',
+                                fontWeight: '600'
+                              }}>
+                                Autopsy-Informed
+                              </span>
+                            </div>
+                            <div style={{
+                              fontSize: '0.9rem',
+                              lineHeight: '1.6',
+                              color: '#374151',
+                              whiteSpace: 'pre-wrap'
+                            }}>
+                              {entry.todays_decision}
+                            </div>
+                          </div>
                         ) : (
+                          /* No recommendation yet - prompt to complete journal */
+                          <div style={{
+                            border: '2px dashed #d1d5db',
+                            borderRadius: '8px',
+                            padding: '24px',
+                            backgroundColor: '#f9fafb',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📝</div>
+                            <div style={{ 
+                              fontSize: '1rem', 
+                              fontWeight: '600',
+                              color: '#374151',
+                              marginBottom: '8px'
+                            }}>
+                              Ready to Plan Tomorrow's Workout?
+                            </div>
+                            <div style={{ 
+                              fontSize: '0.875rem', 
+                              color: '#6b7280',
+                              marginBottom: '16px',
+                              lineHeight: '1.5'
+                            }}>
+                              Complete your observations for today's workout to generate an autopsy-informed recommendation for tomorrow.
+                              <br />
+                              <strong style={{ color: '#374151' }}>Save today's Energy, RPE, Pain, and Notes.</strong>
+                            </div>
+                            <div style={{
+                              display: 'inline-block',
+                              padding: '8px 16px',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              borderRadius: '6px',
+                              fontSize: '0.875rem',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              // Scroll to today's row
+                              const todayRow = document.querySelector('[style*="backgroundColor"][style*="#f0f9ff"]');
+                              if (todayRow) {
+                                todayRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }}
+                            >
+                              ⬆️ Complete Today's Journal
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    /* Regular past/today row */
+                    <tr style={{
+                      borderBottom: '1px solid #e5e7eb',
+                      backgroundColor: entry.is_today ? '#f0f9ff' : 'white'
+                    }}>
+                      {/* Date Column */}
+                      <td style={{ padding: '12px 8px', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: entry.is_today ? '600' : 'normal' }}>
+                          {formatDate(entry.date)}
+                        </div>
+                      </td>
+
+                      {/* Today's Training Decision */}
+                      <td style={{ padding: '12px 8px', verticalAlign: 'top' }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          width: '350px',
+                          minWidth: '350px',
+                          maxWidth: '500px'
+                        }}>
+                          <div style={{
+                            fontSize: '0.875rem',
+                            lineHeight: '1.4',
+                            maxHeight: '120px',
+                            overflowY: 'auto',
+                            color: '#374151',
+                            textAlign: 'left'
+                          }}>
+                            {entry.todays_decision || 'No AI recommendation available'}
+                          </div>
+                        </div>
+                      </td>
+
+
+                      <td style={{ padding: '12px 4px', verticalAlign: 'top' }}>
+                        <div style={{ fontSize: '0.875rem', lineHeight: '1.4', color: '#374151' }}>
+                          {/* IMPROVED: Check for activity type properly */}
+                          {!entry.activity_summary || !entry.activity_summary.type || entry.activity_summary.type === 'rest' ? (
+                            <span style={{ fontStyle: 'italic', color: '#6b7280' }}>Rest Day</span>
+                          ) : (
                           <>
                             <div><strong>{entry.activity_summary.type}</strong></div>
-                            <div>{entry.activity_summary.distance.toFixed(1)} mi, {entry.activity_summary.elevation} ft</div>
-                            <div>TRIMP: {entry.activity_summary.total_trimp}</div>
+                            <div>
+                              {entry.activity_summary.distance != null ? entry.activity_summary.distance.toFixed(1) : '0.0'} mi, {entry.activity_summary.elevation || 0} ft
+                            </div>
+                            <div>TRIMP: {entry.activity_summary.total_trimp || 0}</div>
                             <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                               ({entry.activity_summary.workout_classification})
                             </div>
@@ -555,6 +732,26 @@ const JournalPage: React.FC = () => {
                         const hasAnalysis = entry.ai_autopsy.autopsy_analysis;
                         const isCurrentlySaving = isSaving === entry.date;
                         const isAnalysisExpanded = expandedAutopsies.has(entry.date);
+                        const isRestDay = !entry.activity_summary || entry.activity_summary.type === 'rest';
+                        const isToday = entry.is_today;
+
+                        // NEW: State 0 - Today with no activity, show "Mark as Rest Day" button
+                        if (isToday && isRestDay && !isSaved) {
+                          return (
+                            <button
+                              onClick={() => handleMarkRestDay(entry.date)}
+                              disabled={isCurrentlySaving}
+                              className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
+                              style={{
+                                backgroundColor: '#9333ea',
+                                color: 'white',
+                                border: 'none'
+                              }}
+                            >
+                              {isCurrentlySaving ? '🛌 Marking...' : '🛌 Mark as Rest Day'}
+                            </button>
+                          );
+                        }
 
                         // State 1: Unsaved changes - Show Save button
                         if (hasUnsaved || (!isSaved && !isCurrentlySaving)) {
@@ -605,9 +802,11 @@ const JournalPage: React.FC = () => {
                       })()}
                     </td>
                   </tr>
+                  )}
+                  {/* End of tomorrow/regular row conditional */}
 
-                  {/* Expanded Autopsy Row */}
-                  {entry.ai_autopsy.autopsy_analysis && expandedAutopsies.has(entry.date) && (
+                  {/* Expanded Autopsy Row - only for past dates with autopsy */}
+                  {!entry.is_future && entry.ai_autopsy.autopsy_analysis && expandedAutopsies.has(entry.date) && (
                     <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
                       <td colSpan={9} style={{ textAlign: 'right', padding: '16px' }}>
                         <div style={{

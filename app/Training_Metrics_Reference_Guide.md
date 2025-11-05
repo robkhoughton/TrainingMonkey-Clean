@@ -24,7 +24,6 @@
 - **Volume Sensitivity**: >15% weekly load increases causing immediate ACWR spike
 - **Intensity Clustering**: >2 consecutive days TRIMP >70 without intermediate recovery
 - **Recovery Failure**: TRIMP >70 sessions followed by divergence remaining <-0.05 for 48+ hours
-- **Load Spike Sensitivity**: Single high-volume day (>150% of 7-day average) causing ACWR jump >0.15
 
 ### Positive Adaptation Patterns:
 - **Efficient Loading**: Consistent positive divergence (0.05-0.15) with stable ACWR

@@ -84,7 +84,17 @@ class User(UserMixin):
         params = (email, password_hash, resting_hr, max_hr, gender)
         try:
             result = execute_query(query, params, fetch=True)
-            return result[0]['id'] if result else None
+            user_id = result[0]['id'] if result else None
+            
+            if user_id:
+                # Notify admin of new user registration
+                try:
+                    from admin_notifications import notify_admin_of_new_user
+                    notify_admin_of_new_user(user_id, email)
+                except Exception as e:
+                    logger.warning(f"Failed to send admin notification: {str(e)}")
+            
+            return user_id
         except Exception as e:
             print(f"Error creating user: {str(e)}")
             return None

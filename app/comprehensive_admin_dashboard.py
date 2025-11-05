@@ -160,8 +160,8 @@ class ComprehensiveAdminDashboard:
     def _get_trimp_status(self) -> ComponentStatus:
         """Get TRIMP calculation component status"""
         try:
-            # Get TRIMP metrics for last hour
-            trimp_metrics = get_enhanced_trimp_metrics(1)
+            # Get TRIMP metrics for last 24 hours (provides better context and avoids false alarms)
+            trimp_metrics = get_enhanced_trimp_metrics(24)
             
             if not trimp_metrics.get('success'):
                 return ComponentStatus(
@@ -214,7 +214,7 @@ class ComprehensiveAdminDashboard:
                     details={'error_rate': error_rate, 'threshold': self.thresholds['error_rate']}
                 ))
             
-            if success_rate < 95:
+            if success_rate < 95 and total_activities > 0:
                 alerts.append(Alert(
                     id=f"trimp_success_rate_{int(time.time())}",
                     component=SystemComponent.TRIMP_CALCULATIONS,
@@ -235,7 +235,12 @@ class ComprehensiveAdminDashboard:
                     'error_rate': error_rate,
                     'total_activities': total_activities,
                     'calculation_methods': detailed_metrics.get('calculation_methods', {}),
-                    'performance_score': detailed_metrics.get('performance_score', 'Unknown')
+                    'performance_score': detailed_metrics.get('performance_score', 'Unknown'),
+                    'recommendations': trimp_metrics.get('recommendations', []),
+                    'hourly_trends': trimp_metrics.get('hourly_trends', []),
+                    'error_analysis': trimp_metrics.get('error_analysis', {}),
+                    'time_range': trimp_metrics.get('time_range', {}),
+                    'system_health': trimp_metrics.get('system_health', {})
                 },
                 alerts=alerts
             )

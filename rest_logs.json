@@ -1,0 +1,1002 @@
+[
+  {
+    "insertId": "6906bf710005455360e73bfb",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:25.433666225Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:25,346 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-02T02:18:25.345427Z"
+  },
+  {
+    "insertId": "6906bf710004d26644a5be0e",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:25.433666225Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:25,317 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-02T02:18:25.316006Z"
+  },
+  {
+    "insertId": "6906bf70000ce1718aea2c47",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:25.099867510Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:24,845 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-02T02:18:24.844145Z"
+  },
+  {
+    "insertId": "6906bf6d0007e0f87af089e8",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:21.770977036Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:21,517 - strava_training_load - INFO - Skipping rest day creation for user 1 on 2025-11-01 (date is today or in future - user timezone)",
+    "timestamp": "2025-11-02T02:18:21.516344Z"
+  },
+  {
+    "insertId": "6906bf5b00038056ae40bf4a",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:03.395549318Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:03,230 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-02T02:18:03.229462Z"
+  },
+  {
+    "insertId": "6906bf5b00030f73e913b73e",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:03.395549318Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:03,201 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-02T02:18:03.200563Z"
+  },
+  {
+    "insertId": "6906bf5a000ad8ee558a6bb6",
+    "labels": {
+      "instanceId": "001477829668c4ceaf7781307f2e3cdf01a5f8d4f80926f945f5a766c6ea61de08dca01745e40083e70ed586c82d2592e94a9f11758bf145d7e7d8481c4b845eb76bb1ebc748b0834f467e2923"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T02:18:02.728978549Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00493-26x",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 02:18:02,712 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-02T02:18:02.710894Z"
+  },
+  {
+    "insertId": "6906ae72000f35aaa7a187b6",
+    "labels": {
+      "instanceId": "0014778296840eaacde6f6a23cf529e95cc32ec138367060cfecc153770eaad8981633e46a05ba0ce927c84024531dde011009f55cbe7e6499c744815512f207e9f9f8e6da69f1eeb9e24c3663f2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T01:05:55.038962397Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 01:05:54,997 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-02T01:05:54.996778Z"
+  },
+  {
+    "insertId": "6906ae72000eb45ffc768784",
+    "labels": {
+      "instanceId": "0014778296840eaacde6f6a23cf529e95cc32ec138367060cfecc153770eaad8981633e46a05ba0ce927c84024531dde011009f55cbe7e6499c744815512f207e9f9f8e6da69f1eeb9e24c3663f2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T01:05:55.038962397Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 01:05:54,964 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-02T01:05:54.963679Z"
+  },
+  {
+    "insertId": "6906ae7200053f8f06a55a6f",
+    "labels": {
+      "instanceId": "0014778296840eaacde6f6a23cf529e95cc32ec138367060cfecc153770eaad8981633e46a05ba0ce927c84024531dde011009f55cbe7e6499c744815512f207e9f9f8e6da69f1eeb9e24c3663f2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-02T01:05:54.369877828Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-02 01:05:54,344 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-02T01:05:54.343951Z"
+  },
+  {
+    "insertId": "69069967000f3230d854431c",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:08.303530197Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:07,996 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:36:07.995888Z"
+  },
+  {
+    "insertId": "69069967000ea317115c1051",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:07.971117219Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:07,960 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:36:07.959255Z"
+  },
+  {
+    "insertId": "6906996700064784126c99ef",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:07.635171140Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:07,412 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:36:07.411524Z"
+  },
+  {
+    "insertId": "69069962000c19c1af6e46f5",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:02.973130414Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:02,793 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:36:02.793025Z"
+  },
+  {
+    "insertId": "69069962000b8cbc29ff7047",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:02.973130414Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:02,757 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:36:02.756924Z"
+  },
+  {
+    "insertId": "690699620001e5fc70bb061b",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:36:02.307186315Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:36:02,124 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:36:02.124412Z"
+  },
+  {
+    "insertId": "6906994c000c05f579aa6a64",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:35:40.874920791Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:35:40,788 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:35:40.787957Z"
+  },
+  {
+    "insertId": "6906994c000b7225a1738572",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:35:40.874920791Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:35:40,750 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:35:40.750117Z"
+  },
+  {
+    "insertId": "6906994c00033d2e917bb173",
+    "labels": {
+      "instanceId": "0014778296360061f1b6719bccc76578922763265e74318eecf4279e75c2b20217011ea6cb11a5f279c468eda18f1cab3fb3cb772f009e36ae5943b857f417a390def242f14ea51582160725c0fc"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:35:40.540197461Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00492-wxb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:35:40,213 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:35:40.212270Z"
+  },
+  {
+    "insertId": "690696b600028d58f0b88fce",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:38.253975578Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:38,168 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:24:38.167256Z"
+  },
+  {
+    "insertId": "690696b6000211d0f1eaa6e2",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:38.253975578Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:38,137 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:24:38.135632Z"
+  },
+  {
+    "insertId": "690696b50009f52239faa3e3",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:37.923731782Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:37,654 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:24:37.652578Z"
+  },
+  {
+    "insertId": "690696a6000995eb6e9b6e90",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:22.878810941Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:22,627 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:24:22.628203Z"
+  },
+  {
+    "insertId": "690696a60008f9113642a507",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:22.878810941Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:22,588 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:24:22.588049Z"
+  },
+  {
+    "insertId": "690696a5000ec747d29659a9",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:24:22.215043499Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:24:21,969 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:24:21.968519Z"
+  },
+  {
+    "insertId": "69069630000e22c745bd0f48",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:22:24.967384998Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:22:24,927 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T23:22:24.926407Z"
+  },
+  {
+    "insertId": "69069630000da5cc0f10e8f0",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:22:24.967384998Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:22:24,895 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T23:22:24.894412Z"
+  },
+  {
+    "insertId": "690696300005c34632b4cc88",
+    "labels": {
+      "instanceId": "00147782969e834cd77e31431e7e85ccc494b4fc451dd24dcf59450a0b1746af40c25b5d075c92a4bbe53726d73efdbf3ca6903c968692f1b533d7923f0ed8e5aa3fd1dfe1be2146a8822a160f27"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T23:22:24.635493376Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00491-xpb",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 23:22:24,378 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T23:22:24.377670Z"
+  },
+  {
+    "insertId": "69068a59000a9250aedd276a",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:53.697506804Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:53,693 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T22:31:53.692816Z"
+  },
+  {
+    "insertId": "69068a59000a1d6813cec012",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:53.697506804Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:53,663 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T22:31:53.662888Z"
+  },
+  {
+    "insertId": "69068a58000221a11e79ebf1",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:52.367593701Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:52,141 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T22:31:52.139681Z"
+  },
+  {
+    "insertId": "69068a4800034d58172c437e",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:36.360355437Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:36,217 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T22:31:36.216408Z"
+  },
+  {
+    "insertId": "69068a480002cd3f7ca60a37",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:36.360355437Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:36,184 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T22:31:36.183615Z"
+  },
+  {
+    "insertId": "69068a46000d23ec5e26871d",
+    "labels": {
+      "instanceId": "00147782967d77bc357c97bd3105dc5a0363e078db691924dce3db72f12547274838295d6e745e63b9254ffad0d0a65db6066ce18cb1b2c4151e6f9b74dcee4df430abb4af989295c877173512"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T22:31:35.027140613Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00490-jz5",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 22:31:34,862 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T22:31:34.861164Z"
+  },
+  {
+    "insertId": "6906670d000d7f05872a6d4d",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:01:18.137480419Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:01:17,885 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T20:01:17.884485Z"
+  },
+  {
+    "insertId": "6906670d000cf9a604b16bff",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:01:18.137480419Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:01:17,851 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T20:01:17.850342Z"
+  },
+  {
+    "insertId": "6906670d0005522e1fe9d80a",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:01:17.472888763Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:01:17,349 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T20:01:17.348718Z"
+  },
+  {
+    "insertId": "690666ef000a7c39fc7d6cf0",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:47.702886036Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:47,687 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T20:00:47.687161Z"
+  },
+  {
+    "insertId": "690666ef0009f3b11be2d4a6",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:47.702886036Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:47,652 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T20:00:47.652209Z"
+  },
+  {
+    "insertId": "690666ef00020bb9f27adaf1",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:47.373035875Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:47,134 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T20:00:47.134073Z"
+  },
+  {
+    "insertId": "690666e9000e2d9ee9f7ec2d",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:42.042936345Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:41,930 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T20:00:41.929182Z"
+  },
+  {
+    "insertId": "690666e9000d8b324136cc63",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:42.042936345Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:41,888 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T20:00:41.887602Z"
+  },
+  {
+    "insertId": "690666e9000530c957cbdd90",
+    "labels": {
+      "instanceId": "001477829652f67e4703e888573be969543272a4d2bb2447f8db37c1997d69cf99c7abcc0c7750b45241f74279132c1759961e4697af703ea8b7bd4c0a6671238056554a78389e3b97b91d8993c2"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T20:00:41.379330016Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00489-gdz",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 20:00:41,341 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T20:00:41.340169Z"
+  },
+  {
+    "insertId": "690662c400020de77b007e9a",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:43:00.233298329Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:43:00,135 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T19:43:00.134631Z"
+  },
+  {
+    "insertId": "690662c400018bc663184445",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:43:00.233298329Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:43:00,102 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T19:43:00.101318Z"
+  },
+  {
+    "insertId": "690662c30008bc6c19cef423",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:42:59.897237784Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:42:59,573 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T19:42:59.572524Z"
+  },
+  {
+    "insertId": "690662ab000849f97a161464",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:42:35.588899853Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:42:35,543 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T19:42:35.543225Z"
+  },
+  {
+    "insertId": "690662ab0007c31e66968148",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:42:35.588899853Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:42:35,509 - unified_metrics - INFO - Calculating days since last recorded rest day for user 1 (user timezone)",
+    "timestamp": "2025-11-01T19:42:35.508702Z"
+  },
+  {
+    "insertId": "690662aa000e6d07ab72bc86",
+    "labels": {
+      "instanceId": "001477829621211c7c26f1a7ab75d1db5cd4b1fedb09f7e2b41dc630eee66865b46082c79c06c863261e787c8843f5324d96ea3655f6c084eba02e6a258a8334d620f588a623953c57691befb3a1"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:42:35.256812829Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00488-6xl",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:42:34,945 - strava_app - INFO - Retrieved 92 records from database (including rest days)",
+    "timestamp": "2025-11-01T19:42:34.945415Z"
+  },
+  {
+    "insertId": "69065cda0007765bd8b89e75",
+    "labels": {
+      "instanceId": "00147782967af6f6677b5418485a1917d7bbe15964c55f7162b4d47330a7f0e71bd9057808d13735fde71dcc944758e5b8e2b38b390014c7109a0ceebaff8c93862b7bc3dd7a6236890612450353"
+    },
+    "logName": "projects/dev-ruler-460822-e8/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-11-01T19:17:46.716108309Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "strava-training-personal",
+        "location": "us-central1",
+        "project_id": "dev-ruler-460822-e8",
+        "revision_name": "strava-training-personal-00487-5nj",
+        "service_name": "strava-training-personal"
+      },
+      "type": "cloud_run_revision"
+    },
+    "textPayload": "2025-11-01 19:17:46,489 - unified_metrics - INFO - Last rest day for user 1: 2025-10-25. Days since: 7 (using app timezone)",
+    "timestamp": "2025-11-01T19:17:46.489051Z"
+  }
+]

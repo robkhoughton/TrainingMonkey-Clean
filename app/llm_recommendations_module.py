@@ -232,16 +232,6 @@ def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=
                 flags['positive_patterns'].append(
                     f"Efficient adaptation - {consecutive_positive_days} consecutive days of positive divergence indicates excellent load tolerance")
 
-        # Check for load spike sensitivity (using adjusted threshold)
-        daily_loads = [act.get('total_load_miles', 0) for act in recent_data[-7:]]
-        if daily_loads:
-            avg_load = sum(daily_loads) / len(daily_loads)
-            max_load = max(daily_loads)
-            load_spike_threshold = thresholds['load_spike_percent']
-            if max_load > avg_load * load_spike_threshold:
-                spike_percent = int((max_load / avg_load - 1) * 100)
-                flags['warnings'].append(f"Significant load spike detected ({spike_percent}% above average) - monitor response carefully")
-
         return flags
 
     except Exception as e:
@@ -267,8 +257,9 @@ def create_enhanced_prompt(current_metrics, activities, pattern_analysis, traini
     
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
 
-    # Get date information
-    current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
+    # Get date information using USER'S TIMEZONE
+    from timezone_utils import get_user_current_date
+    current_date = get_user_current_date(user_id).strftime(DEFAULT_DATE_FORMAT)
     start_date = activities[0]['date'] if activities else "unknown"
     end_date = activities[-1]['date'] if activities else "unknown"
     days_analyzed = len(set(activity['date'] for activity in activities))
@@ -644,8 +635,14 @@ Actual: {actual_activities[:100]}..."""
     return fallback
 
 
-def generate_recommendations(force=False, user_id=None):
-    """Generate enhanced training recommendations using the training guide with fresh metrics."""
+def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
+    """Generate enhanced training recommendations using the training guide with fresh metrics.
+    
+    Args:
+        force: Force generation even if recommendation is recent
+        user_id: User ID for multi-user support
+        target_tomorrow: Force target date to be tomorrow (for rest days)
+    """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
@@ -657,9 +654,12 @@ def generate_recommendations(force=False, user_id=None):
 
         logger.info(f"Generating new enhanced training recommendations for user {user_id}")
 
-        # Get current date information FIRST - USE PACIFIC TIMEZONE
-        current_date = get_app_current_date()
+        # CRITICAL FIX: Get current date using USER'S TIMEZONE (not UTC)
+        # This ensures Thursday night Pacific generates Thursday/Friday recommendations correctly
+        from timezone_utils import get_user_current_date
+        current_date = get_user_current_date(user_id)
         current_date_str = current_date.strftime('%Y-%m-%d')
+        logger.info(f"Using user current date: {current_date_str}")
 
         # CRITICAL FIX: Force metrics recalculation before generating recommendations
         # This ensures we use post-workout ACWR values, not pre-workout values
@@ -685,15 +685,14 @@ def generate_recommendations(force=False, user_id=None):
             logger.error("Training guide not available - falling back to basic recommendations")
             return None
 
-        # Get current date information - USE USER'S TIMEZONE
-        from timezone_utils import get_user_current_date
-        current_date = get_user_current_date(user_id)
-        current_date_str = current_date.strftime('%Y-%m-%d')
-
         # CRITICAL FIX: Proper target_date logic based on activity status
         has_activity_today = check_activity_for_date(user_id, current_date_str)
 
-        if has_activity_today:
+        # NEW: If target_tomorrow is explicitly requested (rest day), always target tomorrow
+        if target_tomorrow:
+            target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+            logger.info(f"REST DAY: Explicitly targeting tomorrow: {target_date}")
+        elif has_activity_today:
             # User has already worked out today → recommendation is for TOMORROW
             target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
             logger.info(f"User {user_id} has activity for {current_date_str}, targeting tomorrow: {target_date}")
@@ -704,7 +703,7 @@ def generate_recommendations(force=False, user_id=None):
 
         # CRITICAL FIX: Check if recommendation already exists for this target_date
         # This prevents overwriting historical recommendations
-        existing_recommendation = db_utils.execute_query(
+        existing_recommendation = execute_query(
             """
             SELECT id FROM llm_recommendations 
             WHERE user_id = %s AND target_date = %s
@@ -753,13 +752,27 @@ def generate_recommendations(force=False, user_id=None):
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
         logger.info(f"TONE DEBUG: Instructions preview: {tone_instructions[:100]}...")
 
-        prompt = create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions)
+        # CRITICAL FIX: Get autopsy insights BEFORE creating prompt so they can be incorporated
+        autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
+        is_autopsy_informed = bool(autopsy_insights and autopsy_insights.get('count', 0) > 0)
+        
+        if is_autopsy_informed:
+            logger.info(f"Generating autopsy-informed recommendation with {autopsy_insights['count']} recent autopsies, avg alignment: {autopsy_insights['avg_alignment']}")
+        else:
+            logger.info("Generating standard recommendation without recent autopsy data")
+
+        prompt = create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights)
 
         # Call the API
         llm_response = call_anthropic_api(prompt)
 
         # Parse the response
         sections = parse_llm_response(llm_response)
+        
+        if is_autopsy_informed:
+            logger.info(f"Recommendation is autopsy-informed with {autopsy_insights['count']} recent autopsies, avg alignment: {autopsy_insights['avg_alignment']}")
+        else:
+            logger.info("Recommendation generated without recent autopsy data")
 
         # FIXED: Create recommendation object with proper target_date
         recommendation = {
@@ -773,7 +786,11 @@ def generate_recommendations(force=False, user_id=None):
             'weekly_recommendation': sections['weekly_recommendation'],
             'pattern_insights': sections['pattern_insights'],
             'raw_response': llm_response,
-            'user_id': user_id
+            'user_id': user_id,
+            # NEW: Autopsy tracking fields
+            'is_autopsy_informed': is_autopsy_informed,
+            'autopsy_count': autopsy_insights['count'] if autopsy_insights else 0,
+            'avg_alignment_score': autopsy_insights['avg_alignment'] if autopsy_insights else None
         }
 
         # Save to database
@@ -795,8 +812,8 @@ def generate_recommendations(force=False, user_id=None):
         logger.error(f"Error generating enhanced recommendations for user {user_id}: {str(e)}")
         return None
 
-def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions):
-    """Create an enhanced prompt using the training guide framework with coaching tone."""
+def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None):
+    """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning."""
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
@@ -809,8 +826,9 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
 
-    # Get date information
-    current_date = get_app_current_date().strftime(DEFAULT_DATE_FORMAT)
+    # Get date information using USER'S TIMEZONE
+    from timezone_utils import get_user_current_date
+    current_date = get_user_current_date(user_id).strftime(DEFAULT_DATE_FORMAT)
     start_date = activities[0]['date'] if activities else "unknown"
     end_date = activities[-1]['date'] if activities else "unknown"
     days_analyzed = len(set(activity['date'] for activity in activities))
@@ -857,6 +875,28 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         assessment_category = "undertraining_opportunity"
 
+    # Build autopsy context section if insights available
+    autopsy_context = ""
+    if autopsy_insights and autopsy_insights.get('count', 0) > 0:
+        alignment_trend = autopsy_insights.get('alignment_trend', [])
+        trend_description = "improving" if len(alignment_trend) >= 2 and alignment_trend[-1] > alignment_trend[0] else "mixed"
+        
+        autopsy_context = f"""
+### RECENT AUTOPSY LEARNING ({autopsy_insights['count']} analyses)
+- Average Alignment Score: {autopsy_insights['avg_alignment']:.1f}/10
+- Alignment Trend: {trend_description} ({alignment_trend})
+- Latest Insights: {autopsy_insights.get('latest_insights', 'No specific insights')[:200]}
+
+**COACHING ADAPTATION STRATEGY:**
+- If alignment >7: Athlete follows guidance well - build on successful patterns
+- If alignment 4-7: Address recurring deviations - simplify recommendations
+- If alignment <4: Major strategy adjustment needed - focus on compliance over optimization
+
+**IMPORTANT:** Use this autopsy learning to adapt today's recommendation. If recent alignment is low, recommend more conservative/achievable targets. If alignment is high, maintain current approach.
+"""
+    else:
+        autopsy_context = ""
+
     # Build the enhanced prompt with tone integration and risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
 
@@ -864,7 +904,6 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 
 ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
 - ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
-- Load Spike Warning: >{int((thresholds['load_spike_percent']-1)*100)}% above 7-day average
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
 - Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
@@ -880,7 +919,7 @@ Assessment Category: {assessment_category}
 - 7-day Average Load: {formatted_metrics['seven_day_avg_load']} miles/day
 - 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
 - Days Since Rest: {formatted_metrics['days_since_rest']}
-
+{autopsy_context}
 ### PATTERN ANALYSIS
 Training Trends:
 - Weekly volume: {pattern_analysis['weekly_volume_trend']}
@@ -1424,7 +1463,6 @@ def get_adjusted_thresholds(recommendation_style):
     
     Returns a dict with adjusted thresholds for:
     - ACWR high risk level
-    - Load spike percentage
     - Days since rest mandatory
     - Divergence overtraining threshold
     - Divergence moderate risk threshold
@@ -1432,7 +1470,6 @@ def get_adjusted_thresholds(recommendation_style):
     thresholds = {
         'conservative': {
             'acwr_high_risk': 1.2,          # Trigger warnings earlier
-            'load_spike_percent': 1.4,       # 140% spike triggers warning
             'days_since_rest_max': 6,        # Enforce rest after 6 days
             'divergence_overtraining': -0.10,  # More sensitive to fatigue
             'divergence_moderate_risk': -0.03, # Earlier recovery warnings
@@ -1441,7 +1478,6 @@ def get_adjusted_thresholds(recommendation_style):
         },
         'balanced': {
             'acwr_high_risk': 1.3,          # Standard evidence-based threshold
-            'load_spike_percent': 1.5,       # 150% spike (current default)
             'days_since_rest_max': 7,        # Standard rest enforcement
             'divergence_overtraining': -0.15,  # Standard threshold
             'divergence_moderate_risk': -0.05, # Standard recovery threshold
@@ -1450,7 +1486,6 @@ def get_adjusted_thresholds(recommendation_style):
         },
         'adaptive': {
             'acwr_high_risk': 1.35,         # Slightly more flexible
-            'load_spike_percent': 1.55,      # 155% spike tolerance
             'days_since_rest_max': 7,        # Same as balanced but recommendations adapt
             'divergence_overtraining': -0.15,  # Same as balanced
             'divergence_moderate_risk': -0.05, # Same as balanced
@@ -1459,7 +1494,6 @@ def get_adjusted_thresholds(recommendation_style):
         },
         'aggressive': {
             'acwr_high_risk': 1.5,          # Higher risk tolerance
-            'load_spike_percent': 1.7,       # 170% spike before warning
             'days_since_rest_max': 8,        # Allow more consecutive training days
             'divergence_overtraining': -0.20,  # Higher fatigue tolerance
             'divergence_moderate_risk': -0.08, # Less conservative recovery warnings
@@ -1714,8 +1748,9 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None):
     """
     try:
         if target_date is None:
-
-            target_date = get_app_current_date() + timedelta(days=1)  # Tomorrow
+            # Use USER'S TIMEZONE for date calculation
+            from timezone_utils import get_user_current_date
+            target_date = get_user_current_date(user_id) + timedelta(days=1)  # Tomorrow
 
         target_date_str = target_date.strftime('%Y-%m-%d')
 

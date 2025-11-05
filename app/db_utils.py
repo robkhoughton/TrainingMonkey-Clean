@@ -432,16 +432,17 @@ def save_llm_recommendation(recommendation):
                                                                                     dict) else recommendation[
             'metrics_snapshot']
 
-        # CRITICAL FIX: Include target_date in the INSERT statement
+        # CRITICAL FIX: Include target_date and autopsy tracking in the INSERT statement
         query = """
             INSERT INTO llm_recommendations (
                 generation_date, target_date, valid_until, data_start_date, data_end_date,
                 metrics_snapshot, daily_recommendation, weekly_recommendation,
-                pattern_insights, raw_response, user_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                pattern_insights, raw_response, user_id,
+                is_autopsy_informed, autopsy_count, avg_alignment_score
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
-        # CRITICAL FIX: Include target_date in the parameters (was missing before)
+        # CRITICAL FIX: Include target_date and autopsy tracking in the parameters
         params = (
             recommendation['generation_date'],
             recommendation.get('target_date'),  # ADD: target_date parameter
@@ -453,7 +454,10 @@ def save_llm_recommendation(recommendation):
             recommendation['weekly_recommendation'],
             recommendation['pattern_insights'],
             recommendation['raw_response'],
-            user_id
+            user_id,
+            recommendation.get('is_autopsy_informed', False),  # NEW: autopsy tracking
+            recommendation.get('autopsy_count', 0),  # NEW: autopsy count
+            recommendation.get('avg_alignment_score')  # NEW: average alignment score
         )
 
         result = execute_query(query, params)

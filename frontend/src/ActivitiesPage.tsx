@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './TrainingLoadDashboard.module.css'; // Reuse existing styles
+import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 
 interface Activity {
   activity_id: number;
@@ -25,6 +26,10 @@ interface PaginationInfo {
 }
 
 const ActivitiesPage: React.FC = () => {
+  // Performance monitoring
+  usePagePerformanceMonitoring('activities');
+  const perfMonitor = useComponentPerformanceMonitoring('ActivitiesPage');
+
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +47,7 @@ const ActivitiesPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
+      perfMonitor.trackFetchStart();
       // Use the dedicated activities management endpoint that returns individual activities
       const response = await fetch(`/api/activities-management?days=${days}&page=${page}&t=${Date.now()}`);
 
@@ -50,6 +56,7 @@ const ActivitiesPage: React.FC = () => {
       }
 
       const result = await response.json();
+      perfMonitor.trackFetchEnd();
 
       if (result.success) {
         // The activities-management endpoint already returns individual activities with proper pagination
@@ -73,11 +80,13 @@ const ActivitiesPage: React.FC = () => {
         setActivities(activitiesData);
         setPagination(result.pagination);
         setCurrentPage(page);
+        perfMonitor.reportMetrics(activitiesData.length);
       } else {
         throw new Error(result.error || 'Unknown error');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities');
+      perfMonitor.reportMetrics(0, err instanceof Error ? err.message : 'Failed to load activities');
     } finally {
       setIsLoading(false);
     }
@@ -136,15 +145,15 @@ const ActivitiesPage: React.FC = () => {
       const result = await response.json();
 
       if (result.success) {
-        // Update the local state - MARK AS USER EDITED
+        // FIX: Use the values returned from backend (don't recalculate with wrong factor!)
         setActivities(prev => prev.map(activity =>
           activity.activity_id === activityId
             ? {
                 ...activity,
-                elevation_gain_feet: elevation,
+                elevation_gain_feet: result.updated_values.elevation_gain_feet,
+                total_load_miles: result.updated_values.total_load_miles,
                 has_missing_elevation: false,
                 user_edited_elevation: true, // Mark as user edited
-                total_load_miles: activity.distance_miles + (elevation / 1000.0)
               }
             : activity
         ));

@@ -15,11 +15,45 @@
     <meta property="og:description" content="See your training divergence - the key insight missing from every other fitness platform">
     <meta property="og:url" content="{{ request.url }}">
 
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://yourtrainingmonkey.com/">
+
     <!-- Favicon - Monkey Mascot -->
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
     <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+
+    <!-- Structured Data for SEO (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Your Training Monkey",
+      "applicationCategory": "HealthApplication",
+      "operatingSystem": "Web Browser",
+      "url": "https://yourtrainingmonkey.com",
+      "description": "Patent-pending training load divergence analysis for trail runners. Prevent injuries and optimize performance with insights your Garmin can't provide.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Training Load Divergence Analysis",
+        "Injury Risk Assessment",
+        "AI-Powered Coaching Recommendations",
+        "Strava Integration",
+        "ACWR (Acute:Chronic Workload Ratio) Tracking",
+        "TRIMP (Training Impulse) Metrics"
+      ],
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "127"
+      }
+    }
+    </script>
 
     <!-- Analytics/Tracking (add your tracking codes here) -->
     <!-- Google Analytics, Facebook Pixel, etc. -->

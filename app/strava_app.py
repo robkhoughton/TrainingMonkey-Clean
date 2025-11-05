@@ -521,6 +521,13 @@ def oauth_callback():
                 else:
                     new_user_id = result[0]
                 
+                # Notify admin of new user registration
+                try:
+                    from admin_notifications import notify_admin_of_new_user
+                    notify_admin_of_new_user(new_user_id, email)
+                except Exception as e:
+                    logger.warning(f"Failed to send admin notification: {str(e)}")
+                
                 logger.info(f"Created user with ID {new_user_id}, now retrieving...")
                 logger.info(f"Result type: {type(result)}, Result: {result}")
                 
@@ -770,7 +777,6 @@ def get_oauth_usage():
             'success': False,
             'error': str(e)
         }), 500
-
 @login_required
 @app.route('/migration-status', methods=['GET'])
 def get_migration_status():
@@ -1547,8 +1553,6 @@ def health_check():
         "total_tables": tables_total_count,
         "activity_count_check": activity_count_status
     })
-
-
 @login_required
 @app.route('/strava-setup', methods=['GET', 'POST'])
 def strava_setup():
@@ -1862,7 +1866,12 @@ def home():
     """Landing page for new users, dashboard for existing users"""
     if current_user.is_authenticated:
         # Existing user - redirect to dashboard
-        return send_from_directory('build', 'index.html')
+        response = send_from_directory('build', 'index.html')
+        # CRITICAL: Prevent caching of index.html so users always get latest JS file references
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
 
     # New/unauthenticated user - show landing page
     return render_template('landing.html')
@@ -1871,7 +1880,12 @@ def home():
 @login_required
 def dashboard():
     """Serve React dashboard"""
-    return send_from_directory('build', 'index.html')
+    response = send_from_directory('build', 'index.html')
+    # CRITICAL: Prevent caching of index.html so users always get latest JS file references
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # =============================================================================
 # SECTION 4: STATIC FILE SERVING
@@ -1908,6 +1922,15 @@ def manifest():
     try:
         return send_from_directory('build', 'manifest.json')
     except:
+        return '', 404
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Serve sitemap.xml for search engines"""
+    try:
+        return send_from_directory('static', 'sitemap.xml', mimetype='application/xml')
+    except Exception as e:
+        logger.error(f"Error serving sitemap.xml: {str(e)}")
         return '', 404
 
 @app.route('/logo192.png')
@@ -2057,6 +2080,50 @@ def generate_llm_recommendations():
             'success': False,
             'error': str(e),
             'recommendation': None
+        }), 500
+
+
+@login_required
+@app.route('/api/journal-status', methods=['GET'])
+def get_journal_status_endpoint():
+    """
+    Get journal status for last activity - used by Dashboard to enforce workflow.
+    Simple check: Does last activity have journal entry?
+    """
+    try:
+        logger.info(f"Fetching journal status for user {current_user.id}")
+        
+        # Get journal status for last activity
+        status = get_last_activity_journal_status(current_user.id)
+        
+        # Get latest recommendation to check if autopsy-informed
+        from db_utils import get_latest_recommendation
+        latest_rec = get_latest_recommendation(current_user.id)
+        
+        response = {
+            'success': True,
+            'status': status,
+            'has_recommendation': bool(latest_rec),
+            'recommendation_is_autopsy_informed': latest_rec.get('is_autopsy_informed', False) if latest_rec else False,
+            'recommendation_target_date': latest_rec.get('target_date') if latest_rec else None
+        }
+        
+        logger.info(f"Journal status for user {current_user.id}: {status['reason']}, has_recommendation: {response['has_recommendation']}, autopsy_informed: {response['recommendation_is_autopsy_informed']}")
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Error getting journal status for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'status': {
+                'has_activity': False,
+                'activity_date': None,
+                'has_journal': False,
+                'allow_manual_generation': True,
+                'reason': 'error'
+            }
         }), 500
 
 
@@ -2266,8 +2333,6 @@ def get_click_through_rates():
     except Exception as e:
         logger.error(f"Error getting click-through rates: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/analytics/user-journey-funnel', methods=['GET'])
 @login_required
 def get_user_journey_funnel():
@@ -2320,6 +2385,163 @@ def get_tutorial_analytics():
     except Exception as e:
         logger.error(f"Error getting tutorial analytics: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# PERFORMANCE MONITORING ENDPOINTS (RUM Metrics)
+# ============================================================================
+
+@app.route('/api/analytics/rum-metrics', methods=['POST'])
+def track_rum_metrics():
+    """
+    Track Real User Monitoring (RUM) metrics from the frontend
+    Captures page load timing, Core Web Vitals, and resource metrics
+    """
+    try:
+        data = request.get_json()
+        
+        # Extract metrics from request
+        page = data.get('page', 'unknown')
+        user_id = current_user.id if current_user.is_authenticated else None
+        
+        # Log to console for immediate visibility
+        logger.info(f"RUM Metrics - Page: {page}, TTFB: {data.get('ttfb')}ms, "
+                   f"Load Complete: {data.get('load_complete')}ms, "
+                   f"LCP: {data.get('lcp', 'N/A')}ms")
+        
+        # Store in database (using db_utils connection)
+        conn = db_utils.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO rum_metrics (
+                page, user_id, ttfb, fcp, lcp, dns_time, connection_time,
+                request_time, response_time, dom_interactive_time, dom_complete_time,
+                load_complete, resource_count, total_resource_size,
+                user_agent, viewport_width, viewport_height, connection_type,
+                timestamp
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+        """, (
+            page, user_id,
+            data.get('ttfb'), data.get('fcp'), data.get('lcp'),
+            data.get('dns_time'), data.get('connection_time'),
+            data.get('request_time'), data.get('response_time'),
+            data.get('dom_interactive_time'), data.get('dom_complete_time'),
+            data.get('load_complete'), data.get('resource_count'),
+            data.get('total_resource_size'), data.get('user_agent'),
+            data.get('viewport_width'), data.get('viewport_height'),
+            data.get('connection_type'), data.get('timestamp')
+        ))
+        
+        conn.commit()
+        cursor.close()
+        db_utils.release_connection(conn)
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error tracking RUM metrics: {str(e)}", exc_info=True)
+        # Don't fail - monitoring should be non-blocking
+        return jsonify({'success': False, 'error': 'Metrics logging failed'}), 200
+
+
+@app.route('/api/analytics/component-performance', methods=['POST'])
+def track_component_performance():
+    """
+    Track component-level performance metrics
+    Captures fetch time, processing time, and render time for React components
+    """
+    try:
+        data = request.get_json()
+        
+        page = data.get('page', 'unknown')
+        user_id = current_user.id if current_user.is_authenticated else None
+        
+        # Log for visibility
+        logger.info(f"Component Performance - {page}: "
+                   f"Fetch: {data.get('fetch_time_ms')}ms, "
+                   f"Process: {data.get('process_time_ms')}ms, "
+                   f"Render: {data.get('render_time_ms')}ms, "
+                   f"Total: {data.get('total_time_ms')}ms")
+        
+        # Store in database
+        conn = db_utils.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO component_performance (
+                page, user_id, fetch_time_ms, process_time_ms, render_time_ms,
+                total_time_ms, data_points, error, timestamp
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+            )
+        """, (
+            page, user_id,
+            data.get('fetch_time_ms'), data.get('process_time_ms'),
+            data.get('render_time_ms'), data.get('total_time_ms'),
+            data.get('data_points'), data.get('error')
+        ))
+        
+        conn.commit()
+        cursor.close()
+        db_utils.release_connection(conn)
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error tracking component performance: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Metrics logging failed'}), 200
+
+
+@app.route('/api/analytics/api-timing', methods=['POST'])
+def track_api_timing():
+    """
+    Track frontend API call timing
+    Captures client-side timing for API requests (complementing server-side api_logs)
+    """
+    try:
+        data = request.get_json()
+        
+        api_name = data.get('api_name', 'unknown')
+        user_id = current_user.id if current_user.is_authenticated else None
+        
+        # Log for visibility
+        if data.get('success'):
+            logger.info(f"API Timing - {api_name}: {data.get('duration_ms')}ms")
+        else:
+            logger.warning(f"API Timing - {api_name} FAILED: {data.get('duration_ms')}ms - {data.get('error')}")
+        
+        # Store in database
+        conn = db_utils.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO api_timing_client (
+                api_name, user_id, duration_ms, success, error, timestamp
+            ) VALUES (
+                %s, %s, %s, %s, %s, NOW()
+            )
+        """, (
+            api_name, user_id, data.get('duration_ms'),
+            data.get('success'), data.get('error')
+        ))
+        
+        conn.commit()
+        cursor.close()
+        db_utils.release_connection(conn)
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error tracking API timing: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Metrics logging failed'}), 200
+
+
+# ============================================================================
+# END PERFORMANCE MONITORING ENDPOINTS
+# ============================================================================
 
 
 @app.route('/api/tutorials/start', methods=['POST'])
@@ -2857,8 +3079,6 @@ def start_tutorial():
             'success': False,
             'error': 'Internal server error'
         }), 500
-
-
 @app.route('/api/tutorials/available', methods=['GET'])
 @login_required
 def get_available_tutorials():
@@ -3431,8 +3651,9 @@ def update_activity_elevation():
                 'error': 'Activity not found or access denied'
             }), 404
 
+        # FIX: Get activity type AND distance to determine correct elevation factor
         activity_data = db_utils.execute_query(
-            "SELECT distance_miles FROM activities WHERE activity_id = %s AND user_id = %s",
+            "SELECT distance_miles, sport_type, type FROM activities WHERE activity_id = %s AND user_id = %s",
             (activity_id, current_user.id),
             fetch=True
         )
@@ -3444,9 +3665,20 @@ def update_activity_elevation():
             }), 404
 
         current_distance = activity_data[0]['distance_miles'] or 0
+        sport_type = activity_data[0]['sport_type'] or activity_data[0]['type'] or 'running'
+        
+        # FIX: Use sport-specific elevation factor (matching strava_training_load.py logic)
+        if sport_type.lower() == 'cycling':
+            elevation_factor = 1100.0  # Cycling uses higher factor
+        elif sport_type.lower() == 'swimming':
+            elevation_factor = 0.0  # Swimming has no elevation
+        else:
+            elevation_factor = 750.0  # Running/default uses standard factor
+        
+        logger.info(f"Activity {activity_id} type: {sport_type}, using elevation factor: {elevation_factor}")
 
-        # Calculate elevation load and total load with 850ft factor
-        elevation_load_miles = elevation_feet / 850.0  # Use new factor!
+        # FIX: Calculate elevation load with CORRECT sport-specific factor
+        elevation_load_miles = elevation_feet / elevation_factor if elevation_factor > 0 else 0.0
         total_load_miles = current_distance + elevation_load_miles
 
         # Update with correct parameters
@@ -3460,20 +3692,20 @@ def update_activity_elevation():
                 elevation_factor_used = %s
             WHERE activity_id = %s AND user_id = %s
             """,
-            (elevation_feet, elevation_load_miles, total_load_miles, 850.0, activity_id, current_user.id)
+            (elevation_feet, elevation_load_miles, total_load_miles, elevation_factor, activity_id, current_user.id)
         )
 
         logger.info(f"Updated elevation for activity {activity_id} to {elevation_feet}ft by user {current_user.id}")
 
-        # Calculate the new total load for response
-        new_elevation_load = round(elevation_feet / 750.0, 2)
-
+        # FIX: Return SAME value that was stored (not recalculated with different factor!)
         return jsonify({
             'success': True,
             'message': f'Elevation updated to {elevation_feet:,.0f} feet',
             'updated_values': {
                 'elevation_gain_feet': elevation_feet,
-                'elevation_load_miles': new_elevation_load,
+                'elevation_load_miles': round(elevation_load_miles, 2),
+                'total_load_miles': round(total_load_miles, 2),
+                'elevation_factor_used': elevation_factor,
                 'data_source': 'user_input'
             }
         })
@@ -3501,9 +3733,10 @@ def get_journal_entries():
         else:
             center_date = get_user_current_date(current_user.id)
 
-        # Calculate date range (today + 6 preceding days)
+        # Calculate date range (today + 6 preceding days + tomorrow)
+        # Include tomorrow to show next workout recommendation
         start_date = center_date - timedelta(days=6)
-        end_date = center_date
+        end_date = center_date + timedelta(days=1)  # Include tomorrow
 
         observations_data = db_utils.execute_query(
             """
@@ -3562,7 +3795,7 @@ def get_journal_entries():
                     'generated_at': autopsy_dict.get('generated_at')
                 }
 
-        # Generate 7-day journal structure
+        # Generate 8-day journal structure (6 past days + today + tomorrow)
         journal_entries = []
         current_date = start_date
         user_current_date = get_user_current_date(current_user.id)
@@ -3570,14 +3803,16 @@ def get_journal_entries():
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
             is_today = current_date == user_current_date
+            is_future = current_date > user_current_date
+            is_tomorrow = current_date == (user_current_date + timedelta(days=1))
 
             # FIXED: Use unified function that matches Dashboard logic
             todays_decision = get_unified_recommendation_for_date(current_date, current_user.id)
 
-            # Get activity summary for this date
-            activity_summary = get_activity_summary_for_date(current_date, current_user.id)
+            # Get activity summary for this date (won't exist for future dates)
+            activity_summary = get_activity_summary_for_date(current_date, current_user.id) if not is_future else None
 
-            # Build observations from lookup
+            # Build observations from lookup (won't exist for future dates)
             obs_data = obs_by_date.get(date_str, {})
             observations = {
                 'energy_level': obs_data.get('energy_level'),
@@ -3586,7 +3821,7 @@ def get_journal_entries():
                 'notes': obs_data.get('notes', '')
             }
 
-            # Build autopsy from lookup
+            # Build autopsy from lookup (won't exist for future dates)
             autopsy_info = autopsy_by_date.get(date_str, {})
             ai_autopsy = {
                 'autopsy_analysis': autopsy_info.get('autopsy_analysis'),
@@ -3598,6 +3833,8 @@ def get_journal_entries():
             journal_entry = {
                 'date': date_str,
                 'is_today': is_today,
+                'is_future': is_future,
+                'is_tomorrow': is_tomorrow,
                 'day_name': current_date.strftime('%A'),
                 'formatted_date': current_date.strftime('%B %d'),
                 'todays_decision': todays_decision,
@@ -3634,15 +3871,17 @@ def get_journal_entries():
             'error': str(e),
             'data': []
         }), 500
-
-
 # CRITICAL FIX for strava_app.py
 # Replace the existing get_unified_recommendation_for_date function with this corrected version
 
 def get_unified_recommendation_for_date(date_obj, user_id):
     """
-    FIXED: Unified function ensuring Dashboard and Journal show IDENTICAL data
-    CRITICAL CHANGE: Removed date::text casting that was breaking queries
+    CRITICAL FIX: Query by target_date to prevent timezone-based date attribution errors.
+    
+    The Journal page must ALWAYS query by target_date, not by "latest" recommendation,
+    to avoid showing Friday's recommendation on Thursday's journal entry when it's
+    Thursday night in the user's timezone but the system has already generated 
+    Friday's recommendation.
     """
     try:
         date_str = date_obj.strftime('%Y-%m-%d')
@@ -3651,69 +3890,63 @@ def get_unified_recommendation_for_date(date_obj, user_id):
 
         logger.info(f"Getting unified recommendation for user {user_id} on date {date_str} (user timezone)")
 
-        # CRITICAL: Use the SAME logic as Dashboard for ALL dates
-        if date_obj == user_current_date:
-            # For TODAY: Use same logic as Dashboard (get latest record)
-            from db_utils import get_latest_recommendation
-            latest_rec = get_latest_recommendation(user_id)
+        # CRITICAL FIX: Always query by target_date for Journal entries
+        # This ensures Thursday's journal entry shows Thursday's recommendation,
+        # even if a Friday recommendation has already been generated
+        logger.info(f"Searching for target_date recommendation: user={user_id}, date={date_str}")
 
-            if latest_rec and latest_rec.get('daily_recommendation'):
-                logger.info(f"Found TODAY recommendation for user {user_id}")
-                return f"🤖 AI Training Decision for TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')}):\n\n{latest_rec['daily_recommendation']}"
+        recommendation = db_utils.execute_query(
+            """
+            SELECT daily_recommendation
+            FROM llm_recommendations 
+            WHERE user_id = %s AND target_date = %s
+            ORDER BY id DESC 
+            LIMIT 1
+            """,
+            (user_id, date_str),
+            fetch=True
+        )
+
+        if recommendation and recommendation[0]:
+            recommendation_text = dict(recommendation[0])['daily_recommendation']
+            logger.info(
+                f"FOUND recommendation for user {user_id} on {date_str}: {len(recommendation_text)} characters")
+
+            # Determine appropriate label based on whether it's today, past, or future
+            if date_obj == user_current_date:
+                date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
+            elif date_obj < user_current_date:
+                date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
             else:
-                logger.warning(f"No TODAY recommendation found for user {user_id}")
-                return f"🤖 AI Training Decision for TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')}):\nNo recommendation available."
+                date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
 
+            return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
+        
         else:
-            # FIXED: Remove ::date casting - database now uses proper DATE format
-            logger.info(f"Searching for target_date recommendation: user={user_id}, date={date_str}")
+            # No recommendation found for this target_date
+            logger.warning(f"NO recommendation found for user {user_id} on {date_str}")
 
-            recommendation = db_utils.execute_query(
-                """
-                SELECT daily_recommendation
-                FROM llm_recommendations 
-                WHERE user_id = %s AND target_date = %s
-                ORDER BY id DESC 
-                LIMIT 1
-                """,
-                (user_id, date_str),
+            # Check what recommendations exist for debugging
+            available_recommendations = db_utils.execute_query(
+                "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = %s ORDER BY id DESC LIMIT 5",
+                (user_id,),
                 fetch=True
             )
 
-            if recommendation and recommendation[0]:
-                recommendation_text = dict(recommendation[0])['daily_recommendation']
-                logger.info(
-                    f"FOUND recommendation for user {user_id} on {date_str}: {len(recommendation_text)} characters")
-
-                # Determine appropriate label
-                if date_obj < user_current_date:
-                    date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
-                else:
-                    date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
-
-                return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
+            if available_recommendations:
+                logger.info(f"Available recommendations for user {user_id}: {[dict(row) for row in available_recommendations]}")
             else:
-                logger.warning(f"NO recommendation found for user {user_id} on {date_str}")
+                logger.warning(f"NO recommendations exist for user {user_id}")
 
-                # Check what recommendations exist
-                available_recommendations = db_utils.execute_query(
-                    "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = %s ORDER BY id DESC LIMIT 5",
-                    (user_id,),
-                    fetch=True
-                )
+            # Determine appropriate label for "no recommendation" message
+            if date_obj == user_current_date:
+                date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
+            elif date_obj < user_current_date:
+                date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
+            else:
+                date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
 
-                if available_recommendations:
-                    logger.info(f"Available recommendations for user {user_id}: {[dict(row) for row in available_recommendations]}")
-                else:
-                    logger.warning(f"NO recommendations exist for user {user_id}")
-
-                # Determine appropriate label for "no recommendation" message
-                if date_obj < user_current_date:
-                    date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
-                else:
-                    date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
-
-                return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
+            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
 
     except Exception as e:
         logger.error(f"Error in get_unified_recommendation_for_date for user {user_id}, date {date_str}: {str(e)}",
@@ -3937,6 +4170,88 @@ def get_activity_summary_for_date(date_obj, user_id):
         }
 
 
+def get_last_activity_journal_status(user_id):
+    """
+    Check if last activity has journal entry.
+    Single check that handles: bootstrap, rest days, missed journals, normal flow.
+    
+    Returns dict with:
+        - has_activity: bool
+        - activity_date: str (YYYY-MM-DD) or None
+        - has_journal: bool
+        - allow_manual_generation: bool
+        - reason: str (for UI messaging)
+    """
+    try:
+        # Get most recent activity with actual Strava sync (activity_id > 0)
+        last_activity = db_utils.execute_query(
+            """
+            SELECT date, activity_id 
+            FROM activities 
+            WHERE user_id = %s AND activity_id > 0
+            ORDER BY date DESC 
+            LIMIT 1
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        if not last_activity or not last_activity[0]:
+            # No activity = permissive (new user, rest period, etc.)
+            return {
+                'has_activity': False,
+                'activity_date': None,
+                'has_journal': False,
+                'allow_manual_generation': True,
+                'reason': 'no_recent_activity'
+            }
+        
+        activity_date = dict(last_activity[0])['date']
+        
+        # Handle date format conversion if needed
+        if hasattr(activity_date, 'strftime'):
+            activity_date_str = activity_date.strftime('%Y-%m-%d')
+        else:
+            activity_date_str = str(activity_date)
+        
+        # Check if journal entry exists with actual content
+        journal_entry = db_utils.execute_query(
+            """
+            SELECT date FROM journal_entries 
+            WHERE user_id = %s AND date = %s
+            AND (
+                energy_level IS NOT NULL 
+                OR rpe_score IS NOT NULL 
+                OR pain_percentage IS NOT NULL
+                OR (notes IS NOT NULL AND notes != '')
+            )
+            """,
+            (user_id, activity_date_str),
+            fetch=True
+        )
+        
+        has_journal = bool(journal_entry and journal_entry[0])
+        
+        return {
+            'has_activity': True,
+            'activity_date': activity_date_str,
+            'has_journal': has_journal,
+            'allow_manual_generation': not has_journal,  # If no journal, allow manual
+            'reason': 'journal_complete' if has_journal else 'journal_missing'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking last activity journal status for user {user_id}: {str(e)}")
+        # On error, be permissive
+        return {
+            'has_activity': False,
+            'activity_date': None,
+            'has_journal': False,
+            'allow_manual_generation': True,
+            'reason': 'error'
+        }
+
+
 def get_todays_decision_for_date(date_obj, user_id):
     """
     UPDATED: Get training recommendation for specific date with proper date labeling
@@ -4087,7 +4402,7 @@ def trigger_autopsy_and_update_recommendations(user_id, completed_date):
 def get_autopsy_informed_decision_for_today(user_id, target_date):
     """
     Get today's decision that incorporates yesterday's autopsy learning.
-    This is for TODAY's workout, informed by yesterday's autopsy.
+    This is for TODAY'S workout, informed by yesterday's autopsy.
     """
     try:
         logger.info(f"Getting autopsy-informed decision for TODAY: {target_date}")
@@ -4277,8 +4592,6 @@ def get_historical_decision_for_date(user_id, date_obj):
     except Exception as e:
         logger.error(f"Error getting historical decision: {str(e)}")
         return "Error retrieving historical recommendation."
-
-
 @login_required
 @app.route('/api/journal', methods=['POST'])
 def save_journal_entry():
@@ -4343,6 +4656,73 @@ def save_journal_entry():
         # EXISTING AUTOPSY TRIGGER LOGIC - ONLY ENHANCED WITH BETTER TRACKING
         autopsy_generated = False
         autopsy_error = None
+        is_rest_day = data.get('is_rest_day', False)  # NEW: Rest day flag
+
+        # NEW: Create rest day activity record if explicitly marked
+        if is_rest_day:
+            try:
+                # Check if rest day activity already exists
+                existing_rest_day = db_utils.execute_query(
+                    """
+                    SELECT activity_id FROM activities 
+                    WHERE user_id = %s AND date = %s AND type = 'rest'
+                    """,
+                    (current_user.id, date_str),
+                    fetch=True
+                )
+                
+                if not existing_rest_day or not existing_rest_day[0]:
+                    # Generate unique negative activity_id for rest day
+                    rest_day_activity_id = -(date_obj.toordinal() * 1000 + current_user.id)
+                    
+                    # Create rest day activity record so LLM knows today is a rest day
+                    rest_day_record = {
+                        'activity_id': rest_day_activity_id,
+                        'date': date_str,
+                        'user_id': current_user.id,
+                        'name': 'Rest Day',
+                        'type': 'rest',
+                        'distance_miles': 0,
+                        'elevation_gain_feet': 0,
+                        'elevation_load_miles': 0,
+                        'total_load_miles': 0,
+                        'avg_heart_rate': 0,
+                        'max_heart_rate': 0,
+                        'duration_minutes': 0,
+                        'trimp': 0,
+                        'time_in_zone1': 0,
+                        'time_in_zone2': 0,
+                        'time_in_zone3': 0,
+                        'time_in_zone4': 0,
+                        'time_in_zone5': 0,
+                        'weight_lbs': None,
+                        'perceived_effort': None,
+                        'feeling_score': None,
+                        'notes': 'User-marked rest day'
+                    }
+                    
+                    columns = ', '.join(rest_day_record.keys())
+                    placeholders = ', '.join(['%s'] * len(rest_day_record))
+                    
+                    db_utils.execute_query(
+                        f"INSERT INTO activities ({columns}) VALUES ({placeholders})",
+                        tuple(rest_day_record.values())
+                    )
+                    
+                    logger.info(f"✅ Created rest day activity record for {date_str}")
+
+                    try:
+                        from strava_training_load import update_moving_averages
+                        update_moving_averages(date_str, current_user.id)
+                        logger.info(f"Updated moving averages after rest day insertion for {date_str}")
+                    except Exception as refresh_error:
+                        logger.warning(f"Failed to refresh moving averages after rest day insertion: {refresh_error}")
+                else:
+                     logger.info(f"Rest day activity already exists for {date_str}")
+                     
+            except Exception as rest_error:
+                logger.warning(f"Failed to create rest day activity: {rest_error}")
+                # Continue anyway - journal entry is more important
 
         try:
             # Get prescribed action for this date (EXISTING LOGIC)
@@ -4379,6 +4759,42 @@ def save_journal_entry():
             logger.warning(f"Autopsy generation failed for {date_str}: {autopsy_error}")
             # Don't fail the journal save if autopsy generation fails (EXISTING BEHAVIOR)
 
+        # NEW: Auto-generate tomorrow's recommendation if autopsy was created OR rest day marked
+        recommendation_generated = False
+        recommendation_error = None
+        
+        # Generate recommendation if:
+        # 1. Autopsy was generated (normal flow with workout)
+        # 2. Rest day explicitly marked (no workout, but user wants tomorrow's plan)
+        if autopsy_generated or is_rest_day:
+            try:
+                if is_rest_day:
+                    logger.info(f"Rest day marked for {date_str} - generating tomorrow's recommendation without autopsy")
+                else:
+                    logger.info(f"Auto-generating autopsy-informed recommendation after journal save for {date_str}")
+                    
+                from llm_recommendations_module import generate_recommendations
+                
+                # CRITICAL FIX: Pass target_tomorrow=True for rest days to force tomorrow's date
+                recommendation = generate_recommendations(
+                    force=True, 
+                    user_id=current_user.id,
+                    target_tomorrow=is_rest_day  # For rest days, explicitly target tomorrow
+                )
+                if recommendation:
+                    recommendation_generated = True
+                    if is_rest_day:
+                        logger.info(f"✅ Generated recommendation after rest day for user {current_user.id}, target_date: {recommendation.get('target_date')}")
+                    else:
+                        logger.info(f"✅ Auto-generated autopsy-informed recommendation for user {current_user.id}")
+                else:
+                    logger.warning(f"Recommendation generation returned None for user {current_user.id}")
+                    
+            except Exception as rec_error:
+                recommendation_error = str(rec_error)
+                logger.warning(f"Auto-generation of recommendation failed: {rec_error}")
+                # Don't fail the journal save if recommendation generation fails
+
         # ENHANCED USER RESPONSE - This is the main addition
         response_data = {
             'success': True,
@@ -4387,12 +4803,31 @@ def save_journal_entry():
         }
 
         # Add helpful user messaging based on what happened
-        if autopsy_generated:
+        if is_rest_day and recommendation_generated:
             response_data['user_message'] = (
-                "✅ Observations saved! AI analysis generated for your workout. "
-                "Go to Dashboard → Refresh AI Analysis to see updated recommendations."
+                "🛌 Rest day marked! Tomorrow's workout recommendation generated based on your current metrics."
+            )
+            response_data['is_rest_day'] = True
+            response_data['recommendation_generated'] = True
+        elif autopsy_generated and recommendation_generated:
+            response_data['user_message'] = (
+                "✅ Observations saved! AI autopsy generated and tomorrow's recommendation updated with latest insights."
             )
             response_data['autopsy_generated'] = True
+            response_data['recommendation_generated'] = True
+        elif is_rest_day:
+            response_data['user_message'] = (
+                f"🛌 Rest day marked! {'Note: Recommendation generation encountered an issue.' if recommendation_error else ''}"
+            )
+            response_data['is_rest_day'] = True
+            response_data['recommendation_generated'] = False
+        elif autopsy_generated:
+            response_data['user_message'] = (
+                "✅ Observations saved! AI autopsy generated. "
+                f"{'Note: Recommendation update encountered an issue.' if recommendation_error else ''}"
+            )
+            response_data['autopsy_generated'] = True
+            response_data['recommendation_generated'] = False
         elif autopsy_error:
             response_data['user_message'] = (
                 "✅ Observations saved! Note: AI analysis generation encountered an issue. "
@@ -4555,7 +4990,8 @@ def generate_daily_recommendation_only(user_id, target_date=None):
     try:
         # If no target_date provided, generate for tomorrow (next day's workout)
         if target_date is None:
-            target_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+            from timezone_utils import get_user_current_date
+            target_date = (get_user_current_date(user_id) + timedelta(days=1)).strftime('%Y-%m-%d')
 
         # CRITICAL FIX: Check if recommendation already exists for this target_date
         existing_recommendation = db_utils.execute_query(
@@ -4627,7 +5063,7 @@ def generate_daily_recommendation_only(user_id, target_date=None):
 def daily_recommendations_cron():
     """
     Generate recommendations for tomorrow's workouts.
-    Runs daily at 6 AM UTC to prepare next day's recommendations.
+    Runs daily at 11 AM UTC to prepare next day's recommendations.
     """
     try:
         # Verify this is coming from Cloud Scheduler
@@ -4697,7 +5133,7 @@ def daily_recommendations_cron():
 def token_refresh_cron():
     """
     Proactive token refresh for all users.
-    This endpoint is called by Cloud Scheduler daily at 5 AM UTC.
+    This endpoint is called by Cloud Scheduler daily at 10 AM UTC.
     """
     try:
         # Verify this is coming from Cloud Scheduler
@@ -4896,8 +5332,6 @@ def get_training_data_with_sport_breakdown():
                 'total_running_activities': 0
             }
         }), 500
-
-
 @app.route('/api/landing-chart-data', methods=['GET'])
 def get_landing_chart_data():
     """
@@ -5558,8 +5992,6 @@ def get_user_settings():
     except Exception as e:
         logger.error(f"Error fetching user settings: {str(e)}")
         return jsonify({'error': 'Failed to fetch settings'}), 500
-
-
 @app.route('/api/settings/heart-rate-zones', methods=['GET'])
 @login_required
 def get_heart_rate_zones():
@@ -6016,7 +6448,7 @@ def save_custom_heart_rate_zones():
         custom_zones_json = json.dumps(merged_zones) if merged_zones else None
 
         db_utils.execute_query(
-            "UPDATE user_settings SET %s = %s, updated_at = NOW() WHERE id = %s",
+            "UPDATE user_settings SET custom_hr_zones = %s, updated_at = NOW() WHERE id = %s",
             (custom_zones_json, current_user.id)
         )
 
@@ -6320,8 +6752,6 @@ def get_user_account_status():
     except Exception as e:
         logger.error(f"Error getting user account status: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-
-
 @app.route('/api/user/dashboard-config', methods=['GET'])
 @login_required
 def get_user_dashboard_config():
@@ -7106,8 +7536,6 @@ def invalidate_session():
     except Exception as e:
         logger.error(f"Error invalidating session: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-
-
 # Admin endpoints for TRIMP calculation management
 @app.route('/api/admin/trimp-settings', methods=['GET'])
 @login_required
@@ -7787,155 +8215,6 @@ def get_comprehensive_dashboard():
     except Exception as e:
         logger.error(f"Error getting comprehensive dashboard: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-
-@app.route('/api/admin/trimp-performance-metrics', methods=['GET'])
-@login_required
-def get_trimp_performance_metrics():
-    """Get enhanced TRIMP calculation performance metrics (admin only)"""
-    try:
-        # Check if user is admin
-        if not current_user.is_admin:
-            return jsonify({'error': 'Admin access required'}), 403
-        
-        from enhanced_trimp_metrics import get_enhanced_trimp_metrics
-        
-        # Get hours parameter (default 24)
-        hours_back = request.args.get('hours', 24, type=int)
-        if hours_back > 168:  # Max 1 week
-            hours_back = 168
-        
-        # Get enhanced metrics
-        metrics = get_enhanced_trimp_metrics(hours_back)
-        
-        # Check if user wants HTML format
-        if request.args.get('format') == 'html':
-            return _render_metrics_html(metrics)
-        
-        return jsonify(metrics)
-        
-    except Exception as e:
-        logger.error(f"Error getting TRIMP performance metrics: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-def _render_metrics_html(metrics):
-    """Render metrics as HTML for better readability"""
-    if not metrics.get('success'):
-        return f"<h1>Error</h1><p>{metrics.get('error', 'Unknown error')}</p>"
-    
-    summary = metrics.get('summary', {})
-    detailed = metrics.get('detailed_metrics', {})
-    errors = metrics.get('error_analysis', {})
-    system_health = metrics.get('system_health', {})
-    recommendations = metrics.get('recommendations', [])
-    
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>TRIMP Performance Metrics</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
-            .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-            .header {{ text-align: center; margin-bottom: 30px; }}
-            .status {{ font-size: 24px; font-weight: bold; margin: 10px 0; }}
-            .status.healthy {{ color: #28a745; }}
-            .status.warning {{ color: #ffc107; }}
-            .status.error {{ color: #dc3545; }}
-            .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }}
-            .metric-card {{ background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }}
-            .metric-title {{ font-weight: bold; margin-bottom: 10px; color: #333; }}
-            .metric-value {{ font-size: 18px; color: #007bff; }}
-            .recommendations {{ margin-top: 30px; }}
-            .recommendation {{ background: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; margin: 10px 0; border-radius: 4px; }}
-            .recommendation.high {{ border-color: #dc3545; background: #f8d7da; }}
-            .recommendation.medium {{ border-color: #ffc107; background: #fff3cd; }}
-            .recommendation.info {{ border-color: #17a2b8; background: #d1ecf1; }}
-            .time-range {{ text-align: center; color: #666; margin-bottom: 20px; }}
-            table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
-            th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
-            th {{ background-color: #f2f2f2; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>TRIMP Performance Metrics</h1>
-                <div class="time-range">
-                    {metrics.get('time_range', {}).get('start', 'N/A')} to {metrics.get('time_range', {}).get('end', 'N/A')}
-                    ({metrics.get('time_range', {}).get('hours_analyzed', 'N/A')} hours analyzed)
-                </div>
-                <div class="status {'healthy' if 'Healthy' in summary.get('status', '') else 'warning' if 'Issues' in summary.get('status', '') else 'error'}">
-                    {summary.get('status', 'Unknown Status')}
-                </div>
-            </div>
-            
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-title">Activities Processed</div>
-                    <div class="metric-value">{detailed.get('total_activities_processed', 0)}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-title">Success Rate</div>
-                    <div class="metric-value">{detailed.get('overall_success_rate', 0)}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-title">Error Rate</div>
-                    <div class="metric-value">{errors.get('overall_error_rate', 0)}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-title">System Health</div>
-                    <div class="metric-value">{system_health.get('health_score', 'Unknown')}</div>
-                </div>
-            </div>
-            
-            <h2>Calculation Methods</h2>
-            <table>
-                <tr><th>Method</th><th>Calculations</th><th>Success Rate</th><th>Avg HR Samples</th><th>Avg TRIMP</th></tr>
-    """
-    
-    for method, data in detailed.get('calculation_methods', {}).items():
-        html += f"""
-                <tr>
-                    <td>{method}</td>
-                    <td>{data.get('total_calculations', 0)}</td>
-                    <td>{data.get('success_rate_percent', 0)}%</td>
-                    <td>{data.get('avg_hr_samples', 0)}</td>
-                    <td>{data.get('avg_trimp_value', 0)}</td>
-                </tr>
-        """
-    
-    html += """
-            </table>
-            
-            <h2>Recommendations</h2>
-            <div class="recommendations">
-    """
-    
-    for rec in recommendations:
-        priority_class = rec.get('priority', 'info').lower()
-        html += f"""
-                <div class="recommendation {priority_class}">
-                    <strong>{rec.get('category', 'Unknown')} - {rec.get('priority', 'Info')} Priority</strong><br>
-                    <strong>Issue:</strong> {rec.get('issue', 'N/A')}<br>
-                    <strong>Recommendation:</strong> {rec.get('recommendation', 'N/A')}<br>
-                    <strong>Action:</strong> {rec.get('action', 'N/A')}
-                </div>
-        """
-    
-    html += """
-            </div>
-            
-            <div style="text-align: center; margin-top: 30px; color: #666;">
-                <p>Generated at: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
-                <p><a href="?format=json">View as JSON</a> | <a href="?hours=1">Last Hour</a> | <a href="?hours=24">Last 24 Hours</a> | <a href="?hours=168">Last Week</a></p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return html
-
 def _render_comprehensive_dashboard_html(dashboard_data):
     """Render comprehensive dashboard as HTML"""
     # Calculate status colors
@@ -8322,7 +8601,6 @@ def _render_comprehensive_dashboard_html(dashboard_data):
                 <button class="btn btn-secondary" onclick="startAutoRefresh()">Start Auto-Refresh</button>
                 <button class="btn btn-secondary" onclick="stopAutoRefresh()">Stop Auto-Refresh</button>
                 <a href="?format=json" class="btn btn-secondary">View JSON</a>
-                <a href="/api/admin/trimp-performance-metrics?format=html" class="btn btn-secondary">TRIMP Metrics</a>
             </div>
         </div>
         
@@ -8714,8 +8992,6 @@ def get_accuracy_validations():
     except Exception as e:
         logger.error(f"Error getting accuracy validations: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-
-
 @app.route('/api/admin/feedback/report', methods=['GET'])
 @login_required
 def get_feedback_report():
@@ -9284,6 +9560,30 @@ def proactive_token_refresh():
             'success': False,
             'error': str(e)
         }), 500
+
+# =============================================================================
+# CATCH-ALL ROUTE FOR REACT CLIENT-SIDE ROUTING
+# =============================================================================
+# This MUST be the last route to handle React Router paths like /journal, /activities, etc.
+
+@app.route('/<path:path>')
+def catch_all(path):
+    """
+    Catch-all route for React client-side routing.
+    Serves index.html for unmatched routes so React Router can handle them.
+    CRITICAL: Must be last route to avoid overriding API/static routes.
+    """
+    # If path starts with 'api/' or is a known file extension, return 404
+    if path.startswith('api/') or '.' in path.split('/')[-1]:
+        return '', 404
+    
+    # Serve index.html for React client-side routes (journal, activities, guide, etc.)
+    response = send_from_directory('build', 'index.html')
+    # CRITICAL: Prevent caching of index.html so users always get latest JS file references
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 if __name__ == '__main__':
     # For local testing

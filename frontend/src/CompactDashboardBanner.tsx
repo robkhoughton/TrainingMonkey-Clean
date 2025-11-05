@@ -82,6 +82,12 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
           {/* Horizontal 180-degree gauge: 9 o'clock to 3 o'clock */}
           {(() => {
             const createHorizontalPath = (startAngle: number, endAngle: number) => {
+              // CRITICAL: Validate inputs to prevent NaN in SVG path
+              if (startAngle == null || endAngle == null || isNaN(startAngle) || isNaN(endAngle)) {
+                console.warn('Invalid angles for SVG path:', { startAngle, endAngle });
+                return `M 0 0 L 0 0`; // Return empty path
+              }
+              
               // Convert to horizontal orientation: 0° = 9 o'clock (left), 180° = 3 o'clock (right)
               const startRad = (startAngle + 180) * (Math.PI / 180);
               const endRad = (endAngle + 180) * (Math.PI / 180);
@@ -90,6 +96,12 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
               const y1 = centerY + radius * Math.sin(startRad);
               const x2 = centerX + radius * Math.cos(endRad);
               const y2 = centerY + radius * Math.sin(endRad);
+              
+              // Additional safety check for calculated values
+              if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+                console.warn('NaN in calculated SVG coordinates:', { x1, y1, x2, y2 });
+                return `M 0 0 L 0 0`;
+              }
               
               const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
               
@@ -207,7 +219,7 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
                       textAnchor="middle"
                       fontWeight="500"
                     >
-                      {value === 0 ? "0" : value === 1.0 ? "1.0" : value === 2.0 ? "2.0" : value.toFixed(1)}
+                      {value === 0 ? "0" : value === 1.0 ? "1.0" : value === 2.0 ? "2.0" : (typeof value === 'number' && !isNaN(value) ? value.toFixed(1) : "N/A")}
                     </text>
                   )}
                 </g>
@@ -234,7 +246,7 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
             color: '#2ecc71', // Green for external
             fontFamily: 'Arial, sans-serif'
           }}>
-            {externalValue ? externalValue.toFixed(2) : 'N/A'}
+            {typeof externalValue === 'number' && !isNaN(externalValue) ? externalValue.toFixed(2) : 'N/A'}
           </div>
           <div style={{
             fontSize: '0.7rem',
@@ -255,7 +267,7 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
             color: '#3498db', // Blue for internal
             fontFamily: 'Arial, sans-serif'
           }}>
-            {internalValue ? internalValue.toFixed(2) : 'N/A'}
+            {typeof internalValue === 'number' && !isNaN(internalValue) ? internalValue.toFixed(2) : 'N/A'}
           </div>
           <div style={{
             fontSize: '0.7rem',
@@ -374,7 +386,7 @@ const BalanceIndicator: React.FC<{
                       fontWeight="500"
                       fontFamily="monospace"
                     >
-                      {value === 0 ? "0" : value.toFixed(1)}
+                      {value === 0 ? "0" : (typeof value === 'number' && !isNaN(value) ? value.toFixed(1) : "N/A")}
                     </text>
                   )}
                 </g>
@@ -399,7 +411,7 @@ const BalanceIndicator: React.FC<{
             fontFamily: 'monospace', // Scientific instrument font
             letterSpacing: '0.5px'
           }}>
-            {divergence ? divergence.toFixed(2) : 'N/A'}
+            {typeof divergence === 'number' && !isNaN(divergence) ? divergence.toFixed(2) : 'N/A'}
           </div>
         </div>
       </div>
@@ -744,7 +756,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             <MetricTooltip
               data-metric-tooltip
               metric="Training Strain (Dual ACWR)"
-              value={`Ext: ${(metrics?.externalAcwr || 0).toFixed(2)}, Int: ${(metrics?.internalAcwr || 0).toFixed(2)}`}
+              value={`Ext: ${typeof metrics?.externalAcwr === 'number' ? metrics.externalAcwr.toFixed(2) : '0.00'}, Int: ${typeof metrics?.internalAcwr === 'number' ? metrics.internalAcwr.toFixed(2) : '0.00'}`}
               description="Dual ACWR display showing both external training load (distance, elevation) and internal stress (heart rate zones) on a single gauge. Green needle = external, blue needle = internal."
               interpretation="Compare needle positions to assess training balance. Both needles in green zone (0.8-1.3) indicates optimal training load."
               warning={(metrics?.externalAcwr || 0) > 1.3 || (metrics?.internalAcwr || 0) > 1.3 ? "High strain detected - consider reducing training intensity" : undefined}
@@ -761,7 +773,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             <MetricTooltip
               data-metric-tooltip
               metric="Training Balance"
-              value={(metrics?.normalizedDivergence || 0).toFixed(3)}
+              value={typeof metrics?.normalizedDivergence === 'number' && !isNaN(metrics.normalizedDivergence) ? metrics.normalizedDivergence.toFixed(3) : '0.000'}
               description="Normalized divergence between external and internal training load. Shows if your heart rate stress matches your external training effort."
               interpretation="Negative values indicate your body is working harder than expected (fatigue/overtraining), positive values suggest good fitness/recovery."
               warning={(metrics?.normalizedDivergence || 0) < -0.15 ? "High overtraining risk - rest recommended" : (metrics?.normalizedDivergence || 0) < -0.05 ? "Moderate fatigue - consider easier training" : undefined}
@@ -871,7 +883,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                   fontWeight: 'bold',
                   color: colors.primary
                 }}>
-                  {metrics?.sevenDayAvgLoad ? (metrics.sevenDayAvgLoad * 7).toFixed(1) : "N/A"}
+                  {typeof metrics?.sevenDayAvgLoad === 'number' && !isNaN(metrics.sevenDayAvgLoad) ? (metrics.sevenDayAvgLoad * 7).toFixed(1) : "N/A"}
                 </p>
 
                 {/* Unit only - small gray to match label */}
@@ -890,7 +902,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                   fontWeight: 'bold',
                   color: colors.primary
                 }}>
-                  {metrics?.sevenDayAvgTrimp ? (metrics.sevenDayAvgTrimp * 7).toFixed(0) : "N/A"}
+                  {typeof metrics?.sevenDayAvgTrimp === 'number' && !isNaN(metrics.sevenDayAvgTrimp) ? (metrics.sevenDayAvgTrimp * 7).toFixed(0) : "N/A"}
                 </p>
 
                 {/* Unit only - small gray to match label */}

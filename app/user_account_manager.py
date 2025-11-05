@@ -116,7 +116,16 @@ class UserAccountManager:
             result = execute_query_for_onboarding(query, params, fetch=True)
             
             if result and len(result) > 0:
-                return result[0]['id']
+                user_id = result[0]['id']
+                
+                # Notify admin of new user registration
+                try:
+                    from admin_notifications import notify_admin_of_new_user
+                    notify_admin_of_new_user(user_id, email)
+                except Exception as e:
+                    logger.warning(f"Failed to send admin notification: {str(e)}")
+                
+                return user_id
             else:
                 logger.error("No user ID returned from database insert")
                 return None

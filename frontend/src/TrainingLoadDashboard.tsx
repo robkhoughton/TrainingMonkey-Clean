@@ -7,6 +7,7 @@ import styles from './TrainingLoadDashboard.module.css';
 import defaultTheme from './chartTheme';
 import { useChartDimensions } from './useChartDimensions';
 import CompactDashboardBanner from './CompactDashboardBanner';
+import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 
 // Define interfaces for your data (keeping your original structure)
 interface TrainingDataRow {
@@ -67,10 +68,61 @@ interface LLMRecommendation {
   daily_recommendation: string;
   weekly_recommendation: string;
   pattern_insights: string;
+  is_autopsy_informed?: boolean;  // NEW: indicates if generated with autopsy insights
+  autopsy_count?: number;  // NEW: number of recent autopsies used
+  avg_alignment_score?: number;  // NEW: average alignment score from autopsies
 }
+
+const coerceNumber = (value: any, fallback: number = NaN): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  if (value != null && typeof value.valueOf === 'function') {
+    const primitive = value.valueOf();
+    if (typeof primitive === 'number') {
+      return Number.isFinite(primitive) ? primitive : fallback;
+    }
+    if (typeof primitive === 'string') {
+      const parsed = parseFloat(primitive);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+  }
+
+  return fallback;
+};
+
+const formatNumber = (value: any, digits: number, fallback = 'N/A'): string => {
+  const num = coerceNumber(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return num.toFixed(digits);
+};
+
+const formatScaledNumber = (value: any, scale: number, digits: number, fallback = 'N/A'): string => {
+  const num = coerceNumber(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  const scaled = num * scale;
+  if (!Number.isFinite(scaled)) {
+    return fallback;
+  }
+  return scaled.toFixed(digits);
+};
 
 const TrainingLoadDashboard: React.FC = () => {
   console.log("TrainingLoadDashboard component initialized");
+
+  // Performance monitoring
+  usePagePerformanceMonitoring('dashboard');
+  const perfMonitor = useComponentPerformanceMonitoring('TrainingLoadDashboard');
 
   // State variables (restored from your original)
   const [data, setData] = useState<ProcessedDataRow[]>([]);
@@ -95,6 +147,15 @@ const TrainingLoadDashboard: React.FC = () => {
   const [recommendation, setRecommendation] = useState<LLMRecommendation | null>(null);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
 
+  // NEW: Journal status for workflow enforcement
+  const [journalStatus, setJournalStatus] = useState<{
+    has_activity: boolean;
+    activity_date: string | null;
+    has_journal: boolean;
+    allow_manual_generation: boolean;
+    reason: string;
+  } | null>(null);
+
   // FIXED: Proper frozen tooltip state management
   const [frozenTooltipData, setFrozenTooltipData] = useState<{
     payload: any[];
@@ -114,11 +175,25 @@ const getRecommendationDateContext = (recommendation) => {
 
   // Use Pacific timezone for consistent date comparison with backend
   const today = new Date();
-  const pacificToday = new Date(today.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
-  const todayStr = pacificToday.toISOString().split('T')[0];
-  const tomorrow = new Date(pacificToday);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  
+  // FIXED: Properly extract Pacific date components without converting back to UTC
+  const pacificFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: "America/Los_Angeles",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  
+  const parts = pacificFormatter.formatToParts(today);
+  const year = parts.find(p => p.type === 'year')?.value || '';
+  const month = parts.find(p => p.type === 'month')?.value || '';
+  const day = parts.find(p => p.type === 'day')?.value || '';
+  const todayStr = `${year}-${month}-${day}`;
+  
+  // Calculate tomorrow's date string
+  const tomorrowDate = new Date(todayStr + 'T12:00:00');
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
 
   // FIXED: Handle both date and timestamp formats for target_date
   let targetDateStr;
@@ -156,7 +231,7 @@ const getRecommendationDateContext = (recommendation) => {
   } else if (targetDateStr === tomorrowStr) {
     displayTitle = `Tomorrow's Training Decision (${targetDateFormatted})`;
     isForTomorrow = true;
-  } else if (targetDate > tomorrow) {
+  } else if (targetDate > tomorrowDate) {
     displayTitle = `Next Training Decision (${targetDateFormatted})`;
   } else {
     displayTitle = `Training Decision (${targetDateFormatted})`;
@@ -348,12 +423,20 @@ const getRecommendationDateContext = (recommendation) => {
                   {displayName}:
                 </span>
                 <span style={{ fontWeight: 'bold', fontSize: '12px' }}>
-                  {displayValue === null || displayValue === undefined
-                    ? 'N/A'
-                    : typeof displayValue === 'number'
-                    ? displayValue.toFixed(displayName.includes('ACWR') || displayName.includes('Divergence') ? 3 : 1)
-                    : displayValue
-                  }
+                  {(() => {
+                    if (displayValue === null || displayValue === undefined) {
+                      return 'N/A';
+                    }
+
+                    const digits = displayName.includes('ACWR') || displayName.includes('Divergence') ? 3 : 1;
+                    const numericValue = coerceNumber(displayValue, NaN);
+
+                    if (Number.isFinite(numericValue)) {
+                      return numericValue.toFixed(digits);
+                    }
+
+                    return typeof displayValue === 'string' ? displayValue : 'N/A';
+                  })()}
                 </span>
               </div>
             );
@@ -405,20 +488,28 @@ const getRecommendationDateContext = (recommendation) => {
 
   // Calculate normalized divergence
   const calculateNormalizedDivergence = (externalAcwr: number, internalAcwr: number) => {
-    if (externalAcwr === null || internalAcwr === null) return null;
+    // Check for null, undefined, or NaN
+    if (externalAcwr == null || internalAcwr == null || isNaN(externalAcwr) || isNaN(internalAcwr)) {
+      return null;
+    }
     if (externalAcwr === 0 && internalAcwr === 0) return 0;
 
     const avgAcwr = (externalAcwr + internalAcwr) / 2;
     if (avgAcwr === 0) return 0;
 
-    return parseFloat(((externalAcwr - internalAcwr) / avgAcwr).toFixed(3));
+    const result = (externalAcwr - internalAcwr) / avgAcwr;
+    if (isNaN(result)) {
+      return null;
+    }
+
+    return parseFloat(result.toFixed(3));
   };
 
   // FIXED: Dynamic domain calculation for normalized divergence with inverted axis
   const getDivergenceDomain = (data: ProcessedDataRow[]) => {
     const divergenceValues = data
-      .map(d => d.normalized_divergence)
-      .filter(val => val !== null && val !== undefined && !isNaN(val as number)) as number[];
+      .map(d => coerceNumber(d.normalized_divergence, NaN))
+      .filter((value): value is number => value !== null && value !== undefined);
 
     if (divergenceValues.length === 0) {
       return [0.3, -0.3]; // Inverted: positive at top, negative at bottom
@@ -487,6 +578,36 @@ const getRecommendationDateContext = (recommendation) => {
     }
   };
 
+  // NEW: Function to fetch journal status for workflow enforcement
+  const fetchJournalStatus = async () => {
+    try {
+      console.log("Fetching journal status...");
+      const response = await fetch('/api/journal-status');
+      
+      if (!response.ok) {
+        console.error(`Journal status API response not OK: ${response.status}`);
+        return;
+      }
+
+      const result = await response.json();
+      console.log("Journal status result:", result);
+
+      if (result.success && result.status) {
+        setJournalStatus(result.status);
+      }
+    } catch (e) {
+      console.error("Failed to fetch journal status:", e);
+      // Don't fail the dashboard - just allow manual generation
+      setJournalStatus({
+        has_activity: false,
+        activity_date: null,
+        has_journal: false,
+        allow_manual_generation: true,
+        reason: 'error'
+      });
+    }
+  };
+
   // Function to generate new LLM recommendations from recommendations_component.ts
   const generateNewRecommendation = async () => {
       try {
@@ -506,6 +627,9 @@ const getRecommendationDateContext = (recommendation) => {
 
         // Step 2: Fetch the latest recommendation (same as page refresh)
         await fetchRecommendations(); // This ensures consistent data format
+        
+        // Step 3: Refresh journal status
+        await fetchJournalStatus();
 
       } catch (e) {
         console.error("Failed to generate recommendation:", e);
@@ -523,6 +647,7 @@ const getRecommendationDateContext = (recommendation) => {
           setError(null);
 
           console.log("Fetching data from Strava API...");
+          perfMonitor.trackFetchStart();
           const response = await fetch(`/api/training-data?t=${new Date().getTime()}&include_sport_breakdown=true`);
 
           if (!response.ok) {
@@ -531,6 +656,7 @@ const getRecommendationDateContext = (recommendation) => {
           }
 
           const result = await response.json();
+          perfMonitor.trackFetchEnd();
 
           // Handle no data case gracefully - check if we can sync instead of throwing error
           if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
@@ -561,18 +687,27 @@ const getRecommendationDateContext = (recommendation) => {
           const processedData = result.data.map((row: TrainingDataRow) => {
             const dateObj = new Date(`${row.date}T12:00:00Z`);
 
-            let normalizedDivergence = row.normalized_divergence;
-            if (normalizedDivergence === undefined) {
-              normalizedDivergence = calculateNormalizedDivergence(
-                row.acute_chronic_ratio,
-                row.trimp_acute_chronic_ratio
-              );
+            const externalAcwr = coerceNumber(row.acute_chronic_ratio, 0);
+            const internalAcwr = coerceNumber(row.trimp_acute_chronic_ratio, 0);
+            const sevenDayAvgLoad = coerceNumber(row.seven_day_avg_load, 0);
+            const sevenDayAvgTrimp = coerceNumber(row.seven_day_avg_trimp, 0);
+
+            let normalizedDivergence = row.normalized_divergence !== undefined
+              ? coerceNumber(row.normalized_divergence, NaN)
+              : NaN;
+
+            if (!Number.isFinite(normalizedDivergence)) {
+              normalizedDivergence = calculateNormalizedDivergence(externalAcwr, internalAcwr) ?? NaN;
             }
 
             return {
               ...row,
               dateObj,
-              normalized_divergence: normalizedDivergence
+              acute_chronic_ratio: externalAcwr,
+              trimp_acute_chronic_ratio: internalAcwr,
+              seven_day_avg_load: sevenDayAvgLoad,
+              seven_day_avg_trimp: sevenDayAvgTrimp,
+              normalized_divergence: Number.isFinite(normalizedDivergence) ? normalizedDivergence : 0
             };
           });
 
@@ -596,14 +731,17 @@ const getRecommendationDateContext = (recommendation) => {
             if (statsResponse.ok) {
               const statsData = await statsResponse.json();
 
+              const latestNormalized = processedData.length > 0
+                ? coerceNumber(processedData[processedData.length - 1].normalized_divergence, NaN)
+                : NaN;
+
               setMetrics({
-                externalAcwr: statsData.latestMetrics.externalAcwr || 0,
-                internalAcwr: statsData.latestMetrics.internalAcwr || 0,
-                sevenDayAvgLoad: statsData.latestMetrics.sevenDayAvgLoad || 0,
-                sevenDayAvgTrimp: statsData.latestMetrics.sevenDayAvgTrimp || 0,
-                daysSinceRest: statsData.daysSinceRest || 0,
-                normalizedDivergence: processedData.length > 0 ?
-                  processedData[processedData.length - 1].normalized_divergence as number : 0,
+                externalAcwr: coerceNumber(statsData.latestMetrics?.externalAcwr, 0),
+                internalAcwr: coerceNumber(statsData.latestMetrics?.internalAcwr, 0),
+                sevenDayAvgLoad: coerceNumber(statsData.latestMetrics?.sevenDayAvgLoad, 0),
+                sevenDayAvgTrimp: coerceNumber(statsData.latestMetrics?.sevenDayAvgTrimp, 0),
+                daysSinceRest: coerceNumber(statsData.daysSinceRest, 0),
+                normalizedDivergence: Number.isFinite(latestNormalized) ? latestNormalized : 0,
                 dashboardConfig: result.dashboard_config || undefined
               });
             }
@@ -614,14 +752,20 @@ const getRecommendationDateContext = (recommendation) => {
         } catch (error) {
           console.error("Error loading data:", error);
           setError(`Failed to load data: ${error instanceof Error ? error.message : String(error)}`);
+          perfMonitor.reportMetrics(0, error instanceof Error ? error.message : String(error));
         } finally {
           setIsLoading(false);
           setRenderKey(prevKey => prevKey + 1);
+          // Report performance metrics on successful load
+          if (!error) {
+            perfMonitor.reportMetrics(data.length);
+          }
         }
       };
 
       loadData();
       fetchRecommendations(); // Fetch recommendations on initial load
+      fetchJournalStatus(); // Fetch journal status for workflow enforcement
     }, []);
 
   // FIXED: Click outside handler for frozen tooltips
@@ -862,7 +1006,10 @@ const getRecommendationDateContext = (recommendation) => {
                   position: 'insideLeft',
                   style: { textAnchor: 'middle', fontSize: '14px', fontWeight: '500' }
                 }}
-                tickFormatter={(value) => value.toFixed(1)}
+                tickFormatter={(value) => {
+                  const num = coerceNumber(value, NaN);
+                  return Number.isFinite(num) ? num.toFixed(1) : '0';
+                }}
                 width={60}
               />
               <YAxis
@@ -876,7 +1023,10 @@ const getRecommendationDateContext = (recommendation) => {
                   position: 'insideRight',
                   style: { textAnchor: 'middle', fontSize: '14px', fontWeight: '500', fill: '#dc3545' }
                 }}
-                tickFormatter={(value) => value.toFixed(2)}
+                tickFormatter={(value) => {
+                  const num = coerceNumber(value, NaN);
+                  return Number.isFinite(num) ? num.toFixed(2) : '0';
+                }}
                 width={60}
               />
               <Tooltip
@@ -1241,17 +1391,33 @@ const getRecommendationDateContext = (recommendation) => {
 
                     <div className={styles.recommendationTabs}>
                       <div className={styles.recommendationTab} style={{borderLeft: '3px solid #3b82f6'}}>
-                        <h4 className={styles.tabHeading}>
-                          🤖 AI Analysis
+                        <h4 className={styles.tabHeading} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>🤖 AI Analysis</span>
                           {recommendation && (
-                            <span style={{
-                              fontSize: '0.7rem',
-                              color: '#6b7280',
-                              fontWeight: 'normal',
-                              marginLeft: '0.5rem'
-                            }}>
-                              • For {new Date((recommendation.target_date || recommendation.generation_date).split('T')[0] + 'T12:00:00').toLocaleDateString()}
-                            </span>
+                            <>
+                              <span style={{
+                                fontSize: '0.7rem',
+                                color: '#6b7280',
+                                fontWeight: 'normal'
+                              }}>
+                                • For {new Date((recommendation.target_date || recommendation.generation_date).split('T')[0] + 'T12:00:00').toLocaleDateString()}
+                              </span>
+                              {recommendation.is_autopsy_informed && (
+                                <span style={{
+                                  backgroundColor: '#10b981',
+                                  color: 'white',
+                                  padding: '3px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: '600',
+                                  marginLeft: '4px'
+                                }}
+                                title={`Generated with insights from ${recommendation.autopsy_count || 0} recent autopsies (Avg alignment: ${formatNumber(recommendation.avg_alignment_score, 1, 'N/A')}/10)`}
+                                >
+                                  🧠 Autopsy-Informed
+                                </span>
+                              )}
+                            </>
                           )}
                         </h4>
                         <div style={{padding: '0.5rem 0'}}>
@@ -1262,9 +1428,9 @@ const getRecommendationDateContext = (recommendation) => {
                               </p>
                               <div style={{marginTop: '0.5rem'}}>
                                 <small style={{color: '#6b7280', fontSize: '0.75rem'}}>
-                                  Based on: Ext ACWR {metrics.externalAcwr?.toFixed(2)},
-                                  Int ACWR {metrics.internalAcwr?.toFixed(2)},
-                                  Divergence {metrics.normalizedDivergence?.toFixed(2)}
+                                  Based on: Ext ACWR {formatNumber(metrics.externalAcwr, 2, 'N/A')},
+                                  Int ACWR {formatNumber(metrics.internalAcwr, 2, 'N/A')},
+                                  Divergence {formatNumber(metrics.normalizedDivergence, 2, 'N/A')}
                                   {dateContext.isForTomorrow && " • Plan your workout accordingly"}
                                   {dateContext.isForToday && " • Review before today's session"}
                                 </small>
@@ -1298,7 +1464,7 @@ const getRecommendationDateContext = (recommendation) => {
                               </span>
                             ) : metrics.normalizedDivergence < -0.15 ? (
                               <span style={{ color: colors.danger }}>
-                                <strong>⚠️ OVERTRAINING RISK:</strong> Normalized divergence ({metrics.normalizedDivergence?.toFixed(3)})
+                                <strong>⚠️ OVERTRAINING RISK:</strong> Normalized divergence ({formatNumber(metrics.normalizedDivergence, 3, 'N/A')})
                                 indicates high stress. Rest or very light recovery only.
                               </span>
                             ) : (metrics.externalAcwr > 1.3 && metrics.internalAcwr > 1.3) ? (
@@ -1353,17 +1519,17 @@ const getRecommendationDateContext = (recommendation) => {
                   <p className={styles.recommendationText}>
                     {metrics.externalAcwr > 1.3 || metrics.internalAcwr > 1.3 ? (
                       <>
-                        <strong>Step-back week needed:</strong> Current 7-day average ({metrics.sevenDayAvgLoad?.toFixed(1)} mi/day)
-                        is too high. Target reducing to {(metrics.sevenDayAvgLoad * 0.75)?.toFixed(1)} mi/day over next 5-7 days.
+                        <strong>Step-back week needed:</strong> Current 7-day average ({formatNumber(metrics.sevenDayAvgLoad, 1, 'N/A')} mi/day)
+                        is too high. Target reducing to {formatScaledNumber(metrics.sevenDayAvgLoad, 0.75, 1, 'N/A')} mi/day over next 5-7 days.
                       </>
                     ) : metrics.externalAcwr < 0.8 && metrics.internalAcwr < 0.8 ? (
                       <>
-                        <strong>Progressive build opportunity:</strong> Gradually increase 7-day average from {metrics.sevenDayAvgLoad?.toFixed(1)}
-                        to {(metrics.sevenDayAvgLoad * 1.15)?.toFixed(1)} mi/day over next 2 weeks.
+                        <strong>Progressive build opportunity:</strong> Gradually increase 7-day average from {formatNumber(metrics.sevenDayAvgLoad, 1, 'N/A')}
+                        to {formatScaledNumber(metrics.sevenDayAvgLoad, 1.15, 1, 'N/A')} mi/day over next 2 weeks.
                       </>
                     ) : (
                       <>
-                        <strong>Maintenance phase:</strong> Current 7-day average ({metrics.sevenDayAvgLoad?.toFixed(1)} mi/day)
+                        <strong>Maintenance phase:</strong> Current 7-day average ({formatNumber(metrics.sevenDayAvgLoad, 1, 'N/A')} mi/day)
                         is in optimal range. Continue with similar daily volumes.
                       </>
                     )}
@@ -1437,9 +1603,9 @@ const getRecommendationDateContext = (recommendation) => {
           <div>
             {recommendation ? (
               <div>
-                <span style={{fontWeight: '500', color: '#374151'}}>AI Analysis:</span>
+                <span style={{fontWeight: '500', color: '#374151'}}>AI Analysis for:</span>
                 <span style={{marginLeft: '0.5rem', color: '#6b7280'}}>
-                  {new Date(recommendation.generation_date).toLocaleDateString()}
+                  {new Date(recommendation.target_date).toLocaleDateString()}
                 </span>
               </div>
             ) : (
@@ -1451,70 +1617,111 @@ const getRecommendationDateContext = (recommendation) => {
             )}
           </div>
 
-          <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
-            {recommendation ? (
-              <button
-                onClick={generateNewRecommendation}
-                className={styles.refreshButton}
-                disabled={isLoadingRecommendation}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                {isLoadingRecommendation ? (
-                  <>
-                    <span style={{
-                      display: 'inline-block',
-                      width: '1rem',
-                      height: '1rem',
-                      border: '2px solid #f3f4f6',
-                      borderTop: '2px solid #3b82f6',
-                      borderRadius: '50%',
-                      animation: 'spin 1s linear infinite'
-                    }}></span>
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <span>🔄</span>
-                    Refresh Analysis
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={generateNewRecommendation}
-                className={styles.generateButton}
-                disabled={isLoadingRecommendation}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                {isLoadingRecommendation ? (
-                  <>
-                    <span style={{
-                      display: 'inline-block',
-                      width: '1rem',
-                      height: '1rem',
-                      border: '2px solid #f3f4f6',
-                      borderTop: '2px solid #3b82f6',
-                      borderRadius: '50%',
-                      animation: 'spin 1s linear infinite'
-                    }}></span>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <span>🤖</span>
-                    Generate AI Analysis
-                  </>
-                )}
-              </button>
+          <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%'}}>
+            {/* Warning banner if journal missing for last activity */}
+            {journalStatus && journalStatus.has_activity && !journalStatus.has_journal && (
+              <div style={{
+                padding: '12px 16px',
+                backgroundColor: '#fef3c7',
+                border: '1px solid #f59e0b',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '4px' }}>
+                    Complete Journal for Autopsy-Informed Recommendations
+                  </div>
+                  <div style={{ fontSize: '0.875rem', color: '#78350f' }}>
+                    Last activity ({journalStatus.activity_date}) needs observations (Energy, RPE, Pain, Notes).
+                    <a href="/journal" style={{ marginLeft: '8px', color: '#ea580c', textDecoration: 'underline', fontWeight: '600' }}>
+                      Go to Journal →
+                    </a>
+                  </div>
+                </div>
+              </div>
             )}
+
+            <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+              {/* Hide button if autopsy-informed recommendation already exists */}
+              {recommendation?.is_autopsy_informed ? (
+                <div style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#d1fae5',
+                  border: '1px solid #10b981',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  color: '#065f46',
+                  fontWeight: '600'
+                }}>
+                  ✅ Autopsy-informed recommendation ready (auto-generated from journal)
+                </div>
+              ) : recommendation ? (
+                <button
+                  onClick={generateNewRecommendation}
+                  className={styles.refreshButton}
+                  disabled={isLoadingRecommendation}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {isLoadingRecommendation ? (
+                    <>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '1rem',
+                        height: '1rem',
+                        border: '2px solid #f3f4f6',
+                        borderTop: '2px solid #3b82f6',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></span>
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄</span>
+                      {journalStatus?.has_journal === false ? 'Generate Without Autopsy' : 'Refresh Analysis'}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={generateNewRecommendation}
+                  className={styles.generateButton}
+                  disabled={isLoadingRecommendation}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {isLoadingRecommendation ? (
+                    <>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '1rem',
+                        height: '1rem',
+                        border: '2px solid #f3f4f6',
+                        borderTop: '2px solid #3b82f6',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></span>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <span>🤖</span>
+                      {journalStatus?.has_journal === false ? 'Generate Without Autopsy' : 'Generate AI Analysis'}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

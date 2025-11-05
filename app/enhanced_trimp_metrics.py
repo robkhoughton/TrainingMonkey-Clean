@@ -246,8 +246,8 @@ def _get_recommendations(metrics, errors, system_health):
     """Generate actionable recommendations"""
     recommendations = []
     
-    # Performance recommendations
-    if metrics['overall_success_rate'] < 95:
+    # Performance recommendations (only if there are activities to analyze)
+    if metrics['overall_success_rate'] < 95 and metrics['total_activities_processed'] > 0:
         recommendations.append({
             'category': 'Performance',
             'priority': 'High',
@@ -256,8 +256,8 @@ def _get_recommendations(metrics, errors, system_health):
             'action': 'Review error logs and validate HR data sources'
         })
     
-    # Error rate recommendations
-    if errors['overall_error_rate'] > 5:
+    # Error rate recommendations (only if there are activities to analyze)
+    if errors['overall_error_rate'] > 5 and errors['total_attempts'] > 0:
         recommendations.append({
             'category': 'Error Rate',
             'priority': 'High',

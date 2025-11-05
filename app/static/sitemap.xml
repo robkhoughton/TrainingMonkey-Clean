@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <!-- Homepage / Landing Page -->
+  <url>
+    <loc>https://yourtrainingmonkey.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <lastmod>2025-10-24</lastmod>
+  </url>
+  
+  <!-- Landing Page Explicit Route -->
+  <url>
+    <loc>https://yourtrainingmonkey.com/landing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>2025-10-24</lastmod>
+  </url>
+  
+  <!-- Authentication Pages -->
+  <url>
+    <loc>https://yourtrainingmonkey.com/login</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  
+  <url>
+    <loc>https://yourtrainingmonkey.com/signup</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Getting Started and Guide Pages -->
+  <url>
+    <loc>https://yourtrainingmonkey.com/getting-started</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2025-10-24</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://yourtrainingmonkey.com/guide</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <lastmod>2025-10-24</lastmod>
+  </url>
+  
+  <!-- Legal Pages -->
+  <url>
+    <loc>https://yourtrainingmonkey.com/terms-and-conditions</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  
+  <url>
+    <loc>https://yourtrainingmonkey.com/privacy-policy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  
+  <url>
+    <loc>https://yourtrainingmonkey.com/medical-disclaimer</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  
+</urlset>
+
+
+
+
+
+

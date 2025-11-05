@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
+import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
 
 export const SettingsPage: React.FC = () => {
+  // Performance monitoring
+  usePagePerformanceMonitoring('settings');
+
   // Redirect to the new settings pages
   useEffect(() => {
     // Get the current URL to determine which settings page to redirect to
