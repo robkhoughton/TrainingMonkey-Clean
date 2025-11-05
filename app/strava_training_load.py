@@ -47,7 +47,7 @@ DEFAULT_GENDER = 'male'
 
 
 def is_supported_activity(activity_type):
-    """Check if activity type should be processed by the app (running, cycling, swimming, walking, hiking)."""
+    """Check if activity type should be processed by the app (running, cycling, swimming, walking, hiking, strength)."""
     supported_types = {
         # Running activities
         'Trail Run', 'Road Run', 'Treadmill Run', 'Track Run',
@@ -64,7 +64,11 @@ def is_supported_activity(activity_type):
         'Lap Swimming', 'OpenWaterSwim', 'PoolSwim', 'OpenWater',
 
         # Walking and hiking activities (relevant for trail runners)
-        'Walk', 'walk', 'Hike', 'hike'
+        'Walk', 'walk', 'Hike', 'hike',
+
+        # Strength and cross-training activities
+        'WeightTraining', 'Weight Training', 'Workout', 'Crossfit', 'CrossFit',
+        'Strength Training', 'Yoga', 'workout', 'weighttraining'
     }
     return activity_type in supported_types
 
@@ -486,13 +490,13 @@ def determine_specific_activity_type(activity):
 
 def determine_sport_type(activity):
     """
-    Classify activity as 'running', 'cycling', or 'swimming' based on Strava activity type
+    Classify activity as 'running', 'cycling', 'swimming', or 'strength' based on Strava activity type
 
     Args:
         activity: Strava activity object
 
     Returns:
-        str: 'running' | 'cycling' | 'swimming'
+        str: 'running' | 'cycling' | 'swimming' | 'strength'
     """
     try:
         # Use existing function to get the specific activity type
@@ -517,10 +521,20 @@ def determine_sport_type(activity):
             'lap swimming', 'pool swim', 'open water swim'
         ]
 
+        # Define strength keywords (from Strava activity types)
+        strength_keywords = [
+            'weight', 'strength', 'crossfit', 'workout', 'yoga',
+            'training', 'gym', 'lifting', 'weighttraining'
+        ]
+
         activity_lower = activity_type.lower()
 
+        # Check for strength keywords FIRST (before 'training' matches running)
+        if any(keyword in activity_lower for keyword in strength_keywords):
+            logger.info(f"Activity classified as 'strength': {activity_type}")
+            return 'strength'
         # Check for cycling keywords
-        if any(keyword in activity_lower for keyword in cycling_keywords):
+        elif any(keyword in activity_lower for keyword in cycling_keywords):
             logger.info(f"Activity classified as 'cycling': {activity_type}")
             return 'cycling'
         # Check for swimming keywords
@@ -651,6 +665,60 @@ def calculate_swimming_external_load(distance_miles, activity_type=None):
         return 0.0, 0.0, 0.0
 
 
+def calculate_strength_external_load(duration_minutes, rpe_score=None):
+    """
+    Convert strength activity to running-equivalent external load
+    
+    Based on neuromuscular fatigue research: strength training creates
+    mechanical stress and CNS fatigue that impacts recovery capacity
+    similar to running volume.
+    
+    Formula: Duration (hours) × RPE × 0.30 = Running-equivalent miles
+    
+    Rationale:
+    - Moderate strength training (RPE 6-7) creates fatigue equivalent to ~1.5-2 miles/hour running
+    - High-intensity sessions (RPE 8-9) approach ~2.5-3 miles/hour equivalent
+    - The 0.30 factor balances neuromuscular fatigue impact with aerobic load comparisons
+    
+    Args:
+        duration_minutes (float): Duration of strength session in minutes
+        rpe_score (int, optional): RPE on 1-10 scale. Defaults to 6 (moderate)
+    
+    Returns:
+        tuple: (running_equivalent_distance, elevation_load_miles, total_external_load)
+    """
+    try:
+        logger.info(f"Calculating strength external load: {duration_minutes} min, RPE={rpe_score}")
+        
+        # Default to moderate intensity if no RPE provided
+        rpe = rpe_score or 6
+        
+        # Validate RPE range
+        if rpe < 1 or rpe > 10:
+            logger.warning(f"Invalid RPE {rpe}, defaulting to 6")
+            rpe = 6
+        
+        # Conversion formula: (Duration / 60) × RPE × Factor
+        STRENGTH_CONVERSION_FACTOR = 0.30
+        running_equivalent_distance = (duration_minutes / 60.0) * rpe * STRENGTH_CONVERSION_FACTOR
+        
+        # No elevation component for strength training
+        elevation_load_miles = 0.0
+        
+        # Total external load
+        total_external_load = running_equivalent_distance
+        
+        logger.info(f"Strength conversion results: {duration_minutes} min × RPE {rpe} = "
+                   f"{running_equivalent_distance:.2f} miles equivalent")
+        
+        return running_equivalent_distance, elevation_load_miles, total_external_load
+        
+    except Exception as e:
+        logger.error(f"Error calculating strength external load: {e}")
+        # Return safe defaults
+        return 0.0, 0.0, 0.0
+
+
 def calculate_training_load(activity, client, hr_config=None, user_id=None):
     """
     Calculate custom training load based on Strava activity data.
@@ -704,6 +772,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     # Calculate external load based on sport type
     cycling_equivalent_miles = None
     swimming_equivalent_miles = None
+    strength_equivalent_miles = None
     cycling_elevation_factor = None
 
     if sport_type == 'cycling':
@@ -723,12 +792,28 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         )
         swimming_equivalent_miles = running_equiv_distance
 
+    elif sport_type == 'strength':
+        # Strength-specific calculation
+        logger.info("Using strength-specific external load calculation")
+        
+        # Strength activities use RPE for load calculation (default RPE 6 if not specified)
+        # RPE will be added manually by user later - for now use default
+        rpe_score = None  # Will be updated after user manual entry
+        
+        running_equiv_distance, elevation_load_miles, total_load_miles = calculate_strength_external_load(
+            duration_minutes, rpe_score
+        )
+        strength_equivalent_miles = running_equiv_distance
+        
+        # For strength activities, also set distance_miles to the equivalent for ACWR calculations
+        distance_miles = running_equiv_distance
+
     else:
         # Running calculation (unchanged for safety)
         logger.info("Using running external load calculation")
         elevation_load_miles = elevation_gain_feet / 750.0
         total_load_miles = distance_miles + elevation_load_miles
-        # cycling and swimming fields remain None for running activities
+        # cycling, swimming, and strength fields remain None for running activities
 
     logger.info(f"External load calculated: distance={distance_miles:.2f}, "
                 f"elevation_load={elevation_load_miles:.2f}, total={total_load_miles:.2f}")
@@ -844,6 +929,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'average_speed_mph': float(round(average_speed_mph, 2)) if average_speed_mph else None,
         'cycling_equivalent_miles': float(round(cycling_equivalent_miles, 2)) if cycling_equivalent_miles else None,
         'swimming_equivalent_miles': float(round(swimming_equivalent_miles, 2)) if swimming_equivalent_miles else None,
+        'strength_equivalent_miles': float(round(strength_equivalent_miles, 2)) if strength_equivalent_miles else None,
         'cycling_elevation_factor': float(cycling_elevation_factor) if cycling_elevation_factor else None,
         'avg_heart_rate': float(avg_hr),
         'max_heart_rate': float(max_hr),

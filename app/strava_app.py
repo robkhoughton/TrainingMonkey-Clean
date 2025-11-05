@@ -3719,6 +3719,99 @@ def update_activity_elevation():
 
 
 @login_required
+@app.route('/api/activities-management/update-rpe', methods=['PUT'])
+def update_activity_rpe():
+    """Update RPE for strength activities and recalculate load"""
+    try:
+        data = request.get_json()
+        activity_id = data.get('activity_id')
+        rpe_score = data.get('rpe_score')
+        
+        # Validation
+        if not activity_id or rpe_score is None:
+            return jsonify({
+                'success': False,
+                'error': 'Missing activity_id or rpe_score'
+            }), 400
+        
+        # Validate RPE range (1-10)
+        try:
+            rpe_score = int(rpe_score)
+            if not (1 <= rpe_score <= 10):
+                return jsonify({
+                    'success': False,
+                    'error': 'RPE must be between 1 and 10'
+                }), 400
+        except (ValueError, TypeError):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid RPE value'
+            }), 400
+        
+        # Check if activity belongs to current user and is a strength activity
+        activity = db_utils.execute_query(
+            "SELECT duration_minutes, sport_type FROM activities WHERE activity_id = %s AND user_id = %s",
+            (activity_id, current_user.id),
+            fetch=True
+        )
+        
+        if not activity or not activity[0]:
+            return jsonify({
+                'success': False,
+                'error': 'Activity not found or access denied'
+            }), 404
+        
+        activity_data = dict(activity[0])
+        
+        if activity_data.get('sport_type') != 'strength':
+            return jsonify({
+                'success': False,
+                'error': 'RPE can only be set for strength activities'
+            }), 400
+        
+        duration = activity_data['duration_minutes'] or 0
+        
+        if duration <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Activity has no duration data'
+            }), 400
+        
+        # Recalculate load using formula: (Duration / 60) × RPE × 0.30
+        from strava_training_load import calculate_strength_external_load
+        running_equiv, _, total_load = calculate_strength_external_load(duration, rpe_score)
+        
+        # Update database with new RPE and recalculated loads
+        db_utils.execute_query(
+            """UPDATE activities 
+               SET strength_rpe = %s, 
+                   strength_equivalent_miles = %s, 
+                   total_load_miles = %s,
+                   distance_miles = %s
+               WHERE activity_id = %s AND user_id = %s""",
+            (rpe_score, running_equiv, total_load, running_equiv, activity_id, current_user.id)
+        )
+        
+        logger.info(f"Updated RPE for activity {activity_id}: RPE={rpe_score}, load={total_load:.2f} miles")
+        
+        return jsonify({
+            'success': True,
+            'updated_values': {
+                'strength_rpe': rpe_score,
+                'total_load_miles': round(total_load, 2),
+                'strength_equivalent_miles': round(running_equiv, 2)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating RPE: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to update RPE'
+        }), 500
+
+
+@login_required
 @app.route('/api/journal', methods=['GET'])
 def get_journal_entries():
     """Get journal entries with corrected recommendation lookup."""

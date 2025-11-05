@@ -7,6 +7,7 @@ interface Activity {
   date: string;
   name: string;
   type: string;
+  sport_type?: string;
   distance_miles: number;
   elevation_gain_feet: number | null;
   total_load_miles: number;
@@ -14,6 +15,8 @@ interface Activity {
   duration_minutes: number;
   has_missing_elevation: boolean;
   user_edited_elevation?: boolean; // Track if user has edited this value
+  strength_rpe?: number | null;
+  strength_equivalent_miles?: number | null;
 }
 
 interface PaginationInfo {
@@ -38,6 +41,8 @@ const ActivitiesPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingElevation, setEditingElevation] = useState<number | null>(null);
   const [elevationValue, setElevationValue] = useState('');
+  const [editingRPE, setEditingRPE] = useState<number | null>(null);
+  const [rpeValue, setRPEValue] = useState('');
   const [sortField, setSortField] = useState<keyof Activity>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // FIXED: Default to reverse chronological
 
@@ -65,6 +70,7 @@ const ActivitiesPage: React.FC = () => {
           date: item.date,
           name: item.name,
           type: item.type,
+          sport_type: item.sport_type,
           distance_miles: item.distance_miles || 0,
           elevation_gain_feet: item.elevation_gain_feet,
           total_load_miles: item.total_load_miles || 0,
@@ -74,7 +80,9 @@ const ActivitiesPage: React.FC = () => {
             item.elevation_gain_feet === null ||
             item.elevation_gain_feet === 0
           ) && item.activity_id > 0, // Only flag missing elevation for real activities
-          user_edited_elevation: false // Initialize as false, will be updated after edits
+          user_edited_elevation: false, // Initialize as false, will be updated after edits
+          strength_rpe: item.strength_rpe,
+          strength_equivalent_miles: item.strength_equivalent_miles
         }));
 
         setActivities(activitiesData);
@@ -171,6 +179,59 @@ const ActivitiesPage: React.FC = () => {
   const handleElevationCancel = () => {
     setEditingElevation(null);
     setElevationValue('');
+  };
+
+  const handleRPEEdit = (activityId: number, currentRPE: number | null) => {
+    setEditingRPE(activityId);
+    setRPEValue(currentRPE?.toString() || '6'); // Default to 6 (moderate)
+  };
+
+  const handleRPESave = async (activityId: number) => {
+    try {
+      const rpe = parseInt(rpeValue);
+
+      if (isNaN(rpe) || rpe < 1 || rpe > 10) {
+        alert('Please enter a valid RPE between 1 and 10');
+        return;
+      }
+
+      const response = await fetch('/api/activities-management/update-rpe', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activity_id: activityId,
+          rpe_score: rpe
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Update activity with new RPE and recalculated load
+        setActivities(prev => prev.map(activity =>
+          activity.activity_id === activityId
+            ? {
+                ...activity,
+                strength_rpe: result.updated_values.strength_rpe,
+                total_load_miles: result.updated_values.total_load_miles,
+                strength_equivalent_miles: result.updated_values.strength_equivalent_miles
+              }
+            : activity
+        ));
+
+        setEditingRPE(null);
+        setRPEValue('');
+      } else {
+        alert(result.error || 'Failed to update RPE');
+      }
+    } catch (err) {
+      alert('Error saving RPE data');
+    }
+  };
+
+  const handleRPECancel = () => {
+    setEditingRPE(null);
+    setRPEValue('');
   };
 
   useEffect(() => {
@@ -277,7 +338,8 @@ const ActivitiesPage: React.FC = () => {
                   { key: 'distance_miles', label: 'Miles' },
                   { key: 'elevation_gain_feet', label: 'Elevation (ft)' },
                   { key: 'total_load_miles', label: 'Total Load' },
-                  { key: 'trimp', label: 'TRIMP' }
+                  { key: 'trimp', label: 'TRIMP' },
+                  { key: 'strength_rpe', label: 'RPE (Strength)' }
                 ].map((col) => (
                   <th
                     key={col.key}
@@ -463,6 +525,86 @@ const ActivitiesPage: React.FC = () => {
                   {/* TRIMP - RIGHT JUSTIFIED (number) */}
                   <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                     {activity.trimp?.toFixed(1) || '0.0'}
+                  </td>
+
+                  {/* RPE - RIGHT JUSTIFIED (Strength activities only) */}
+                  <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                    {activity.sport_type === 'strength' ? (
+                      editingRPE === activity.activity_id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                          <input
+                            type="number"
+                            value={rpeValue}
+                            onChange={(e) => setRPEValue(e.target.value)}
+                            style={{
+                              width: '60px',
+                              padding: '4px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '4px',
+                              fontSize: '0.85rem',
+                              textAlign: 'right'
+                            }}
+                            min="1"
+                            max="10"
+                            placeholder="6"
+                          />
+                          <button
+                            onClick={() => handleRPESave(activity.activity_id)}
+                            style={{
+                              padding: '4px 8px',
+                              backgroundColor: '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={handleRPECancel}
+                            style={{
+                              padding: '4px 8px',
+                              backgroundColor: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <span style={{
+                            fontWeight: activity.strength_rpe ? '600' : 'normal',
+                            color: activity.strength_rpe ? '#059669' : '#9ca3af'
+                          }}>
+                            {activity.strength_rpe || '-'}
+                          </span>
+                          <button
+                            onClick={() => handleRPEEdit(activity.activity_id, activity.strength_rpe)}
+                            style={{
+                              padding: '2px 6px',
+                              backgroundColor: activity.strength_rpe ? '#3b82f6' : '#f59e0b',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer'
+                            }}
+                            title={activity.strength_rpe ? 'Edit RPE' : 'Set RPE for load calculation'}
+                          >
+                            {activity.strength_rpe ? 'Edit' : 'Set RPE'}
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <span style={{ color: '#9ca3af' }}>-</span>
+                    )}
                   </td>
                 </tr>
               ))}
