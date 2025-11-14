@@ -1,5 +1,5 @@
 {
-    "anthropic_api_key": "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",
+    "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
     "llm_settings": {
         "model": "claude-sonnet-4-20250514",
         "temperature": 0.3,
@@ -33,3 +33,4 @@
         }
     }
 }
+
