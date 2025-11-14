@@ -1,0 +1,381 @@
+<!-- Email Collection Modal for Users with Synthetic Emails -->
+<div class="email-modal-overlay" id="emailCollectionModal" style="display: none;">
+  <div class="email-modal">
+    <div class="modal-icon">📧</div>
+    
+    <h2>Unlock Your Training Monkey's Full Power</h2>
+    
+    <div class="benefits">
+      <p><strong>Right now, you're missing out on:</strong></p>
+      <ul>
+        <li>✅ Daily training recommendations sent to your inbox (6 AM)</li>
+        <li>✅ "How was your run?" prompts after activities</li>
+        <li>✅ Injury risk alerts when patterns change</li>
+        <li>✅ Weekly progress summaries</li>
+        <li>✅ One-click journal entries from email</li>
+      </ul>
+    </div>
+
+    <div class="current-problem">
+      <p class="warning">⚠️ Currently using: <code>{{ user.email }}</code></p>
+      <p>This is a placeholder. We can't send you anything!</p>
+    </div>
+
+    <form id="emailCollectionForm" class="email-form">
+      <label for="new-email">Your Real Email Address:</label>
+      <input 
+        type="email" 
+        id="new-email"
+        name="email" 
+        placeholder="your.email@example.com"
+        required
+        autocomplete="email"
+      />
+      
+      <div class="privacy-note">
+        <small>🔒 We'll only use this for training notifications. 
+        No spam, no selling. <a href="/privacy-policy" target="_blank">Privacy Promise</a></small>
+      </div>
+
+      <div class="buttons">
+        <button type="submit" class="btn-primary">
+          Unlock Email Features
+        </button>
+        <button type="button" class="btn-secondary" onclick="dismissEmailModal()">
+          Maybe Later
+        </button>
+      </div>
+    </form>
+
+    <div class="dismiss-counter">
+      <small>Dismissed {{ dismiss_count }}/3 times. 
+      After 3, we won't ask again.</small>
+    </div>
+  </div>
+</div>
+
+<style>
+.email-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s;
+}
+
+.email-modal {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 520px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s;
+}
+
+.modal-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.email-modal h2 {
+  text-align: center;
+  color: #1e293b;
+  margin-bottom: 1.5rem;
+}
+
+.benefits {
+  background: #f0f9ff;
+  border-left: 4px solid #3b82f6;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+
+.benefits p {
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.benefits ul {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.5rem;
+}
+
+.benefits li {
+  margin: 0.5rem 0;
+  color: #334155;
+}
+
+.current-problem {
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+
+.current-problem .warning {
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+  color: #78350f;
+}
+
+.current-problem p:last-child {
+  margin: 0;
+  color: #78350f;
+}
+
+.current-problem code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: monospace;
+}
+
+.email-form {
+  margin-top: 1.5rem;
+}
+
+.email-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #334155;
+}
+
+.email-form input[type="email"] {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.email-form input[type="email"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.privacy-note {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+.privacy-note small {
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.privacy-note a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.privacy-note a:hover {
+  text-decoration: underline;
+}
+
+.buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.btn-primary {
+  flex: 1;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.875rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.btn-secondary {
+  background: white;
+  color: #6b7280;
+  border: 2px solid #e5e7eb;
+  padding: 0.875rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.dismiss-counter {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.dismiss-counter small {
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+.success-message {
+  text-align: center;
+  padding: 2rem;
+}
+
+.success-message .icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.success-message h2 {
+  color: #10b981;
+  margin-bottom: 1rem;
+}
+
+.success-message p {
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+}
+
+.success-message button {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.success-message button:hover {
+  background: #059669;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .email-modal {
+    padding: 1.5rem;
+    width: 95%;
+  }
+  
+  .buttons {
+    flex-direction: column;
+  }
+  
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+}
+</style>
+
+<script>
+function dismissEmailModal() {
+  fetch('/api/user/dismiss-email-modal', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  }).then(response => response.json())
+  .then(data => {
+    document.getElementById('emailCollectionModal').style.display = 'none';
+  })
+  .catch(error => {
+    console.error('Error dismissing modal:', error);
+    document.getElementById('emailCollectionModal').style.display = 'none';
+  });
+}
+
+document.getElementById('emailCollectionForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const submitButton = e.target.querySelector('button[type="submit"]');
+  const originalText = submitButton.textContent;
+  submitButton.textContent = 'Updating...';
+  submitButton.disabled = true;
+  
+  const email = e.target.email.value.trim();
+  
+  try {
+    const response = await fetch('/api/user/update-email', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      document.querySelector('.email-modal').innerHTML = `
+        <div class="success-message">
+          <div class="icon">🎉</div>
+          <h2>Email Updated!</h2>
+          <p>You'll start receiving your daily recommendations tomorrow morning at 6 AM.</p>
+          <p><strong>Check your inbox for a confirmation email.</strong></p>
+          <button onclick="location.reload()">Continue to Dashboard</button>
+        </div>
+      `;
+    } else {
+      alert(data.error || 'Error updating email. Please try again.');
+      submitButton.textContent = originalText;
+      submitButton.disabled = false;
+    }
+  } catch (error) {
+    console.error('Error updating email:', error);
+    alert('Network error. Please check your connection and try again.');
+    submitButton.textContent = originalText;
+    submitButton.disabled = false;
+  }
+});
+
+// Show modal on page load if it should be displayed
+window.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('emailCollectionModal');
+  if (modal && modal.dataset.show === 'true') {
+    modal.style.display = 'flex';
+  }
+});
+</script>
+
+

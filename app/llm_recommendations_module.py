@@ -25,11 +25,11 @@ from db_utils import (
     get_last_activity_date
 )
 
-# Setup logging
+# Setup logging - write to stdout for Cloud Logging visibility
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='llm_recommendations.log'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    # NOTE: No filename parameter - logs to stdout/stderr for Cloud Run/Cloud Logging
 )
 logger = logging.getLogger('llm_recommendations')
 
@@ -2001,25 +2001,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     tomorrow = app_current_date + timedelta(days=1)
                     tomorrow_str = tomorrow.strftime('%Y-%m-%d')
 
-                    # CRITICAL FIX: Check if recommendation already exists for target_date
-                    existing_rec = execute_query(
-                        """
-                        SELECT id FROM llm_recommendations 
-                        WHERE user_id = %s AND target_date = %s
-                        """,
-                        (user_id, tomorrow_str),
-                        fetch=True
-                    )
-
-                    if existing_rec:
-                        logger.info(f"Recommendation already exists for {tomorrow_str}, skipping autopsy-informed update to preserve historical record")
-                        return {
-                            'autopsy_generated': True,
-                            'alignment_score': autopsy_result['alignment_score'],
-                            'decision_updated': False,
-                            'reason': 'Recommendation already exists for target date'
-                        }
-
+                    # Generate new autopsy-informed decision
                     new_decision = generate_autopsy_informed_daily_decision(user_id, tomorrow)
 
                     if new_decision:
@@ -2027,24 +2009,64 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         from unified_metrics_service import UnifiedMetricsService
                         current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id) or {}
 
-                        recommendation_data = {
-                            'generation_date': app_current_date.strftime('%Y-%m-%d'),
-                            'target_date': tomorrow_str,  # CRITICAL FIX: Add target_date field
-                            'valid_until': None,  # FIXED: Use None for date-specific recommendations
-                            'data_start_date': app_current_date.strftime('%Y-%m-%d'),
-                            'data_end_date': app_current_date.strftime('%Y-%m-%d'),
-                            'metrics_snapshot': current_metrics,  # FIXED: Add metrics snapshot
-                            'daily_recommendation': new_decision,
-                            'weekly_recommendation': 'See previous weekly guidance',
-                            'pattern_insights': f"Generated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
-                            'raw_response': new_decision,  # FIXED: Add raw response
-                            'user_id': user_id
-                        }
+                        # Check if recommendation already exists
+                        existing_rec = execute_query(
+                            """
+                            SELECT id FROM llm_recommendations 
+                            WHERE user_id = %s AND target_date = %s
+                            """,
+                            (user_id, tomorrow_str),
+                            fetch=True
+                        )
 
-                        recommendation_data = fix_dates_for_json(recommendation_data)
-                        save_llm_recommendation(recommendation_data)
+                        if existing_rec:
+                            # UPDATE existing recommendation with autopsy-informed decision
+                            logger.info(f"Updating existing recommendation for {tomorrow_str} with autopsy learning")
+                            execute_query(
+                                """
+                                UPDATE llm_recommendations
+                                SET daily_recommendation = %s,
+                                    pattern_insights = %s,
+                                    raw_response = %s,
+                                    generated_at = NOW(),
+                                    is_autopsy_informed = TRUE,
+                                    autopsy_count = %s,
+                                    avg_alignment_score = %s
+                                WHERE user_id = %s AND target_date = %s
+                                """,
+                                (
+                                    new_decision,
+                                    f"Updated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
+                                    new_decision,
+                                    1,  # autopsy_count
+                                    autopsy_result['alignment_score'],
+                                    user_id,
+                                    tomorrow_str
+                                )
+                            )
+                            logger.info(f"Updated recommendation for {tomorrow_str} with autopsy-informed decision")
+                        else:
+                            # INSERT new recommendation
+                            recommendation_data = {
+                                'generation_date': app_current_date.strftime('%Y-%m-%d'),
+                                'target_date': tomorrow_str,
+                                'valid_until': None,
+                                'data_start_date': app_current_date.strftime('%Y-%m-%d'),
+                                'data_end_date': app_current_date.strftime('%Y-%m-%d'),
+                                'metrics_snapshot': current_metrics,
+                                'daily_recommendation': new_decision,
+                                'weekly_recommendation': 'See previous weekly guidance',
+                                'pattern_insights': f"Generated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
+                                'raw_response': new_decision,
+                                'user_id': user_id,
+                                'is_autopsy_informed': True,
+                                'autopsy_count': 1,
+                                'avg_alignment_score': autopsy_result['alignment_score']
+                            }
 
-                        logger.info(f"Generated new decision for tomorrow ({tomorrow_str}) incorporating autopsy learning")
+                            recommendation_data = fix_dates_for_json(recommendation_data)
+                            save_llm_recommendation(recommendation_data)
+                            logger.info(f"Generated new decision for tomorrow ({tomorrow_str}) incorporating autopsy learning")
 
                         return {
                             'autopsy_generated': True,

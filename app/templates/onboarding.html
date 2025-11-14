@@ -21,8 +21,14 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
     <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
 
-    <!-- Analytics/Tracking (add your tracking codes here) -->
-    <!-- Google Analytics, Facebook Pixel, etc. -->
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-DP521017ER"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-DP521017ER');
+    </script>
 
     <style>
         * {

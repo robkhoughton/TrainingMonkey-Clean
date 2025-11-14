@@ -28,7 +28,7 @@ function App() {
   const renderTabContent = () => {
     switch(activeTab) {
       case 'dashboard':
-        return <TrainingLoadDashboard />;
+        return <TrainingLoadDashboard onNavigateToTab={setActiveTab} />;
       case 'activities':
         return <ActivitiesPage />;
       case 'journal':
@@ -40,7 +40,7 @@ function App() {
       case 'settings':
         return <SettingsPage />;
       default:
-        return <TrainingLoadDashboard />;
+        return <TrainingLoadDashboard onNavigateToTab={setActiveTab} />;
     }
   };
 

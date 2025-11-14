@@ -1,0 +1,153 @@
+================================================================================
+TRAININGMONKEY TRAFFIC SOURCE REPORT
+Generated: 2025-11-13 14:51:15
+================================================================================
+
+================================================================================
+ANALYTICS TABLE SCHEMA
+================================================================================
+  id: integer
+  event_id: character varying
+  user_id: integer
+  session_id: character varying
+  event_type: character varying
+  integration_point: character varying
+  source_page: character varying
+  target_page: character varying
+  event_data: jsonb
+  timestamp: timestamp without time zone
+  user_agent: text
+  ip_address: inet
+  referrer: text
+  created_at: timestamp without time zone
+
+================================================================================
+SECTION 1: OVERALL TRAFFIC SOURCES
+================================================================================
+
+Total analytics events: 2059
+  Events with referrer: 2059 (100.0%)
+  Events without referrer (direct traffic): 0 (0.0%)
+
+--- Top 20 Referrer URLs ---
+
+  1. http://localhost:5001/getting-started?source=landing
+      Visits: 984, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 07:09:19.637111, Last seen: 2025-09-16 08:56:22.470983
+
+  2. http://localhost:5001/tutorials
+      Visits: 253, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 13:35:27.160472, Last seen: 2025-09-17 19:42:43.451884
+
+  3. http://localhost:5001/guide
+      Visits: 193, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 10:25:47.967499, Last seen: 2025-09-18 08:49:12.262339
+
+  4. http://localhost:5001/settings/acwr
+      Visits: 187, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-17 13:56:57.298731, Last seen: 2025-09-17 19:36:18.539878
+
+  5. http://localhost:5001/settings/profile
+      Visits: 110, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-17 13:56:26.544447, Last seen: 2025-09-18 09:03:21.414610
+
+  6. http://localhost:5001/settings/coaching
+      Visits: 80, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-17 13:56:51.916376, Last seen: 2025-09-17 19:43:39.252979
+
+  7. http://localhost:5001/settings/training
+      Visits: 73, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-17 13:56:48.992032, Last seen: 2025-09-17 19:43:39.545547
+
+  8. http://localhost:5001/settings/hrzones
+      Visits: 67, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-17 13:56:44.135411, Last seen: 2025-09-17 19:43:41.204838
+
+  9. http://localhost:5001/faq
+      Visits: 39, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 13:01:45.190479, Last seen: 2025-09-14 19:14:59.024143
+
+  10. http://localhost:5001/getting-started
+      Visits: 31, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 10:16:43.010728, Last seen: 2025-09-14 10:25:47.665336
+
+  11. http://127.0.0.1:5001/getting-started?source=landing
+      Visits: 18, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-16 09:46:39.197705, Last seen: 2025-09-16 09:59:42.396830
+
+  12. http://localhost:5001/landing
+      Visits: 17, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-14 09:15:33.752963, Last seen: 2025-09-17 13:55:43.555781
+
+  13. http://127.0.0.1:5001/landing
+      Visits: 7, Unique users: 1, Unique sessions: 1
+      First seen: 2025-09-16 09:46:31.942435, Last seen: 2025-09-16 09:58:31.980500
+
+================================================================================
+SECTION 2: TRAFFIC SOURCES BY DOMAIN
+================================================================================
+
+--- Traffic by Domain ---
+  localhost:5001: 2034 visits (98.8%)
+  127.0.0.1:5001: 25 visits (1.2%)
+
+================================================================================
+SECTION 3: TRAFFIC SOURCE CATEGORIES
+================================================================================
+
+--- Traffic by Category ---
+  Development/Tech: 2059 visits
+
+================================================================================
+SECTION 4: USER SIGNUP REFERRERS
+================================================================================
+
+--- Available Event Types ---
+  page_view: 1795
+  demo_interaction: 240
+  scroll_depth: 16
+  cta_click: 8
+
+[Note] No signup-specific events found in analytics
+Consider tracking signup events with referrer data
+
+================================================================================
+SECTION 5: RECENT TRAFFIC (Last 7 Days)
+================================================================================
+
+[Note] No referrer data in last 7 days
+
+================================================================================
+SECTION 6: RECOMMENDATIONS
+================================================================================
+
+[CURRENT STATUS]
+  - You ARE tracking referrer data!
+  - 2059 events with referrer information captured
+
+[ADDITIONAL TRACKING OPTIONS]
+
+1. **Google Analytics 4 (GA4)** - Recommended
+   - Free, comprehensive web analytics
+   - Tracks: referrers, search keywords, user journeys, conversions
+   - Add to landing.html: Google Analytics tracking code
+   - Setup: analytics.google.com
+
+2. **UTM Parameters** - Track specific campaigns
+   - Add to your marketing links:
+   - Example: https://yourtrainingmonkey.com?utm_source=facebook&utm_medium=social&utm_campaign=launch
+   - Track in your analytics_tracker.py from URL parameters
+
+3. **Squarespace Analytics** (if using Squarespace for landing)
+   - Squarespace > Analytics > Traffic Sources
+   - Shows referrers, search terms, and geographic data
+   - Built-in, no setup required
+
+4. **First-Touch Attribution**
+   - Store referrer when user first visits (before signup)
+   - Link to user_settings table for conversion tracking
+   - Currently: referrer tracked per event, not per user
+
+================================================================================
+END OF REPORT
+================================================================================

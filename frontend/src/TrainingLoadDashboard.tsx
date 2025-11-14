@@ -117,7 +117,11 @@ const formatScaledNumber = (value: any, scale: number, digits: number, fallback 
   return scaled.toFixed(digits);
 };
 
-const TrainingLoadDashboard: React.FC = () => {
+interface TrainingLoadDashboardProps {
+  onNavigateToTab?: (tab: string) => void;
+}
+
+const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigateToTab }) => {
   console.log("TrainingLoadDashboard component initialized");
 
   // Performance monitoring
@@ -1636,9 +1640,22 @@ const getRecommendationDateContext = (recommendation) => {
                   </div>
                   <div style={{ fontSize: '0.875rem', color: '#78350f' }}>
                     Last activity ({journalStatus.activity_date}) needs observations (Energy, RPE, Pain, Notes).
-                    <a href="/journal" style={{ marginLeft: '8px', color: '#ea580c', textDecoration: 'underline', fontWeight: '600' }}>
+                    <button 
+                      onClick={() => onNavigateToTab?.('journal')}
+                      style={{ 
+                        marginLeft: '8px', 
+                        color: '#ea580c', 
+                        textDecoration: 'underline', 
+                        fontWeight: '600',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        font: 'inherit'
+                      }}
+                    >
                       Go to Journal →
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>

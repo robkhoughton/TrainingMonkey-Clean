@@ -1,0 +1,354 @@
+================================================================================
+TRAININGMONKEY USER ANALYTICS REPORT
+Generated: 2025-11-13 14:44:01
+================================================================================
+
+================================================================================
+SECTION 1: DATABASE SCHEMA
+================================================================================
+
+Total tables: 41
+
+Available tables:
+  - activities
+  - acwr_configurations
+  - acwr_data_validation_results
+  - acwr_enhanced_calculations
+  - acwr_integrity_checkpoints
+  - acwr_migration_alerts
+  - acwr_migration_batches
+  - acwr_migration_current_progress
+  - acwr_migration_events
+  - acwr_migration_health_metrics
+  - acwr_migration_history
+  - acwr_migration_logs
+  - acwr_migration_monitoring_config
+  - acwr_migration_notification_preferences
+  - acwr_migration_progress
+  - acwr_rollback_executions
+  - acwr_rollback_history
+  - ai_autopsies
+  - analytics_events
+  - api_logs
+  - api_timing_client
+  - assignment_history
+  - component_performance
+  - hr_streams
+  - journal_entries
+  - legal_compliance
+  - llm_recommendations
+  - migration_notifications
+  - migration_snapshot_data
+  - migration_snapshots
+  - migration_status
+  - oauth_security_log
+  - onboarding_analytics
+  - rum_metrics
+  - token_audit_log
+  - tutorial_completions
+  - tutorial_sessions
+  - user_acwr_configurations
+  - user_dashboard_configs
+  - user_settings
+  - users
+
+--- Users Table Schema ---
+  id: integer
+  email: character varying
+  password_hash: character varying
+  resting_hr: integer
+  max_hr: integer
+  gender: character varying
+  is_admin: boolean
+  created_at: timestamp without time zone
+
+--- User Settings Table Schema ---
+  id: integer
+  email: text
+  password_hash: text
+  resting_hr: integer
+  max_hr: integer
+  gender: text
+  last_sync_date: text
+  is_admin: boolean
+  garmin_email: text
+  garmin_password_encrypted: text
+  garmin_last_sync: timestamp without time zone
+  strava_access_token: text
+  strava_refresh_token: text
+  strava_token_expires_at: bigint
+  strava_athlete_id: bigint
+  strava_token_created_at: timestamp without time zone
+  user_strava_client_id: character varying
+  user_strava_client_secret: character varying
+  hr_zones_method: character varying
+  primary_sport: character varying
+  secondary_sport: character varying
+  training_experience: character varying
+  current_phase: character varying
+  race_goal_date: date
+  weekly_training_hours: integer
+  acwr_alert_threshold: numeric
+  injury_risk_alerts: boolean
+  recommendation_style: character varying
+  coaching_tone: character varying
+  created_at: timestamp without time zone
+  updated_at: timestamp without time zone
+  custom_hr_zones: text
+  coaching_style_spectrum: integer
+  terms_accepted_at: timestamp without time zone
+  privacy_policy_accepted_at: timestamp without time zone
+  disclaimer_accepted_at: timestamp without time zone
+  onboarding_completed_at: timestamp without time zone
+  account_status: character varying
+  registration_date: timestamp without time zone
+  onboarding_step: character varying
+  profile_completed_at: timestamp without time zone
+  strava_connected_at: timestamp without time zone
+  first_sync_completed_at: timestamp without time zone
+  training_goals_set_at: timestamp without time zone
+  welcome_tour_completed_at: timestamp without time zone
+  features_unlocked: jsonb
+  onboarding_abandoned_at: timestamp without time zone
+  last_onboarding_activity: timestamp without time zone
+  legal_terms_accepted_at: timestamp without time zone
+  legal_privacy_accepted_at: timestamp without time zone
+  legal_disclaimer_accepted_at: timestamp without time zone
+  onboarding_completed: boolean
+  encryption_key: text
+  access_token_hash: character varying
+  refresh_token_hash: character varying
+  token_metadata: json
+  goals_configured: boolean
+  goal_type: character varying
+  goal_target: character varying
+  goal_timeframe: character varying
+  goals_setup_date: timestamp without time zone
+  onboarding_started_date: timestamp without time zone
+  onboarding_completed_date: timestamp without time zone
+  migration_status: character varying
+  migration_completed_at: timestamp without time zone
+  oauth_type: character varying
+  migration_priority: integer
+  last_migration_attempt: timestamp without time zone
+  migration_attempts: integer
+  age: integer
+  timezone: character varying
+
+--- Activities Table Schema ---
+  activity_id: bigint
+  name: text
+  type: text
+  distance_miles: real
+  elevation_gain_feet: real
+  elevation_load_miles: real
+  total_load_miles: real
+  avg_heart_rate: real
+  max_heart_rate: real
+  duration_minutes: real
+  trimp: real
+  time_in_zone1: real
+  time_in_zone2: real
+  time_in_zone3: real
+  time_in_zone4: real
+  time_in_zone5: real
+  seven_day_avg_load: real
+  twentyeight_day_avg_load: real
+  seven_day_avg_trimp: real
+  twentyeight_day_avg_trimp: real
+  acute_chronic_ratio: real
+  trimp_acute_chronic_ratio: real
+  normalized_divergence: real
+  weight_lbs: real
+  perceived_effort: integer
+  feeling_score: integer
+  notes: text
+  user_id: integer
+  elevation_data_source: character varying
+  elevation_updated_by: integer
+  elevation_updated_at: timestamp without time zone
+  date: date
+  elevation_factor_used: real
+  sport_type: character varying
+  average_speed_mph: numeric
+  cycling_equivalent_miles: numeric
+  cycling_elevation_factor: numeric
+  trimp_calculation_method: character varying
+  hr_stream_sample_count: integer
+  trimp_processed_at: timestamp without time zone
+  swimming_equivalent_miles: real
+  strength_equivalent_miles: real
+  strength_rpe: integer
+
+--- Activity-User Link Fields: ['user_id'] ---
+
+================================================================================
+SECTION 2: USER BASE OVERVIEW
+================================================================================
+
+Users in 'users' table: 0
+Users in 'user_settings' table: 33
+
+**Using 'user_settings' table as primary user source**
+Total Users: 33
+
+  Users with creation date: 33
+  First user signup: 2025-08-26 17:12:34.130293
+  Latest user signup: 2025-11-11 03:40:55.341232
+  Average account age: 33.9 days
+
+--- User Cohorts (by signup month) ---
+  2025-11: 7 users
+  2025-10: 16 users
+  2025-09: 7 users
+  2025-08: 3 users
+
+================================================================================
+SECTION 3: USER DEMOGRAPHICS
+================================================================================
+
+Users with email: 0
+
+Users with resting HR set: 0
+Users with max HR set: 0
+
+Users with Strava connected: 33
+
+--- Primary Sport Distribution (from user_settings) ---
+  cycling: 12 users
+  running: 7 users
+  road_running: 6 users
+  trail_running: 4 users
+  other: 3 users
+  triathlon: 1 users
+
+--- Timezone Distribution (Top 10) ---
+  US/Pacific: 33 users
+
+================================================================================
+SECTION 4: ACTIVITY DATA ANALYSIS
+================================================================================
+
+Users with activities: 30 (90.9%)
+Total activities logged: 3153
+First activity: 2025-03-30
+Latest activity: 2025-11-13
+
+--- Activities per User Distribution ---
+  0 activities: 3 users
+  1-5 activities: 1 users
+  6-20 activities: 2 users
+  21-50 activities: 2 users
+  51-100 activities: 11 users
+  100+ activities: 14 users
+
+--- Recent Activity (Last 30 Days) ---
+  Active users (30d): 18 (54.5% of total)
+  Activities (30d): 400
+
+--- Activity Types (from activities table) ---
+  running: 2171 activities from 29 users
+  cycling: 721 activities from 23 users
+  Unknown: 117 activities from 8 users
+  swimming: 75 activities from 5 users
+  strength: 69 activities from 5 users
+
+================================================================================
+SECTION 5: FEATURE ADOPTION
+================================================================================
+
+Training Journal:
+  Users with journal entries: 5 (15.2%)
+  Total journal entries: 144
+  Avg entries per user (who use it): 28.8
+  Max entries by a user: 100
+
+LLM Recommendations:
+  Users with LLM recommendations: 26 (78.8%)
+  Total recommendations generated: 84
+
+================================================================================
+SECTION 6: USER ENGAGEMENT SEGMENTATION
+================================================================================
+
+--- User Engagement Segments ---
+  Highly Active (< 7d): 7 users (21.2%)
+  Active (< 30d): 11 users (33.3%)
+  At Risk (30-90d): 12 users (36.4%)
+  Never Active: 3 users (9.1%)
+
+================================================================================
+SECTION 7: FEATURE GAP ANALYSIS
+================================================================================
+
+Users NOT using key features:
+  No activities logged: 3 users
+  No journal entries: 28 users
+  No LLM recommendations: 7 users
+
+================================================================================
+SECTION 8: TOP USERS (POWER USERS)
+================================================================================
+
+--- Top 20 Users by Activity Count ---
+  1. User 1 (rob.houghton.ca@gmail.com)
+      Activities: 245, Active days: 228, Last activity: 2025-11-13
+  2. User 3 (iz.houghton@gmail.com)
+      Activities: 233, Active days: 186, Last activity: 2025-11-12
+  3. User 80 (strava_42946799@training-monke...)
+      Activities: 227, Active days: 104, Last activity: 2025-11-12
+  4. User 2 (tballaine@gmail.com)
+      Activities: 209, Active days: 210, Last activity: 2025-11-09
+  5. User 83 (jmcabellom@training-monkey.com)
+      Activities: 132, Active days: 91, Last activity: 2025-11-04
+  6. User 59 (strava_11201359@training-monke...)
+      Activities: 126, Active days: 132, Last activity: 2025-11-06
+  7. User 86 (strava_65747037@training-monke...)
+      Activities: 122, Active days: 91, Last activity: 2025-11-10
+  8. User 79 (strava_15450549@training-monke...)
+      Activities: 114, Active days: 91, Last activity: 2025-10-26
+  9. User 68 (strava_82648699@training-monke...)
+      Activities: 114, Active days: 90, Last activity: 2025-10-02
+  10. User 82 (jamesadixon@hotmail.com)
+      Activities: 114, Active days: 95, Last activity: 2025-11-09
+  11. User 67 (strava_34836383@training-monke...)
+      Activities: 111, Active days: 120, Last activity: 2025-11-03
+  12. User 85 (strava_112315636@training-monk...)
+      Activities: 107, Active days: 91, Last activity: 2025-11-06
+  13. User 87 (strava_3415653@training-monkey...)
+      Activities: 102, Active days: 91, Last activity: 2025-11-10
+  14. User 74 (strava_27137814@training-monke...)
+      Activities: 102, Active days: 91, Last activity: 2025-10-15
+  15. User 62 (strava_42553735@training-monke...)
+      Activities: 98, Active days: 89, Last activity: 2025-09-28
+  16. User 75 (strava_8131901@training-monkey...)
+      Activities: 97, Active days: 90, Last activity: 2025-10-16
+  17. User 60 (strava_23887099@training-monke...)
+      Activities: 97, Active days: 89, Last activity: 2025-09-27
+  18. User 70 (strava_20656042@training-monke...)
+      Activities: 95, Active days: 89, Last activity: 2025-10-06
+  19. User 77 (strava_1727889@training-monkey...)
+      Activities: 95, Active days: 90, Last activity: 2025-10-20
+  20. User 78 (strava_121000216@training-monk...)
+      Activities: 92, Active days: 90, Last activity: 2025-10-25
+
+================================================================================
+SECTION 9: KEY INSIGHTS & RECOMMENDATIONS
+================================================================================
+
+[USER BASE HEALTH]
+  - Total registered users: 0
+  - No users in database yet
+
+[RECOMMENDATIONS]
+  1. HIGH PRIORITY: 3 users have never logged activities
+     - Improve onboarding flow
+     - Send activation emails
+     - Simplify Strava sync
+  2. Feature adoption: 28 users haven't used the training journal
+     - Highlight journal feature in dashboard
+     - Provide templates or prompts
+
+================================================================================
+END OF REPORT
+================================================================================

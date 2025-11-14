@@ -476,7 +476,17 @@ def oauth_callback():
         temp_password = secrets.token_urlsafe(16)
         password_hash = generate_password_hash(temp_password)
         
-        email = f"strava_{athlete_id}@training-monkey.com"
+        # Try to get real email from Strava profile (requires profile:read_all scope)
+        real_email = getattr(athlete, 'email', None)
+        
+        if real_email and '@' in real_email:
+            email = real_email
+            logger.info(f"Using real email from Strava: {email}")
+        else:
+            # Fallback to synthetic email if Strava doesn't provide one
+            email = f"strava_{athlete_id}@training-monkey.com"
+            logger.warning(f"No email provided by Strava, using synthetic: {email}")
+        
         first_name = getattr(athlete, 'firstname', '')
         last_name = getattr(athlete, 'lastname', '')
         gender = getattr(athlete, 'sex', 'male')
@@ -1880,6 +1890,25 @@ def home():
 @login_required
 def dashboard():
     """Serve React dashboard"""
+    # Phase 1: Track email enforcement status (passive monitoring only)
+    # TODO: Enable Phase 2 in 5-7 days - see EMAIL_ENFORCEMENT_ROADMAP.md
+    try:
+        from email_enforcement import get_email_urgency_level, log_email_enforcement_status
+        
+        user_data = {
+            'email': current_user.email,
+            'registration_date': current_user.registration_date,
+            'is_admin': current_user.is_admin,
+            'email_modal_dismissals': getattr(current_user, 'email_modal_dismissals', 0)
+        }
+        
+        urgency = get_email_urgency_level(user_data)
+        log_email_enforcement_status(current_user.id, urgency)
+        
+    except Exception as e:
+        # Fail silently - don't disrupt user experience
+        logger.error(f"Email enforcement tracking error for user {current_user.id}: {e}")
+    
     response = send_from_directory('build', 'index.html')
     # CRITICAL: Prevent caching of index.html so users always get latest JS file references
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -2181,6 +2210,91 @@ def get_current_user():
     })
 
 
+@app.route('/api/user/update-email', methods=['POST'])
+@login_required
+def update_user_email():
+    """Update user's email address"""
+    try:
+        data = request.get_json()
+        new_email = data.get('email', '').strip().lower()
+        
+        if not new_email or '@' not in new_email or '.' not in new_email:
+            return jsonify({'error': 'Invalid email address'}), 400
+        
+        # Check if email already exists for another user
+        existing_check = db_utils.execute_query(
+            "SELECT id FROM user_settings WHERE email = %s AND id != %s",
+            (new_email, current_user.id),
+            fetch=True
+        )
+        
+        if existing_check:
+            return jsonify({'error': 'Email already in use by another account'}), 400
+        
+        # Update email in database
+        db_utils.execute_query(
+            "UPDATE user_settings SET email = %s WHERE id = %s",
+            (new_email, current_user.id),
+            fetch=False
+        )
+        
+        # Update current user object
+        current_user.email = new_email
+        
+        # Log the change
+        logger.info(f"User {current_user.id} updated email to {new_email}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Email updated successfully',
+            'email': new_email
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating email: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/user/dismiss-email-modal', methods=['POST'])
+@login_required
+def dismiss_email_modal():
+    """Track email modal dismissals"""
+    try:
+        # Get current dismiss count - handle if column doesn't exist yet
+        try:
+            result = db_utils.execute_query(
+                "SELECT email_modal_dismissals FROM user_settings WHERE id = %s",
+                (current_user.id,),
+                fetch=True
+            )
+            current_count = result.get('email_modal_dismissals', 0) if result else 0
+        except:
+            # Column might not exist yet, default to 0
+            current_count = 0
+        
+        new_count = current_count + 1
+        
+        # Try to update dismiss count - will fail if column doesn't exist
+        try:
+            db_utils.execute_query(
+                "UPDATE user_settings SET email_modal_dismissals = %s WHERE id = %s",
+                (new_count, current_user.id),
+                fetch=False
+            )
+        except:
+            # Column doesn't exist yet - log but don't fail
+            logger.warning(f"email_modal_dismissals column not yet added to database")
+            pass
+        
+        logger.info(f"User {current_user.id} dismissed email modal ({new_count}/3)")
+        
+        return jsonify({'success': True, 'dismissals': new_count})
+        
+    except Exception as e:
+        logger.error(f"Error tracking modal dismissal: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 @app.route('/auth/strava-signup')
 def strava_auth_signup():
     """Strava OAuth initiation for new user signup from landing page"""
@@ -2206,7 +2320,7 @@ def strava_auth_signup():
             'response_type': 'code',
             'redirect_uri': redirect_uri,
             'approval_prompt': 'force',
-            'scope': 'read,activity:read_all'
+            'scope': 'read,activity:read_all,profile:read_all'  # Added profile scope for email
         }
 
         auth_url = f"https://www.strava.com/oauth/authorize?{urlencode(params)}"
@@ -3185,7 +3299,7 @@ def strava_auth():
         # Fallback to existing setup flow if no global client ID
         return redirect('/strava-setup')
 
-    auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
+    auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all,profile:read_all"
     return redirect(auth_url)
 
 
@@ -4011,7 +4125,8 @@ def get_unified_recommendation_for_date(date_obj, user_id):
             elif date_obj < user_current_date:
                 date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
             else:
-                date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
+                # FUTURE date: Frontend adds its own header, so just return the decision text
+                return recommendation_text
 
             return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
         
@@ -4037,7 +4152,8 @@ def get_unified_recommendation_for_date(date_obj, user_id):
             elif date_obj < user_current_date:
                 date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
             else:
-                date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
+                # FUTURE date: Frontend adds its own header
+                return "No recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
 
             return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
 
@@ -4427,13 +4543,18 @@ def get_training_decision_for_journal_date(date_obj, user_id):
 
         else:
             # FUTURE: Show planned workout for that future date
-            date_label = f"PLANNED WORKOUT for {date_obj.strftime('%A, %B %d')}"
+            # Note: Frontend adds its own header, so just return the decision text
             decision = get_autopsy_informed_decision_for_future(user_id, date_obj)
 
         if decision and decision.strip():
-            return f"🤖 {date_label}:\n\n{decision}"
+            # For future dates (tomorrow), don't add date label - frontend handles this
+            if date_obj > app_current_date:
+                return decision
+            else:
+                # For today/past, include the date label
+                return f"🤖 {date_label}:\n\n{decision}"
         else:
-            return f"🤖 {date_label}:\nNo recommendation available for this date."
+            return f"No recommendation available for this date."
 
     except Exception as e:
         logger.error(f"Error getting journal decision for {date_str}, user {user_id}: {str(e)}", exc_info=True)
