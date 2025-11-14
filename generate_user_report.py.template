@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""
+User Analytics Report Generator for TrainingMonkey
+Analyzes user demographics, usage patterns, and feature adoption
+
+SECURITY: This template uses environment variables for database credentials.
+Copy this file to generate_user_report.py and set DATABASE_URL environment variable.
+"""
+
+import psycopg2
+import json
+import os
+from datetime import datetime, timedelta
+from collections import defaultdict
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get database URL from environment
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable not set. "
+        "Create a .env file or set the environment variable:\n"
+        "export DATABASE_URL='postgresql://user:password@host:port/database'"
+    )
+
+# Connect to database
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+
+print("=" * 80)
+print("TRAININGMONKEY USER ANALYTICS REPORT")
+print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print("=" * 80)
+
+# === Add the rest of your report logic here ===
+# (This template shows the secure connection pattern)
+
+# === Cleanup ===
+cur.close()
+conn.close()
+

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Check users in database
+
+SECURITY: Uses environment variables for database credentials.
+Copy this file to check_users.py and set DATABASE_URL in .env file.
 """
 
 import os
@@ -9,8 +12,15 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Explicitly set the correct DATABASE_URL
-os.environ['DATABASE_URL'] = 'postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d'
+# Verify DATABASE_URL is set
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    print("ERROR: DATABASE_URL environment variable not set")
+    print("Create a .env file with: DATABASE_URL=postgresql://user:password@host:port/database")
+    exit(1)
+
+# Explicitly set for db_utils compatibility
+os.environ['DATABASE_URL'] = DATABASE_URL
 
 try:
     from db_utils import get_db_connection
@@ -31,3 +41,4 @@ try:
                 
 except Exception as e:
     print(f"Error: {e}")
+

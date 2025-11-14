@@ -4,6 +4,19 @@ __pycache__/
 .env 
 config.json
 app/config.json
+
+# Utility scripts and docs with database credentials
+generate_user_report.py
+traffic_source_report.py
+create_rum_tables.py
+delete_test_account.py
+app/setup_database_environment.py
+app/check_tables.py
+app/check_users.py
+app/deploy_strava_force.bat
+ADD_GOOGLE_ANALYTICS_GUIDE.md
+*.log
+
 build/
 logs/ 
 docs/

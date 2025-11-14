@@ -11,11 +11,15 @@ FLASK_DEBUG=True
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
-# For local development (SQLite)
-DB_PATH=../training_data.db
+# CRITICAL: Never commit database credentials to version control!
+# Copy this file to .env (which is gitignored) and add your actual credentials
 
-# For production (PostgreSQL) - uncomment and set if using cloud database
-# DATABASE_URL=postgresql://username:password@host:port/database
+# For production (PostgreSQL Cloud Database)
+# Replace with your actual credentials - NEVER commit the actual .env file
+DATABASE_URL=postgresql://username:password@host:port/database
+
+# For local development (SQLite - optional, not currently used)
+# DB_PATH=../training_data.db
 
 # =============================================================================
 # STRAVA API CONFIGURATION
