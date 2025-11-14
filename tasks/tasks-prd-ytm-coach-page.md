@@ -8,7 +8,7 @@
 - `app/llm_recommendations_module.py` - Existing LLM integration (extend for coach)
 - `app/coach_recommendations.py` - NEW: Weekly training program generation module
 - `app/ultrasignup_parser.py` - NEW: Screenshot parsing with Claude Vision API
-- `sql/coach_schema.sql` - NEW: Database migration script for Coach tables
+- `sql/coach_schema.sql` - NEW: Database migration script for Coach tables (CREATED - race_goals, race_history, weekly_programs tables + user_settings modifications)
 
 ### Frontend Files
 - `frontend/src/App.tsx` - Main app component (add Coach tab navigation)
@@ -56,17 +56,17 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### Backend Infrastructure & Data Layer
 
-- [ ] **1.0 Database Schema & Backend Infrastructure Setup**
-  - [ ] 1.1 Create `sql/coach_schema.sql` migration script
-  - [ ] 1.2 Write `race_goals` table creation SQL:
+- [x] **1.0 Database Schema & Backend Infrastructure Setup**
+  - [x] 1.1 Create `sql/coach_schema.sql` migration script
+  - [x] 1.2 Write `race_goals` table creation SQL:
     - Fields: id (SERIAL PRIMARY KEY), user_id (FK to user_settings), race_name (VARCHAR 200), race_date (DATE), race_type (VARCHAR 100), priority (CHAR 1 with CHECK A/B/C), target_time (VARCHAR 20), notes (TEXT), created_at/updated_at (TIMESTAMP DEFAULT NOW())
     - Index: idx_race_goals_user_date ON (user_id, race_date)
-  - [ ] 1.3 Write `race_history` table creation SQL:
+  - [x] 1.3 Write `race_history` table creation SQL:
     - Fields: id (SERIAL PRIMARY KEY), user_id (FK), race_date (DATE), race_name (VARCHAR 200), distance_miles (REAL), finish_time_minutes (INTEGER), created_at/updated_at (TIMESTAMP)
     - Constraint: CHECK (race_date >= CURRENT_DATE - INTERVAL '5 years')
     - Index: idx_race_history_user_date ON (user_id, race_date DESC)
     - Index: idx_race_history_user_distance ON (user_id, distance_miles)
-  - [ ] 1.4 Write ALTER TABLE user_settings SQL to add fields:
+  - [x] 1.4 Write ALTER TABLE user_settings SQL to add fields:
     - training_schedule_json (JSONB)
     - include_strength_training (BOOLEAN DEFAULT FALSE)
     - strength_hours_per_week (REAL DEFAULT 0)
@@ -76,8 +76,8 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - cross_training_type (VARCHAR 50)
     - cross_training_hours_per_week (REAL DEFAULT 0)
     - schedule_last_updated (TIMESTAMP)
-  - [ ] 1.5 Test migration script in SQL editor manually (per project rules)
-  - [ ] 1.6 Document rollback SQL in script comments
+  - [x] 1.5 Test migration script in SQL editor manually (per project rules)
+  - [x] 1.6 Document rollback SQL in script comments
 
 - [ ] **2.0 Race Goals & History Management (Backend)**
   - [ ] 2.1 In `app/strava_app.py`, create `GET /api/coach/race-goals` endpoint:
@@ -331,26 +331,26 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### 1.0 Database Schema & Backend Infrastructure Setup
 
-- [ ] 1.1 Create SQL migration script `sql/coach_schema.sql` with PostgreSQL syntax
+- [x] 1.1 Create SQL migration script `sql/coach_schema.sql` with PostgreSQL syntax
   - Use `SERIAL PRIMARY KEY` (not AUTOINCREMENT)
   - Use `NOW()` (not CURRENT_TIMESTAMP)
   - Include `CHECK` constraints where appropriate
   - Add proper indexes for performance
 
-- [ ] 1.2 Define `race_goals` table structure
+- [x] 1.2 Define `race_goals` table structure
   - Fields: id, user_id, race_name, race_date, race_type, priority (A/B/C), target_time, notes, created_at, updated_at
   - Foreign key constraint to `user_settings(id)`
   - Index on `(user_id, race_date)`
   - CHECK constraint for priority IN ('A', 'B', 'C')
 
-- [ ] 1.3 Define `race_history` table structure
+- [x] 1.3 Define `race_history` table structure
   - Fields: id, user_id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at
   - Foreign key constraint to `user_settings(id)`
   - CHECK constraint for last 5 years: `race_date >= CURRENT_DATE - INTERVAL '5 years'`
   - Index on `(user_id, race_date DESC)` for chronological queries
   - Index on `(user_id, distance_miles)` for PR calculations
 
-- [ ] 1.4 Add training schedule fields to `user_settings` table (ALTER TABLE)
+- [x] 1.4 Add training schedule fields to `user_settings` table (ALTER TABLE)
   - `training_schedule_json JSONB` - stores availability, time blocks, constraints
   - `include_strength_training BOOLEAN DEFAULT FALSE`
   - `strength_hours_per_week REAL DEFAULT 0`
@@ -361,14 +361,14 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - `cross_training_hours_per_week REAL DEFAULT 0`
   - `schedule_last_updated TIMESTAMP`
 
-- [ ] 1.5 Test database schema creation
+- [x] 1.5 Test database schema creation
   - Run migration script on development database
   - Verify all tables created successfully
   - Verify indexes exist using `\d table_name` or `SELECT * FROM pg_indexes WHERE tablename = 'race_goals'`
   - Test foreign key constraints
   - Test CHECK constraints (try inserting invalid priority, old race date)
 
-- [ ] 1.6 Add schema verification to `db_utils.py`
+- [x] 1.6 Add schema verification to `db_utils.py`
   - Function to check if Coach tables exist
   - Function to verify required columns
   - Integration with existing `initialize_db()` if needed
