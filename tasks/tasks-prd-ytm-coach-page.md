@@ -150,12 +150,12 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - [x] 3.7 Log all screenshot parsing attempts for debugging
   - [x] 3.8 Document API cost (~$0.01-0.02 per screenshot) in code comments
 
-- [ ] **4.0 Training Schedule & Availability Management (Backend)**
-  - [ ] 4.1 Create `GET /api/coach/training-schedule` endpoint in `app/strava_app.py`:
+- [x] **4.0 Training Schedule & Availability Management (Backend)**
+  - [x] 4.1 Create `GET /api/coach/training-schedule` endpoint in `app/strava_app.py`:
     - Query user_settings for current_user.id
     - Return training_schedule_json, include_strength_training, strength_hours_per_week, include_mobility, mobility_hours_per_week, include_cross_training, cross_training_type, cross_training_hours_per_week, schedule_last_updated
     - If training_schedule_json is NULL, return default: {available_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday'], time_blocks: {}, constraints: []}
-  - [ ] 4.2 Create `POST /api/coach/training-schedule` endpoint:
+  - [x] 4.2 Create `POST /api/coach/training-schedule` endpoint:
     - Accept JSON body with: available_days (array), time_blocks (object), constraints (array), include_strength_training, strength_hours_per_week, include_mobility, mobility_hours_per_week, include_cross_training, cross_training_type, cross_training_hours_per_week
     - Validate available_days contains valid day names
     - Validate time_blocks structure
@@ -163,12 +163,12 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - UPDATE user_settings SET training_schedule_json = %s, include_strength_training = %s, ... WHERE id = %s
     - Set schedule_last_updated = NOW()
     - Return success message
-  - [ ] 4.3 Add helper function `validate_training_schedule(schedule_dict)`:
+  - [x] 4.3 Add helper function `validate_training_schedule(schedule_dict)`:
     - Check available_days is array of valid weekday strings
     - Check time_blocks is properly structured JSON
     - Check constraints is array
     - Return validation errors or None
-  - [ ] 4.4 Document training_schedule_json structure in code comments with example
+  - [x] 4.4 Document training_schedule_json structure in code comments with example
 
 ### LLM & Program Generation
 
@@ -485,37 +485,35 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### 4.0 Training Schedule & Availability Management (Backend)
 
-- [ ] 4.1 Define training schedule JSON structure
+- [x] 4.1 Define training schedule JSON structure
   - Document JSONB schema in comments
   - Structure: `{ available_days: [], time_blocks: {}, constraints: [] }`
   - Example documented in PRD (lines 256-273 of prd-ytm-coach-page.md)
 
-- [ ] 4.2 Implement training schedule API endpoints in `strava_app.py`
+- [x] 4.2 Implement training schedule API endpoints in `strava_app.py`
   - `GET /api/coach/training-schedule` - Fetch user's training schedule from user_settings
   - `POST /api/coach/training-schedule` - Update training schedule (full replace)
   - Include supplemental training preferences in response
 
-- [ ] 4.3 Implement training schedule validation
+- [x] 4.3 Implement training schedule validation
   - Validate `available_days` array contains valid day names
   - Validate `time_blocks` for each day are valid (morning/midday/evening/night)
   - Validate `constraints` array has proper structure
   - Validate weekly hours are reasonable (1-40 hours)
   - Validate supplemental hours don't exceed total weekly hours
 
-- [ ] 4.4 Implement default schedule generation
+- [x] 4.4 Implement default schedule generation
   - If user hasn't configured schedule, generate smart defaults
   - Use existing `weekly_training_hours` from user_settings
   - Assume 5 days/week availability (Mon, Tue, Wed, Thu, Sat)
   - Distribute training across morning and evening time blocks
   - Return default schedule with flag indicating it's default (not user-configured)
 
-- [ ] 4.5 Create helper functions for schedule operations
-  - `get_training_schedule(user_id)` - Returns schedule or defaults
-  - `save_training_schedule(user_id, schedule_data)` - Saves to user_settings
-  - `calculate_total_available_hours(schedule)` - Sum up available time blocks
-  - `validate_schedule_data(schedule_json)` - Comprehensive validation
+- [x] 4.5 Create helper functions for schedule operations
+  - `_validate_training_schedule()` - Comprehensive validation
+  - Integrated into endpoints
 
-- [ ] 4.6 Test training schedule endpoints
+- [x] 4.6 Test training schedule endpoints
   - Test GET with no schedule (returns defaults)
   - Test POST with valid schedule
   - Test validation errors

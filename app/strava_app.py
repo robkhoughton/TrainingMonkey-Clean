@@ -10651,6 +10651,247 @@ def upload_race_history_screenshot():
         }), 500
 
 
+@app.route('/api/coach/training-schedule', methods=['GET'])
+@login_required
+def get_training_schedule():
+    """
+    Get user's training schedule and availability configuration
+    Returns training_schedule_json and supplemental training preferences
+    """
+    try:
+        user_id = current_user.id
+        logger.info(f"Fetching training schedule for user {user_id}")
+        
+        # Query user_settings for schedule data
+        user_settings = db_utils.execute_query(
+            """
+            SELECT training_schedule_json, 
+                   include_strength_training, strength_hours_per_week,
+                   include_mobility, mobility_hours_per_week,
+                   include_cross_training, cross_training_type, cross_training_hours_per_week,
+                   schedule_last_updated
+            FROM user_settings
+            WHERE id = %s
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        if not user_settings or len(user_settings) == 0:
+            return jsonify({'success': False, 'error': 'User settings not found'}), 404
+        
+        settings = user_settings[0]
+        settings_dict = dict(settings) if hasattr(settings, 'keys') else {
+            'training_schedule_json': settings[0],
+            'include_strength_training': settings[1],
+            'strength_hours_per_week': settings[2],
+            'include_mobility': settings[3],
+            'mobility_hours_per_week': settings[4],
+            'include_cross_training': settings[5],
+            'cross_training_type': settings[6],
+            'cross_training_hours_per_week': settings[7],
+            'schedule_last_updated': settings[8]
+        }
+        
+        # Get training schedule JSON or return defaults
+        schedule_json = settings_dict.get('training_schedule_json')
+        
+        if not schedule_json:
+            # Generate default schedule (5 days/week, morning and evening availability)
+            logger.info(f"No schedule configured for user {user_id}, returning defaults")
+            schedule_json = {
+                'available_days': ['monday', 'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday'],
+                'time_blocks': {
+                    'monday': ['morning', 'evening'],
+                    'tuesday': ['morning', 'evening'],
+                    'wednesday': ['morning', 'evening'],
+                    'thursday': ['morning', 'evening'],
+                    'saturday': ['morning'],
+                    'sunday': ['morning']
+                },
+                'constraints': []
+            }
+            is_default = True
+        else:
+            is_default = False
+        
+        # Serialize timestamp if present
+        schedule_last_updated = settings_dict.get('schedule_last_updated')
+        if isinstance(schedule_last_updated, datetime):
+            schedule_last_updated = schedule_last_updated.isoformat()
+        
+        return jsonify({
+            'success': True,
+            'training_schedule': schedule_json,
+            'include_strength_training': settings_dict.get('include_strength_training', False),
+            'strength_hours_per_week': float(settings_dict.get('strength_hours_per_week', 0)) if settings_dict.get('strength_hours_per_week') else 0,
+            'include_mobility': settings_dict.get('include_mobility', False),
+            'mobility_hours_per_week': float(settings_dict.get('mobility_hours_per_week', 0)) if settings_dict.get('mobility_hours_per_week') else 0,
+            'include_cross_training': settings_dict.get('include_cross_training', False),
+            'cross_training_type': settings_dict.get('cross_training_type'),
+            'cross_training_hours_per_week': float(settings_dict.get('cross_training_hours_per_week', 0)) if settings_dict.get('cross_training_hours_per_week') else 0,
+            'schedule_last_updated': schedule_last_updated,
+            'is_default': is_default
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching training schedule for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/training-schedule', methods=['POST'])
+@login_required
+def save_training_schedule():
+    """
+    Save user's training schedule and availability configuration
+    """
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Extract training schedule
+        training_schedule = data.get('training_schedule')
+        if not training_schedule:
+            return jsonify({'success': False, 'error': 'training_schedule is required'}), 400
+        
+        # Validate training schedule structure
+        is_valid, error_message = _validate_training_schedule(training_schedule)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_message}), 400
+        
+        # Extract supplemental training preferences
+        include_strength = data.get('include_strength_training', False)
+        strength_hours = data.get('strength_hours_per_week', 0)
+        include_mobility = data.get('include_mobility', False)
+        mobility_hours = data.get('mobility_hours_per_week', 0)
+        include_cross_training = data.get('include_cross_training', False)
+        cross_training_type = data.get('cross_training_type')
+        cross_training_hours = data.get('cross_training_hours_per_week', 0)
+        
+        # Validate hours are non-negative
+        try:
+            strength_hours = float(strength_hours) if strength_hours else 0
+            mobility_hours = float(mobility_hours) if mobility_hours else 0
+            cross_training_hours = float(cross_training_hours) if cross_training_hours else 0
+            
+            if strength_hours < 0 or mobility_hours < 0 or cross_training_hours < 0:
+                return jsonify({'success': False, 'error': 'Hours must be non-negative'}), 400
+            
+            if strength_hours > 40 or mobility_hours > 40 or cross_training_hours > 40:
+                return jsonify({'success': False, 'error': 'Hours per week must be reasonable (<40)'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Hours must be valid numbers'}), 400
+        
+        logger.info(f"Saving training schedule for user {user_id}")
+        
+        # Convert training_schedule dict to JSON string for JSONB storage
+        import json
+        schedule_json_str = json.dumps(training_schedule)
+        
+        # Update user_settings
+        db_utils.execute_query(
+            """
+            UPDATE user_settings
+            SET training_schedule_json = %s,
+                include_strength_training = %s,
+                strength_hours_per_week = %s,
+                include_mobility = %s,
+                mobility_hours_per_week = %s,
+                include_cross_training = %s,
+                cross_training_type = %s,
+                cross_training_hours_per_week = %s,
+                schedule_last_updated = NOW()
+            WHERE id = %s
+            """,
+            (schedule_json_str, include_strength, strength_hours, include_mobility, 
+             mobility_hours, include_cross_training, cross_training_type, 
+             cross_training_hours, user_id),
+            fetch=False
+        )
+        
+        logger.info(f"Successfully saved training schedule for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Training schedule saved successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving training schedule for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+def _validate_training_schedule(schedule: dict) -> tuple:
+    """
+    Validate training schedule JSON structure
+    
+    Args:
+        schedule: Training schedule dictionary
+        
+    Returns:
+        (is_valid, error_message) - error_message is None if valid
+    """
+    # Check required keys
+    required_keys = ['available_days', 'time_blocks', 'constraints']
+    for key in required_keys:
+        if key not in schedule:
+            return False, f"Missing required field: {key}"
+    
+    # Validate available_days
+    available_days = schedule['available_days']
+    if not isinstance(available_days, list):
+        return False, "available_days must be an array"
+    
+    valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in available_days:
+        if not isinstance(day, str):
+            return False, "available_days must contain strings"
+        if day.lower() not in valid_days:
+            return False, f"Invalid day name: {day}. Must be one of: {', '.join(valid_days)}"
+    
+    if len(available_days) == 0:
+        return False, "At least one day must be available"
+    
+    # Validate time_blocks
+    time_blocks = schedule['time_blocks']
+    if not isinstance(time_blocks, dict):
+        return False, "time_blocks must be an object"
+    
+    valid_time_blocks = ['morning', 'midday', 'evening', 'night']
+    for day, blocks in time_blocks.items():
+        if day.lower() not in valid_days:
+            return False, f"Invalid day in time_blocks: {day}"
+        if not isinstance(blocks, list):
+            return False, f"time_blocks for {day} must be an array"
+        for block in blocks:
+            if not isinstance(block, str):
+                return False, f"time_blocks for {day} must contain strings"
+            if block.lower() not in valid_time_blocks:
+                return False, f"Invalid time block '{block}' for {day}. Must be one of: {', '.join(valid_time_blocks)}"
+    
+    # Validate constraints
+    constraints = schedule['constraints']
+    if not isinstance(constraints, list):
+        return False, "constraints must be an array"
+    
+    for idx, constraint in enumerate(constraints):
+        if not isinstance(constraint, dict):
+            return False, f"Constraint {idx + 1} must be an object"
+        # Constraints can have any structure, but if they have type/description, validate
+        if 'type' in constraint and not isinstance(constraint['type'], str):
+            return False, f"Constraint {idx + 1} type must be a string"
+        if 'description' in constraint and not isinstance(constraint['description'], str):
+            return False, f"Constraint {idx + 1} description must be a string"
+    
+    return True, None
+
+
 @app.route('/api/coach/race-analysis', methods=['GET'])
 @login_required
 def get_race_analysis():
