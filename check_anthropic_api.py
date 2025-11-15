@@ -71,7 +71,7 @@ try:
     print()
     
     if response.status_code == 200:
-        print("✅ SUCCESS - API is accessible and working")
+        print("SUCCESS - API is accessible and working")
         print()
         response_json = response.json()
         response_text = response_json.get('content', [{}])[0].get('text', '')
@@ -83,12 +83,12 @@ try:
         print(f"Tokens used: {usage.get('input_tokens', 0)} input + {usage.get('output_tokens', 0)} output")
         
     elif response.status_code == 401:
-        print("❌ AUTHENTICATION FAILED")
+        print("ERROR: AUTHENTICATION FAILED")
         print("   The API key is invalid or expired")
         print("   Generate a new key at: https://console.anthropic.com/settings/keys")
         
     elif response.status_code == 429:
-        print("❌ RATE LIMIT OR INSUFFICIENT CREDITS")
+        print("ERROR: RATE LIMIT OR INSUFFICIENT CREDITS")
         print("   Either:")
         print("   1. You've hit the rate limit (wait and try again)")
         print("   2. You're out of API credits")
@@ -98,22 +98,22 @@ try:
         print("   Response:", response.text)
         
     elif response.status_code == 400:
-        print("❌ BAD REQUEST")
+        print("ERROR: BAD REQUEST")
         print("   The request format is invalid")
         print()
         print("   Response:", response.text)
         
     else:
-        print(f"❌ ERROR: Status {response.status_code}")
+        print(f"ERROR: Status {response.status_code}")
         print()
         print("Response:", response.text)
         
 except requests.exceptions.Timeout:
-    print("❌ TIMEOUT - API request took longer than 30 seconds")
+    print("ERROR: TIMEOUT - API request took longer than 30 seconds")
     print("   This might indicate network issues or API overload")
     
 except Exception as e:
-    print(f"❌ ERROR: {str(e)}")
+    print(f"ERROR: {str(e)}")
     
 print()
 print("=" * 80)
