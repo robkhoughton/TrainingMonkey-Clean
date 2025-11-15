@@ -1905,9 +1905,14 @@ ADAPTIVE COACHING LOGIC:
 - Mixed alignment: Address specific recurring deviations, provide clearer guidance
 - Low alignment: Simplify recommendations, focus on achievable targets over optimization
 
-Format: "ASSESSMENT: [Current metrics + autopsy learning] TODAY: [Specific workout with clear volume/intensity targets] MONITORING: [Key indicators to watch based on patterns]"
+FORMAT REQUIREMENTS (CRITICAL):
+- Use plain text only - NO markdown headers (##), NO bold (**), NO formatting
+- Start with "# TRAINING RECOMMENDATION 2025-11-16" as the ONLY header
+- Then provide: Brief assessment, specific workout details, key monitoring points
+- Keep each section to 2-3 sentences maximum for compact display
+- Total response: 150-200 words for better readability
 
-Keep response concise (150-200 words). Focus on actionable guidance that demonstrates learning from recent training patterns and user behavior.
+Write naturally and concisely. Focus on actionable guidance that demonstrates learning from recent patterns.
 """
 
     return prompt
