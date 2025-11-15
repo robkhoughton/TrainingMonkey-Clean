@@ -7,7 +7,7 @@
 - `app/db_utils.py` - Database utilities (schema creation, queries)
 - `app/llm_recommendations_module.py` - Existing LLM integration (extend for coach)
 - `app/coach_recommendations.py` - NEW: Weekly training program generation module
-- `app/ultrasignup_parser.py` - NEW: Screenshot parsing with Claude Vision API
+- `app/ultrasignup_parser.py` - NEW: Screenshot parsing with Claude Vision API (CREATED - 430 lines, validates images, calls Claude Vision API, extracts race data)
 - `sql/coach_schema.sql` - NEW: Database migration script for Coach tables (CREATED - race_goals, race_history, weekly_programs tables + user_settings modifications)
 
 ### Frontend Files
@@ -117,23 +117,23 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - Return: {prs: [{distance, time, race_name, date}], trend: 'improving'|'stable'|'declining', base_fitness: 'analysis text'}
   - [x] 2.11 Add comprehensive error handling and input validation to all endpoints
 
-- [ ] **3.0 Ultrasignup Screenshot Parsing System**
-  - [ ] 3.1 Create `app/ultrasignup_parser.py` module
-  - [ ] 3.2 Import required libraries: requests, base64, os (for API key)
-  - [ ] 3.3 Create `parse_ultrasignup_screenshot(image_bytes)` function:
+- [x] **3.0 Ultrasignup Screenshot Parsing System**
+  - [x] 3.1 Create `app/ultrasignup_parser.py` module
+  - [x] 3.2 Import required libraries: requests, base64, os (for API key)
+  - [x] 3.3 Create `parse_ultrasignup_screenshot(image_bytes)` function:
     - Encode image to base64
     - Build Claude Vision API request with prompt: "Extract race history from this ultrasignup.com screenshot. For each race return JSON: race_name, distance_miles, race_date (YYYY-MM-DD), finish_time_minutes. Return as JSON array."
-    - Set model to "claude-3-7-sonnet-20250219" with vision capability
+    - Set model to "claude-3-5-sonnet-20241022" with vision capability
     - POST to https://api.anthropic.com/v1/messages with image
     - Parse response JSON and extract race array
     - Handle API errors gracefully
-  - [ ] 3.4 Add validation function `validate_extracted_race(race_dict)`:
+  - [x] 3.4 Add validation function `validate_extracted_race(race_dict)`:
     - Check required fields exist
     - Validate distance_miles > 0
     - Validate date format YYYY-MM-DD
     - Validate finish_time_minutes > 0
     - Return validation errors if any
-  - [ ] 3.5 In `app/strava_app.py`, create `POST /api/coach/race-history/screenshot` endpoint:
+  - [x] 3.5 In `app/strava_app.py`, create `POST /api/coach/race-history/screenshot` endpoint:
     - Use @login_required decorator
     - Accept multipart/form-data file upload
     - Validate file type (PNG, JPG, JPEG, WebP)
@@ -142,13 +142,13 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - Call parse_ultrasignup_screenshot()
     - Validate each extracted race
     - Return JSON: {success: true, races: [...]} or {success: false, error: "..."}
-  - [ ] 3.6 Add error handling for:
+  - [x] 3.6 Add error handling for:
     - Claude API failures (return error message)
     - Invalid image formats
     - Parse errors (malformed JSON response)
     - Empty extractions (no races found)
-  - [ ] 3.7 Log all screenshot parsing attempts for debugging
-  - [ ] 3.8 Document API cost (~$0.01-0.02 per screenshot) in code comments
+  - [x] 3.7 Log all screenshot parsing attempts for debugging
+  - [x] 3.8 Document API cost (~$0.01-0.02 per screenshot) in code comments
 
 - [ ] **4.0 Training Schedule & Availability Management (Backend)**
   - [ ] 4.1 Create `GET /api/coach/training-schedule` endpoint in `app/strava_app.py`:
@@ -432,25 +432,25 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### 3.0 Ultrasignup Screenshot Parsing System
 
-- [ ] 3.1 Create `app/ultrasignup_parser.py` module
+- [x] 3.1 Create `app/ultrasignup_parser.py` module
   - Import necessary libraries (requests, base64, json, logging)
   - Set up module constants (API URL, max file size, allowed formats)
   - Import Anthropic API key from environment
 
-- [ ] 3.2 Implement image upload handling function
+- [x] 3.2 Implement image upload handling function
   - `validate_image_file(file)` - Check file size (<5MB), format (PNG/JPG/JPEG/WebP)
   - `encode_image_base64(file)` - Convert uploaded file to base64 for Claude API
   - Return validation errors if file invalid
 
-- [ ] 3.3 Implement Claude Vision API integration
+- [x] 3.3 Implement Claude Vision API integration
   - `parse_ultrasignup_screenshot(image_file)` - Main parsing function
   - Construct Claude Vision API request with image and prompt
   - Prompt: "Extract race history from this ultrasignup.com screenshot. For each race, return: race_name (string), distance_miles (float), race_date (YYYY-MM-DD), finish_time_minutes (integer). Return as JSON array."
-  - Use Claude model with vision capabilities (claude-3-sonnet or claude-3-opus)
+  - Use Claude model with vision capabilities (claude-3-5-sonnet-20241022)
   - Handle API errors gracefully
   - Parse JSON response from Claude
 
-- [ ] 3.4 Implement data extraction and validation
+- [x] 3.4 Implement data extraction and validation
   - Parse Claude's JSON response
   - Validate extracted race data structure
   - Convert distances to miles if needed (handle km/miles)
@@ -458,7 +458,7 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - Filter out races older than 5 years
   - Return structured array of race objects
 
-- [ ] 3.5 Create screenshot upload API endpoint in `strava_app.py`
+- [x] 3.5 Create screenshot upload API endpoint in `strava_app.py`
   - `POST /api/coach/race-history/screenshot` - Upload endpoint
   - Use `@login_required` decorator
   - Accept multipart/form-data with image file
@@ -467,14 +467,14 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - Include confidence/success indicators
   - Handle parsing failures gracefully (return error, allow fallback to manual entry)
 
-- [ ] 3.6 Implement error handling and logging
+- [x] 3.6 Implement error handling and logging
   - Log API calls to Claude Vision (for cost tracking)
   - Log parsing successes and failures
   - Provide meaningful error messages to frontend
   - Handle network errors, API rate limits, invalid images
   - Cost tracking: Log estimated cost per screenshot (~$0.01-0.02)
 
-- [ ] 3.7 Test screenshot parsing functionality
+- [x] 3.7 Test screenshot parsing functionality
   - Test with sample ultrasignup.com screenshots
   - Test with various image formats
   - Test with oversized files (should reject)

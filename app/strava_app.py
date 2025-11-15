@@ -10574,6 +10574,75 @@ def delete_race_history(history_id):
         }), 500
 
 
+@app.route('/api/coach/race-history/screenshot', methods=['POST'])
+@login_required
+def upload_race_history_screenshot():
+    """
+    Upload and parse ultrasignup.com screenshot to extract race history
+    Returns extracted races for user review before saving
+    """
+    try:
+        user_id = current_user.id
+        
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file uploaded'
+            }), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+        
+        # Read file data
+        file_data = file.read()
+        filename = file.filename
+        
+        logger.info(f"Processing screenshot upload for user {user_id}: {filename} ({len(file_data)} bytes)")
+        
+        # Import parser (lazy import to avoid startup issues if anthropic not installed)
+        try:
+            from ultrasignup_parser import parse_ultrasignup_screenshot
+        except ImportError as e:
+            logger.error(f"Failed to import ultrasignup_parser: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Screenshot parsing feature is not available. Please contact support.'
+            }), 500
+        
+        # Parse screenshot
+        result = parse_ultrasignup_screenshot(file_data, filename)
+        
+        if not result['success']:
+            return jsonify(result), 400
+        
+        # Log API usage and cost
+        api_cost = result.get('api_cost_estimate', 0)
+        logger.info(f"Screenshot parsed for user {user_id}: {result['total_valid']} valid races extracted (estimated cost: ${api_cost:.2f})")
+        
+        # Return extracted races for user review
+        return jsonify({
+            'success': True,
+            'races': result['races'],
+            'total_extracted': result.get('total_extracted', len(result['races'])),
+            'total_valid': result.get('total_valid', len(result['races'])),
+            'warnings': result.get('warnings', []),
+            'message': f"Extracted {len(result['races'])} race(s) from screenshot. Please review and edit before saving."
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error processing screenshot upload for user {current_user.id}: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Error processing screenshot: {str(e)}'
+        }), 500
+
+
 @app.route('/api/coach/race-analysis', methods=['GET'])
 @login_required
 def get_race_analysis():
