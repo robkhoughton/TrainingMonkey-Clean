@@ -59,6 +59,10 @@ def get_db_connection():
         logger.info("db_utils: Attempting PostgreSQL connection within context manager.")
         logger.info(f"db_utils: DATABASE_URL: {DATABASE_URL[:80]}...")
 
+        # Parse connection string to avoid URL parsing issues with database names
+        from urllib.parse import urlparse
+        parsed = urlparse(DATABASE_URL)
+        
         # For Cloud SQL, use a simpler approach
         if '/cloudsql/' in DATABASE_URL:
             # Parse the connection string for Cloud SQL
@@ -83,14 +87,28 @@ def get_db_connection():
                     password=password
                 )
             else:
-                print("Could not parse Cloud SQL connection string, trying direct connection")
-                logger.warning("db_utils: Could not parse Cloud SQL connection string, trying direct connection.")
-                conn = psycopg2.connect(DATABASE_URL)
+                print("Could not parse Cloud SQL connection string, using parsed parameters")
+                logger.warning("db_utils: Could not parse Cloud SQL connection string, using parsed parameters.")
+                # Use parsed parameters for Cloud SQL fallback
+                conn = psycopg2.connect(
+                    host=parsed.hostname,
+                    port=parsed.port or 5432,
+                    database=parsed.path.lstrip('/'),
+                    user=parsed.username,
+                    password=parsed.password
+                )
         else:
-            # Standard PostgreSQL connection
+            # Standard PostgreSQL connection - use parsed parameters
             print("Using standard PostgreSQL connection")
             logger.info("db_utils: Using standard PostgreSQL connection.")
-            conn = psycopg2.connect(DATABASE_URL)
+            # Parse and use individual parameters to avoid issues with database names containing hyphens
+            conn = psycopg2.connect(
+                host=parsed.hostname,
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/'),  # Remove leading slash
+                user=parsed.username,
+                password=parsed.password
+            )
 
         # Use RealDictCursor to get dictionary-like row access
         conn.cursor_factory = psycopg2.extras.RealDictCursor
@@ -117,13 +135,31 @@ def execute_query_direct(query, params=(), fetch=False):
     """Execute a database query using direct connection (fallback when pool is unavailable)."""
     import psycopg2
     from psycopg2.extras import RealDictCursor
+    from urllib.parse import urlparse
     
-    database_url = os.environ.get('DATABASE_URL')
+    database_url = clean_database_url(os.environ.get('DATABASE_URL'))
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable not found")
     
     try:
-        with psycopg2.connect(database_url, cursor_factory=RealDictCursor) as conn:
+        # Parse connection string to avoid URL parsing issues with database names
+        parsed = urlparse(database_url)
+        host = parsed.hostname
+        port = parsed.port or 5432
+        database = parsed.path.lstrip('/')  # Remove leading slash
+        user = parsed.username
+        password = parsed.password
+        
+        # Use individual parameters instead of connection string
+        # This ensures database names with hyphens (like 'train-d') are handled correctly
+        with psycopg2.connect(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            cursor_factory=RealDictCursor
+        ) as conn:
             with conn.cursor() as cursor:
                 # Convert ? placeholders to %s for PostgreSQL compatibility
                 if '?' in query:
