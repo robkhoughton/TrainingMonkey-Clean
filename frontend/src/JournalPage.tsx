@@ -457,10 +457,13 @@ const JournalPage: React.FC = () => {
                               </span>
                             </div>
                             <div style={{
-                              fontSize: '0.9rem',
-                              lineHeight: '1.6',
+                              fontSize: '0.85rem',
+                              lineHeight: '1.45',
                               color: '#374151',
-                              whiteSpace: 'pre-wrap'
+                              whiteSpace: 'pre-wrap',
+                              textAlign: 'left',
+                              maxHeight: '400px',
+                              overflowY: 'auto'
                             }}>
                               {entry.todays_decision}
                             </div>

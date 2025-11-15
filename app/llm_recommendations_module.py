@@ -2006,12 +2006,28 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         logger.info(
                             f"Using existing autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
 
-                    # STEP 2: Generate new decision for tomorrow with autopsy learning
-                    tomorrow = app_current_date + timedelta(days=1)
-                    tomorrow_str = tomorrow.strftime('%Y-%m-%d')
-
+                    # STEP 2: Generate new decision for the next needed date with autopsy learning
+                    # Check if we have a recommendation for today; if not, generate for today first
+                    check_today = execute_query(
+                        "SELECT target_date FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
+                        (user_id, app_current_date.strftime('%Y-%m-%d')),
+                        fetch=True
+                    )
+                    
+                    if not check_today or len(check_today) == 0:
+                        # No recommendation for today - generate for today first
+                        next_date = app_current_date
+                        logger.info(f"No recommendation found for today ({app_current_date}), generating for today first")
+                    else:
+                        # Have today's recommendation - generate for tomorrow
+                        next_date = app_current_date + timedelta(days=1)
+                        logger.info(f"Found recommendation for today, generating for tomorrow")
+                    
+                    next_date_str = next_date.strftime('%Y-%m-%d')
+                    tomorrow_str = next_date_str  # For backward compatibility with existing code
+                    
                     # Generate new autopsy-informed decision
-                    new_decision = generate_autopsy_informed_daily_decision(user_id, tomorrow)
+                    new_decision = generate_autopsy_informed_daily_decision(user_id, next_date)
 
                     if new_decision:
                         # Get current metrics for snapshot
@@ -2058,7 +2074,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                             # INSERT new recommendation
                             recommendation_data = {
                                 'generation_date': app_current_date.strftime('%Y-%m-%d'),
-                                'target_date': tomorrow_str,
+                                'target_date': next_date_str,
                                 'valid_until': None,
                                 'data_start_date': app_current_date.strftime('%Y-%m-%d'),
                                 'data_end_date': app_current_date.strftime('%Y-%m-%d'),
@@ -2075,13 +2091,13 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
 
                             recommendation_data = fix_dates_for_json(recommendation_data)
                             save_llm_recommendation(recommendation_data)
-                            logger.info(f"Generated new decision for tomorrow ({tomorrow_str}) incorporating autopsy learning")
+                            logger.info(f"Generated new decision for {next_date_str} incorporating autopsy learning")
 
                         return {
                             'autopsy_generated': True,
                             'alignment_score': autopsy_result['alignment_score'],
                             'decision_updated': True,
-                            'next_recommendation_date': tomorrow_str
+                            'next_recommendation_date': next_date_str
                         }
 
         return {
