@@ -2003,6 +2003,7 @@ def init_database():
         }), 500
 
 
+@login_required
 @app.route('/api/training-data-raw', methods=['GET'])
 def get_training_data_raw():
     """Get raw training data without aggregation for debugging"""
@@ -2012,10 +2013,11 @@ def get_training_data_raw():
             SELECT date, activity_id, name, type, total_load_miles, trimp, 
                    acute_chronic_ratio, trimp_acute_chronic_ratio, normalized_divergence
             FROM activities 
-            WHERE activity_id > 0
+            WHERE user_id = %s AND activity_id > 0
             ORDER BY date DESC, activity_id ASC
             LIMIT 20
             """,
+            (current_user.id,),
             fetch=True
         )
 
