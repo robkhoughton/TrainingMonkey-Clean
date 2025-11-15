@@ -406,7 +406,7 @@ def create_recent_activities_summary(activities):
     return "\n".join(summary_lines)
 
 
-def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE):
+def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=2000):
     """Call the Anthropic API with the enhanced prompt."""
     try:
         api_key = get_api_key()
@@ -423,23 +423,35 @@ def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_T
                 {"role": "user", "content": prompt}
             ],
             "temperature": temperature,
-            "max_tokens": 2000  # Increased for more detailed responses
+            "max_tokens": max_tokens
         }
 
-        logger.info(f"Calling Anthropic API with model {model}")
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=data)
+        logger.info(f"Calling Anthropic API with model {model}, max_tokens={max_tokens}, temperature={temperature}")
+        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=data, timeout=30)
 
         if response.status_code != 200:
-            logger.error(f"API call failed with status code {response.status_code}: {response.text}")
-            raise Exception(f"API call failed: {response.status_code} - {response.text}")
+            error_msg = f"API call failed with status code {response.status_code}: {response.text}"
+            logger.error(error_msg)
+            # Log specific error details for debugging
+            if response.status_code == 401:
+                logger.error("Authentication failed - check API key")
+            elif response.status_code == 429:
+                logger.error("Rate limit exceeded or insufficient credits")
+            elif response.status_code == 400:
+                logger.error(f"Bad request - check prompt format: {response.text}")
+            raise Exception(error_msg)
 
         response_json = response.json()
         response_text = response_json.get('content', [{}])[0].get('text', '')
-
+        
+        logger.info(f"API call successful, response length: {len(response_text)} chars")
         return response_text
 
+    except requests.exceptions.Timeout:
+        logger.error("API request timed out after 30 seconds")
+        raise
     except Exception as e:
-        logger.error(f"Error calling Anthropic API: {str(e)}")
+        logger.error(f"Error calling Anthropic API: {str(e)}", exc_info=True)
         raise
 
 
@@ -1299,8 +1311,15 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
             tone_instructions  # Add this parameter
         )
 
-        # Call Anthropic API
-        response = call_anthropic_api(prompt)
+        # Get specialized settings for autopsy analysis from config
+        autopsy_settings = CONFIG.get('specialized_prompts', {}).get('autopsy_analysis', {})
+        autopsy_temperature = autopsy_settings.get('temperature', 0.25)
+        autopsy_max_tokens = autopsy_settings.get('max_tokens', 3000)
+        
+        logger.info(f"Calling API for autopsy with temperature={autopsy_temperature}, max_tokens={autopsy_max_tokens}")
+        
+        # Call Anthropic API with autopsy-specific settings
+        response = call_anthropic_api(prompt, temperature=autopsy_temperature, max_tokens=autopsy_max_tokens)
 
         if not response:
             logger.error("No response from Anthropic API for enhanced autopsy generation")
@@ -1312,7 +1331,8 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         return autopsy_data
 
     except Exception as e:
-        logger.error(f"Error generating enhanced autopsy: {str(e)}")
+        logger.error(f"Error generating enhanced autopsy: {str(e)}", exc_info=True)
+        logger.error(f"Falling back to basic autopsy due to error")
         return generate_basic_autopsy_fallback_enhanced(prescribed_action, actual_activities, observations)
 
 
