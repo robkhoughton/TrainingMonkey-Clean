@@ -1906,11 +1906,11 @@ ADAPTIVE COACHING LOGIC:
 - Low alignment: Simplify recommendations, focus on achievable targets over optimization
 
 FORMAT REQUIREMENTS (CRITICAL):
-- Use plain text only - NO markdown headers (##), NO bold (**), NO formatting
-- Start with "# TRAINING RECOMMENDATION 2025-11-16" as the ONLY header
-- Then provide: Brief assessment, specific workout details, key monitoring points
-- Keep each section to 2-3 sentences maximum for compact display
-- Total response: 150-200 words for better readability
+- Use plain text only - NO markdown headers (##), NO bold (**), NO section titles
+- Frontend already adds header, so start directly with the assessment
+- Structure: Assessment paragraph, workout details paragraph, monitoring paragraph
+- Keep each paragraph to 2-3 sentences maximum for compact display
+- Total response: 150-200 words for better readability alongside autopsy
 
 Write naturally and concisely. Focus on actionable guidance that demonstrates learning from recent patterns.
 """
