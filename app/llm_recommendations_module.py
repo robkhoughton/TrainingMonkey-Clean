@@ -21,7 +21,7 @@ from db_utils import (
     save_llm_recommendation,
     get_latest_recommendation,
     recommendation_needs_update,
-    clear_old_recommendations,
+    cleanup_old_recommendations,  # Updated from deprecated clear_old_recommendations
     get_last_activity_date
 )
 

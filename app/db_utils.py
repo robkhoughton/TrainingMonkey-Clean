@@ -43,10 +43,8 @@ logger.info(f"db_utils: Using PostgreSQL. URL: {DATABASE_URL[:50]}...")
 DB_FILE = None
 USE_POSTGRES = True
 
-def configure_database(custom_path=None):
-    """Configure the database path - PostgreSQL only (legacy function for compatibility)"""
-    logger.warning("db_utils: configure_database called but PostgreSQL doesn't use file paths")
-    return None
+# configure_database() removed - PostgreSQL doesn't use file paths
+# This was a legacy compatibility function that was never actually called
 
 
 @contextmanager
@@ -663,54 +661,6 @@ def recommendation_needs_update(user_id=None):
         return True
 
 
-# Replace the existing clear_old_recommendations function with this version:
-
-def clear_old_recommendations(keep_count=10, user_id=None):
-    """
-    DEPRECATED: Use cleanup_old_recommendations() instead.
-    
-    This function is kept for backward compatibility but should not be used.
-    Use cleanup_old_recommendations(user_id, keep_days=14) for date-based retention.
-    
-    Old behavior: Keeps N most recent recommendations by generation_date (not target_date).
-    """
-    logger.warning("clear_old_recommendations() is DEPRECATED. Use cleanup_old_recommendations() instead.")
-    
-    if user_id is None:
-        raise ValueError("user_id is required for multi-user support")
-
-    try:
-        # Get count of current recommendations for this user
-        count_result = execute_query("SELECT COUNT(*) FROM llm_recommendations WHERE user_id = %s", (user_id,),
-                                     fetch=True)
-        if count_result and count_result[0]:
-            if hasattr(count_result[0], 'keys'):
-                total_count = count_result[0].get('count', 0) or count_result[0].get('COUNT(*)', 0)
-            else:
-                total_count = count_result[0][0]
-        else:
-            total_count = 0
-
-        if total_count > keep_count:
-            # Delete oldest recommendations for this user
-            execute_query(
-                """
-                DELETE FROM llm_recommendations 
-                WHERE user_id = %s AND id NOT IN (
-                    SELECT id FROM llm_recommendations 
-                    WHERE user_id = %s
-                    ORDER BY generation_date DESC 
-                    LIMIT %s
-                )
-                """,
-                (user_id, user_id, keep_count)
-            )
-            logger.info(f"Cleaned up old recommendations for user {user_id}, kept {keep_count} most recent")
-
-    except Exception as e:
-        logger.error(f"Error cleaning up recommendations for user {user_id}: {str(e)}")
-
-
 def migrate_user_settings_schema():
     """
     Migrate user_settings table to add legal compliance tracking columns
@@ -1176,14 +1126,13 @@ __all__ = [
     'execute_batch_queries',
     'initialize_db',
     'validate_database',
-    'configure_database',
     'DATABASE_URL',
     'DB_FILE',  # Legacy compatibility variable
     'USE_POSTGRES',  # Legacy compatibility variable
     'save_llm_recommendation',
     'get_latest_recommendation',
     'recommendation_needs_update',
-    'clear_old_recommendations',
+    'cleanup_old_recommendations',  # Use this instead of removed clear_old_recommendations
     'get_last_activity_date',
     'migrate_user_settings_schema',
     'migrate_legal_compliance_table',
