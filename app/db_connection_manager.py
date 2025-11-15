@@ -41,13 +41,30 @@ class DatabaseConnectionManager:
         """Initialize connection pool with PostgreSQL-specific settings"""
         if self.pool is None:
             try:
+                # Parse connection string to avoid URL parsing issues
+                from urllib.parse import urlparse
+                parsed = urlparse(dsn)
+                
+                # Extract connection parameters
+                host = parsed.hostname
+                port = parsed.port or 5432
+                database = parsed.path.lstrip('/')  # Remove leading slash
+                user = parsed.username
+                password = parsed.password
+                
+                # Use individual parameters instead of DSN string
+                # This avoids issues with special characters in database names
                 self.pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=minconn,
                     maxconn=maxconn,
-                    dsn=dsn
+                    host=host,
+                    port=port,
+                    database=database,
+                    user=user,
+                    password=password
                 )
                 self.logger.info(f"Connection pool initialized: {minconn}-{maxconn} connections")
-                self.logger.info(f"Database URL: {dsn[:50]}...")
+                self.logger.info(f"Database: {database} on {host}:{port}")
                 return True
             except Exception as e:
                 self.logger.error(f"Failed to initialize connection pool: {str(e)}")
