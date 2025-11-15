@@ -9776,6 +9776,1037 @@ def proactive_token_refresh():
         }), 500
 
 # =============================================================================
+# COACH PAGE API ENDPOINTS
+# =============================================================================
+# API endpoints for YTM Coach page features: race goals, race history, training schedules
+
+@app.route('/api/coach/race-goals', methods=['GET'])
+@login_required
+def get_race_goals():
+    """Get all race goals for current user, ordered by race date"""
+    try:
+        user_id = current_user.id
+        logger.info(f"Fetching race goals for user {user_id}")
+        
+        # Query race goals
+        race_goals = db_utils.execute_query(
+            """
+            SELECT id, user_id, race_name, race_date, race_type, priority, 
+                   target_time, notes, created_at, updated_at
+            FROM race_goals 
+            WHERE user_id = %s 
+            ORDER BY race_date ASC
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        # Convert to list of dicts and serialize dates
+        goals_list = []
+        if race_goals:
+            for goal in race_goals:
+                goal_dict = dict(goal) if hasattr(goal, 'keys') else {
+                    'id': goal[0],
+                    'user_id': goal[1],
+                    'race_name': goal[2],
+                    'race_date': goal[3],
+                    'race_type': goal[4],
+                    'priority': goal[5],
+                    'target_time': goal[6],
+                    'notes': goal[7],
+                    'created_at': goal[8],
+                    'updated_at': goal[9]
+                }
+                
+                # Serialize dates
+                if isinstance(goal_dict.get('race_date'), date):
+                    goal_dict['race_date'] = goal_dict['race_date'].strftime('%Y-%m-%d')
+                if isinstance(goal_dict.get('created_at'), datetime):
+                    goal_dict['created_at'] = goal_dict['created_at'].isoformat()
+                if isinstance(goal_dict.get('updated_at'), datetime):
+                    goal_dict['updated_at'] = goal_dict['updated_at'].isoformat()
+                    
+                goals_list.append(goal_dict)
+        
+        logger.info(f"Found {len(goals_list)} race goals for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'race_goals': goals_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching race goals for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-goals', methods=['POST'])
+@login_required
+def create_race_goal():
+    """Create a new race goal"""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Validate required fields
+        race_name = data.get('race_name')
+        race_date = data.get('race_date')
+        priority = data.get('priority')
+        
+        if not race_name:
+            return jsonify({'success': False, 'error': 'race_name is required'}), 400
+        if not race_date:
+            return jsonify({'success': False, 'error': 'race_date is required'}), 400
+        if not priority:
+            return jsonify({'success': False, 'error': 'priority is required'}), 400
+        
+        # Validate race_date is future date (allow up to 7 days in past for flexibility)
+        try:
+            race_date_obj = datetime.strptime(race_date, '%Y-%m-%d').date()
+            today = get_app_current_date()
+            days_until_race = (race_date_obj - today).days
+            
+            if days_until_race < -7:
+                return jsonify({
+                    'success': False, 
+                    'error': f'Race date must be in the future or within the last 7 days (race is {abs(days_until_race)} days in the past)'
+                }), 400
+        except ValueError:
+            return jsonify({'success': False, 'error': 'race_date must be in format YYYY-MM-DD'}), 400
+        
+        # Validate priority
+        if priority not in ['A', 'B', 'C']:
+            return jsonify({'success': False, 'error': 'priority must be A, B, or C'}), 400
+        
+        # Enforce only one A race at a time
+        if priority == 'A':
+            existing_a_race = db_utils.execute_query(
+                "SELECT id FROM race_goals WHERE user_id = %s AND priority = 'A'",
+                (user_id,),
+                fetch=True
+            )
+            if existing_a_race:
+                return jsonify({
+                    'success': False, 
+                    'error': 'You can only have one A race at a time. Please change your existing A race to B or C first.'
+                }), 400
+        
+        # Optional fields
+        race_type = data.get('race_type')
+        target_time = data.get('target_time')
+        notes = data.get('notes')
+        
+        logger.info(f"Creating race goal for user {user_id}: {race_name} ({priority})")
+        
+        # Insert new race goal
+        result = db_utils.execute_query(
+            """
+            INSERT INTO race_goals 
+                (user_id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at
+            """,
+            (user_id, race_name, race_date, race_type, priority, target_time, notes),
+            fetch=True
+        )
+        
+        if result and len(result) > 0:
+            goal = result[0]
+            goal_dict = dict(goal) if hasattr(goal, 'keys') else {
+                'id': goal[0],
+                'race_name': goal[1],
+                'race_date': goal[2],
+                'race_type': goal[3],
+                'priority': goal[4],
+                'target_time': goal[5],
+                'notes': goal[6],
+                'created_at': goal[7],
+                'updated_at': goal[8]
+            }
+            
+            # Serialize dates
+            if isinstance(goal_dict.get('race_date'), date):
+                goal_dict['race_date'] = goal_dict['race_date'].strftime('%Y-%m-%d')
+            if isinstance(goal_dict.get('created_at'), datetime):
+                goal_dict['created_at'] = goal_dict['created_at'].isoformat()
+            if isinstance(goal_dict.get('updated_at'), datetime):
+                goal_dict['updated_at'] = goal_dict['updated_at'].isoformat()
+            
+            logger.info(f"Successfully created race goal {goal_dict['id']} for user {user_id}")
+            
+            return jsonify({
+                'success': True,
+                'race_goal': goal_dict
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create race goal'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating race goal for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-goals/<int:goal_id>', methods=['PUT'])
+@login_required
+def update_race_goal(goal_id):
+    """Update an existing race goal"""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Verify goal belongs to current user
+        existing_goal = db_utils.execute_query(
+            "SELECT id, priority FROM race_goals WHERE id = %s AND user_id = %s",
+            (goal_id, user_id),
+            fetch=True
+        )
+        
+        if not existing_goal:
+            return jsonify({'success': False, 'error': 'Race goal not found'}), 404
+        
+        # Get current priority
+        current_priority = existing_goal[0]['priority'] if hasattr(existing_goal[0], 'keys') else existing_goal[0][1]
+        
+        # Validate new priority if provided
+        new_priority = data.get('priority', current_priority)
+        if new_priority not in ['A', 'B', 'C']:
+            return jsonify({'success': False, 'error': 'priority must be A, B, or C'}), 400
+        
+        # If changing to A, enforce only one A race
+        if new_priority == 'A' and current_priority != 'A':
+            existing_a_race = db_utils.execute_query(
+                "SELECT id FROM race_goals WHERE user_id = %s AND priority = 'A' AND id != %s",
+                (user_id, goal_id),
+                fetch=True
+            )
+            if existing_a_race:
+                return jsonify({
+                    'success': False,
+                    'error': 'You can only have one A race at a time. Please change your existing A race to B or C first.'
+                }), 400
+        
+        # Validate race_date if being updated (allow up to 7 days in past for flexibility)
+        if 'race_date' in data:
+            try:
+                race_date_obj = datetime.strptime(data['race_date'], '%Y-%m-%d').date()
+                today = get_app_current_date()
+                days_until_race = (race_date_obj - today).days
+                
+                if days_until_race < -7:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Race date must be in the future or within the last 7 days (race is {abs(days_until_race)} days in the past)'
+                    }), 400
+            except ValueError:
+                return jsonify({'success': False, 'error': 'race_date must be in format YYYY-MM-DD'}), 400
+        
+        # Build update query dynamically for provided fields
+        update_fields = []
+        update_values = []
+        
+        if 'race_name' in data:
+            if not data['race_name']:
+                return jsonify({'success': False, 'error': 'race_name cannot be empty'}), 400
+            update_fields.append('race_name = %s')
+            update_values.append(data['race_name'])
+        if 'race_date' in data:
+            update_fields.append('race_date = %s')
+            update_values.append(data['race_date'])
+        if 'race_type' in data:
+            update_fields.append('race_type = %s')
+            update_values.append(data['race_type'])
+        if 'priority' in data:
+            update_fields.append('priority = %s')
+            update_values.append(new_priority)
+        if 'target_time' in data:
+            update_fields.append('target_time = %s')
+            update_values.append(data['target_time'])
+        if 'notes' in data:
+            update_fields.append('notes = %s')
+            update_values.append(data['notes'])
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+        
+        update_fields.append('updated_at = NOW()')
+        update_values.extend([goal_id, user_id])
+        
+        logger.info(f"Updating race goal {goal_id} for user {user_id}")
+        
+        # Execute update
+        query = f"""
+            UPDATE race_goals 
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND user_id = %s
+            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at
+        """
+        
+        result = db_utils.execute_query(query, tuple(update_values), fetch=True)
+        
+        if result and len(result) > 0:
+            goal = result[0]
+            goal_dict = dict(goal) if hasattr(goal, 'keys') else {
+                'id': goal[0],
+                'race_name': goal[1],
+                'race_date': goal[2],
+                'race_type': goal[3],
+                'priority': goal[4],
+                'target_time': goal[5],
+                'notes': goal[6],
+                'created_at': goal[7],
+                'updated_at': goal[8]
+            }
+            
+            # Serialize dates
+            if isinstance(goal_dict.get('race_date'), date):
+                goal_dict['race_date'] = goal_dict['race_date'].strftime('%Y-%m-%d')
+            if isinstance(goal_dict.get('created_at'), datetime):
+                goal_dict['created_at'] = goal_dict['created_at'].isoformat()
+            if isinstance(goal_dict.get('updated_at'), datetime):
+                goal_dict['updated_at'] = goal_dict['updated_at'].isoformat()
+            
+            logger.info(f"Successfully updated race goal {goal_id} for user {user_id}")
+            
+            return jsonify({
+                'success': True,
+                'race_goal': goal_dict
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update race goal'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating race goal {goal_id} for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-goals/<int:goal_id>', methods=['DELETE'])
+@login_required
+def delete_race_goal(goal_id):
+    """Delete a race goal"""
+    try:
+        user_id = current_user.id
+        
+        logger.info(f"Deleting race goal {goal_id} for user {user_id}")
+        
+        # Delete with user_id filter for security
+        result = db_utils.execute_query(
+            "DELETE FROM race_goals WHERE id = %s AND user_id = %s RETURNING id",
+            (goal_id, user_id),
+            fetch=True
+        )
+        
+        if result and len(result) > 0:
+            logger.info(f"Successfully deleted race goal {goal_id} for user {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Race goal deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Race goal not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting race goal {goal_id} for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-history', methods=['GET'])
+@login_required
+def get_race_history():
+    """Get all race history for current user (last 5 years), ordered by date DESC"""
+    try:
+        user_id = current_user.id
+        logger.info(f"Fetching race history for user {user_id}")
+        
+        # Query race history with 5-year filter (enforced by DB constraint)
+        race_history = db_utils.execute_query(
+            """
+            SELECT id, user_id, race_date, race_name, distance_miles, 
+                   finish_time_minutes, created_at, updated_at
+            FROM race_history 
+            WHERE user_id = %s 
+              AND race_date >= CURRENT_DATE - INTERVAL '5 years'
+            ORDER BY race_date DESC
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        # Convert to list of dicts and serialize dates
+        history_list = []
+        if race_history:
+            for race in race_history:
+                race_dict = dict(race) if hasattr(race, 'keys') else {
+                    'id': race[0],
+                    'user_id': race[1],
+                    'race_date': race[2],
+                    'race_name': race[3],
+                    'distance_miles': race[4],
+                    'finish_time_minutes': race[5],
+                    'created_at': race[6],
+                    'updated_at': race[7]
+                }
+                
+                # Serialize dates
+                if isinstance(race_dict.get('race_date'), date):
+                    race_dict['race_date'] = race_dict['race_date'].strftime('%Y-%m-%d')
+                if isinstance(race_dict.get('created_at'), datetime):
+                    race_dict['created_at'] = race_dict['created_at'].isoformat()
+                if isinstance(race_dict.get('updated_at'), datetime):
+                    race_dict['updated_at'] = race_dict['updated_at'].isoformat()
+                    
+                history_list.append(race_dict)
+        
+        logger.info(f"Found {len(history_list)} race history records for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'race_history': history_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching race history for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-history', methods=['POST'])
+@login_required
+def create_race_history():
+    """Create a new race history record"""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Validate required fields
+        race_name = data.get('race_name')
+        race_date = data.get('race_date')
+        distance_miles = data.get('distance_miles')
+        finish_time_minutes = data.get('finish_time_minutes')
+        
+        if not race_name:
+            return jsonify({'success': False, 'error': 'race_name is required'}), 400
+        if not race_date:
+            return jsonify({'success': False, 'error': 'race_date is required'}), 400
+        if distance_miles is None:
+            return jsonify({'success': False, 'error': 'distance_miles is required'}), 400
+        if finish_time_minutes is None:
+            return jsonify({'success': False, 'error': 'finish_time_minutes is required'}), 400
+        
+        # Validate distance and time are positive
+        try:
+            distance_miles = float(distance_miles)
+            if distance_miles <= 0:
+                return jsonify({'success': False, 'error': 'distance_miles must be greater than 0'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'distance_miles must be a valid number'}), 400
+        
+        try:
+            finish_time_minutes = int(finish_time_minutes)
+            if finish_time_minutes <= 0:
+                return jsonify({'success': False, 'error': 'finish_time_minutes must be greater than 0'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'finish_time_minutes must be a valid integer'}), 400
+        
+        # Validate race_date is within last 5 years
+        try:
+            race_date_obj = datetime.strptime(race_date, '%Y-%m-%d').date()
+            today = get_app_current_date()
+            five_years_ago = today - timedelta(days=5*365)
+            
+            if race_date_obj < five_years_ago:
+                return jsonify({
+                    'success': False,
+                    'error': 'Race date must be within the last 5 years'
+                }), 400
+            if race_date_obj > today:
+                return jsonify({
+                    'success': False,
+                    'error': 'Race date cannot be in the future (use race goals for upcoming races)'
+                }), 400
+        except ValueError:
+            return jsonify({'success': False, 'error': 'race_date must be in format YYYY-MM-DD'}), 400
+        
+        logger.info(f"Creating race history for user {user_id}: {race_name} ({distance_miles} mi)")
+        
+        # Insert new race history
+        result = db_utils.execute_query(
+            """
+            INSERT INTO race_history 
+                (user_id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at
+            """,
+            (user_id, race_date, race_name, distance_miles, finish_time_minutes),
+            fetch=True
+        )
+        
+        if result and len(result) > 0:
+            race = result[0]
+            race_dict = dict(race) if hasattr(race, 'keys') else {
+                'id': race[0],
+                'race_date': race[1],
+                'race_name': race[2],
+                'distance_miles': race[3],
+                'finish_time_minutes': race[4],
+                'created_at': race[5],
+                'updated_at': race[6]
+            }
+            
+            # Serialize dates
+            if isinstance(race_dict.get('race_date'), date):
+                race_dict['race_date'] = race_dict['race_date'].strftime('%Y-%m-%d')
+            if isinstance(race_dict.get('created_at'), datetime):
+                race_dict['created_at'] = race_dict['created_at'].isoformat()
+            if isinstance(race_dict.get('updated_at'), datetime):
+                race_dict['updated_at'] = race_dict['updated_at'].isoformat()
+            
+            logger.info(f"Successfully created race history {race_dict['id']} for user {user_id}")
+            
+            return jsonify({
+                'success': True,
+                'race_history': race_dict
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create race history'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating race history for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-history/bulk', methods=['POST'])
+@login_required
+def create_race_history_bulk():
+    """Bulk insert multiple race history records (for screenshot parsing)"""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Expect array of races
+        races = data.get('races')
+        if not races or not isinstance(races, list):
+            return jsonify({'success': False, 'error': 'races array is required'}), 400
+        
+        if len(races) == 0:
+            return jsonify({'success': False, 'error': 'races array cannot be empty'}), 400
+        
+        if len(races) > 100:
+            return jsonify({'success': False, 'error': 'Cannot insert more than 100 races at once'}), 400
+        
+        logger.info(f"Bulk inserting {len(races)} race history records for user {user_id}")
+        
+        # Validate each race and prepare data
+        validated_races = []
+        errors = []
+        
+        for idx, race in enumerate(races):
+            race_errors = []
+            
+            # Validate required fields
+            race_name = race.get('race_name')
+            race_date = race.get('race_date')
+            distance_miles = race.get('distance_miles')
+            finish_time_minutes = race.get('finish_time_minutes')
+            
+            if not race_name:
+                race_errors.append(f'Race {idx+1}: race_name is required')
+            if not race_date:
+                race_errors.append(f'Race {idx+1}: race_date is required')
+            if distance_miles is None:
+                race_errors.append(f'Race {idx+1}: distance_miles is required')
+            if finish_time_minutes is None:
+                race_errors.append(f'Race {idx+1}: finish_time_minutes is required')
+            
+            # Validate types and values
+            try:
+                distance_miles = float(distance_miles)
+                if distance_miles <= 0:
+                    race_errors.append(f'Race {idx+1}: distance_miles must be greater than 0')
+            except (ValueError, TypeError):
+                race_errors.append(f'Race {idx+1}: distance_miles must be a valid number')
+                distance_miles = None
+            
+            try:
+                finish_time_minutes = int(finish_time_minutes)
+                if finish_time_minutes <= 0:
+                    race_errors.append(f'Race {idx+1}: finish_time_minutes must be greater than 0')
+            except (ValueError, TypeError):
+                race_errors.append(f'Race {idx+1}: finish_time_minutes must be a valid integer')
+                finish_time_minutes = None
+            
+            # Validate date
+            try:
+                race_date_obj = datetime.strptime(race_date, '%Y-%m-%d').date()
+                today = get_app_current_date()
+                five_years_ago = today - timedelta(days=5*365)
+                
+                if race_date_obj < five_years_ago:
+                    race_errors.append(f'Race {idx+1}: Race date must be within the last 5 years')
+                if race_date_obj > today:
+                    race_errors.append(f'Race {idx+1}: Race date cannot be in the future')
+            except (ValueError, TypeError):
+                race_errors.append(f'Race {idx+1}: race_date must be in format YYYY-MM-DD')
+                race_date = None
+            
+            if race_errors:
+                errors.extend(race_errors)
+            else:
+                validated_races.append((user_id, race_date, race_name, distance_miles, finish_time_minutes))
+        
+        # If there are validation errors, return them
+        if errors:
+            return jsonify({
+                'success': False,
+                'error': 'Validation errors',
+                'details': errors
+            }), 400
+        
+        # Bulk insert using executemany pattern
+        inserted_count = 0
+        try:
+            conn = db_utils.get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.executemany(
+                """
+                INSERT INTO race_history 
+                    (user_id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                """,
+                validated_races
+            )
+            
+            inserted_count = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Successfully bulk inserted {inserted_count} race history records for user {user_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Successfully inserted {inserted_count} races',
+                'count': inserted_count
+            }), 201
+            
+        except Exception as e:
+            logger.error(f"Error during bulk insert for user {user_id}: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f'Database error during bulk insert: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error in bulk race history creation for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-history/<int:history_id>', methods=['PUT'])
+@login_required
+def update_race_history(history_id):
+    """Update an existing race history record"""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Verify race history belongs to current user
+        existing_race = db_utils.execute_query(
+            "SELECT id FROM race_history WHERE id = %s AND user_id = %s",
+            (history_id, user_id),
+            fetch=True
+        )
+        
+        if not existing_race:
+            return jsonify({'success': False, 'error': 'Race history record not found'}), 404
+        
+        # Build update query dynamically for provided fields
+        update_fields = []
+        update_values = []
+        
+        if 'race_name' in data:
+            if not data['race_name']:
+                return jsonify({'success': False, 'error': 'race_name cannot be empty'}), 400
+            update_fields.append('race_name = %s')
+            update_values.append(data['race_name'])
+        
+        if 'race_date' in data:
+            # Validate date
+            try:
+                race_date_obj = datetime.strptime(data['race_date'], '%Y-%m-%d').date()
+                today = get_app_current_date()
+                five_years_ago = today - timedelta(days=5*365)
+                
+                if race_date_obj < five_years_ago:
+                    return jsonify({'success': False, 'error': 'Race date must be within the last 5 years'}), 400
+                if race_date_obj > today:
+                    return jsonify({'success': False, 'error': 'Race date cannot be in the future'}), 400
+                
+                update_fields.append('race_date = %s')
+                update_values.append(data['race_date'])
+            except ValueError:
+                return jsonify({'success': False, 'error': 'race_date must be in format YYYY-MM-DD'}), 400
+        
+        if 'distance_miles' in data:
+            try:
+                distance = float(data['distance_miles'])
+                if distance <= 0:
+                    return jsonify({'success': False, 'error': 'distance_miles must be greater than 0'}), 400
+                update_fields.append('distance_miles = %s')
+                update_values.append(distance)
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'distance_miles must be a valid number'}), 400
+        
+        if 'finish_time_minutes' in data:
+            try:
+                finish_time = int(data['finish_time_minutes'])
+                if finish_time <= 0:
+                    return jsonify({'success': False, 'error': 'finish_time_minutes must be greater than 0'}), 400
+                update_fields.append('finish_time_minutes = %s')
+                update_values.append(finish_time)
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'finish_time_minutes must be a valid integer'}), 400
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+        
+        update_fields.append('updated_at = NOW()')
+        update_values.extend([history_id, user_id])
+        
+        logger.info(f"Updating race history {history_id} for user {user_id}")
+        
+        # Execute update
+        query = f"""
+            UPDATE race_history 
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND user_id = %s
+            RETURNING id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at
+        """
+        
+        result = db_utils.execute_query(query, tuple(update_values), fetch=True)
+        
+        if result and len(result) > 0:
+            race = result[0]
+            race_dict = dict(race) if hasattr(race, 'keys') else {
+                'id': race[0],
+                'race_date': race[1],
+                'race_name': race[2],
+                'distance_miles': race[3],
+                'finish_time_minutes': race[4],
+                'created_at': race[5],
+                'updated_at': race[6]
+            }
+            
+            # Serialize dates
+            if isinstance(race_dict.get('race_date'), date):
+                race_dict['race_date'] = race_dict['race_date'].strftime('%Y-%m-%d')
+            if isinstance(race_dict.get('created_at'), datetime):
+                race_dict['created_at'] = race_dict['created_at'].isoformat()
+            if isinstance(race_dict.get('updated_at'), datetime):
+                race_dict['updated_at'] = race_dict['updated_at'].isoformat()
+            
+            logger.info(f"Successfully updated race history {history_id} for user {user_id}")
+            
+            return jsonify({
+                'success': True,
+                'race_history': race_dict
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update race history'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating race history {history_id} for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-history/<int:history_id>', methods=['DELETE'])
+@login_required
+def delete_race_history(history_id):
+    """Delete a race history record"""
+    try:
+        user_id = current_user.id
+        
+        logger.info(f"Deleting race history {history_id} for user {user_id}")
+        
+        # Delete with user_id filter for security
+        result = db_utils.execute_query(
+            "DELETE FROM race_history WHERE id = %s AND user_id = %s RETURNING id",
+            (history_id, user_id),
+            fetch=True
+        )
+        
+        if result and len(result) > 0:
+            logger.info(f"Successfully deleted race history {history_id} for user {user_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Race history deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Race history record not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting race history {history_id} for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/race-analysis', methods=['GET'])
+@login_required
+def get_race_analysis():
+    """
+    Calculate and return race analysis:
+    - Personal Records (PRs) at each distance
+    - Performance trend (improving/stable/declining)
+    - Base fitness assessment
+    """
+    try:
+        user_id = current_user.id
+        logger.info(f"Calculating race analysis for user {user_id}")
+        
+        # Fetch all race history
+        race_history = db_utils.execute_query(
+            """
+            SELECT race_date, race_name, distance_miles, finish_time_minutes
+            FROM race_history 
+            WHERE user_id = %s 
+              AND race_date >= CURRENT_DATE - INTERVAL '5 years'
+            ORDER BY race_date DESC
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        if not race_history or len(race_history) == 0:
+            return jsonify({
+                'success': True,
+                'prs': [],
+                'trend': 'no_data',
+                'trend_description': 'No race history available',
+                'base_fitness': 'No race history to analyze',
+                'total_races': 0
+            })
+        
+        # Convert to list of dicts
+        races = []
+        for race in race_history:
+            race_dict = dict(race) if hasattr(race, 'keys') else {
+                'race_date': race[0],
+                'race_name': race[1],
+                'distance_miles': race[2],
+                'finish_time_minutes': race[3]
+            }
+            # Convert date to datetime for easier manipulation
+            if isinstance(race_dict['race_date'], date):
+                race_dict['race_date'] = race_dict['race_date']
+            races.append(race_dict)
+        
+        # Calculate PRs at each distance
+        prs_by_distance = {}
+        for race in races:
+            distance = float(race['distance_miles'])
+            finish_time = int(race['finish_time_minutes'])
+            
+            # Round distance to nearest common race distance for grouping
+            # Common distances: 5K (3.1), 10K (6.2), Half (13.1), Marathon (26.2), 50K (31), 50M (50), 100K (62), 100M (100)
+            if distance < 4:  # ~5K
+                distance_key = 3.1
+            elif distance < 8:  # ~10K
+                distance_key = 6.2
+            elif distance < 16:  # ~Half Marathon
+                distance_key = 13.1
+            elif distance < 30:  # ~Marathon
+                distance_key = 26.2
+            elif distance < 40:  # ~50K
+                distance_key = 31.0
+            elif distance < 56:  # ~50 Mile
+                distance_key = 50.0
+            elif distance < 75:  # ~100K
+                distance_key = 62.0
+            else:  # ~100 Mile
+                distance_key = 100.0
+            
+            if distance_key not in prs_by_distance or finish_time < prs_by_distance[distance_key]['finish_time_minutes']:
+                prs_by_distance[distance_key] = {
+                    'distance_miles': distance_key,
+                    'finish_time_minutes': finish_time,
+                    'race_name': race['race_name'],
+                    'race_date': race['race_date'].strftime('%Y-%m-%d') if isinstance(race['race_date'], date) else race['race_date']
+                }
+        
+        # Convert to list
+        prs = list(prs_by_distance.values())
+        prs.sort(key=lambda x: x['distance_miles'])
+        
+        # Calculate performance trend
+        trend, trend_description = _calculate_performance_trend(races)
+        
+        # Assess base fitness
+        base_fitness_assessment = _assess_base_fitness(races)
+        
+        logger.info(f"Race analysis for user {user_id}: {len(prs)} PRs, trend: {trend}")
+        
+        return jsonify({
+            'success': True,
+            'prs': prs,
+            'trend': trend,
+            'trend_description': trend_description,
+            'base_fitness': base_fitness_assessment,
+            'total_races': len(races)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error calculating race analysis for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+def _calculate_performance_trend(races):
+    """
+    Calculate performance trend by comparing recent races to older races
+    Returns: (trend_status, trend_description)
+    """
+    if len(races) < 2:
+        return 'no_data', 'Not enough race data to determine trend (need at least 2 races)'
+    
+    today = get_app_current_date()
+    
+    # Split races into recent (last 12 months) and older (12-24 months ago)
+    recent_races = []
+    older_races = []
+    
+    for race in races:
+        days_ago = (today - race['race_date']).days
+        if days_ago <= 365:
+            recent_races.append(race)
+        elif days_ago <= 730:
+            older_races.append(race)
+    
+    if len(recent_races) == 0:
+        return 'no_recent_data', 'No races in the last 12 months'
+    
+    if len(older_races) == 0:
+        return 'insufficient_history', 'Not enough historical data to determine trend'
+    
+    # Calculate average pace (min/mile) for similar distances
+    # Group races by similar distance and compare
+    improvements = 0
+    declines = 0
+    comparisons = 0
+    
+    for recent_race in recent_races:
+        recent_distance = recent_race['distance_miles']
+        recent_pace = recent_race['finish_time_minutes'] / recent_distance
+        
+        # Find similar distance races in older period (within 20% of distance)
+        similar_older_races = [
+            r for r in older_races
+            if abs(r['distance_miles'] - recent_distance) / recent_distance <= 0.2
+        ]
+        
+        if similar_older_races:
+            # Compare to best older pace at similar distance
+            best_older_pace = min(r['finish_time_minutes'] / r['distance_miles'] for r in similar_older_races)
+            
+            pace_improvement = (best_older_pace - recent_pace) / best_older_pace
+            
+            if pace_improvement > 0.02:  # >2% improvement
+                improvements += 1
+            elif pace_improvement < -0.02:  # >2% decline
+                declines += 1
+            
+            comparisons += 1
+    
+    if comparisons == 0:
+        return 'insufficient_comparable_data', 'Not enough comparable races to determine trend'
+    
+    # Determine overall trend
+    improvement_ratio = improvements / comparisons
+    decline_ratio = declines / comparisons
+    
+    if improvement_ratio > 0.6:
+        return 'improving', f'Improving performance: {improvements} of {comparisons} comparable races show improvement'
+    elif decline_ratio > 0.6:
+        return 'declining', f'Declining performance: {declines} of {comparisons} comparable races show decline'
+    else:
+        return 'stable', f'Stable performance: {comparisons} comparable races analyzed'
+
+
+def _assess_base_fitness(races):
+    """
+    Assess base fitness from race history
+    Returns: fitness assessment string
+    """
+    if len(races) == 0:
+        return 'No race history to analyze'
+    
+    # Get maximum distance completed
+    max_distance = max(race['distance_miles'] for race in races)
+    
+    # Count races in last year
+    today = get_app_current_date()
+    races_last_year = len([r for r in races if (today - r['race_date']).days <= 365])
+    
+    # Count ultra-distance races (> 26.2 miles)
+    ultra_races = len([r for r in races if r['distance_miles'] > 26.2])
+    
+    # Build assessment
+    assessment_parts = []
+    
+    if max_distance >= 100:
+        assessment_parts.append('100-mile+ endurance capability')
+    elif max_distance >= 62:
+        assessment_parts.append('100K endurance capability')
+    elif max_distance >= 50:
+        assessment_parts.append('50-mile endurance capability')
+    elif max_distance >= 31:
+        assessment_parts.append('50K endurance capability')
+    elif max_distance >= 26.2:
+        assessment_parts.append('Marathon endurance capability')
+    else:
+        assessment_parts.append(f'{max_distance:.1f}-mile maximum distance')
+    
+    if races_last_year >= 10:
+        assessment_parts.append(f'high race frequency ({races_last_year} races/year)')
+    elif races_last_year >= 5:
+        assessment_parts.append(f'moderate race frequency ({races_last_year} races/year)')
+    elif races_last_year > 0:
+        assessment_parts.append(f'low race frequency ({races_last_year} races/year)')
+    
+    if ultra_races >= 5:
+        assessment_parts.append(f'experienced ultra runner ({ultra_races} ultras)')
+    elif ultra_races > 0:
+        assessment_parts.append(f'developing ultra runner ({ultra_races} ultras)')
+    
+    return '; '.join(assessment_parts)
+
+
+# =============================================================================
 # CATCH-ALL ROUTE FOR REACT CLIENT-SIDE ROUTING
 # =============================================================================
 # This MUST be the last route to handle React Router paths like /journal, /activities, etc.

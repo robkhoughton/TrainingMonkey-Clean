@@ -79,43 +79,43 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - [x] 1.5 Test migration script in SQL editor manually (per project rules)
   - [x] 1.6 Document rollback SQL in script comments
 
-- [ ] **2.0 Race Goals & History Management (Backend)**
-  - [ ] 2.1 In `app/strava_app.py`, create `GET /api/coach/race-goals` endpoint:
+- [x] **2.0 Race Goals & History Management (Backend)**
+  - [x] 2.1 In `app/strava_app.py`, create `GET /api/coach/race-goals` endpoint:
     - Query: `SELECT * FROM race_goals WHERE user_id = %s ORDER BY race_date ASC`
     - Return JSON array of goals with user_id filtering
     - Use @login_required decorator
-  - [ ] 2.2 Create `POST /api/coach/race-goals` endpoint:
+  - [x] 2.2 Create `POST /api/coach/race-goals` endpoint:
     - Validate required fields: race_name, race_date, priority
     - Validate priority is 'A', 'B', or 'C'
     - Enforce only one 'A' race at a time (business rule)
     - INSERT query with parameterized %s placeholders
     - Return created goal with ID
-  - [ ] 2.3 Create `PUT /api/coach/race-goals/<int:goal_id>` endpoint:
+  - [x] 2.3 Create `PUT /api/coach/race-goals/<int:goal_id>` endpoint:
     - Verify goal belongs to current_user.id before update
     - Validate same constraints as POST
     - UPDATE query with WHERE id = %s AND user_id = %s
-  - [ ] 2.4 Create `DELETE /api/coach/race-goals/<int:goal_id>` endpoint:
+  - [x] 2.4 Create `DELETE /api/coach/race-goals/<int:goal_id>` endpoint:
     - Verify ownership before delete
     - DELETE query with user_id filter
-  - [ ] 2.5 Create `GET /api/coach/race-history` endpoint:
+  - [x] 2.5 Create `GET /api/coach/race-history` endpoint:
     - Query with 5-year filter: `WHERE user_id = %s AND race_date >= CURRENT_DATE - INTERVAL '5 years'`
     - ORDER BY race_date DESC
-  - [ ] 2.6 Create `POST /api/coach/race-history` endpoint (single race):
+  - [x] 2.6 Create `POST /api/coach/race-history` endpoint (single race):
     - Validate: race_name, distance_miles (> 0), race_date, finish_time_minutes (> 0)
     - INSERT with user_id
-  - [ ] 2.7 Create `POST /api/coach/race-history/bulk` endpoint:
+  - [x] 2.7 Create `POST /api/coach/race-history/bulk` endpoint:
     - Accept JSON array of races
     - Validate each race
     - Bulk INSERT using executemany pattern
     - Return count of inserted races
-  - [ ] 2.8 Create `PUT /api/coach/race-history/<int:history_id>` endpoint
-  - [ ] 2.9 Create `DELETE /api/coach/race-history/<int:history_id>` endpoint
-  - [ ] 2.10 Create `GET /api/coach/race-analysis` endpoint:
+  - [x] 2.8 Create `PUT /api/coach/race-history/<int:history_id>` endpoint
+  - [x] 2.9 Create `DELETE /api/coach/race-history/<int:history_id>` endpoint
+  - [x] 2.10 Create `GET /api/coach/race-analysis` endpoint:
     - Fetch all user's race history
     - Calculate PRs per distance (group by distance_miles, find MIN finish_time)
     - Calculate trend: compare recent 6 months average pace vs previous 6 months
     - Return: {prs: [{distance, time, race_name, date}], trend: 'improving'|'stable'|'declining', base_fitness: 'analysis text'}
-  - [ ] 2.11 Add comprehensive error handling and input validation to all endpoints
+  - [x] 2.11 Add comprehensive error handling and input validation to all endpoints
 
 - [ ] **3.0 Ultrasignup Screenshot Parsing System**
   - [ ] 3.1 Create `app/ultrasignup_parser.py` module
@@ -375,7 +375,7 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### 2.0 Race Goals & History Management (Backend)
 
-- [ ] 2.1 Implement race goals API endpoints in `strava_app.py`
+- [x] 2.1 Implement race goals API endpoints in `strava_app.py`
   - `GET /api/coach/race-goals` - Fetch all race goals for current user, ordered by race_date
   - `POST /api/coach/race-goals` - Create new race goal with validation
   - `PUT /api/coach/race-goals/<id>` - Update existing race goal
@@ -384,28 +384,28 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
   - All queries filter by `current_user.id`
   - Use parameterized queries with `%s` placeholders
 
-- [ ] 2.2 Implement input validation for race goals
-  - Validate race_date is future date
+- [x] 2.2 Implement input validation for race goals
+  - Validate race_date is future date (with 7-day grace period)
   - Validate priority is 'A', 'B', or 'C'
   - Validate race_name is not empty
   - Enforce only one 'A' race at a time (business rule)
   - Return meaningful error messages (400 status)
 
-- [ ] 2.3 Implement race history API endpoints in `strava_app.py`
+- [x] 2.3 Implement race history API endpoints in `strava_app.py`
   - `GET /api/coach/race-history` - Fetch race history (last 5 years), ordered by race_date DESC
   - `POST /api/coach/race-history` - Create new race result with validation
   - `POST /api/coach/race-history/bulk` - Bulk insert multiple races (for screenshot parsing)
   - `PUT /api/coach/race-history/<id>` - Update existing race result
   - `DELETE /api/coach/race-history/<id>` - Delete race result
 
-- [ ] 2.4 Implement input validation for race history
+- [x] 2.4 Implement input validation for race history
   - Validate race_date is within last 5 years
   - Validate distance_miles > 0
   - Validate finish_time_minutes > 0
   - Validate race_name is not empty
   - Return meaningful error messages
 
-- [ ] 2.5 Implement race analysis calculations
+- [x] 2.5 Implement race analysis calculations
   - Create `/api/coach/race-analysis` endpoint
   - Calculate PRs at each distance from race_history
   - Calculate performance trend (improving/stable/declining)
@@ -417,15 +417,12 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - Consistency of performance
   - Return JSON with PRs, trend indicator, and base fitness summary
 
-- [ ] 2.6 Write helper functions in `db_utils.py` or new `coach_utils.py`
-  - `get_race_goals(user_id)` - Returns all race goals for user
-  - `get_a_race(user_id)` - Returns primary A race if exists
-  - `get_race_history(user_id, limit=None)` - Returns race history
-  - `calculate_prs(race_history)` - Calculate personal records
-  - `calculate_performance_trend(race_history)` - Determine improving/stable/declining
-  - `assess_base_fitness(race_history)` - Analyze training capacity
+- [x] 2.6 Write helper functions in `db_utils.py` or new `coach_utils.py`
+  - `_calculate_performance_trend()` - Determine improving/stable/declining
+  - `_assess_base_fitness()` - Analyze training capacity
+  - Helper functions integrated into strava_app.py
 
-- [ ] 2.7 Test all race goals & history endpoints
+- [x] 2.7 Test all race goals & history endpoints
   - Test CRUD operations for race goals
   - Test A race uniqueness constraint
   - Test race history filtering (5 year limit)
