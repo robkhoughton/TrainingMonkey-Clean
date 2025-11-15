@@ -1902,8 +1902,9 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
 
         logger.info(f"Starting autopsy learning workflow for user {user_id}, date {journal_date}")
 
-        # STEP 1: Generate enhanced autopsy for completed training (if past date)
-        if journal_date_obj < app_current_date:
+        # STEP 1: Generate enhanced autopsy for completed training (if past date or today)
+        # Allow today's date to generate autopsy and tomorrow's recommendation
+        if journal_date_obj <= app_current_date:
             logger.info(f"Generating enhanced autopsy for past date: {journal_date}")
 
             # Get required data for autopsy
@@ -1922,43 +1923,68 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
             if journal_entry and journal_entry[0]:
                 observations = dict(journal_entry[0])
 
-                # Generate enhanced autopsy
-                autopsy_result = generate_activity_autopsy_enhanced(
-                    user_id,
-                    journal_date,
-                    prescribed_action,
-                    activity_summary,
-                    observations
+                # Check if autopsy already exists (may have been generated in save_journal_entry)
+                existing_autopsy = execute_query(
+                    "SELECT alignment_score, autopsy_analysis FROM ai_autopsies WHERE user_id = %s AND date = %s",
+                    (user_id, journal_date),
+                    fetch=True
                 )
-
-                if autopsy_result:
-                    # Save enhanced autopsy to database
-                    execute_query(
-                        """
-                        INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, 
-                                                autopsy_analysis, alignment_score, generated_at)
-                        VALUES (%s, NOW())
-                        ON CONFLICT (user_id, date)
-                        DO UPDATE SET
-                            prescribed_action = EXCLUDED.prescribed_action,
-                            actual_activities = EXCLUDED.actual_activities,
-                            autopsy_analysis = EXCLUDED.autopsy_analysis,
-                            alignment_score = EXCLUDED.alignment_score,
-                            generated_at = NOW()
-                        """,
-                        (
-                            user_id,
-                            journal_date,
-                            prescribed_action[:500],  # Truncate for storage
-                            json.dumps(activity_summary) if isinstance(activity_summary, dict) else str(
-                                activity_summary),
-                            autopsy_result['analysis'],
-                            autopsy_result['alignment_score']
-                        )
+                
+                if existing_autopsy and existing_autopsy[0]:
+                    # Use existing autopsy
+                    autopsy_result = {
+                        'analysis': existing_autopsy[0].get('autopsy_analysis', ''),
+                        'alignment_score': existing_autopsy[0].get('alignment_score', 5)
+                    }
+                    logger.info(f"Using existing autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
+                else:
+                    # Format activity summary as string for autopsy generation
+                    if isinstance(activity_summary, dict):
+                        actual_activities = f"{activity_summary.get('type', 'Activity').title()} workout: {activity_summary.get('distance', 0)} miles, {activity_summary.get('elevation', 0)} ft elevation, TRIMP: {activity_summary.get('total_trimp', 0)} ({activity_summary.get('workout_classification', 'Unknown')} intensity)"
+                    else:
+                        actual_activities = str(activity_summary)
+                    
+                    # Generate enhanced autopsy
+                    autopsy_result = generate_activity_autopsy_enhanced(
+                        user_id,
+                        journal_date,
+                        prescribed_action,
+                        actual_activities,
+                        observations
                     )
 
-                    logger.info(
-                        f"Saved enhanced autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
+                if autopsy_result:
+                    # Only save autopsy if it was newly generated (not using existing one)
+                    if not (existing_autopsy and existing_autopsy[0]):
+                        # Save enhanced autopsy to database
+                        execute_query(
+                            """
+                            INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, 
+                                                    autopsy_analysis, alignment_score, generated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (user_id, date)
+                            DO UPDATE SET
+                                prescribed_action = EXCLUDED.prescribed_action,
+                                actual_activities = EXCLUDED.actual_activities,
+                                autopsy_analysis = EXCLUDED.autopsy_analysis,
+                                alignment_score = EXCLUDED.alignment_score,
+                                generated_at = NOW()
+                            """,
+                            (
+                                user_id,
+                                journal_date,
+                                prescribed_action[:500] if prescribed_action else '',  # Truncate for storage
+                                json.dumps(activity_summary) if isinstance(activity_summary, dict) else str(
+                                    activity_summary),
+                                autopsy_result['analysis'],
+                                autopsy_result['alignment_score']
+                            )
+                        )
+                        logger.info(
+                            f"Saved enhanced autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
+                    else:
+                        logger.info(
+                            f"Using existing autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
 
                     # STEP 2: Generate new decision for tomorrow with autopsy learning
                     tomorrow = app_current_date + timedelta(days=1)

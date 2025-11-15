@@ -4978,35 +4978,37 @@ def save_journal_entry():
         recommendation_error = None
         
         # Generate recommendation if:
-        # 1. Autopsy was generated (normal flow with workout)
+        # 1. Autopsy was generated (normal flow with workout) - use autopsy-informed generation
         # 2. Rest day explicitly marked (no workout, but user wants tomorrow's plan)
         if autopsy_generated or is_rest_day:
             try:
                 if is_rest_day:
                     logger.info(f"Rest day marked for {date_str} - generating tomorrow's recommendation without autopsy")
+                    from llm_recommendations_module import generate_recommendations
+                    # For rest days, use standard recommendation generation
+                    recommendation = generate_recommendations(
+                        force=True, 
+                        user_id=current_user.id,
+                        target_tomorrow=True  # For rest days, explicitly target tomorrow
+                    )
+                    if recommendation:
+                        recommendation_generated = True
+                        logger.info(f"✅ Generated recommendation after rest day for user {current_user.id}")
                 else:
+                    # For workouts with autopsy, use autopsy-informed recommendation generation
                     logger.info(f"Auto-generating autopsy-informed recommendation after journal save for {date_str}")
-                    
-                from llm_recommendations_module import generate_recommendations
-                
-                # CRITICAL FIX: Pass target_tomorrow=True for rest days to force tomorrow's date
-                recommendation = generate_recommendations(
-                    force=True, 
-                    user_id=current_user.id,
-                    target_tomorrow=is_rest_day  # For rest days, explicitly target tomorrow
-                )
-                if recommendation:
-                    recommendation_generated = True
-                    if is_rest_day:
-                        logger.info(f"✅ Generated recommendation after rest day for user {current_user.id}, target_date: {recommendation.get('target_date')}")
-                    else:
+                    from llm_recommendations_module import update_recommendations_with_autopsy_learning
+                    # This function generates tomorrow's recommendation using autopsy insights
+                    update_result = update_recommendations_with_autopsy_learning(current_user.id, date_str)
+                    if update_result:
+                        recommendation_generated = True
                         logger.info(f"✅ Auto-generated autopsy-informed recommendation for user {current_user.id}")
-                else:
-                    logger.warning(f"Recommendation generation returned None for user {current_user.id}")
+                    else:
+                        logger.warning(f"Autopsy-informed recommendation generation returned None for user {current_user.id}")
                     
             except Exception as rec_error:
                 recommendation_error = str(rec_error)
-                logger.warning(f"Auto-generation of recommendation failed: {rec_error}")
+                logger.warning(f"Auto-generation of recommendation failed: {rec_error}", exc_info=True)
                 # Don't fail the journal save if recommendation generation fails
 
         # ENHANCED USER RESPONSE - This is the main addition
