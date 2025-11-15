@@ -1761,7 +1761,9 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None):
 
         if response and response.strip():
             logger.info(f"Generated autopsy-informed decision for user {user_id}")
-            return response.strip()
+            # Clean markdown formatting for better display
+            cleaned_response = process_markdown(response.strip())
+            return cleaned_response
         else:
             logger.warning("No response from autopsy-informed decision generation")
             return None
@@ -2007,21 +2009,25 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                             f"Using existing autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
 
                     # STEP 2: Generate new decision for the next needed date with autopsy learning
-                    # Check if we have a recommendation for today; if not, generate for today first
+                    # Intelligent date selection: generate for the next date that needs a recommendation
+                    from timezone_utils import get_user_current_date
+                    user_current_date = get_user_current_date(user_id)
+                    
+                    # Check if we have a recommendation for user's current date
                     check_today = execute_query(
                         "SELECT target_date FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
-                        (user_id, app_current_date.strftime('%Y-%m-%d')),
+                        (user_id, user_current_date.strftime('%Y-%m-%d')),
                         fetch=True
                     )
                     
                     if not check_today or len(check_today) == 0:
-                        # No recommendation for today - generate for today first
-                        next_date = app_current_date
-                        logger.info(f"No recommendation found for today ({app_current_date}), generating for today first")
+                        # No recommendation for user's today - generate for today first
+                        next_date = user_current_date
+                        logger.info(f"No recommendation found for user's today ({user_current_date}), generating for today first")
                     else:
                         # Have today's recommendation - generate for tomorrow
-                        next_date = app_current_date + timedelta(days=1)
-                        logger.info(f"Found recommendation for today, generating for tomorrow")
+                        next_date = user_current_date + timedelta(days=1)
+                        logger.info(f"Found recommendation for user's today, generating for tomorrow ({next_date})")
                     
                     next_date_str = next_date.strftime('%Y-%m-%d')
                     tomorrow_str = next_date_str  # For backward compatibility with existing code
