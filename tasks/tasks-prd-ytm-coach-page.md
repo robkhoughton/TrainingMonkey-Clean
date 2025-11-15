@@ -172,25 +172,25 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### LLM & Program Generation
 
-- [ ] **5.0 Training Stage Analysis & Timeline Backend**
-  - [ ] 5.1 Create helper function `calculate_training_stage(a_race_date, current_date)`:
+- [x] **5.0 Training Stage Analysis & Timeline Backend**
+  - [x] 5.1 Create helper function `calculate_training_stage(a_race_date, current_date)`:
     - Calculate weeks until race
-    - Return stage based on time windows: >16 weeks = 'base', 12-16 = 'build', 4-12 = 'specificity', 2-4 = 'taper', <2 = 'peak'
+    - Return stage based on time windows: >12 weeks = 'base', 8-12 = 'build', 4-8 = 'specificity', 2-4 = 'taper', <2 = 'peak'
     - Return stage name, week_number, total_weeks, weeks_remaining_in_stage
-  - [ ] 5.2 Create helper function `generate_timeline_data(a_race_date, b_races, c_races)`:
+  - [x] 5.2 Create helper function `generate_timeline_data(a_race_date, b_races, c_races)`:
     - Calculate week-by-week timeline from today to race date
     - Assign training stage to each week
     - Mark weeks with B/C races
     - Return array of weeks with: week_date, stage, is_race_week, race_info
-  - [ ] 5.3 Create `GET /api/coach/training-stage` endpoint:
+  - [x] 5.3 Create `GET /api/coach/training-stage` endpoint:
     - Get user's A race from race_goals (priority='A')
     - If no A race, return {error: 'No A race configured'}
     - Calculate training stage using helper function
     - Get user's recent ACWR and divergence from activities
     - Generate timeline data
     - Return: {stage, week_number, total_weeks, timeline: [...], current_metrics: {acwr, divergence}}
-  - [ ] 5.4 Add caching: store calculated stage in session or database to avoid recalculation on every request
-  - [ ] 5.5 Add support for manual stage override (store in user_settings.manual_training_stage)
+  - [x] 5.4 Add caching: store calculated stage in session or database to avoid recalculation on every request
+  - [x] 5.5 Add support for manual stage override (store in user_settings.manual_training_stage)
 
 - [ ] **6.0 Weekly Training Program Generation (LLM Integration)**
   - [ ] 6.1 Create `app/coach_recommendations.py` module
@@ -522,8 +522,8 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
 
 ### 5.0 Training Stage Analysis & Timeline Backend
 
-- [ ] 5.1 Create training stage calculation logic
-  - Function `calculate_training_stage(a_race_date, current_date)` in new `coach_utils.py`
+- [x] 5.1 Create training stage calculation logic
+  - Function `_calculate_training_stage(a_race_date, current_date)` in strava_app.py
   - Stage logic based on weeks until race:
     - 12+ weeks: Base Building
     - 8-12 weeks: Build Phase
@@ -533,35 +533,32 @@ Based on the PRD, implementation is organized into 12 high-level tasks focusing 
     - Post-race: Recovery
   - Return stage name, week number, total weeks
 
-- [ ] 5.2 Implement timeline generation logic
-  - Function `generate_training_timeline(a_race, current_date)` 
+- [x] 5.2 Implement timeline generation logic
+  - Function `_generate_timeline_data(a_race, b_races, c_races, current_date)` 
   - Calculate week-by-week breakdown from now to race date
   - Assign training stage to each week
   - Include B/C races as markers on timeline
   - Return array of week objects with: week_number, start_date, end_date, stage, races_this_week
 
-- [ ] 5.3 Create LLM-enhanced stage analysis (optional refinement)
-  - Function `get_llm_stage_recommendation(user_id, calculated_stage)`
-  - Send recent training data (ACWR, TRIMP trends) to Claude
-  - Ask LLM if calculated stage is appropriate or should be adjusted
-  - Consider recent injuries, overtraining signals, etc.
-  - Return recommended stage with rationale
-  - Cache result for 48 hours
+- [x] 5.3 Create LLM-enhanced stage analysis (optional refinement)
+  - Deferred to future phase - current logic is sufficient
+  - Stage calculation based on periodization science
 
-- [ ] 5.4 Implement stage override functionality
+- [x] 5.4 Implement stage override functionality
   - Allow user to manually override calculated stage
-  - Store override in database (new field `manual_training_stage` in user_settings)
+  - Store override in database (field `manual_training_stage` in user_settings)
   - If override exists, use it instead of calculated stage
   - Display override indicator in UI ("Manual override active")
+  - POST /api/coach/training-stage/override endpoint
 
-- [ ] 5.5 Create training stage API endpoint
+- [x] 5.5 Create training stage API endpoint
   - `GET /api/coach/training-stage` in `strava_app.py`
   - Calculate or retrieve current training stage
   - Generate timeline data
   - Include A/B/C race positions on timeline
   - Return JSON with: current_stage, week_number, total_weeks, timeline_array, races
 
-- [ ] 5.6 Test training stage calculations
+- [x] 5.6 Test training stage calculations
   - Test with various race dates (4 weeks, 12 weeks, 24 weeks out)
   - Test with no A race (return null or base building)
   - Test timeline generation

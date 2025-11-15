@@ -10827,6 +10827,159 @@ def save_training_schedule():
         }), 500
 
 
+def _calculate_training_stage(a_race_date: date, current_date: date) -> dict:
+    """
+    Calculate training stage based on weeks until A race
+    
+    Args:
+        a_race_date: Date of A race
+        current_date: Current date
+        
+    Returns:
+        Dictionary with stage info: stage, week_number, total_weeks, weeks_remaining, days_until_race
+    """
+    days_until_race = (a_race_date - current_date).days
+    weeks_until_race = days_until_race / 7.0
+    
+    # Determine training stage based on weeks until race
+    if days_until_race < 0:
+        # Race has passed - recovery phase
+        stage = 'recovery'
+        stage_description = 'Post-race recovery'
+    elif weeks_until_race < 2:
+        # 0-2 weeks: Peak week
+        stage = 'peak'
+        stage_description = 'Peak week - race ready'
+    elif weeks_until_race < 4:
+        # 2-4 weeks: Taper
+        stage = 'taper'
+        stage_description = 'Taper - reducing volume'
+    elif weeks_until_race < 8:
+        # 4-8 weeks: Specificity (Race-specific preparation)
+        stage = 'specificity'
+        stage_description = 'Race-specific training'
+    elif weeks_until_race < 12:
+        # 8-12 weeks: Build phase
+        stage = 'build'
+        stage_description = 'Building fitness and volume'
+    else:
+        # 12+ weeks: Base building
+        stage = 'base'
+        stage_description = 'Base building phase'
+    
+    # Calculate week number in training cycle (assume 16-week cycle for most ultras)
+    # Adjust based on actual race date
+    if weeks_until_race > 16:
+        total_weeks = int(weeks_until_race)
+        week_number = 1
+    else:
+        total_weeks = 16
+        week_number = int(16 - weeks_until_race) + 1
+    
+    return {
+        'stage': stage,
+        'stage_description': stage_description,
+        'week_number': week_number,
+        'total_weeks': total_weeks,
+        'weeks_until_race': round(weeks_until_race, 1),
+        'days_until_race': days_until_race
+    }
+
+
+def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> list:
+    """
+    Generate week-by-week timeline data with training stages and race markers
+    
+    Args:
+        a_race: Primary A race goal (dict with race_date)
+        b_races: List of B race goals
+        c_races: List of C race goals
+        current_date: Current date
+        
+    Returns:
+        List of week objects with: week_start, week_end, stage, is_current_week, races
+    """
+    if not a_race:
+        return []
+    
+    a_race_date = a_race['race_date']
+    if isinstance(a_race_date, str):
+        a_race_date = datetime.strptime(a_race_date, '%Y-%m-%d').date()
+    
+    # Generate timeline from now until race date (or 4 weeks past if race has passed)
+    if a_race_date < current_date:
+        end_date = current_date + timedelta(weeks=4)
+    else:
+        end_date = a_race_date
+    
+    # Start from current week (Monday)
+    start_date = current_date - timedelta(days=current_date.weekday())
+    
+    timeline = []
+    current_week_start = start_date
+    
+    # Generate weeks
+    while current_week_start <= end_date:
+        week_end = current_week_start + timedelta(days=6)
+        
+        # Calculate stage for this week
+        stage_info = _calculate_training_stage(a_race_date, current_week_start)
+        
+        # Check if current week
+        is_current_week = current_date >= current_week_start and current_date <= week_end
+        
+        # Find races in this week
+        races_this_week = []
+        
+        # Check A race
+        if current_week_start <= a_race_date <= week_end:
+            races_this_week.append({
+                'priority': 'A',
+                'race_name': a_race['race_name'],
+                'race_date': a_race_date.strftime('%Y-%m-%d'),
+                'race_type': a_race.get('race_type')
+            })
+        
+        # Check B races
+        for b_race in b_races:
+            b_race_date = b_race['race_date']
+            if isinstance(b_race_date, str):
+                b_race_date = datetime.strptime(b_race_date, '%Y-%m-%d').date()
+            if current_week_start <= b_race_date <= week_end:
+                races_this_week.append({
+                    'priority': 'B',
+                    'race_name': b_race['race_name'],
+                    'race_date': b_race_date.strftime('%Y-%m-%d'),
+                    'race_type': b_race.get('race_type')
+                })
+        
+        # Check C races
+        for c_race in c_races:
+            c_race_date = c_race['race_date']
+            if isinstance(c_race_date, str):
+                c_race_date = datetime.strptime(c_race_date, '%Y-%m-%d').date()
+            if current_week_start <= c_race_date <= week_end:
+                races_this_week.append({
+                    'priority': 'C',
+                    'race_name': c_race['race_name'],
+                    'race_date': c_race_date.strftime('%Y-%m-%d'),
+                    'race_type': c_race.get('race_type')
+                })
+        
+        timeline.append({
+            'week_start': current_week_start.strftime('%Y-%m-%d'),
+            'week_end': week_end.strftime('%Y-%m-%d'),
+            'stage': stage_info['stage'],
+            'stage_description': stage_info['stage_description'],
+            'is_current_week': is_current_week,
+            'races': races_this_week
+        })
+        
+        current_week_start += timedelta(weeks=1)
+    
+    return timeline
+
+
 def _validate_training_schedule(schedule: dict) -> tuple:
     """
     Validate training schedule JSON structure
@@ -10890,6 +11043,174 @@ def _validate_training_schedule(schedule: dict) -> tuple:
             return False, f"Constraint {idx + 1} description must be a string"
     
     return True, None
+
+
+@app.route('/api/coach/training-stage', methods=['GET'])
+@login_required
+def get_training_stage():
+    """
+    Get current training stage and timeline based on race goals
+    Returns stage info, timeline data, and race markers
+    """
+    try:
+        user_id = current_user.id
+        logger.info(f"Fetching training stage for user {user_id}")
+        
+        # Get current date
+        current_date = get_app_current_date()
+        
+        # Fetch all race goals
+        race_goals = db_utils.execute_query(
+            """
+            SELECT id, race_name, race_date, race_type, priority, target_time
+            FROM race_goals 
+            WHERE user_id = %s 
+            ORDER BY race_date ASC
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        if not race_goals or len(race_goals) == 0:
+            return jsonify({
+                'success': True,
+                'has_race_goals': False,
+                'message': 'No race goals configured. Add your A race to see your training stage.',
+                'current_stage': None,
+                'timeline': []
+            })
+        
+        # Convert to list of dicts
+        goals_list = []
+        for goal in race_goals:
+            goal_dict = dict(goal) if hasattr(goal, 'keys') else {
+                'id': goal[0],
+                'race_name': goal[1],
+                'race_date': goal[2],
+                'race_type': goal[3],
+                'priority': goal[4],
+                'target_time': goal[5]
+            }
+            # Serialize date
+            if isinstance(goal_dict['race_date'], date):
+                goal_dict['race_date'] = goal_dict['race_date'].strftime('%Y-%m-%d')
+            goals_list.append(goal_dict)
+        
+        # Find A race
+        a_race = next((g for g in goals_list if g['priority'] == 'A'), None)
+        
+        if not a_race:
+            return jsonify({
+                'success': True,
+                'has_race_goals': True,
+                'has_a_race': False,
+                'message': 'No A race configured. Set one race as your primary goal to see your training stage.',
+                'current_stage': None,
+                'timeline': [],
+                'race_goals': goals_list
+            })
+        
+        # Parse A race date
+        a_race_date = datetime.strptime(a_race['race_date'], '%Y-%m-%d').date()
+        
+        # Check for manual override
+        user_settings = db_utils.execute_query(
+            "SELECT manual_training_stage FROM user_settings WHERE id = %s",
+            (user_id,),
+            fetch=True
+        )
+        
+        manual_override = None
+        if user_settings and len(user_settings) > 0:
+            manual_override = user_settings[0]['manual_training_stage'] if hasattr(user_settings[0], 'keys') else user_settings[0][0]
+        
+        # Calculate training stage
+        stage_info = _calculate_training_stage(a_race_date, current_date)
+        
+        # Apply manual override if exists
+        if manual_override:
+            stage_info['stage'] = manual_override
+            stage_info['stage_description'] = f"{manual_override.capitalize()} (manual override)"
+            stage_info['is_manual_override'] = True
+        else:
+            stage_info['is_manual_override'] = False
+        
+        # Separate B and C races
+        b_races = [g for g in goals_list if g['priority'] == 'B']
+        c_races = [g for g in goals_list if g['priority'] == 'C']
+        
+        # Generate timeline
+        timeline = _generate_timeline_data(a_race, b_races, c_races, current_date)
+        
+        logger.info(f"Training stage for user {user_id}: {stage_info['stage']}, {stage_info['days_until_race']} days until A race")
+        
+        return jsonify({
+            'success': True,
+            'has_race_goals': True,
+            'has_a_race': True,
+            'current_stage': stage_info,
+            'timeline': timeline,
+            'a_race': a_race,
+            'b_races': b_races,
+            'c_races': c_races,
+            'race_goals': goals_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching training stage for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/training-stage/override', methods=['POST'])
+@login_required
+def set_training_stage_override():
+    """
+    Manually override the calculated training stage
+    """
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        
+        # Get override stage (or null to remove override)
+        override_stage = data.get('stage')
+        
+        valid_stages = ['base', 'build', 'specificity', 'taper', 'peak', 'recovery', None]
+        
+        if override_stage not in valid_stages:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid stage. Must be one of: {", ".join([s for s in valid_stages if s])}, or null to remove override'
+            }), 400
+        
+        logger.info(f"Setting training stage override for user {user_id}: {override_stage}")
+        
+        # Update user_settings
+        db_utils.execute_query(
+            "UPDATE user_settings SET manual_training_stage = %s WHERE id = %s",
+            (override_stage, user_id),
+            fetch=False
+        )
+        
+        if override_stage:
+            message = f'Training stage manually set to: {override_stage}'
+        else:
+            message = 'Training stage override removed. Using calculated stage.'
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'override_stage': override_stage
+        })
+        
+    except Exception as e:
+        logger.error(f"Error setting training stage override for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/api/coach/race-analysis', methods=['GET'])
