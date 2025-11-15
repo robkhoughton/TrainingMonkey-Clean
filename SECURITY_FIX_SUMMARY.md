@@ -66,7 +66,7 @@ Model: claude-sonnet-4.5-20250929 (latest)
 
 ### Database Security
 - [x] Connected to PostgreSQL database
-- [x] Changed password from `trainmonk25` to `@N5HEdMSD2^lBBgPwngZtVe0`
+- [x] Changed password from `trainmonk25` to secure random password
 - [x] Verified new password works
 - [x] Updated Google Cloud Secret Manager (version 44)
 - [x] Created local `.env` file with new credentials
