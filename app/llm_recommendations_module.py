@@ -593,12 +593,30 @@ Keep each section focused and evidence-based. Reference specific numbers from th
 def create_fallback_autopsy(prescribed_action, actual_activities, observations):
     """Create a structured fallback autopsy if AI generation fails"""
 
-    # Determine basic alignment
-    if "rest" in prescribed_action.lower() and "rest" in actual_activities.lower():
+    # Improved logic: Check for actual rest prescription, not just the word "rest" appearing in context
+    prescribed_lower = prescribed_action.lower()
+    actual_lower = str(actual_activities).lower()
+    
+    # Look for explicit rest prescriptions (not just mentions of "rest" in context)
+    rest_prescribed = (
+        "rest day" in prescribed_lower or
+        "take a rest" in prescribed_lower or
+        "rest today" in prescribed_lower or
+        "rest and recovery" in prescribed_lower or
+        prescribed_lower.startswith("rest") or
+        "prescribed: rest" in prescribed_lower
+    ) and not (
+        "days since rest" in prescribed_lower or
+        "rest period" in prescribed_lower or
+        "rest interval" in prescribed_lower
+    )
+    
+    # Determine basic alignment with improved logic
+    if rest_prescribed and ("rest" in actual_lower or "no activity" in actual_lower):
         alignment = "Good - Rest day followed as prescribed"
-    elif "rest" in prescribed_action.lower() and "rest" not in actual_activities.lower():
+    elif rest_prescribed and "rest" not in actual_lower:
         alignment = "Poor - Rest was prescribed but activity was performed"
-    elif "reduce" in prescribed_action.lower() or "easy" in prescribed_action.lower():
+    elif "reduce" in prescribed_lower or "easy" in prescribed_lower or "recovery" in prescribed_lower:
         alignment = "Partial - Intensity guidance may not have been fully followed"
     else:
         alignment = "Unable to assess - AI analysis recommended"

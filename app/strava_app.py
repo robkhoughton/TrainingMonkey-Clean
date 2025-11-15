@@ -5103,9 +5103,9 @@ def generate_autopsy_for_date(date_str, user_id):
         actual_activities = f"{activity_summary['type'].title()} workout: {activity_summary['distance']} miles, {activity_summary['elevation']} ft elevation, TRIMP: {activity_summary['total_trimp']} ({activity_summary['workout_classification']} intensity)"
 
         # Import and use the enhanced autopsy generation
-        from llm_recommendations_module import generate_activity_autopsy
+        from llm_recommendations_module import generate_activity_autopsy_enhanced
 
-        autopsy_analysis = generate_activity_autopsy(
+        autopsy_result = generate_activity_autopsy_enhanced(
             user_id=user_id,
             date_str=date_str,
             prescribed_action=prescribed_action,
@@ -5113,8 +5113,14 @@ def generate_autopsy_for_date(date_str, user_id):
             observations=observations
         )
 
-        # Save autopsy to database with alignment score
-        alignment_score = extract_alignment_score(autopsy_analysis)
+        # Extract analysis and alignment score from enhanced result
+        if isinstance(autopsy_result, dict):
+            autopsy_analysis = autopsy_result.get('analysis', '')
+            alignment_score = autopsy_result.get('alignment_score', 5)
+        else:
+            # Fallback for old format
+            autopsy_analysis = autopsy_result if autopsy_result else ''
+            alignment_score = extract_alignment_score(autopsy_analysis)
 
         # Use PostgreSQL syntax
         query = """
