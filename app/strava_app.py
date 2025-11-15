@@ -2524,34 +2524,30 @@ def track_rum_metrics():
                    f"LCP: {data.get('lcp', 'N/A')}ms")
         
         # Store in database (using db_utils connection)
-        conn = db_utils.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO rum_metrics (
-                page, user_id, ttfb, fcp, lcp, dns_time, connection_time,
-                request_time, response_time, dom_interactive_time, dom_complete_time,
-                load_complete, resource_count, total_resource_size,
-                user_agent, viewport_width, viewport_height, connection_type,
-                timestamp
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-        """, (
-            page, user_id,
-            data.get('ttfb'), data.get('fcp'), data.get('lcp'),
-            data.get('dns_time'), data.get('connection_time'),
-            data.get('request_time'), data.get('response_time'),
-            data.get('dom_interactive_time'), data.get('dom_complete_time'),
-            data.get('load_complete'), data.get('resource_count'),
-            data.get('total_resource_size'), data.get('user_agent'),
-            data.get('viewport_width'), data.get('viewport_height'),
-            data.get('connection_type'), data.get('timestamp')
-        ))
-        
-        conn.commit()
-        cursor.close()
-        db_utils.release_connection(conn)
+        with db_utils.get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO rum_metrics (
+                    page, user_id, ttfb, fcp, lcp, dns_time, connection_time,
+                    request_time, response_time, dom_interactive_time, dom_complete_time,
+                    load_complete, resource_count, total_resource_size,
+                    user_agent, viewport_width, viewport_height, connection_type,
+                    timestamp
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """, (
+                page, user_id,
+                data.get('ttfb'), data.get('fcp'), data.get('lcp'),
+                data.get('dns_time'), data.get('connection_time'),
+                data.get('request_time'), data.get('response_time'),
+                data.get('dom_interactive_time'), data.get('dom_complete_time'),
+                data.get('load_complete'), data.get('resource_count'),
+                data.get('total_resource_size'), data.get('user_agent'),
+                data.get('viewport_width'), data.get('viewport_height'),
+                data.get('connection_type'), data.get('timestamp')
+            ))
+            conn.commit()
         
         return jsonify({'success': True})
         
@@ -2581,26 +2577,22 @@ def track_component_performance():
                    f"Total: {data.get('total_time_ms')}ms")
         
         # Store in database
-        conn = db_utils.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO component_performance (
-                page, user_id, fetch_time_ms, process_time_ms, render_time_ms,
-                total_time_ms, data_points, error, timestamp
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, NOW()
-            )
-        """, (
-            page, user_id,
-            data.get('fetch_time_ms'), data.get('process_time_ms'),
-            data.get('render_time_ms'), data.get('total_time_ms'),
-            data.get('data_points'), data.get('error')
-        ))
-        
-        conn.commit()
-        cursor.close()
-        db_utils.release_connection(conn)
+        with db_utils.get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO component_performance (
+                    page, user_id, fetch_time_ms, process_time_ms, render_time_ms,
+                    total_time_ms, data_points, error, timestamp
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                )
+            """, (
+                page, user_id,
+                data.get('fetch_time_ms'), data.get('process_time_ms'),
+                data.get('render_time_ms'), data.get('total_time_ms'),
+                data.get('data_points'), data.get('error')
+            ))
+            conn.commit()
         
         return jsonify({'success': True})
         
@@ -2628,23 +2620,19 @@ def track_api_timing():
             logger.warning(f"API Timing - {api_name} FAILED: {data.get('duration_ms')}ms - {data.get('error')}")
         
         # Store in database
-        conn = db_utils.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO api_timing_client (
-                api_name, user_id, duration_ms, success, error, timestamp
-            ) VALUES (
-                %s, %s, %s, %s, %s, NOW()
-            )
-        """, (
-            api_name, user_id, data.get('duration_ms'),
-            data.get('success'), data.get('error')
-        ))
-        
-        conn.commit()
-        cursor.close()
-        db_utils.release_connection(conn)
+        with db_utils.get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO api_timing_client (
+                    api_name, user_id, duration_ms, success, error, timestamp
+                ) VALUES (
+                    %s, %s, %s, %s, %s, NOW()
+                )
+            """, (
+                api_name, user_id, data.get('duration_ms'),
+                data.get('success'), data.get('error')
+            ))
+            conn.commit()
         
         return jsonify({'success': True})
         

@@ -23,10 +23,9 @@ def clean_database_url(url):
     # Remove carriage returns, line feeds, and extra whitespace
     cleaned = url.replace('\r', '').replace('\n', '').strip()
 
-    # Log the cleaning for debugging
+    # Log the cleaning for debugging (only at startup)
     if cleaned != url:
-        print(f"Cleaned DATABASE_URL: removed {len(url) - len(cleaned)} unwanted characters")
-        logger.info(f"db_utils: Cleaned DATABASE_URL, removed {len(url) - len(cleaned)} characters")
+        logger.info(f"db_utils: Cleaned DATABASE_URL at startup, removed {len(url) - len(cleaned)} characters")
 
     return cleaned
 
@@ -134,14 +133,14 @@ def execute_query_direct(query, params=(), fetch=False):
     import psycopg2
     from psycopg2.extras import RealDictCursor
     from urllib.parse import urlparse
-    
-    database_url = clean_database_url(os.environ.get('DATABASE_URL'))
-    if not database_url:
+
+    # Use the already-cleaned DATABASE_URL from module initialization
+    if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL environment variable not found")
     
     try:
         # Parse connection string to avoid URL parsing issues with database names
-        parsed = urlparse(database_url)
+        parsed = urlparse(DATABASE_URL)
         host = parsed.hostname
         port = parsed.port or 5432
         database = parsed.path.lstrip('/')  # Remove leading slash
