@@ -443,74 +443,6 @@ def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_T
         raise
 
 
-def generate_activity_autopsy(user_id, date_str, prescribed_action, actual_activities, observations):
-    """
-    Generate AI autopsy comparing prescribed vs actual training using Training Reference Guide.
-
-    Args:
-        user_id (int): User ID for multi-user support
-        date_str (str): Date in YYYY-MM-DD format
-        prescribed_action (str): The "Today" section from AI recommendation
-        actual_activities (str): Summary of what user actually did
-        observations (dict): User's energy, RPE, pain, notes
-
-    Returns:
-        str: AI-generated autopsy analysis
-    """
-    if user_id is None:
-        raise ValueError("user_id is required for multi-user support")
-
-    try:
-        logger.info(f"Generating AI autopsy for user {user_id} on {date_str}")
-
-        # Load the training guide
-        training_guide = load_training_guide()
-        if not training_guide:
-            logger.error("Training guide not available for autopsy generation")
-            return "Training guide unavailable - basic autopsy generated"
-
-        # Get recent context for better analysis
-        activities = UnifiedMetricsService.get_recent_activities_for_analysis(days=7, user_id=user_id)
-        current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
-
-        if not current_metrics:
-            logger.warning(f"No current metrics available for autopsy user {user_id}")
-            current_metrics = {
-                'external_acwr': 0,
-                'internal_acwr': 0,
-                'normalized_divergence': 0,
-                'days_since_rest': 0
-            }
-
-        # Format observations for prompt
-        observations_text = format_observations_for_prompt(observations)
-
-        # Create specialized autopsy prompt
-        autopsy_prompt = create_autopsy_prompt(
-            date_str,
-            prescribed_action,
-            actual_activities,
-            observations_text,
-            current_metrics,
-            training_guide
-        )
-
-        # Call Claude API
-        autopsy_response = call_anthropic_api(
-            autopsy_prompt,
-            model=DEFAULT_MODEL,
-            temperature=0.7
-        )
-
-        logger.info(f"Successfully generated AI autopsy for user {user_id} on {date_str}")
-        return autopsy_response
-
-    except Exception as e:
-        logger.error(f"Error generating AI autopsy for user {user_id} on {date_str}: {str(e)}")
-        # Return structured fallback
-        return create_fallback_autopsy(prescribed_action, actual_activities, observations)
-
-
 def format_observations_for_prompt(observations):
     """Format user observations for the AI prompt"""
     if not observations:
@@ -1314,8 +1246,21 @@ def parse_llm_response(response_text):
 
 def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, actual_activities, observations):
     """
+    Generate AI autopsy comparing prescribed vs actual training using Training Reference Guide.
     Enhanced version that includes alignment scoring and structured learning insights.
-    This replaces the basic generate_activity_autopsy() function.
+    
+    This is the primary autopsy generation function. Use this instead of the deprecated
+    generate_activity_autopsy() function.
+    
+    Args:
+        user_id (int): User ID for multi-user support
+        date_str (str): Date in YYYY-MM-DD format
+        prescribed_action (str): The "Today" section from AI recommendation
+        actual_activities (str): Summary of what user actually did
+        observations (dict): User's energy, RPE, pain, notes
+        
+    Returns:
+        dict: Contains 'analysis' (str) and 'alignment_score' (int 1-10)
     """
     try:
         logger.info(f"Generating enhanced autopsy for user {user_id}, date {date_str}")
