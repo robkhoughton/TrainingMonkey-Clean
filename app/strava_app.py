@@ -194,6 +194,16 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access your training dashboard.'
 
+# Helper function for safe user ID logging
+def get_user_id_for_logging():
+    """Safely get current user ID for logging, handling anonymous users"""
+    try:
+        if current_user and current_user.is_authenticated:
+            return current_user.id
+        return "anonymous"
+    except:
+        return "unknown"
+
 @login_manager.user_loader
 def load_user(user_id):
     """Required by Flask-Login to reload user from session"""
@@ -2072,7 +2082,7 @@ def get_llm_recommendations():
             })
 
     except Exception as e:
-        logger.error(f"Error fetching LLM recommendations for user {current_user.id}: {str(e)}")
+        logger.error(f"Error fetching LLM recommendations for user {get_user_id_for_logging()}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e),
@@ -2144,7 +2154,7 @@ def get_journal_status_endpoint():
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"Error getting journal status for user {current_user.id}: {str(e)}")
+        logger.error(f"Error getting journal status for user {get_user_id_for_logging()}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e),
@@ -4949,14 +4959,16 @@ def save_journal_entry():
                     activity_summary.get('type') != 'rest'
             )
 
-            # EXISTING AUTOPSY GENERATION CALL - UNCHANGED
+            # Check if we should generate autopsy (has both recommendation and activity)
             if has_prescribed_action and has_actual_activity:
-                logger.info(f"Generating autopsy for {date_str} - has both prescribed action and actual activity")
-                generate_autopsy_for_date(date_str, current_user.id)  # EXISTING FUNCTION CALL
+                logger.info(f"Will generate autopsy for {date_str} - has both prescribed action and actual activity")
                 autopsy_generated = True
-                logger.info(f"✅ Autopsy generation completed for {date_str}")
             else:
                 logger.info(f"Skipping autopsy for {date_str} - missing prescribed action or activity")
+                if not has_prescribed_action:
+                    logger.info(f"  - No valid prescribed action for {date_str}")
+                if not has_actual_activity:
+                    logger.info(f"  - No valid activity for {date_str}")
 
         except Exception as autopsy_error_ex:
             autopsy_error = str(autopsy_error_ex)
@@ -4986,15 +4998,20 @@ def save_journal_entry():
                         logger.info(f"✅ Generated recommendation after rest day for user {current_user.id}")
                 else:
                     # For workouts with autopsy, use autopsy-informed recommendation generation
-                    logger.info(f"Auto-generating autopsy-informed recommendation after journal save for {date_str}")
+                    logger.info(f"🔄 Calling update_recommendations_with_autopsy_learning for {date_str}")
                     from llm_recommendations_module import update_recommendations_with_autopsy_learning
-                    # This function generates tomorrow's recommendation using autopsy insights
+                    # This function:
+                    # 1. Generates autopsy for the completed workout (if not exists)
+                    # 2. Checks if TODAY's recommendation needs updating
+                    # 3. Regenerates TODAY's recommendation if it's not autopsy-informed
+                    # 4. Otherwise generates tomorrow's recommendation
                     update_result = update_recommendations_with_autopsy_learning(current_user.id, date_str)
                     if update_result:
                         recommendation_generated = True
-                        logger.info(f"✅ Auto-generated autopsy-informed recommendation for user {current_user.id}")
+                        next_rec_date = update_result.get('next_recommendation_date', 'unknown')
+                        logger.info(f"✅ Recommendation updated for {next_rec_date} (autopsy-informed)")
                     else:
-                        logger.warning(f"Autopsy-informed recommendation generation returned None for user {current_user.id}")
+                        logger.warning(f"⚠️ update_recommendations_with_autopsy_learning returned None for user {current_user.id}")
                     
             except Exception as rec_error:
                 recommendation_error = str(rec_error)

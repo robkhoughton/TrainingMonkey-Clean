@@ -2030,15 +2030,17 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     if not check_today or len(check_today) == 0:
                         # No recommendation for user's today - generate for today
                         next_date = user_current_date
-                        logger.info(f"No recommendation found for user's today ({user_current_date}), generating autopsy-informed recommendation")
+                        logger.info(f"📅 No recommendation found for user's today ({user_current_date}), generating autopsy-informed recommendation")
                     elif not check_today[0].get('is_autopsy_informed', False):
                         # Today has PRELIMINARY recommendation (from scheduler) - regenerate with autopsy!
                         next_date = user_current_date
-                        logger.info(f"Today's recommendation is preliminary (not autopsy-informed), regenerating with yesterday's autopsy insights")
+                        is_autopsy_value = check_today[0].get('is_autopsy_informed', 'NULL')
+                        logger.info(f"🔄 Today's recommendation exists but is_autopsy_informed={is_autopsy_value}")
+                        logger.info(f"🔄 REGENERATING today's ({user_current_date}) recommendation with yesterday's autopsy insights")
                     else:
                         # Today already has autopsy-informed recommendation - generate for tomorrow
                         next_date = user_current_date + timedelta(days=1)
-                        logger.info(f"Today's recommendation is already autopsy-informed, generating for tomorrow ({next_date})")
+                        logger.info(f"✅ Today's recommendation is already autopsy-informed, generating for tomorrow ({next_date})")
                     
                     next_date_str = next_date.strftime('%Y-%m-%d')
                     tomorrow_str = next_date_str  # For backward compatibility with existing code
