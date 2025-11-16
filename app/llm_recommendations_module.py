@@ -2018,9 +2018,11 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     from timezone_utils import get_user_current_date
                     user_current_date = get_user_current_date(user_id)
                     
-                    # Check if we have a recommendation for user's current date AND if it's autopsy-informed
+                    # CRITICAL: Check if today's recommendation needs updating with LATEST autopsy
+                    # Even if marked as autopsy-informed, it might be from an OLD autopsy
+                    # We need to check if there's a NEWER autopsy than the recommendation
                     check_today = execute_query(
-                        """SELECT target_date, is_autopsy_informed, generation_date 
+                        """SELECT target_date, is_autopsy_informed, generated_at 
                            FROM llm_recommendations 
                            WHERE user_id = %s AND target_date = %s""",
                         (user_id, user_current_date.strftime('%Y-%m-%d')),
@@ -2031,16 +2033,37 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         # No recommendation for user's today - generate for today
                         next_date = user_current_date
                         logger.info(f"📅 No recommendation found for user's today ({user_current_date}), generating autopsy-informed recommendation")
-                    elif not check_today[0].get('is_autopsy_informed', False):
-                        # Today has PRELIMINARY recommendation (from scheduler) - regenerate with autopsy!
-                        next_date = user_current_date
-                        is_autopsy_value = check_today[0].get('is_autopsy_informed', 'NULL')
-                        logger.info(f"🔄 Today's recommendation exists but is_autopsy_informed={is_autopsy_value}")
-                        logger.info(f"🔄 REGENERATING today's ({user_current_date}) recommendation with yesterday's autopsy insights")
                     else:
-                        # Today already has autopsy-informed recommendation - generate for tomorrow
-                        next_date = user_current_date + timedelta(days=1)
-                        logger.info(f"✅ Today's recommendation is already autopsy-informed, generating for tomorrow ({next_date})")
+                        # Have a recommendation - but is it based on the LATEST autopsy?
+                        recommendation_time = check_today[0].get('generated_at')
+                        yesterday = user_current_date - timedelta(days=1)
+                        
+                        # Check if yesterday's autopsy is NEWER than today's recommendation
+                        autopsy_time = execute_query(
+                            """SELECT generated_at FROM ai_autopsies 
+                               WHERE user_id = %s AND date = %s""",
+                            (user_id, yesterday.strftime('%Y-%m-%d')),
+                            fetch=True
+                        )
+                        
+                        if autopsy_time and autopsy_time[0]:
+                            autopsy_generated_at = autopsy_time[0].get('generated_at')
+                            
+                            if autopsy_generated_at > recommendation_time:
+                                # Autopsy is NEWER than recommendation - regenerate!
+                                next_date = user_current_date
+                                logger.info(f"🔄 Today's recommendation exists (from {recommendation_time})")
+                                logger.info(f"🔄 But yesterday's autopsy is NEWER (from {autopsy_generated_at})")
+                                logger.info(f"🔄 REGENERATING today's ({user_current_date}) recommendation with latest autopsy insights")
+                            else:
+                                # Recommendation is already based on latest autopsy
+                                next_date = user_current_date + timedelta(days=1)
+                                logger.info(f"✅ Today's recommendation ({recommendation_time}) already includes latest autopsy ({autopsy_generated_at})")
+                                logger.info(f"✅ Generating for tomorrow ({next_date})")
+                        else:
+                            # No autopsy for yesterday - generate for tomorrow
+                            next_date = user_current_date + timedelta(days=1)
+                            logger.info(f"✅ No new autopsy for yesterday, generating for tomorrow ({next_date})")
                     
                     next_date_str = next_date.strftime('%Y-%m-%d')
                     tomorrow_str = next_date_str  # For backward compatibility with existing code
