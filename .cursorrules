@@ -2,9 +2,17 @@
 
 ## 🗄️ Database Standards (CRITICAL)
 - **PostgreSQL ONLY**: Use `%s` placeholders (NOT `?`), `SERIAL PRIMARY KEY` (NOT `AUTOINCREMENT`), `NOW()` (NOT `CURRENT_TIMESTAMP`)
-- **Schema Changes**: Use SQL Editor ONLY, never modify schema in code
+- **Schema Changes**: Assistant can run migrations using `app/run_migration.py` or direct SQL via `db_utils`. Never modify schema in application code.
 - **Date Operations**: Use `datetime.now().date()` for date-only operations, `'YYYY-MM-DD'` format for APIs
-- **Connection**: Direct cloud PostgreSQL connection: `postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d`
+- **Connection**: DATABASE_URL loaded from `.env` file via `app/db_credentials_loader.py` (secure, not in version control)
+- **Direct Database Access**: Assistant can execute database operations using existing `db_utils` module or migration scripts
+
+## 🔐 Database Access Methods (for AI Assistant)
+1. **Schema Migrations**: Create migration script in `app/` using `db_credentials_loader` and `db_utils`
+2. **Query Execution**: Use `db_utils.execute_query()` with parameterized queries
+3. **Data Inspection**: Use `db_utils` for read operations to verify state
+4. **Credential Loading**: Always use `from db_credentials_loader import set_database_url` for secure access
+5. **Never Hardcode**: Never put DATABASE_URL or credentials in code files
 
 ## 🔧 Code Quality Standards
 - **Public APIs**: Use intended public methods, avoid private method calls
@@ -28,13 +36,47 @@
 ## ❌ Common Mistakes to Avoid
 - Using SQLite syntax (`?`, `AUTOINCREMENT`, `CURRENT_TIMESTAMP`)
 - Calling private methods from outside their class
-- Making schema changes in application code
+- Making schema changes in application code (use migration scripts instead)
 - Using `datetime.now()` for date-only operations
 - Inconsistent date formats in API responses
+- Hardcoding DATABASE_URL or credentials in any file
+- Running database operations without loading credentials via `db_credentials_loader`
 
 ## 🎯 Success Criteria
 - All SQL queries use PostgreSQL syntax
 - All date operations use proper date objects
 - All APIs return consistent formats
-- All schema changes via SQL Editor
+- All schema changes via migration scripts (assistant can run these)
 - Clean error handling and logging
+- Database credentials loaded securely from .env file
+
+## 📊 Database Operation Examples
+
+### ✅ Correct: Schema Migration
+```python
+# In app/my_migration.py
+from db_credentials_loader import set_database_url
+import db_utils
+
+set_database_url()  # Load from .env
+db_utils.execute_query("ALTER TABLE activities ADD COLUMN new_field TEXT")
+```
+
+### ✅ Correct: Data Query
+```python
+from db_credentials_loader import set_database_url
+import db_utils
+
+set_database_url()
+results = db_utils.execute_query(
+    "SELECT * FROM activities WHERE user_id = %s", 
+    (user_id,), 
+    fetch=True
+)
+```
+
+### ❌ Wrong: Hardcoded Credentials
+```python
+# NEVER DO THIS
+os.environ['DATABASE_URL'] = 'postgresql://user:pass@host/db'
+```

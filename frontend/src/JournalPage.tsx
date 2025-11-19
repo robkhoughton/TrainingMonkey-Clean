@@ -14,6 +14,7 @@ interface JournalEntry {
     elevation: number;
     workout_classification: string;
     total_trimp: number;
+    activity_id?: number;
   } | null;  // Can be null for future dates
   observations: {
     energy_level: number | null;
@@ -47,19 +48,21 @@ const JournalPage: React.FC = () => {
   const [centerDate, setCenterDate] = useState<string>('');
   const [isSaving, setIsSaving] = useState<string | null>(null);
   const [savedEntries, setSavedEntries] = useState<Set<string>>(new Set()); // Track saved entries
-  const [expandedAutopsies, setExpandedAutopsies] = useState<Set<string>>(new Set());
+  
+  // Modal state for full-screen autopsy display
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalAutopsy, setModalAutopsy] = useState<JournalEntry | null>(null);
 
-  // Toggle autopsy expansion for a specific date
-  const toggleAutopsyExpansion = (date: string) => {
-    setExpandedAutopsies(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(date)) {
-        newSet.delete(date);
-      } else {
-        newSet.add(date);
-      }
-      return newSet;
-    });
+  // Open modal with autopsy analysis
+  const openAutopsyModal = (entry: JournalEntry) => {
+    setModalAutopsy(entry);
+    setModalOpen(true);
+  };
+
+  // Close modal
+  const closeAutopsyModal = () => {
+    setModalOpen(false);
+    setModalAutopsy(null);
   };
 
   // Helper function to get alignment score color
@@ -169,10 +172,28 @@ const JournalPage: React.FC = () => {
         // Mark this entry as saved
         setSavedEntries(prev => new Set(prev).add(date));
 
-        // Refresh data to get any new autopsy analysis
-        setTimeout(() => {
-          fetchJournalData();
-        }, 1000);
+        // Refresh data to get any new autopsy analysis and auto-open modal
+        setTimeout(async () => {
+          try {
+            const url = centerDate ? `/api/journal?date=${centerDate}` : '/api/journal';
+            const response = await fetch(url);
+            
+            if (response.ok) {
+              const result: JournalResponse = await response.json();
+              if (result.success) {
+                setJournalData(result.data);
+                
+                // Find the saved entry and open modal if autopsy is available
+                const savedEntry = result.data.find(e => e.date === date);
+                if (savedEntry?.ai_autopsy?.autopsy_analysis) {
+                  openAutopsyModal(savedEntry);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to refresh data:', err);
+          }
+        }, 1500);
 
       } else {
         throw new Error(result.error || 'Failed to save journal entry');
@@ -394,9 +415,30 @@ const JournalPage: React.FC = () => {
                 <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '120px' }}>Date</th>
                 <th style={{ padding: '12px 4px', textAlign: 'center', maxWidth: '500px', minWidth: '350px' }}>Today's Training Decision</th>
                 <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '160px' }}>Actual Activity</th>
-                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>Energy</th>
-                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>RPE</th>
-                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>Pain %</th>
+                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>
+                  <span 
+                    style={{ cursor: 'help', borderBottom: '1px dotted #6b7280' }}
+                    title="How did you feel going into the session? Fired up = 5, Barely got out of bed = 1"
+                  >
+                    Energy
+                  </span>
+                </th>
+                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>
+                  <span 
+                    style={{ cursor: 'help', borderBottom: '1px dotted #6b7280' }}
+                    title="Rate of Perceived Exertion: How hard did the workout feel? 1 = Very Easy, 10 = Maximum Effort"
+                  >
+                    RPE
+                  </span>
+                </th>
+                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>
+                  <span 
+                    style={{ cursor: 'help', borderBottom: '1px dotted #6b7280' }}
+                    title="The % of time during your activity that you were thinking about the pain"
+                  >
+                    Pain %
+                  </span>
+                </th>
                 <th style={{ padding: '12px 4px', textAlign: 'center', maxWidth: '450px', minWidth: '350px' }}>Notes</th>
                 <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>Alignment</th>
                 <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '100px' }}>Actions</th>
@@ -734,7 +776,6 @@ const JournalPage: React.FC = () => {
                         const isSaved = savedEntries.has(entry.date);
                         const hasAnalysis = entry.ai_autopsy.autopsy_analysis;
                         const isCurrentlySaving = isSaving === entry.date;
-                        const isAnalysisExpanded = expandedAutopsies.has(entry.date);
                         const isRestDay = !entry.activity_summary || entry.activity_summary.type === 'rest';
                         const isToday = entry.is_today;
 
@@ -785,10 +826,10 @@ const JournalPage: React.FC = () => {
                         if (hasAnalysis) {
                           return (
                             <button
-                              onClick={() => toggleAutopsyExpansion(entry.date)}
-                              className={`${styles.journalButton} ${isAnalysisExpanded ? styles.buttonAnalysisExpanded : styles.buttonAnalysis}`}
+                              onClick={() => openAutopsyModal(entry)}
+                              className={`${styles.journalButton} ${styles.buttonAnalysis}`}
                             >
-                              {isAnalysisExpanded ? '📖 Hide' : '🔍 Analysis'}
+                              🔍 Analysis
                             </button>
                           );
                         }
@@ -808,71 +849,6 @@ const JournalPage: React.FC = () => {
                   )}
                   {/* End of tomorrow/regular row conditional */}
 
-                  {/* Expanded Autopsy Row - only for past dates with autopsy */}
-                  {!entry.is_future && entry.ai_autopsy.autopsy_analysis && expandedAutopsies.has(entry.date) && (
-                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
-                      <td colSpan={9} style={{ textAlign: 'right', padding: '16px' }}>
-                        <div style={{
-                          border: '1px solid #d1d5db',
-                          borderRadius: '8px',
-                          padding: '16px',
-                          backgroundColor: 'white',
-                          maxWidth: '800px', // Limit width as requested
-                          margin: '0' // Left justify the content
-                        }}>
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '12px'
-                          }}>
-                            <h4 style={{
-                              margin: 0,
-                              color: '#1f2937',
-                              fontSize: '1rem',
-                              fontWeight: '600'
-                            }}>
-                              🔍 AI Training Analysis - {formatFullDate(entry.date)}
-                            </h4>
-                            {entry.ai_autopsy.alignment_score && (
-                              <div style={{
-                                padding: '4px 12px',
-                                backgroundColor: getAlignmentScoreColor(entry.ai_autopsy.alignment_score),
-                                color: 'white',
-                                borderRadius: '16px',
-                                fontSize: '0.8rem',
-                                fontWeight: '600'
-                              }}>
-                                Alignment: {entry.ai_autopsy.alignment_score}/10
-                              </div>
-                            )}
-                          </div>
-
-                          <div style={{
-                            whiteSpace: 'pre-line',
-                            fontSize: '0.9rem',
-                            lineHeight: '1.6',
-                            color: '#4b5563',
-                            marginBottom: '12px',
-                            textAlign: 'left'
-                          }}>
-                            {entry.ai_autopsy.autopsy_analysis}
-                          </div>
-
-                          {entry.ai_autopsy.generated_at && (
-                            <div style={{
-                              fontSize: '0.75rem',
-                              color: '#6b7280',
-                              fontStyle: 'italic',
-                              textAlign: 'right'
-                            }}>
-                              Generated: {new Date(entry.ai_autopsy.generated_at).toLocaleString()}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               ))}
             </tbody>
@@ -921,6 +897,236 @@ const JournalPage: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Full-Screen Autopsy Modal */}
+      {modalOpen && modalAutopsy && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}
+        onClick={closeAutopsyModal}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            width: '95vw',
+            maxHeight: '85vh',
+            maxWidth: '1600px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '24px 32px',
+              borderBottom: '2px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#f8f9fa'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <h2 style={{
+                  margin: 0,
+                  color: '#1f2937',
+                  fontSize: '1.5rem',
+                  fontWeight: '700'
+                }}>
+                  🔍 AI Training Analysis
+                </h2>
+                <div style={{
+                  fontSize: '1.1rem',
+                  color: '#6b7280',
+                  fontWeight: '500'
+                }}>
+                  {formatFullDate(modalAutopsy.date)}
+                </div>
+                {modalAutopsy.ai_autopsy.alignment_score && (
+                  <div style={{
+                    padding: '8px 16px',
+                    backgroundColor: getAlignmentScoreColor(modalAutopsy.ai_autopsy.alignment_score),
+                    color: 'white',
+                    borderRadius: '20px',
+                    fontSize: '1rem',
+                    fontWeight: '700'
+                  }}>
+                    Alignment: {modalAutopsy.ai_autopsy.alignment_score}/10
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={closeAutopsyModal}
+                style={{
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '12px 24px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Modal Body - Multi-Column Layout */}
+            <div style={{
+              flex: 1,
+              padding: '32px',
+              overflowY: 'auto',
+              backgroundColor: '#ffffff'
+            }}>
+              {(() => {
+                const text = modalAutopsy.ai_autopsy.autopsy_analysis || '';
+                const paragraphs = text.split('\n\n').filter(p => p.trim());
+                
+                // Split paragraphs in half
+                const midpoint = Math.ceil(paragraphs.length / 2);
+                const column1 = paragraphs.slice(0, midpoint);
+                const column2 = paragraphs.slice(midpoint);
+                
+                return (
+                  <div style={{
+                    display: 'flex',
+                    gap: '40px',
+                    position: 'relative',
+                    alignItems: 'flex-start'
+                  }}>
+                    {/* Column 1 */}
+                    <div style={{
+                      flex: '1',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                      color: '#374151',
+                      textAlign: 'left',
+                      paddingRight: '20px'
+                    }}>
+                      {column1.map((para, idx) => {
+                        // Detect section headings (all caps followed by colon)
+                        const isSection = para.match(/^[A-Z\s&']+:/);
+                        
+                        if (isSection) {
+                          return (
+                            <div key={`col1-${idx}`} style={{
+                              marginTop: idx > 0 ? '2em' : '0',
+                              marginBottom: '1em',
+                              paddingBottom: '0.5em',
+                              borderBottom: '2px solid #3b82f6'
+                            }}>
+                              <h3 style={{
+                                margin: 0,
+                                fontSize: '1.05rem',
+                                fontWeight: '700',
+                                color: '#1f2937',
+                                letterSpacing: '0.02em'
+                              }}>
+                                {para}
+                              </h3>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <p key={`col1-${idx}`} style={{ 
+                            margin: '0 0 1.2em 0',
+                            fontWeight: '400'
+                          }}>
+                            {para}
+                          </p>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Column Divider */}
+                    <div style={{
+                      width: '2px',
+                      backgroundColor: '#d1d5db',
+                      margin: '0 20px'
+                    }} />
+                    
+                    {/* Column 2 */}
+                    <div style={{
+                      flex: '1',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                      color: '#374151',
+                      textAlign: 'left',
+                      paddingLeft: '20px'
+                    }}>
+                      {column2.map((para, idx) => {
+                        // Detect section headings (all caps followed by colon)
+                        const isSection = para.match(/^[A-Z\s&']+:/);
+                        
+                        if (isSection) {
+                          return (
+                            <div key={`col2-${idx}`} style={{
+                              marginTop: idx > 0 ? '2em' : '0',
+                              marginBottom: '1em',
+                              paddingBottom: '0.5em',
+                              borderBottom: '2px solid #3b82f6'
+                            }}>
+                              <h3 style={{
+                                margin: 0,
+                                fontSize: '1.05rem',
+                                fontWeight: '700',
+                                color: '#1f2937',
+                                letterSpacing: '0.02em'
+                              }}>
+                                {para}
+                              </h3>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <p key={`col2-${idx}`} style={{ 
+                            margin: '0 0 1.2em 0',
+                            fontWeight: '400'
+                          }}>
+                            {para}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            {modalAutopsy.ai_autopsy.generated_at && (
+              <div style={{
+                padding: '16px 32px',
+                borderTop: '1px solid #e5e7eb',
+                backgroundColor: '#f8f9fa',
+                fontSize: '0.875rem',
+                color: '#6b7280',
+                fontStyle: 'italic',
+                textAlign: 'right'
+              }}>
+                Generated: {new Date(modalAutopsy.ai_autopsy.generated_at).toLocaleString()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

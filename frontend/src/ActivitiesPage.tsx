@@ -5,9 +5,11 @@ import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from 
 interface Activity {
   activity_id: number;
   date: string;
+  start_time?: string | null; // Time of activity start in 'HH:MM:SS' format
   name: string;
   type: string;
   sport_type?: string;
+  device_name?: string | null; // Device used to record activity (Garmin branding compliance)
   distance_miles: number;
   elevation_gain_feet: number | null;
   total_load_miles: number;
@@ -68,9 +70,11 @@ const ActivitiesPage: React.FC = () => {
         const activitiesData = result.data.map((item: any) => ({
           activity_id: item.activity_id,
           date: item.date,
+          start_time: item.start_time || null, // Map the start time field
           name: item.name,
           type: item.type,
           sport_type: item.sport_type,
+          device_name: item.device_name || null, // Device name for Garmin branding
           distance_miles: item.distance_miles || 0,
           elevation_gain_feet: item.elevation_gain_feet,
           total_load_miles: item.total_load_miles || 0,
@@ -259,6 +263,20 @@ const ActivitiesPage: React.FC = () => {
     return `${hours}:${remainingMinutes.toString().padStart(2, '0')}`;
   };
 
+  // Format start time from 'HH:MM:SS' to '12:34 PM' format
+  const formatStartTime = (timeStr: string | null | undefined) => {
+    if (!timeStr) return null;
+    
+    try {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12; // Convert 0 to 12 for midnight
+      return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+    } catch {
+      return null;
+    }
+  };
+
   if (isLoading) {
     return (
       <div className={styles.loading}>
@@ -374,9 +392,14 @@ const ActivitiesPage: React.FC = () => {
                                    activity.activity_id <= 0 ? '#f3f4f6' : 'white' // Rest days get gray background
                   }}
                 >
-                  {/* DATE - LEFT JUSTIFIED WITH DAY OF WEEK */}
+                  {/* DATE - LEFT JUSTIFIED WITH DAY OF WEEK AND START TIME */}
                   <td style={{ padding: '10px 8px', textAlign: 'left' }}>
-                    {formatDateWithDayOfWeek(activity.date)}
+                    <div>{formatDateWithDayOfWeek(activity.date)}</div>
+                    {formatStartTime(activity.start_time) && (
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '2px' }}>
+                        {formatStartTime(activity.start_time)}
+                      </div>
+                    )}
                   </td>
 
                   {/* TYPE - LEFT JUSTIFIED (text) - IMPROVEMENT 3: Shows specific types */}
@@ -393,14 +416,28 @@ const ActivitiesPage: React.FC = () => {
                     </span>
                   </td>
 
-                  {/* NAME - LEFT JUSTIFIED (text) WITH STRAVA LINK */}
+                  {/* NAME - LEFT JUSTIFIED (text) WITH STRAVA LINK AND DEVICE ATTRIBUTION */}
                   <td style={{ padding: '10px 8px', textAlign: 'left', maxWidth: '200px' }}>
-                    <div style={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {activity.name}
+                    <div>
+                      <div style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {activity.name}
+                      </div>
+
+                      {/* GARMIN DEVICE ATTRIBUTION - Required per Garmin branding guidelines (Nov 1, 2025) */}
+                      {activity.device_name && activity.device_name.toLowerCase().includes('garmin') && (
+                        <div style={{ 
+                          marginTop: '2px',
+                          fontSize: '0.7rem',
+                          color: '#6b7280',
+                          fontStyle: 'italic'
+                        }}>
+                          {activity.device_name}
+                        </div>
+                      )}
 
                       {/* REQUIRED: "View on Strava" link for real activities */}
                       {activity.activity_id > 0 && (

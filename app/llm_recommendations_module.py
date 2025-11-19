@@ -463,15 +463,15 @@ def format_observations_for_prompt(observations):
     formatted = []
 
     if observations.get('energy_level'):
-        energy_labels = {1: "Very Low", 2: "Low", 3: "Moderate", 4: "Good", 5: "Excellent"}
+        energy_labels = {1: "Barely got out of bed", 2: "Low energy", 3: "Normal", 4: "High energy", 5: "Fired up"}
         formatted.append(
-            f"Energy Level: {observations['energy_level']}/5 ({energy_labels.get(observations['energy_level'], 'Unknown')})")
+            f"Energy Level: {observations['energy_level']}/5 ({energy_labels.get(observations['energy_level'], 'Unknown')}) - How athlete felt going into session")
 
     if observations.get('rpe_score'):
-        formatted.append(f"RPE (Perceived Effort): {observations['rpe_score']}/10")
+        formatted.append(f"RPE (Rate of Perceived Exertion): {observations['rpe_score']}/10 - How hard the workout felt")
 
     if observations.get('pain_percentage') is not None:
-        formatted.append(f"Pain Level: {observations['pain_percentage']}%")
+        formatted.append(f"Pain %: {observations['pain_percentage']}% - Percentage of time thinking about pain during activity")
 
     if observations.get('notes'):
         formatted.append(f"Notes: {observations['notes']}")
@@ -1561,9 +1561,9 @@ ACTUAL TRAINING COMPLETED:
 {activity_summary}
 
 USER OBSERVATIONS:
-- Energy Level: {energy_level}/5
-- RPE (Rate of Perceived Exertion): {rpe_score}/10
-- Pain Level: {pain_percentage}%
+- Energy Level: {energy_level}/5 (How did the athlete feel going into the session? 5=Fired up, 1=Barely got out of bed)
+- RPE (Rate of Perceived Exertion): {rpe_score}/10 (How hard did the workout feel? 10=Maximum effort, 1=Very easy)
+- Pain %: {pain_percentage}% (Percentage of time during the activity that the athlete was thinking about pain)
 - Additional Notes: {notes}
 
 TRAINING REFERENCE FRAMEWORK:
@@ -1897,7 +1897,7 @@ CURRENT METRICS:
 {autopsy_context}
 
 INSTRUCTIONS:
-Provide tomorrow's specific training recommendation that demonstrates learning from recent autopsy patterns. 
+Provide a complete training analysis with three sections that demonstrates learning from recent autopsy patterns.
 Adapt your coaching approach based on the athlete's demonstrated preferences and adherence patterns.
 
 ADAPTIVE COACHING LOGIC:
@@ -1905,12 +1905,16 @@ ADAPTIVE COACHING LOGIC:
 - Mixed alignment: Address specific recurring deviations, provide clearer guidance
 - Low alignment: Simplify recommendations, focus on achievable targets over optimization
 
-FORMAT REQUIREMENTS (CRITICAL):
-- Use plain text only - NO markdown headers (##), NO bold (**), NO section titles
-- Frontend already adds header, so start directly with the assessment
-- Structure: Assessment paragraph, workout details paragraph, monitoring paragraph
-- Keep each paragraph to 2-3 sentences maximum for compact display
-- Total response: 150-200 words for better readability alongside autopsy
+REQUIRED OUTPUT FORMAT:
+
+**DAILY RECOMMENDATION:**
+[Provide tomorrow's specific workout recommendation. Assessment paragraph + workout details + monitoring guidance. 150-200 words]
+
+**WEEKLY PLANNING:**
+[Provide weekly strategy analysis: address current ACWR trend, recovery cycle, upcoming week structure. Reference autopsy learning patterns. 100-150 words]
+
+**PATTERN INSIGHTS:**
+[Identify 2-3 key observations from recent training patterns and autopsy analyses. What's working well? What needs attention? Forward-looking insights. 75-100 words]
 
 Write naturally and concisely. Focus on actionable guidance that demonstrates learning from recent patterns.
 """

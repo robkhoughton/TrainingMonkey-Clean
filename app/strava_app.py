@@ -2871,8 +2871,8 @@ def first_time_dashboard():
 
 @app.route('/landing')
 def landing_redirect():
-    """Explicit landing page route"""
-    return render_template('landing.html')
+    """Redirect /landing to root to prevent duplicate content issues"""
+    return redirect('/', code=301)
 
 
 @app.route('/getting-started')
@@ -3469,8 +3469,11 @@ def get_activities_for_management():
             SELECT 
                 activity_id,
                 date,
+                start_time,
                 name,
                 type,
+                sport_type,
+                device_name,
                 distance_miles,
                 elevation_gain_feet,
                 total_load_miles,
@@ -4938,85 +4941,199 @@ def save_journal_entry():
                 logger.warning(f"Failed to create rest day activity: {rest_error}")
                 # Continue anyway - journal entry is more important
 
-        try:
-            # Get prescribed action for this date (EXISTING LOGIC)
-            prescribed_action = get_todays_decision_for_date(date_obj, current_user.id)
-
-            # Get activity summary for this date (EXISTING LOGIC)
-            activity_summary = get_activity_summary_for_date(date_obj, current_user.id)
-
-            # Check if we have both prescribed action AND actual activity (EXISTING LOGIC)
-            has_prescribed_action = (
-                    prescribed_action and
-                    prescribed_action != "No AI recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
-                    and "No specific recommendation available" not in prescribed_action
-                    and "Error retrieving" not in prescribed_action
-            )
-
-            has_actual_activity = (
-                    activity_summary and
-                    activity_summary.get('distance', 0) > 0 and
-                    activity_summary.get('type') != 'rest'
-            )
-
-            # Check if we should generate autopsy (has both recommendation and activity)
-            if has_prescribed_action and has_actual_activity:
-                logger.info(f"Will generate autopsy for {date_str} - has both prescribed action and actual activity")
-                autopsy_generated = True
-            else:
-                logger.info(f"Skipping autopsy for {date_str} - missing prescribed action or activity")
-                if not has_prescribed_action:
-                    logger.info(f"  - No valid prescribed action for {date_str}")
-                if not has_actual_activity:
-                    logger.info(f"  - No valid activity for {date_str}")
-
-        except Exception as autopsy_error_ex:
-            autopsy_error = str(autopsy_error_ex)
-            logger.warning(f"Autopsy generation failed for {date_str}: {autopsy_error}")
-            # Don't fail the journal save if autopsy generation fails (EXISTING BEHAVIOR)
-
-        # NEW: Auto-generate tomorrow's recommendation if autopsy was created OR rest day marked
+        # ========================================================================
+        # SIMPLIFIED WORKFLOW WITH EXPLICIT DATES
+        # ========================================================================
+        # When saving journal for date X:
+        #   - If rest day: Generate recommendation for X+1
+        #   - If workout: Generate autopsy for X, then recommendation for X+1
+        # ========================================================================
+        
+        autopsy_generated = False
         recommendation_generated = False
+        autopsy_error = None
         recommendation_error = None
         
-        # Generate recommendation if:
-        # 1. Autopsy was generated (normal flow with workout) - use autopsy-informed generation
-        # 2. Rest day explicitly marked (no workout, but user wants tomorrow's plan)
-        if autopsy_generated or is_rest_day:
+        # Calculate tomorrow's date explicitly (no timezone magic)
+        tomorrow_date = date_obj + timedelta(days=1)
+        tomorrow_date_str = tomorrow_date.strftime('%Y-%m-%d')
+        
+        logger.info(f"📝 Journal saved for {date_str}, will process tomorrow = {tomorrow_date_str}")
+        
+        if is_rest_day:
+            # ===== REST DAY PATH =====
+            logger.info(f"🛌 Rest day for {date_str} - generating recommendation for {tomorrow_date_str}")
             try:
-                if is_rest_day:
-                    logger.info(f"Rest day marked for {date_str} - generating tomorrow's recommendation without autopsy")
-                    from llm_recommendations_module import generate_recommendations
-                    # For rest days, use standard recommendation generation
-                    recommendation = generate_recommendations(
-                        force=True, 
-                        user_id=current_user.id,
-                        target_tomorrow=True  # For rest days, explicitly target tomorrow
-                    )
-                    if recommendation:
-                        recommendation_generated = True
-                        logger.info(f"✅ Generated recommendation after rest day for user {current_user.id}")
-                else:
-                    # For workouts with autopsy, use autopsy-informed recommendation generation
-                    logger.info(f"🔄 Calling update_recommendations_with_autopsy_learning for {date_str}")
-                    from llm_recommendations_module import update_recommendations_with_autopsy_learning
-                    # This function:
-                    # 1. Generates autopsy for the completed workout (if not exists)
-                    # 2. Checks if TODAY's recommendation needs updating
-                    # 3. Regenerates TODAY's recommendation if it's not autopsy-informed
-                    # 4. Otherwise generates tomorrow's recommendation
-                    update_result = update_recommendations_with_autopsy_learning(current_user.id, date_str)
-                    if update_result:
-                        recommendation_generated = True
-                        next_rec_date = update_result.get('next_recommendation_date', 'unknown')
-                        logger.info(f"✅ Recommendation updated for {next_rec_date} (autopsy-informed)")
-                    else:
-                        logger.warning(f"⚠️ update_recommendations_with_autopsy_learning returned None for user {current_user.id}")
+                from llm_recommendations_module import generate_autopsy_informed_daily_decision
+                recommendation_text = generate_autopsy_informed_daily_decision(
+                    user_id=current_user.id,
+                    target_date=tomorrow_date
+                )
+                
+                if recommendation_text:
+                    # Save recommendation to database with explicit target_date
+                    from unified_metrics_service import UnifiedMetricsService
+                    current_metrics = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
                     
-            except Exception as rec_error:
-                recommendation_error = str(rec_error)
-                logger.warning(f"Auto-generation of recommendation failed: {rec_error}", exc_info=True)
-                # Don't fail the journal save if recommendation generation fails
+                    from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
+                    recommendation_data = {
+                        'generation_date': date_str,
+                        'target_date': tomorrow_date_str,
+                        'valid_until': None,
+                        'data_start_date': date_str,
+                        'data_end_date': date_str,
+                        'metrics_snapshot': current_metrics,
+                        'daily_recommendation': recommendation_text,
+                        'weekly_recommendation': 'See previous weekly guidance',
+                        'pattern_insights': f'Generated after rest day on {date_str}',
+                        'raw_response': recommendation_text,
+                        'user_id': current_user.id,
+                        'is_autopsy_informed': False,
+                        'autopsy_count': 0,
+                        'avg_alignment_score': None
+                    }
+                    recommendation_data = fix_dates_for_json(recommendation_data)
+                    save_llm_recommendation(recommendation_data)
+                    
+                    recommendation_generated = True
+                    logger.info(f"✅ Generated recommendation for {tomorrow_date_str} after rest day")
+                else:
+                    logger.warning(f"❌ Failed to generate recommendation for {tomorrow_date_str}")
+                    
+            except Exception as e:
+                recommendation_error = str(e)
+                logger.error(f"❌ Error generating recommendation after rest day: {e}", exc_info=True)
+        
+        else:
+            # ===== WORKOUT PATH =====
+            logger.info(f"🏃 Workout day for {date_str} - will generate autopsy + recommendation")
+            
+            # STEP 1: Generate autopsy for THIS date
+            autopsy_analysis = None
+            alignment_score = None
+            try:
+                logger.info(f"🔍 Step 1: Generating autopsy for {date_str}")
+                generate_autopsy_for_date(date_str, current_user.id)
+                autopsy_generated = True
+                logger.info(f"✅ Autopsy generated for {date_str}")
+                
+                # Get the JUST-generated autopsy for use in recommendation
+                autopsy_info = db_utils.execute_query(
+                    "SELECT autopsy_analysis, alignment_score FROM ai_autopsies WHERE user_id = %s AND date = %s ORDER BY generated_at DESC LIMIT 1",
+                    (current_user.id, date_str),
+                    fetch=True
+                )
+                if autopsy_info and autopsy_info[0]:
+                    autopsy_analysis = autopsy_info[0]['autopsy_analysis'] if hasattr(autopsy_info[0], 'keys') else autopsy_info[0][0]
+                    alignment_score = autopsy_info[0]['alignment_score'] if hasattr(autopsy_info[0], 'keys') else autopsy_info[0][1]
+                    logger.info(f"📋 Retrieved autopsy for {date_str}: alignment={alignment_score}/10")
+                
+            except Exception as e:
+                autopsy_error = str(e)
+                logger.error(f"❌ Autopsy generation failed for {date_str}: {e}", exc_info=True)
+            
+            # STEP 2: Generate/update recommendation for TOMORROW using THIS autopsy
+            try:
+                logger.info(f"🤖 Step 2: Generating recommendation for {tomorrow_date_str} using autopsy from {date_str}")
+                
+                # Create autopsy insights dict with the JUST-generated autopsy
+                if autopsy_analysis and alignment_score:
+                    logger.info(f"✅ Using fresh autopsy from {date_str} (alignment: {alignment_score}/10)")
+                    autopsy_insights = {
+                        'count': 1,
+                        'avg_alignment': alignment_score,
+                        'latest_insights': autopsy_analysis[:300],  # First 300 chars for context
+                        'alignment_trend': [alignment_score]
+                    }
+                else:
+                    logger.warning(f"⚠️ No autopsy available for {date_str}, using recent autopsy data")
+                    from llm_recommendations_module import get_recent_autopsy_insights
+                    autopsy_insights = get_recent_autopsy_insights(current_user.id, days=3)
+                
+                # Generate recommendation with explicit autopsy insights
+                from llm_recommendations_module import create_autopsy_informed_decision_prompt, call_anthropic_api, get_current_metrics
+                current_metrics = get_current_metrics(current_user.id)
+                
+                if not current_metrics:
+                    logger.error(f"❌ No current metrics for user {current_user.id}")
+                    recommendation_text = None
+                else:
+                    prompt = create_autopsy_informed_decision_prompt(
+                        current_user.id,
+                        tomorrow_date_str,
+                        current_metrics,
+                        autopsy_insights
+                    )
+                    recommendation_text = call_anthropic_api(prompt)
+                
+                if recommendation_text:
+                    recommendation_text = recommendation_text.strip()
+                    
+                    # Check if recommendation already exists for tomorrow
+                    existing_rec = db_utils.execute_query(
+                        "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
+                        (current_user.id, tomorrow_date_str),
+                        fetch=True
+                    )
+                    
+                    if existing_rec:
+                        # UPDATE existing recommendation
+                        logger.info(f"📝 Updating existing recommendation for {tomorrow_date_str}")
+                        db_utils.execute_query(
+                            """
+                            UPDATE llm_recommendations
+                            SET daily_recommendation = %s,
+                                pattern_insights = %s,
+                                raw_response = %s,
+                                generated_at = NOW(),
+                                is_autopsy_informed = TRUE,
+                                autopsy_count = 1,
+                                avg_alignment_score = %s
+                            WHERE user_id = %s AND target_date = %s
+                            """,
+                            (
+                                recommendation_text,
+                                f"Updated with autopsy from {date_str} (alignment: {alignment_score}/10)" if alignment_score else f"Updated with autopsy from {date_str}",
+                                recommendation_text,
+                                alignment_score,
+                                current_user.id,
+                                tomorrow_date_str
+                            )
+                        )
+                    else:
+                        # INSERT new recommendation
+                        logger.info(f"📝 Creating new recommendation for {tomorrow_date_str}")
+                        from unified_metrics_service import UnifiedMetricsService
+                        current_metrics_for_save = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
+                        
+                        from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
+                        recommendation_data = {
+                            'generation_date': date_str,
+                            'target_date': tomorrow_date_str,
+                            'valid_until': None,
+                            'data_start_date': date_str,
+                            'data_end_date': date_str,
+                            'metrics_snapshot': current_metrics_for_save,
+                            'daily_recommendation': recommendation_text,
+                            'weekly_recommendation': 'See previous weekly guidance',
+                            'pattern_insights': f"Generated with autopsy from {date_str} (alignment: {alignment_score}/10)" if alignment_score else f"Generated with autopsy from {date_str}",
+                            'raw_response': recommendation_text,
+                            'user_id': current_user.id,
+                            'is_autopsy_informed': True,
+                            'autopsy_count': 1,
+                            'avg_alignment_score': alignment_score
+                        }
+                        recommendation_data = fix_dates_for_json(recommendation_data)
+                        save_llm_recommendation(recommendation_data)
+                    
+                    recommendation_generated = True
+                    logger.info(f"✅ Recommendation for {tomorrow_date_str} is autopsy-informed")
+                else:
+                    logger.warning(f"❌ Failed to generate recommendation for {tomorrow_date_str}")
+                    
+            except Exception as e:
+                recommendation_error = str(e)
+                logger.error(f"❌ Error generating recommendation for {tomorrow_date_str}: {e}", exc_info=True)
 
         # ENHANCED USER RESPONSE - This is the main addition
         response_data = {

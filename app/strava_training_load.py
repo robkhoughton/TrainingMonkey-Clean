@@ -734,9 +734,15 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     # Extract base metrics from Strava activity
     activity_id = activity.id
     activity_date = activity.start_date.strftime('%Y-%m-%d')
+    activity_start_time = activity.start_date_local.strftime('%H:%M:%S') if hasattr(activity, 'start_date_local') and activity.start_date_local else None
     activity_name = activity.name
+    
+    # Extract device name for Garmin branding compliance (effective Nov 1, 2025)
+    device_name = getattr(activity, 'device_name', None)
+    if device_name:
+        logger.info(f"Activity {activity_id} device: {device_name}")
 
-    logger.info(f"Calculating training load for activity {activity_id}: '{activity_name}'")
+    logger.info(f"Calculating training load for activity {activity_id}: '{activity_name}' at {activity_start_time}")
 
     # Get the specific activity type and determine sport classification
     specific_activity_type = determine_specific_activity_type(activity)
@@ -919,9 +925,11 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     result = {
         'activity_id': int(activity_id),
         'date': activity_date,
+        'start_time': activity_start_time,
         'name': activity_name,
         'type': specific_activity_type,
         'sport_type': sport_type,  # NEW
+        'device_name': device_name,  # NEW: For Garmin branding compliance
         'distance_miles': float(round(distance_miles, 2)),
         'elevation_gain_feet': float(round(elevation_gain_feet, 2)),
         'elevation_load_miles': float(round(elevation_load_miles, 2)),
