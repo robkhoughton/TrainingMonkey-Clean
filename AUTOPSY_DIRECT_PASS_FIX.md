@@ -315,3 +315,4 @@ This function expects an `autopsy_insights` dict with this structure:
 
 **Status**: ✅ FIXED - Autopsy data now passed directly to recommendation generation!
 
+

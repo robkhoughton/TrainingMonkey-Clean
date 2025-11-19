@@ -49,3 +49,4 @@ if __name__ == "__main__":
     else:
         print("ERROR: Could not find DATABASE_URL in .env file")
 
+

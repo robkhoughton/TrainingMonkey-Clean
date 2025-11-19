@@ -92,3 +92,4 @@ Once the migration succeeds:
 - `app/strava_training_load.py` - Captures start_time and device_name from Strava
 - `frontend/src/ActivitiesPage.tsx` - Displays start_time below date
 
+

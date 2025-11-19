@@ -1163,3 +1163,4 @@ window.explainRecommendation = () => {
 
 // Initialize the application
 GettingStartedApp.init();
+

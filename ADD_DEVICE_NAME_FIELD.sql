@@ -9,3 +9,4 @@ ADD COLUMN IF NOT EXISTS device_name VARCHAR(255);
 -- Used to display Garmin device attribution per compliance requirements
 -- Will be populated during the next Strava sync for existing activities
 
+

@@ -243,127 +243,11 @@ def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=
         }
 
 
-def create_enhanced_prompt(current_metrics, activities, pattern_analysis, training_guide, user_id=None):
-    """Create an enhanced prompt using the training guide framework."""
-    if user_id is None:
-        raise ValueError("user_id is required for multi-user support")
-
-    # Get athlete profile and pattern flags
-    athlete_profile = classify_athlete_profile(user_id)  # Pass user_id here
-    
-    # Get user's recommendation style and adjusted thresholds
-    recommendation_style = get_user_recommendation_style(user_id)
-    thresholds = get_adjusted_thresholds(recommendation_style)
-    
-    pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
-
-    # Get date information using USER'S TIMEZONE
-    from timezone_utils import get_user_current_date
-    current_date = get_user_current_date(user_id).strftime(DEFAULT_DATE_FORMAT)
-    start_date = activities[0]['date'] if activities else "unknown"
-    end_date = activities[-1]['date'] if activities else "unknown"
-    days_analyzed = len(set(activity['date'] for activity in activities))
-
-    # Create recent activities summary
-    recent_activities_summary = create_recent_activities_summary(activities)
-
-    # Format the metrics - ensure we're using the unified values
-    formatted_metrics = {
-        'external_acwr': f"{current_metrics['external_acwr']:.2f}" if current_metrics['external_acwr'] else "N/A",
-        'internal_acwr': f"{current_metrics['internal_acwr']:.2f}" if current_metrics['internal_acwr'] else "N/A",
-        'normalized_divergence': f"{current_metrics['normalized_divergence']:.3f}" if current_metrics[
-                                                                                          'normalized_divergence'] is not None else "N/A",
-        'seven_day_avg_load': f"{current_metrics['seven_day_avg_load']:.2f}" if current_metrics[
-            'seven_day_avg_load'] else "N/A",
-        'seven_day_avg_trimp': f"{current_metrics['seven_day_avg_trimp']:.1f}" if current_metrics[
-            'seven_day_avg_trimp'] else "N/A",
-        'days_since_rest': str(current_metrics['days_since_rest'])
-    }
-
-    # Log what we're sending to the prompt for debugging
-    logger.info(f"Prompt will use these metrics for user {user_id}:")
-    logger.info(f"  External ACWR: {formatted_metrics['external_acwr']}")
-    logger.info(f"  Internal ACWR: {formatted_metrics['internal_acwr']}")
-    logger.info(f"  Divergence: {formatted_metrics['normalized_divergence']}")
-    logger.info(f"  Days since rest: {formatted_metrics['days_since_rest']}")
-
-    # Determine primary assessment category based on metrics (using adjusted thresholds)
-    days_since_rest = current_metrics.get('days_since_rest', 0)
-    external_acwr = current_metrics.get('external_acwr', 0)
-    internal_acwr = current_metrics.get('internal_acwr', 0)
-    normalized_divergence = current_metrics.get('normalized_divergence', 0)
-
-    assessment_category = "normal_progression"
-    if days_since_rest > thresholds['days_since_rest_max']:
-        assessment_category = "mandatory_rest"
-    elif normalized_divergence < thresholds['divergence_overtraining']:
-        assessment_category = "overtraining_risk"
-    elif external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
-        assessment_category = "high_acwr_risk"
-    elif normalized_divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
-        assessment_category = "recovery_needed"
-    elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
-        assessment_category = "undertraining_opportunity"
-
-    # Build the enhanced prompt with risk tolerance context
-    prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations. You have access to comprehensive training metrics and established guidelines for safe, effective training progression.
-
-ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
-
-### ATHLETE PROFILE
-Athlete Type: {athlete_profile}
-Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
-Assessment Category: {assessment_category}
-
-### CURRENT METRICS (as of {current_date})
-- External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
-- Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)  
-- Normalized Divergence: {formatted_metrics['normalized_divergence']} (Balance zone: -0.05 to +0.05)
-- 7-day Average Load: {formatted_metrics['seven_day_avg_load']} miles/day
-- 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
-- Days Since Rest: {formatted_metrics['days_since_rest']}
-
-### PATTERN ANALYSIS
-Training Trends:
-- Weekly volume: {pattern_analysis['weekly_volume_trend']}
-- Intensity distribution: {pattern_analysis['intensity_distribution']}
-- Workout types: {pattern_analysis['workout_type_frequency']}
-- Elevation pattern: {pattern_analysis['elevation_pattern']}
-
-Red Flags: {', '.join(pattern_flags['red_flags']) if pattern_flags['red_flags'] else 'None detected'}
-Positive Patterns: {', '.join(pattern_flags['positive_patterns']) if pattern_flags['positive_patterns'] else 'None identified'}
-Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags['warnings'] else 'None'}
-
-### RECENT ACTIVITY SUMMARY
-{recent_activities_summary}
-
-### TRAINING REFERENCE FRAMEWORK
-{training_guide}
-
-### RESPONSE INSTRUCTIONS
-
-Using the Training Reference Framework above, provide specific, evidence-based recommendations in exactly three sections:
-
-**DAILY RECOMMENDATION:**
-- Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression)
-- Reference specific metric thresholds from the guide
-- Include specific volume/intensity targets based on current 7-day averages
-- Use the scenario examples as formatting templates
-
-**WEEKLY PLANNING:**
-- Apply weekly planning priorities from the guide
-- Address any red flags or leverage positive patterns identified
-- Include specific ACWR management strategies if needed
-- Reference athlete profile considerations
-
-**PATTERN INSIGHTS:**
-- Identify 2-3 specific observations using the pattern recognition framework
-- Reference optimal ranges and provide context for current metrics
-- Include forward-looking trend analysis based on recent patterns
-
-Keep each section focused and actionable. Reference specific numbers from the metrics and use the established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide."""
-
-    return prompt
+# DEPRECATED FUNCTION REMOVED: create_enhanced_prompt()
+# This function was never called and has been superseded by create_enhanced_prompt_with_tone()
+# Removed on 2025-11-19 as part of code cleanup and optimization
+# All functionality is now handled by create_enhanced_prompt_with_tone() which includes
+# coaching tone personalization and autopsy insights integration
 
 
 def create_recent_activities_summary(activities):
@@ -1855,7 +1739,21 @@ CRITICAL REQUIREMENTS:
 
 
 def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_metrics, autopsy_insights):
-    """Create daily decision prompt that learns from recent autopsy analyses."""
+    """Create daily decision prompt that learns from recent autopsy analyses.
+    
+    Enhanced version includes Training Reference Framework and Risk Tolerance personalization
+    for evidence-based, consistent recommendations aligned with the comprehensive prompt.
+    """
+
+    # Get user's risk tolerance and personalized thresholds
+    recommendation_style = get_user_recommendation_style(user_id)
+    thresholds = get_adjusted_thresholds(recommendation_style)
+    
+    # Load training guide for evidence-based recommendations
+    training_guide = load_training_guide()
+    if not training_guide:
+        logger.warning("Training guide not available for autopsy-informed prompt")
+        training_guide = "Apply evidence-based training principles focusing on ACWR management and recovery."
 
     autopsy_context = ""
     if autopsy_insights:
@@ -1887,6 +1785,11 @@ COACHING STRATEGY: Standard evidence-based recommendation without learning conte
 
 TARGET DATE: {target_date_str} ({day_name})
 
+ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
+- ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
+- Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
+- Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
+
 CURRENT METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)  
@@ -1896,27 +1799,37 @@ CURRENT METRICS:
 
 {autopsy_context}
 
+### TRAINING REFERENCE FRAMEWORK
+{training_guide}
+
 INSTRUCTIONS:
-Provide a complete training analysis with three sections that demonstrates learning from recent autopsy patterns.
-Adapt your coaching approach based on the athlete's demonstrated preferences and adherence patterns.
+Using the Training Reference Framework above, provide a complete training analysis with three sections that demonstrates learning from recent autopsy patterns.
+Adapt your coaching approach based on the athlete's demonstrated preferences, adherence patterns, and risk tolerance.
 
 ADAPTIVE COACHING LOGIC:
 - High recent alignment: Reinforce successful approaches, maintain recommendation style
 - Mixed alignment: Address specific recurring deviations, provide clearer guidance
 - Low alignment: Simplify recommendations, focus on achievable targets over optimization
+- Always respect the athlete's personalized risk tolerance thresholds listed above
 
 REQUIRED OUTPUT FORMAT:
 
 **DAILY RECOMMENDATION:**
-[Provide tomorrow's specific workout recommendation. Assessment paragraph + workout details + monitoring guidance. 150-200 words]
+[Provide tomorrow's specific workout recommendation. Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression) from the Training Reference Framework. Use the athlete's personalized thresholds, not standard ranges. Assessment paragraph + workout details + monitoring guidance. 150-200 words]
 
 **WEEKLY PLANNING:**
-[Provide weekly strategy analysis: address current ACWR trend, recovery cycle, upcoming week structure. Reference autopsy learning patterns. 100-150 words]
+[Provide weekly strategy analysis: address current ACWR trend, recovery cycle, upcoming week structure. Reference autopsy learning patterns and apply weekly planning priorities from the guide. Adjust recommendations to match the athlete's {recommendation_style} risk tolerance. 100-150 words]
 
 **PATTERN INSIGHTS:**
-[Identify 2-3 key observations from recent training patterns and autopsy analyses. What's working well? What needs attention? Forward-looking insights. 75-100 words]
+[Identify 2-3 key observations from recent training patterns and autopsy analyses using the pattern recognition framework. Interpret metrics relative to this athlete's personalized thresholds. What's working well? What needs attention? Forward-looking insights. 75-100 words]
 
-Write naturally and concisely. Focus on actionable guidance that demonstrates learning from recent patterns.
+CRITICAL REQUIREMENTS:
+- Use the athlete's PERSONALIZED THRESHOLDS listed above, not standard guide thresholds
+- Apply the Training Reference Framework principles throughout
+- Keep each section focused and actionable
+- Reference specific numbers from the metrics
+- Write naturally and concisely
+- Focus on actionable guidance that demonstrates learning from recent patterns
 """
 
     return prompt
