@@ -43,14 +43,6 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   const externalAngle = (clampedExternalValue / max) * 180;
   const internalAngle = (clampedInternalValue / max) * 180;
   
-  // Color zones based on ACWR thresholds - matching chart colors
-  const getColorForValue = (val: number) => {
-    if (val < 0.8) return '#3498db'; // Blue - low load (matching chart)
-    if (val <= 1.3) return '#2ecc71'; // Green - optimal (matching chart)
-    if (val <= 1.5) return '#e67e22'; // Orange - moderate risk (matching chart)
-    return '#e74c3c'; // Red - high risk (matching chart)
-  };
-  
   const radius = (size - 15) / 2; // Adjusted radius for smaller gauge
   const strokeWidth = 6; // Reduced stroke width for tighter look
   const centerX = size / 2;
@@ -294,13 +286,6 @@ const BalanceIndicator: React.FC<{
   
   // Calculate balance position (-1 to +1 range)
   const normalizedDivergence = Math.max(-0.5, Math.min(0.5, divergence)) / 0.5; // Clamp to -1 to +1
-  
-  // Training load intensity (relative to average)
-  const loadIntensity = avgTrainingLoad > 0 ? trainingLoad / avgTrainingLoad : 1;
-  const intensityColor = loadIntensity > 1.3 ? '#e74c3c' : loadIntensity > 1.1 ? '#e67e22' : '#2ecc71';
-  
-  // Bar position (center at 50%, range 15% to 85%)
-  const indicatorPosition = 50 + (normalizedDivergence * 35); // 35% max deviation from center
   
   return (
     <div style={{

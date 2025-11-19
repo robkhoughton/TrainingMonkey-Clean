@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceArea, ComposedChart, ReferenceLine, Bar
 } from 'recharts';
 import styles from './TrainingLoadDashboard.module.css';
@@ -145,7 +145,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming']);
   const [hasCyclingData, setHasCyclingData] = useState(false);
   const [hasSwimmingData, setHasSwimmingData] = useState(false);
-  const [sportSummary, setSportSummary] = useState([]);
 
   // Recommendation state variables from recommendations_component.ts
   const [recommendation, setRecommendation] = useState<LLMRecommendation | null>(null);
@@ -263,15 +262,15 @@ const getRecommendationDateContext = (recommendation) => {
   // Helper functions - FIXED: Ensure proper function syntax
   const formatXAxis = (dateStr: string): string => {
     if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-').map(Number);
+    const [, month, day] = dateStr.split('-').map(Number);
     return `${month}/${day}`;
   };
 
   const formatTooltipDate = (dateStr: string): string => {
     if (!dateStr) return '';
     try {
-      const [year, month, day] = dateStr.split('-').map(Number);
-      const dateObj = new Date(year, month - 1, day);
+      const [, month, day] = dateStr.split('-').map(Number);
+      const dateObj = new Date(new Date().getFullYear(), month - 1, day);
       return dateObj.toLocaleDateString(undefined, {
         year: 'numeric',
         month: 'short',
@@ -282,6 +281,7 @@ const getRecommendationDateContext = (recommendation) => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getUnitByMetricName = (metricName: string): string => {
     if (metricName.includes('ACWR') || metricName.includes('Divergence')) {
       return '';
@@ -510,6 +510,7 @@ const getRecommendationDateContext = (recommendation) => {
   };
 
   // FIXED: Dynamic domain calculation for normalized divergence with inverted axis
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getDivergenceDomain = (data: ProcessedDataRow[]) => {
     const divergenceValues = data
       .map(d => coerceNumber(d.normalized_divergence, NaN))
@@ -770,6 +771,7 @@ const getRecommendationDateContext = (recommendation) => {
       loadData();
       fetchRecommendations(); // Fetch recommendations on initial load
       fetchJournalStatus(); // Fetch journal status for workflow enforcement
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
   // FIXED: Click outside handler for frozen tooltips

@@ -131,7 +131,7 @@ const JournalPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [perfMonitor]);
 
   // Save journal entry
   const saveJournalEntry = async (date: string, observations: any) => {

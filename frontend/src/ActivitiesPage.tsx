@@ -102,7 +102,7 @@ const ActivitiesPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [days]);
+  }, [days, perfMonitor]);
 
   const handleSort = (field: keyof Activity) => {
     const newDirection = sortField === field && sortDirection === 'desc' ? 'asc' : 'desc';
