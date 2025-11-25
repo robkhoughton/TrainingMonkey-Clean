@@ -544,7 +544,8 @@ def parse_weekly_program_response(response_text: str) -> Dict:
 
 def generate_weekly_program(
     user_id: int,
-    target_week_start: Optional[date] = None
+    target_week_start: Optional[date] = None,
+    force_regenerate: bool = False
 ) -> Dict:
     """
     Generate a weekly training program using Claude API.
@@ -552,6 +553,7 @@ def generate_weekly_program(
     Args:
         user_id: User ID
         target_week_start: Monday of target week (defaults to next Monday)
+        force_regenerate: If True, bypass cache and regenerate (used for mid-week adjustments)
     
     Returns:
         Dictionary containing program data and metadata

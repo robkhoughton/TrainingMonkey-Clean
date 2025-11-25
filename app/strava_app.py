@@ -5598,6 +5598,149 @@ def weekly_comprehensive_cron():
         logger.error(f"Error in weekly comprehensive cron: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/cron/weekly-program', methods=['POST'])
+def weekly_program_cron():
+    """
+    Generate divergence-optimized weekly training programs for Coach page.
+    
+    Two schedules:
+    - Sunday 6 PM UTC: Generate full 7-day program for upcoming week
+    - Wednesday 6 PM UTC: Regenerate remaining 4 days (adjust based on Mon-Wed performance)
+    
+    Runs for active users only (activity in last 14 days).
+    """
+    try:
+        # Verify this is coming from Cloud Scheduler
+        if not request.headers.get('X-Cloudscheduler'):
+            logger.warning("Unauthorized weekly program generation request")
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        logger.info("=== STARTING WEEKLY PROGRAM GENERATION CRON ===")
+        
+        # Determine generation mode: 'full' (Sunday) or 'adjustment' (Wednesday)
+        # Allow override via query parameter for testing, otherwise auto-detect from day of week
+        mode = request.args.get('mode')
+        
+        if not mode:
+            # Auto-detect based on day of week (0=Monday, 6=Sunday)
+            day_of_week = datetime.now().weekday()
+            if day_of_week == 6:  # Sunday
+                mode = 'full'
+            elif day_of_week == 2:  # Wednesday
+                mode = 'adjustment'
+            else:
+                logger.warning(f"Weekly program cron running on unexpected day: {day_of_week}")
+                mode = 'full'  # Default to full generation
+        
+        logger.info(f"Running in '{mode}' mode")
+        
+        # Get active users (users with activity in last 14 days)
+        cutoff_date = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+        active_users = execute_query(
+            """
+            SELECT DISTINCT user_id,
+                   (SELECT email FROM user_settings WHERE id = user_id) as email
+            FROM activities 
+            WHERE date >= %s AND user_id IS NOT NULL
+            """,
+            (cutoff_date,),
+            fetch=True
+        )
+
+        if not active_users:
+            logger.info("No active users found for weekly program generation")
+            return jsonify({
+                'message': 'No active users',
+                'mode': mode,
+                'processed': 0
+            }), 200
+
+        logger.info(f"Found {len(active_users)} active users")
+
+        # Import the generation function
+        from coach_recommendations import generate_weekly_program
+        
+        success_count = 0
+        error_count = 0
+        skipped_count = 0
+
+        for user_row in active_users:
+            user_dict = dict(user_row)
+            user_id = user_dict['user_id']
+            email = user_dict.get('email', 'unknown')
+
+            try:
+                logger.info(f"Generating weekly program for user {user_id} ({email})")
+                
+                # Calculate target week start based on mode
+                if mode == 'full':
+                    # Sunday generation: target upcoming Monday
+                    today = datetime.now().date()
+                    days_until_monday = (7 - today.weekday()) % 7
+                    if days_until_monday == 0:
+                        days_until_monday = 7  # If today is Monday, target next Monday
+                    target_week_start = today + timedelta(days=days_until_monday)
+                else:
+                    # Wednesday adjustment: target current week's Monday
+                    today = datetime.now().date()
+                    days_since_monday = today.weekday()
+                    target_week_start = today - timedelta(days=days_since_monday)
+                
+                logger.info(f"Target week start: {target_week_start} (mode: {mode})")
+                
+                # Check if user has race goals configured
+                race_goals = execute_query(
+                    "SELECT COUNT(*) as count FROM race_goals WHERE user_id = %s",
+                    (user_id,),
+                    fetch=True
+                )
+                
+                if race_goals and race_goals[0]['count'] == 0:
+                    logger.info(f"Skipping user {user_id}: No race goals configured")
+                    skipped_count += 1
+                    continue
+                
+                # Generate the weekly program
+                # Force regeneration for adjustment mode, allow cache for full mode
+                result = generate_weekly_program(
+                    user_id=user_id,
+                    target_week_start=target_week_start,
+                    force_regenerate=(mode == 'adjustment')
+                )
+
+                if result:
+                    success_count += 1
+                    logger.info(f"✓ Generated weekly program for user {user_id}")
+                else:
+                    error_count += 1
+                    logger.warning(f"✗ Failed to generate program for user {user_id}")
+
+                # Delay between users to avoid API rate limits
+                time.sleep(2)
+
+            except Exception as user_error:
+                error_count += 1
+                logger.error(f"Error generating program for user {user_id}: {str(user_error)}", exc_info=True)
+
+        result_summary = {
+            'message': 'Weekly program generation completed',
+            'mode': mode,
+            'total_users': len(active_users),
+            'successful': success_count,
+            'errors': error_count,
+            'skipped': skipped_count,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        logger.info(f"=== WEEKLY PROGRAM CRON COMPLETE: {result_summary} ===")
+        return jsonify(result_summary), 200
+
+    except Exception as e:
+        logger.error(f"Error in weekly program cron: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 def extract_alignment_score(autopsy_text):
     """Extract alignment score from autopsy analysis"""
     import re
