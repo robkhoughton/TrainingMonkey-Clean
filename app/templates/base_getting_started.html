@@ -175,7 +175,7 @@
     
     {% block extra_head %}{% endblock %}
 </head>
-<body data-user-authenticated="{{ 'true' if user_context and user_context.is_authenticated else 'false' }}">
+<body data-user-authenticated="{{ 'true' if user_context and user_context.is_authenticated else 'false' }}" {% block body_attributes %}{% endblock %}>
     <!-- Dashboard Navigation Tabs - At the very top -->
     <div class="dashboard-tabs-container">
         <nav class="dashboard-tabs-nav">

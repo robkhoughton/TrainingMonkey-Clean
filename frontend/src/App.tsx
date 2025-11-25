@@ -52,20 +52,26 @@ function App() {
         paddingTop: '4px',
         position: 'relative'
       }}>
-        <nav style={{
+        <div style={{
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'flex-end',
-          paddingLeft: '20px',
-          position: 'relative',
-          zIndex: 10
+          paddingRight: '20px'
         }}>
-          {[
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'activities', label: 'Activities' },
-            { key: 'journal', label: 'Journal' },
-            { key: 'guide', label: 'Guide' },
-            { key: 'settings', label: 'Settings' }
-          ].map((tab, index) => (
+          <nav style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            paddingLeft: '20px',
+            position: 'relative',
+            zIndex: 10
+          }}>
+            {[
+              { key: 'dashboard', label: 'Dashboard' },
+              { key: 'activities', label: 'Activities' },
+              { key: 'journal', label: 'Journal' },
+              { key: 'guide', label: 'Guide' },
+              { key: 'settings', label: 'Settings' }
+            ].map((tab, index) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -96,8 +102,44 @@ function App() {
             >
               <span>{tab.label}</span>
             </button>
-          ))}
-        </nav>
+            ))}
+          </nav>
+          
+          {/* App Branding - Upper Right */}
+          <div style={{
+            paddingBottom: '8px',
+            paddingRight: '20px'
+          }}>
+            <h1 style={{
+              margin: 0,
+              fontSize: '1.5rem',
+              fontWeight: '900',
+              color: '#1e293b',
+              letterSpacing: '0.15em',
+              textTransform: 'uppercase',
+              fontVariant: 'small-caps',
+              fontFamily: '"Arial Black", "Arial Bold", sans-serif',
+              textShadow: '2px 2px 0px rgba(59, 130, 246, 0.15)',
+              WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.1)'
+            }}>
+              <span style={{ 
+                fontSize: '1.8rem', 
+                color: '#7a9b76',
+                fontVariant: 'normal'
+              }}>Y</span>our{' '}
+              <span style={{ 
+                fontSize: '1.8rem', 
+                color: '#7a9b76',
+                fontVariant: 'normal'
+              }}>T</span>raining{' '}
+              <span style={{ 
+                fontSize: '1.8rem', 
+                color: '#7a9b76',
+                fontVariant: 'normal'
+              }}>M</span>onkey
+            </h1>
+          </div>
+        </div>
       </div>
 
       {/* Content area */}

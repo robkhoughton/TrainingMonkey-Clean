@@ -131,7 +131,7 @@ const JournalPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [perfMonitor]);
+  }, []); // perfMonitor uses refs internally and doesn't need to be a dependency
 
   // Save journal entry
   const saveJournalEntry = async (date: string, observations: any) => {

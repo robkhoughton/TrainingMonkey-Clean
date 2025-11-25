@@ -5,14 +5,23 @@ cmd
 cd C:\Users\robho\Documents\TrainingMonkey-Clean\frontend
 npm run build
 
-## 2. Copy to Deployment
+## 2. Clean Old Build Files
 cmd
 cd..
+del /Q app\static\js\main.*.js
+del /Q app\static\js\main.*.LICENSE.txt
+del /Q app\static\css\main.*.css
+del /Q app\build\static\js\main.*.js
+del /Q app\build\static\js\main.*.LICENSE.txt
+del /Q app\build\static\css\main.*.css
+
+## 3. Copy to Deployment
+cmd
 xcopy frontend\build\* app\build\ /E /Y
 xcopy frontend\build\static\* app\static\ /E /Y
 copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runner.webp
 
-## 3. Deployment
+## 4. Deployment
 cmd
 cd app
 deploy_strava_simple.bat

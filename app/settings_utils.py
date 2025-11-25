@@ -335,3 +335,83 @@ def track_settings_changes(old_settings, new_settings):
             }
 
     return changed_fields
+
+
+def calculate_age_from_birthdate(birthdate):
+    """
+    Calculate age from birthdate.
+    
+    Args:
+        birthdate: Date object, string in 'YYYY-MM-DD' format, or None
+        
+    Returns:
+        int: Age in years, or None if birthdate is invalid
+    """
+    if birthdate is None:
+        return None
+        
+    try:
+        from datetime import date
+        
+        # Handle string input
+        if isinstance(birthdate, str):
+            birthdate = datetime.strptime(birthdate, '%Y-%m-%d').date()
+        
+        # Get today's date
+        today = date.today()
+        
+        # Calculate age
+        age = today.year - birthdate.year
+        
+        # Adjust if birthday hasn't occurred yet this year
+        if (today.month, today.day) < (birthdate.month, birthdate.day):
+            age -= 1
+            
+        return age
+        
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.error(f"Error calculating age from birthdate {birthdate}: {str(e)}")
+        return None
+
+
+def get_user_age(user_id):
+    """
+    Get user's current age from their birthdate.
+    Falls back to age field if birthdate is not set.
+    
+    Args:
+        user_id (int): User ID
+        
+    Returns:
+        int: User's age, or None if neither birthdate nor age is available
+    """
+    if user_id is None:
+        raise ValueError("user_id is required")
+        
+    try:
+        result = execute_query(
+            "SELECT birthdate, age FROM user_settings WHERE id = %s",
+            (user_id,),
+            fetch=True
+        )
+        
+        if not result:
+            logger.error(f"No user found with id {user_id}")
+            return None
+            
+        user_data = result[0]
+        birthdate = user_data.get('birthdate')
+        age = user_data.get('age')
+        
+        # Try birthdate first
+        if birthdate:
+            calculated_age = calculate_age_from_birthdate(birthdate)
+            if calculated_age is not None:
+                return calculated_age
+        
+        # Fall back to stored age
+        return age
+        
+    except Exception as e:
+        logger.error(f"Error getting user age for user {user_id}: {str(e)}")
+        return None

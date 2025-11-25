@@ -102,7 +102,7 @@ const ActivitiesPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [days, perfMonitor]);
+  }, [days]); // perfMonitor uses refs internally and doesn't need to be a dependency
 
   const handleSort = (field: keyof Activity) => {
     const newDirection = sortField === field && sortDirection === 'desc' ? 'asc' : 'desc';

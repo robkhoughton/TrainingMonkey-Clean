@@ -10,3 +10,5 @@ ADD COLUMN IF NOT EXISTS device_name VARCHAR(255);
 -- Will be populated during the next Strava sync for existing activities
 
 
+
+

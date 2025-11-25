@@ -4,6 +4,8 @@
 
 {% block meta_description %}Configure your personal profile settings including age, gender, and basic information for accurate training analysis.{% endblock %}
 
+{% block body_attributes %}data-settings-page="true"{% endblock %}
+
 {% block header_title %}
 <h1>Profile Settings</h1>
 <p class="subtitle">Personal Information Configuration</p>
@@ -41,9 +43,9 @@
         </div>
 
         <div class="form-group">
-            <label for="age">Age</label>
-            <input type="number" id="age" name="age" min="13" max="100" value="{{ user.age if user else '' }}" required>
-            <small style="color: #6b7280; font-size: 0.875rem;">Used for heart rate zone calculations and training recommendations</small>
+            <label for="birthdate">Birthdate</label>
+            <input type="date" id="birthdate" name="birthdate" value="{{ user.birthdate if user and user.birthdate else '' }}" required max="{{ today }}">
+            <small style="color: #6b7280; font-size: 0.875rem;">Used to calculate age for heart rate zone calculations and training recommendations</small>
         </div>
 
         <div class="form-group">

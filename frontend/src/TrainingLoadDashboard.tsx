@@ -725,9 +725,6 @@ const getRecommendationDateContext = (recommendation) => {
           if (result.has_swimming_data !== undefined) {
             setHasSwimmingData(result.has_swimming_data);
           }
-          if (result.sport_summary) {
-            setSportSummary(result.sport_summary);
-          }
 
           // Get stats from the API
           try {

@@ -194,6 +194,18 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access your training dashboard.'
 
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Handle unauthorized access - return JSON for API calls, redirect for pages"""
+    if request.path.startswith('/api/'):
+        return jsonify({
+            'success': False,
+            'error': 'Authentication required',
+            'data': []
+        }), 401
+    # For non-API requests, use default behavior (redirect to login)
+    return redirect(url_for('login'))
+
 # Helper function for safe user ID logging
 def get_user_id_for_logging():
     """Safely get current user ID for logging, handling anonymous users"""
@@ -6506,31 +6518,48 @@ def get_heart_rate_zones():
 @app.route('/api/settings/profile', methods=['POST'])
 @login_required
 def update_profile_settings():
-    """Update profile settings (age, gender, email)"""
+    """Update profile settings (birthdate, gender, email)"""
     try:
         data = request.get_json()
         
         # Validate required fields
-        required_fields = ['email', 'age', 'gender']
+        required_fields = ['email', 'birthdate', 'gender']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({'error': f'{field} is required'}), 400
         
-        # Validate age
-        age = int(data['age'])
-        if age < 13 or age > 100:
-            return jsonify({'error': 'Age must be between 13 and 100'}), 400
+        # Validate and parse birthdate
+        from datetime import datetime, date
+        try:
+            birthdate = datetime.strptime(data['birthdate'], '%Y-%m-%d').date()
+            
+            # Validate birthdate is reasonable (at least 13 years old, not in future)
+            today = date.today()
+            min_birthdate = date(today.year - 100, today.month, today.day)
+            max_birthdate = date(today.year - 13, today.month, today.day)
+            
+            if birthdate > max_birthdate:
+                return jsonify({'error': 'You must be at least 13 years old'}), 400
+            if birthdate < min_birthdate:
+                return jsonify({'error': 'Invalid birthdate (too far in the past)'}), 400
+                
+        except ValueError:
+            return jsonify({'error': 'Invalid birthdate format. Use YYYY-MM-DD'}), 400
         
         # Validate gender
         if data['gender'] not in ['male', 'female', 'other']:
             return jsonify({'error': 'Invalid gender selection'}), 400
         
-        # Update user profile
+        # Calculate age from birthdate for backward compatibility
+        from settings_utils import calculate_age_from_birthdate
+        age = calculate_age_from_birthdate(birthdate)
+        
+        # Update user profile with both birthdate and calculated age
         db_utils.execute_query("""
             UPDATE user_settings 
-            SET email = %s, age = %s, gender = %s, updated_at = NOW()
+            SET email = %s, birthdate = %s, age = %s, gender = %s, updated_at = NOW()
             WHERE id = %s
-        """, (data['email'], age, data['gender'], current_user.id))
+        """, (data['email'], birthdate, age, data['gender'], current_user.id))
         
         return jsonify({'success': True, 'message': 'Profile settings updated successfully'})
         
@@ -9473,6 +9502,8 @@ def collect_metrics():
 def settings_profile():
     """Profile settings page"""
     try:
+        from datetime import date
+        
         # Load complete user settings from database
         user_settings = db_utils.execute_query("""
             SELECT * FROM user_settings WHERE id = %s
@@ -9486,6 +9517,7 @@ def settings_profile():
         return render_template('settings_profile.html', 
                              user=user_data, 
                              active_section='profile',
+                             today=date.today().isoformat(),
                              user_context={'is_authenticated': True, 'user': user_data})
     except Exception as e:
         app.logger.error(f"Error rendering profile settings: {str(e)}")
@@ -11567,6 +11599,99 @@ def _assess_base_fitness(races):
         assessment_parts.append(f'developing ultra runner ({ultra_races} ultras)')
     
     return '; '.join(assessment_parts)
+
+
+@app.route('/api/coach/weekly-program', methods=['GET'])
+@login_required
+def get_weekly_program():
+    """
+    Get weekly training program (from cache or generate new).
+    Query params:
+        - week_start: YYYY-MM-DD (defaults to next Monday)
+        - force: 'true' to force regeneration
+    """
+    from coach_recommendations import get_or_generate_weekly_program
+    from datetime import datetime, timedelta
+    
+    try:
+        user_id = current_user.id
+        
+        # Parse query params
+        week_start_str = request.args.get('week_start')
+        force = request.args.get('force', 'false').lower() == 'true'
+        
+        # Parse week_start if provided
+        week_start = None
+        if week_start_str:
+            try:
+                week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        
+        # Get or generate program
+        program = get_or_generate_weekly_program(
+            user_id=user_id,
+            week_start=week_start,
+            force_regenerate=force
+        )
+        
+        return jsonify({
+            'success': True,
+            'program': program,
+            'from_cache': program.get('from_cache', False)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting weekly program: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/weekly-program/generate', methods=['POST'])
+@login_required
+def generate_weekly_program_manual():
+    """
+    Manually generate/regenerate weekly training program.
+    Body: { "week_start": "YYYY-MM-DD" } (optional)
+    """
+    from coach_recommendations import generate_weekly_program, save_weekly_program
+    from datetime import datetime
+    
+    try:
+        user_id = current_user.id
+        data = request.get_json() or {}
+        
+        # Parse week_start if provided
+        week_start = None
+        if 'week_start' in data:
+            try:
+                week_start = datetime.strptime(data['week_start'], '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        
+        # Generate program
+        program = generate_weekly_program(user_id=user_id, target_week_start=week_start)
+        
+        # Save to database
+        if not week_start:
+            # Calculate week_start from program
+            week_start = datetime.strptime(program['week_start_date'], '%Y-%m-%d').date()
+        
+        save_weekly_program(
+            user_id=user_id,
+            week_start=week_start,
+            program_data=program,
+            generation_type='manual'
+        )
+        
+        return jsonify({
+            'success': True,
+            'program': program,
+            'message': 'Weekly program generated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating weekly program: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 # =============================================================================

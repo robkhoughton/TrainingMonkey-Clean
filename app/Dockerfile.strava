@@ -128,6 +128,7 @@ RUN mkdir -p /app/build
 # Copy React build files to the correct location for Flask
 COPY build/ /app/build/
 COPY static/ /app/static/
+COPY landing_static/ /app/landing_static/
 
 # Verify the structure is correct
 RUN echo "=== Verifying build file structure ===" && \
@@ -141,7 +142,11 @@ RUN echo "=== Verifying build file structure ===" && \
     echo "=== Checking for training-monkey-runner.webp ===" && \
     ls -la /app/static/training-monkey-runner.webp || echo "training-monkey-runner.webp not found" && \
     echo "=== Checking images directory ===" && \
-    ls -la /app/static/images/ || echo "images directory not found"
+    ls -la /app/static/images/ || echo "images directory not found" && \
+    echo "=== Checking landing_static directory ===" && \
+    ls -la /app/landing_static/ || echo "landing_static directory not found" && \
+    echo "=== Checking landing_static/images directory ===" && \
+    ls -la /app/landing_static/images/ || echo "landing_static/images directory not found"
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \

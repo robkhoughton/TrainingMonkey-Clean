@@ -27,6 +27,41 @@
 - **Clean Code**: Remove debugging artifacts, use proper validation
 - **Deployment**: User handles all deployments. Assistant prepares code changes but NEVER runs deployment commands
 
+## 🎨 Frontend Build & Deployment Process
+- **Project Structure**: React app in `frontend/` directory, Flask backend in `app/` directory
+- **Build Command**: `npm run build` from within `frontend/` directory (creates optimized production build)
+- **Build Output**: `frontend/build/` directory (includes index.html, static assets, etc.)
+
+### File Copy Destinations (after build):
+1. **All build files**: `frontend/build/*` → `app/build/`
+2. **Static assets**: `frontend/build/static/*` → `app/static/`
+3. **Runner image**: `frontend/build/training-monkey-runner.webp` → `app/static/training-monkey-runner.webp`
+
+### Build and Copy Commands (from project root):
+```cmd
+cd frontend
+npm run build
+cd..
+del /Q app\static\js\main.*.js
+del /Q app\static\js\main.*.LICENSE.txt
+del /Q app\static\css\main.*.css
+del /Q app\build\static\js\main.*.js
+del /Q app\build\static\js\main.*.LICENSE.txt
+del /Q app\build\static\css\main.*.css
+xcopy frontend\build\* app\build\ /E /Y
+xcopy frontend\build\static\* app\static\ /E /Y
+copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runner.webp
+```
+
+### Notes:
+- Use the exact command sequence above (tested and working)
+- Must be at project root before starting
+- Cleanup removes old versioned files before copying new build
+- Build creates versioned JS files (e.g., `main.34e5b039.js`) - index.html auto-references correct version
+- After frontend changes, ALWAYS rebuild and copy before testing/deployment
+- Deployment script: `app/deploy_strava_simple.bat` (user runs this, not assistant)
+- Reference: `scripts/Deployment_script.txt` contains the authoritative deployment process
+
 ## 📋 Timezone & Date Standards
 - **Storage**: UTC timestamps in database
 - **Application**: Use `get_app_current_date()` for consistent date handling

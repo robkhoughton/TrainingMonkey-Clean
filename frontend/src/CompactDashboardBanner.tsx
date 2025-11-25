@@ -638,51 +638,11 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           overflow: 'hidden',
           minHeight: '80px', // Compact height
           backgroundImage: `url('/static/training-monkey-runner.webp')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 30%',
+          backgroundSize: '95%', // Slightly smaller to fit comfortably
+          backgroundPosition: 'center 8%', // Positioned higher to reveal YTM on cap
           backgroundRepeat: 'no-repeat'
         }}>
-          {/* Overlay for better text readability */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(255, 255, 255, 0.15)',
-            pointerEvents: 'none'
-          }} />
-
-          <div style={{ position: 'relative', zIndex: 2 }}>
-            <h1 style={{
-              margin: '0',
-              fontSize: '1.1rem', // Reduced from 2rem
-              fontWeight: '900',
-              color: 'white',
-              WebkitTextStroke: '1px #2c3e50', // Dashboard dark color
-              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.5)',
-              letterSpacing: '0em',
-              lineHeight: '1.1',
-              textTransform: 'capitalize',
-              fontFamily: 'Arial, sans-serif'
-            }}>
-              Your Training Monkey
-            </h1>
-
-            <p style={{
-              margin: '0.25rem 0 0 0', // Reduced margin
-              fontSize: '0.7rem', // Reduced from 1.25rem
-              color: 'white',
-              fontWeight: '600',
-              fontStyle: 'italic',
-              WebkitTextStroke: '0.25px #2c3e50',
-              letterSpacing: '0.2px',
-              textShadow: '0 1px 2px rgba(255, 255, 255, 0.8)'
-            }}>
-              Train that monkey on your back
-            </p>
-            
-          </div>
+          {/* Clean logo - no text overlay */}
         </div>
 
         {/* Card 2: Training Balance (with Gauges) */}
