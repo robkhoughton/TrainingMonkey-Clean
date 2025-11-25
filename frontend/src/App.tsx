@@ -4,6 +4,7 @@ import './App.css';
 import TrainingLoadDashboard from './TrainingLoadDashboard';
 import ActivitiesPage from './ActivitiesPage';
 import JournalPage from './JournalPage';
+import CoachPage from './CoachPage';
 import SettingsPage from './SettingsPage';
 
 function App() {
@@ -33,6 +34,8 @@ function App() {
         return <ActivitiesPage />;
       case 'journal':
         return <JournalPage />;
+      case 'coach':
+        return <CoachPage />;
       case 'guide':
         // Redirect to the guide page
         window.location.href = '/guide';
@@ -69,6 +72,7 @@ function App() {
               { key: 'dashboard', label: 'Dashboard' },
               { key: 'activities', label: 'Activities' },
               { key: 'journal', label: 'Journal' },
+              { key: 'coach', label: 'Coach' },
               { key: 'guide', label: 'Guide' },
               { key: 'settings', label: 'Settings' }
             ].map((tab, index) => (
