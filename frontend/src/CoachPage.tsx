@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
+import RaceGoalsManager from './RaceGoalsManager';
+import RaceHistoryManager from './RaceHistoryManager';
 
 // ============================================================================
 // TYPESCRIPT INTERFACES
@@ -470,15 +472,14 @@ const CoachPage: React.FC = () => {
           PLACEHOLDER SECTIONS (to be implemented in Tasks 8-10)
       ============================================================ */}
 
-      {/* Race Goals & History Card */}
+      {/* Race Goals Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <h2 className={styles.cardHeader}>Race Goals & History</h2>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6' }}>
-          <p>Race goals and history management UI coming in Task 8...</p>
-          <p style={{ fontSize: '14px', marginTop: '10px' }}>
-            {raceGoals.length} goal(s), {raceHistory.length} race(s) in history
-          </p>
-        </div>
+        <RaceGoalsManager goals={raceGoals} onGoalsChange={() => window.location.reload()} />
+      </div>
+
+      {/* Race History Card */}
+      <div className={styles.card} style={{ marginBottom: '20px' }}>
+        <RaceHistoryManager history={raceHistory} onHistoryChange={() => window.location.reload()} />
       </div>
 
       {/* Training Schedule Card */}
