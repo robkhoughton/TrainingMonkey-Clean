@@ -4,6 +4,8 @@ import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
 import RaceGoalsManager from './RaceGoalsManager';
 import RaceHistoryManager from './RaceHistoryManager';
 import TrainingScheduleConfig from './TrainingScheduleConfig';
+import WeeklyProgramDisplay from './WeeklyProgramDisplay';
+import TimelineVisualization from './TimelineVisualization';
 
 // ============================================================================
 // TYPESCRIPT INTERFACES
@@ -488,26 +490,14 @@ const CoachPage: React.FC = () => {
         <TrainingScheduleConfig schedule={trainingSchedule} onScheduleChange={() => window.location.reload()} />
       </div>
 
-      {/* Weekly Training Program Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <h2 className={styles.cardHeader}>Weekly Training Program</h2>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6' }}>
-          <p>7-day training program display coming in Task 10...</p>
-          {weeklyProgram && (
-            <p style={{ fontSize: '14px', marginTop: '10px' }}>
-              Program loaded for week of {weeklyProgram.week_start_date}
-              {weeklyProgram.from_cache && ' (cached)'}
-            </p>
-          )}
-        </div>
-      </div>
-
       {/* Timeline Visualization Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <h2 className={styles.cardHeader}>Training Timeline</h2>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6' }}>
-          <p>Periodization timeline visualization coming in Task 10...</p>
-        </div>
+        <TimelineVisualization trainingStage={trainingStage} />
+      </div>
+
+      {/* Weekly Training Program Card */}
+      <div className={styles.card} style={{ marginBottom: '20px' }}>
+        <WeeklyProgramDisplay program={weeklyProgram} onRefresh={() => window.location.reload()} />
       </div>
 
       {/* Debug Info (remove in production) */}
