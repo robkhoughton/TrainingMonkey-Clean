@@ -3,6 +3,7 @@ import styles from './TrainingLoadDashboard.module.css';
 import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
 import RaceGoalsManager from './RaceGoalsManager';
 import RaceHistoryManager from './RaceHistoryManager';
+import TrainingScheduleConfig from './TrainingScheduleConfig';
 
 // ============================================================================
 // TYPESCRIPT INTERFACES
@@ -484,10 +485,7 @@ const CoachPage: React.FC = () => {
 
       {/* Training Schedule Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <h2 className={styles.cardHeader}>Training Schedule & Availability</h2>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6' }}>
-          <p>Training schedule configuration UI coming in Task 9...</p>
-        </div>
+        <TrainingScheduleConfig schedule={trainingSchedule} onScheduleChange={() => window.location.reload()} />
       </div>
 
       {/* Weekly Training Program Card */}
