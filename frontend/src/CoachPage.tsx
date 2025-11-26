@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
-import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
+import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 import RaceGoalsManager from './RaceGoalsManager';
 import RaceHistoryManager from './RaceHistoryManager';
 import TrainingScheduleConfig from './TrainingScheduleConfig';
@@ -113,7 +113,8 @@ interface RaceAnalysis {
 
 const CoachPage: React.FC = () => {
   // Performance monitoring
-  const perfMonitor = usePagePerformanceMonitoring('coach');
+  usePagePerformanceMonitoring('coach');
+  const perfMonitor = useComponentPerformanceMonitoring('CoachPage');
 
   // State management
   const [raceGoals, setRaceGoals] = useState<RaceGoal[]>([]);
