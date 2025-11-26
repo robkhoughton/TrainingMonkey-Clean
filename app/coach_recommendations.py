@@ -246,11 +246,11 @@ def get_current_training_stage(user_id: int) -> Dict:
 def get_recent_journal_observations(user_id: int, days: int = 7) -> List[Dict]:
     """Fetch recent journal entries for context."""
     query = """
-        SELECT activity_date, energy_level, rpe_score, pain_percentage, user_notes
+        SELECT date, energy_level, rpe_score, pain_percentage, notes
         FROM journal_entries
         WHERE user_id = %s
-        AND activity_date >= CURRENT_DATE - INTERVAL '%s days'
-        ORDER BY activity_date DESC
+        AND date >= CURRENT_DATE - INTERVAL '%s days'
+        ORDER BY date DESC
     """
     results = execute_query(query, (user_id, days), fetch=True)
     
@@ -260,7 +260,7 @@ def get_recent_journal_observations(user_id: int, days: int = 7) -> List[Dict]:
     observations = []
     for row in results:
         observations.append({
-            'date': row['entry_date'].isoformat() if hasattr(row['entry_date'], 'isoformat') else str(row['entry_date']),
+            'date': row['date'].isoformat() if hasattr(row['date'], 'isoformat') else str(row['date']),
             'energy_level': row['energy_level'],
             'rpe_score': row['rpe_score'],
             'pain_percentage': row['pain_percentage'],
