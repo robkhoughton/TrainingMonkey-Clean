@@ -68,6 +68,15 @@ copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runne
 - **APIs**: Return dates in `'YYYY-MM-DD'` format
 - **Debugging**: Use `log_timezone_debug()` for timezone issues
 
+## 📊 Performance Monitoring Standards (CRITICAL)
+- **Two Hook System**: `usePagePerformanceMonitoring()` (page-level) + `useComponentPerformanceMonitoring()` (component-level)
+- **Page Hook**: Auto-tracks Core Web Vitals (TTFB, FCP, LCP) - **NO return value** - call once per component
+- **Component Hook**: Returns `{ trackFetchStart, trackFetchEnd, reportMetrics }` - use for manual tracking
+- **Pattern for Data Pages**: Use BOTH hooks (see Dashboard, Activities, Journal, Coach)
+- **Pattern for Simple Pages**: Use only page hook (see Settings)
+- **Hook Dependencies**: Always include `perfMonitor` in `useCallback`/`useEffect` dependency arrays
+- **Reference**: See `PERFMONITOR_PATTERN_FIX_SUMMARY.md` for complete examples and common mistakes
+
 ## ❌ Common Mistakes to Avoid
 - Using SQLite syntax (`?`, `AUTOINCREMENT`, `CURRENT_TIMESTAMP`)
 - Calling private methods from outside their class
@@ -76,6 +85,9 @@ copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runne
 - Inconsistent date formats in API responses
 - Hardcoding DATABASE_URL or credentials in any file
 - Running database operations without loading credentials via `db_credentials_loader`
+- **Using return value of `usePagePerformanceMonitoring()`** (returns void, not object)
+- **Forgetting `perfMonitor` in hook dependency arrays** (causes stale closures)
+- **Using only page hook when component metrics needed** (can't call `reportMetrics()`)
 
 ## 🎯 Success Criteria
 - All SQL queries use PostgreSQL syntax
@@ -114,4 +126,47 @@ results = db_utils.execute_query(
 ```python
 # NEVER DO THIS
 os.environ['DATABASE_URL'] = 'postgresql://user:pass@host/db'
+```
+
+## 📊 Performance Monitoring Examples
+
+### ✅ Correct: Data-Driven Page (Dashboard, Activities, Journal, Coach)
+```typescript
+import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
+
+const MyPage: React.FC = () => {
+  // Page-level metrics (auto-tracks Web Vitals, no return value)
+  usePagePerformanceMonitoring('my-page');
+  
+  // Component-level metrics (returns object with methods)
+  const perfMonitor = useComponentPerformanceMonitoring('MyPageComponent');
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      perfMonitor.trackFetchStart();
+      const data = await fetch('/api/data');
+      perfMonitor.trackFetchEnd();
+      
+      perfMonitor.reportMetrics(data.length);  // Manual reporting
+    };
+    fetchData();
+  }, [perfMonitor]);  // Include perfMonitor in deps!
+};
+```
+
+### ✅ Correct: Simple Page (Settings)
+```typescript
+import { usePagePerformanceMonitoring } from './usePerformanceMonitoring';
+
+const SimplePage: React.FC = () => {
+  usePagePerformanceMonitoring('simple-page');  // Page metrics only
+  return <div>Content</div>;
+};
+```
+
+### ❌ Wrong: Trying to Use Return Value of Page Hook
+```typescript
+// NEVER DO THIS - usePagePerformanceMonitoring returns void!
+const perfMonitor = usePagePerformanceMonitoring('page');
+perfMonitor.reportMetrics();  // ERROR: Cannot read properties of undefined
 ```
