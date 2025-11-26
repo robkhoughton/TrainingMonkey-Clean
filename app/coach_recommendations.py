@@ -354,10 +354,10 @@ def format_journal_observations_for_prompt(observations: List[Dict]) -> str:
     for obs in observations[:5]:  # Last 5 days
         energy = obs.get('energy_level', 'N/A')
         rpe = obs.get('rpe_score', 'N/A')
-        pain = obs.get('pain_percentage', 0)
+        pain = obs.get('pain_percentage')
         
         line = f"- {obs['date']}: Energy {energy}/5, RPE {rpe}/10"
-        if pain > 0:
+        if pain is not None and pain > 0:
             line += f", Pain {pain}%"
         if obs.get('notes'):
             line += f" | Notes: {obs['notes'][:50]}"
@@ -584,12 +584,13 @@ def generate_weekly_program(
     # Build prompt
     prompt = build_weekly_program_prompt(user_id, target_week_start)
     
-    # Call Claude API
+    # Call Claude API with extended timeout for complex weekly program generation
     try:
         response_text = call_anthropic_api(
             prompt,
             max_tokens=DEFAULT_MAX_TOKENS,
-            temperature=0.7
+            temperature=0.7,
+            timeout=90  # Extended timeout: weekly programs are complex and take longer
         )
         
         # Parse response

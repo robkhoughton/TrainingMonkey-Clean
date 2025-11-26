@@ -290,8 +290,16 @@ def create_recent_activities_summary(activities):
     return "\n".join(summary_lines)
 
 
-def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=2000):
-    """Call the Anthropic API with the enhanced prompt."""
+def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=2000, timeout=30):
+    """Call the Anthropic API with the enhanced prompt.
+    
+    Args:
+        prompt: The prompt text
+        model: Claude model to use
+        temperature: Sampling temperature
+        max_tokens: Maximum tokens to generate
+        timeout: API timeout in seconds (default 30, use 60-90 for complex generations)
+    """
     try:
         api_key = get_api_key()
 
@@ -310,8 +318,8 @@ def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_T
             "max_tokens": max_tokens
         }
 
-        logger.info(f"Calling Anthropic API with model {model}, max_tokens={max_tokens}, temperature={temperature}")
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=data, timeout=30)
+        logger.info(f"Calling Anthropic API with model {model}, max_tokens={max_tokens}, temperature={temperature}, timeout={timeout}s")
+        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=data, timeout=timeout)
 
         if response.status_code != 200:
             error_msg = f"API call failed with status code {response.status_code}: {response.text}"
