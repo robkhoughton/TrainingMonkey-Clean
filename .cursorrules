@@ -27,6 +27,14 @@
 - **Clean Code**: Remove debugging artifacts, use proper validation
 - **Deployment**: User handles all deployments. Assistant prepares code changes but NEVER runs deployment commands
 
+## 🐳 Dockerfile Requirements (CRITICAL FOR DEPLOYMENT)
+- **Explicit File Copy**: `app/Dockerfile.strava` uses explicit `COPY` commands for each Python file (security practice)
+- **New Modules Must Be Added**: When creating new `.py` files in `app/`, ALWAYS add corresponding `COPY` line to Dockerfile
+- **Deployment Failure Pattern**: If deployment succeeds but gets `ModuleNotFoundError`, the module is missing from Dockerfile
+- **Location**: Add new COPY commands in the "Core modules" section (lines 31-47) or create new section
+- **Example**: `COPY my_new_module.py .`
+- **Testing**: After adding new Python files, search Dockerfile for the filename to verify it's included
+
 ## 🎨 Frontend Build & Deployment Process
 - **Project Structure**: React app in `frontend/` directory, Flask backend in `app/` directory
 - **Build Command**: `npm run build` from within `frontend/` directory (creates optimized production build)
@@ -88,6 +96,7 @@ copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runne
 - **Using return value of `usePagePerformanceMonitoring()`** (returns void, not object)
 - **Forgetting `perfMonitor` in hook dependency arrays** (causes stale closures)
 - **Using only page hook when component metrics needed** (can't call `reportMetrics()`)
+- **Creating new `.py` files without adding them to `Dockerfile.strava`** (causes ModuleNotFoundError in production)
 
 ## 🎯 Success Criteria
 - All SQL queries use PostgreSQL syntax
@@ -170,3 +179,31 @@ const SimplePage: React.FC = () => {
 const perfMonitor = usePagePerformanceMonitoring('page');
 perfMonitor.reportMetrics();  // ERROR: Cannot read properties of undefined
 ```
+
+## 🐳 Dockerfile Deployment Example
+
+### ✅ Correct: Adding New Python Module
+```dockerfile
+# When creating app/my_new_feature.py, add to Dockerfile.strava:
+
+# Copy application code - Core modules
+COPY strava_app.py .
+COPY my_new_feature.py .  # <-- ADD THIS LINE
+COPY other_existing_file.py .
+```
+
+### ❌ Wrong: Forgetting Dockerfile Update
+```python
+# Created app/coach_recommendations.py
+# Committed to git
+# Deployed...
+# Result: ModuleNotFoundError: No module named 'coach_recommendations'
+# WHY: File not in Dockerfile.strava COPY list
+```
+
+**Checklist When Creating New Python Files**:
+1. Create the `.py` file in `app/`
+2. Test locally
+3. Add `COPY new_file.py .` to `app/Dockerfile.strava`
+4. Commit BOTH the new file AND Dockerfile changes
+5. Deploy
