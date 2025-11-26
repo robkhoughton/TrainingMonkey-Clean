@@ -44,6 +44,10 @@ COPY elevation_migration_module.py .
 COPY sync_fix.py .
 COPY settings_utils.py .
 
+# Copy Coach page modules (YTM Coach feature)
+COPY coach_recommendations.py .
+COPY ultrasignup_parser.py .
+
 # Copy Phase 1 OAuth and Security modules
 COPY oauth_error_handler.py .
 COPY secure_token_storage.py .
