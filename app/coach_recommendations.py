@@ -54,13 +54,13 @@ def get_race_goals(user_id: int) -> List[Dict]:
     goals = []
     for row in results:
         goals.append({
-            'id': row[0],
-            'race_name': row[1],
-            'race_date': row[2].isoformat() if hasattr(row[2], 'isoformat') else str(row[2]),
-            'race_type': row[3],
-            'priority': row[4],
-            'target_time': row[5],
-            'notes': row[6]
+            'id': row['id'],
+            'race_name': row['race_name'],
+            'race_date': row['race_date'].isoformat() if hasattr(row['race_date'], 'isoformat') else str(row['race_date']),
+            'race_type': row['race_type'],
+            'priority': row['priority'],
+            'target_time': row['target_time'],
+            'notes': row['notes']
         })
     
     return goals
@@ -83,11 +83,11 @@ def get_race_history(user_id: int, limit: int = 10) -> List[Dict]:
     history = []
     for row in results:
         history.append({
-            'id': row[0],
-            'race_date': row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1]),
-            'race_name': row[2],
-            'distance_miles': float(row[3]),
-            'finish_time_minutes': int(row[4])
+            'id': row['id'],
+            'race_date': row['race_date'].isoformat() if hasattr(row['race_date'], 'isoformat') else str(row['race_date']),
+            'race_name': row['race_name'],
+            'distance_miles': float(row['distance_miles']),
+            'finish_time_minutes': int(row['finish_time_minutes'])
         })
     
     return history
@@ -108,7 +108,7 @@ def get_training_schedule(user_id: int) -> Optional[Dict]:
         return None
     
     row = results[0]
-    schedule_json = row[0]
+    schedule_json = row['training_schedule_json']
     
     # Parse JSON if it's a string
     if isinstance(schedule_json, str):
@@ -119,13 +119,13 @@ def get_training_schedule(user_id: int) -> Optional[Dict]:
     
     return {
         'schedule': schedule_json,
-        'include_strength': row[1],
-        'strength_hours': float(row[2]) if row[2] else 0,
-        'include_mobility': row[3],
-        'mobility_hours': float(row[4]) if row[4] else 0,
-        'include_cross_training': row[5],
-        'cross_training_type': row[6],
-        'cross_training_hours': float(row[7]) if row[7] else 0
+        'include_strength': row['include_strength_training'],
+        'strength_hours': float(row['strength_hours_per_week']) if row['strength_hours_per_week'] else 0,
+        'include_mobility': row['include_mobility'],
+        'mobility_hours': float(row['mobility_hours_per_week']) if row['mobility_hours_per_week'] else 0,
+        'include_cross_training': row['include_cross_training'],
+        'cross_training_type': row['cross_training_type'],
+        'cross_training_hours': float(row['cross_training_hours_per_week']) if row['cross_training_hours_per_week'] else 0
     }
 
 
@@ -260,11 +260,11 @@ def get_recent_journal_observations(user_id: int, days: int = 7) -> List[Dict]:
     observations = []
     for row in results:
         observations.append({
-            'date': row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
-            'energy_level': row[1],
-            'rpe_score': row[2],
-            'pain_percentage': row[3],
-            'notes': row[4]
+            'date': row['entry_date'].isoformat() if hasattr(row['entry_date'], 'isoformat') else str(row['entry_date']),
+            'energy_level': row['energy_level'],
+            'rpe_score': row['rpe_score'],
+            'pain_percentage': row['pain_percentage'],
+            'notes': row['notes']
         })
     
     return observations
