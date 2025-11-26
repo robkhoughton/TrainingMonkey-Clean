@@ -403,12 +403,12 @@ def build_weekly_program_prompt(
 Training Week: {target_week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}
 
 Current Training Metrics (Last 28 Days):
-- External ACWR: {current_metrics.get('external_acwr', 'N/A'):.2f}
-- Internal ACWR: {current_metrics.get('internal_acwr', 'N/A'):.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 'N/A'):.3f}
+- External ACWR: {current_metrics.get('external_acwr', 0):.2f if isinstance(current_metrics.get('external_acwr'), (int, float)) else 'N/A'}
+- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f if isinstance(current_metrics.get('internal_acwr'), (int, float)) else 'N/A'}
+- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f if isinstance(current_metrics.get('normalized_divergence'), (int, float)) else 'N/A'}
 - Days Since Rest: {current_metrics.get('days_since_rest', 'N/A')}
-- 7-Day Avg Training Load: {current_metrics.get('seven_day_avg', 'N/A'):.1f} miles
-- 28-Day Avg Training Load: {current_metrics.get('twentyeight_day_avg', 'N/A'):.1f} miles
+- 7-Day Avg Training Load: {current_metrics.get('seven_day_avg', 0):.1f if isinstance(current_metrics.get('seven_day_avg'), (int, float)) else 'N/A'} miles
+- 28-Day Avg Training Load: {current_metrics.get('twentyeight_day_avg', 0):.1f if isinstance(current_metrics.get('twentyeight_day_avg'), (int, float)) else 'N/A'} miles
 
 **RACE GOALS**
 
