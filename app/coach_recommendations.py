@@ -396,6 +396,19 @@ def build_weekly_program_prompt(
     # Build prompt sections
     week_end = target_week_start + timedelta(days=6)
     
+    # Format metrics with proper handling of None/missing values
+    def format_metric(value, format_spec):
+        """Format a metric value or return 'N/A' if not a number."""
+        if value is not None and isinstance(value, (int, float)):
+            return format(value, format_spec)
+        return 'N/A'
+    
+    ext_acwr = format_metric(current_metrics.get('external_acwr'), '.2f')
+    int_acwr = format_metric(current_metrics.get('internal_acwr'), '.2f')
+    norm_div = format_metric(current_metrics.get('normalized_divergence'), '.3f')
+    seven_day = format_metric(current_metrics.get('seven_day_avg'), '.1f')
+    twentyeight_day = format_metric(current_metrics.get('twentyeight_day_avg'), '.1f')
+    
     prompt = f"""You are an expert ultra-trail running coach creating a divergence-optimized weekly training program.
 
 **ATHLETE PROFILE & CURRENT STATUS**
@@ -403,12 +416,12 @@ def build_weekly_program_prompt(
 Training Week: {target_week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}
 
 Current Training Metrics (Last 28 Days):
-- External ACWR: {current_metrics.get('external_acwr', 0):.2f if isinstance(current_metrics.get('external_acwr'), (int, float)) else 'N/A'}
-- Internal ACWR: {current_metrics.get('internal_acwr', 0):.2f if isinstance(current_metrics.get('internal_acwr'), (int, float)) else 'N/A'}
-- Normalized Divergence: {current_metrics.get('normalized_divergence', 0):.3f if isinstance(current_metrics.get('normalized_divergence'), (int, float)) else 'N/A'}
+- External ACWR: {ext_acwr}
+- Internal ACWR: {int_acwr}
+- Normalized Divergence: {norm_div}
 - Days Since Rest: {current_metrics.get('days_since_rest', 'N/A')}
-- 7-Day Avg Training Load: {current_metrics.get('seven_day_avg', 0):.1f if isinstance(current_metrics.get('seven_day_avg'), (int, float)) else 'N/A'} miles
-- 28-Day Avg Training Load: {current_metrics.get('twentyeight_day_avg', 0):.1f if isinstance(current_metrics.get('twentyeight_day_avg'), (int, float)) else 'N/A'} miles
+- 7-Day Avg Training Load: {seven_day} miles
+- 28-Day Avg Training Load: {twentyeight_day} miles
 
 **RACE GOALS**
 
