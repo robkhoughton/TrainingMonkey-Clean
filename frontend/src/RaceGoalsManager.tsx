@@ -88,15 +88,19 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
     setError(null);
 
     try {
-      const payload = {
+      const payload: any = {
         race_name: formData.race_name.trim(),
         race_date: formData.race_date,
         race_type: formData.race_type.trim() || null,
         priority: formData.priority,
         target_time: formData.target_time.trim() || null,
-        notes: formData.notes.trim() || null,
-        elevation_gain_feet: formData.elevation_gain_feet.trim() ? parseInt(formData.elevation_gain_feet) : null
+        notes: formData.notes.trim() || null
       };
+      
+      // Only include elevation if it has a value (for backwards compatibility)
+      if (formData.elevation_gain_feet && formData.elevation_gain_feet.trim()) {
+        payload.elevation_gain_feet = parseInt(formData.elevation_gain_feet);
+      }
 
       const url = editingGoal
         ? `/api/coach/race-goals/${editingGoal.id}`
@@ -116,8 +120,12 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
       }
 
       // Success
+      console.log('[RaceGoalsManager] Goal saved successfully, refreshing data...');
       setShowForm(false);
       setEditingGoal(null);
+      
+      // Small delay to ensure database transaction completes
+      await new Promise(resolve => setTimeout(resolve, 100));
       onGoalsChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save race goal');
@@ -518,7 +526,7 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
                           <strong>Target:</strong> {goal.target_time}
                         </div>
                       )}
-                      {goal.elevation_gain_feet && (
+                      {goal.elevation_gain_feet != null && goal.elevation_gain_feet > 0 && (
                         <div>
                           <strong>Vert:</strong> {goal.elevation_gain_feet.toLocaleString()} ft
                         </div>

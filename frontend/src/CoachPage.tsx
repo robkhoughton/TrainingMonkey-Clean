@@ -157,29 +157,54 @@ const CoachPage: React.FC = () => {
         fetch('/api/coach/weekly-program')
       ]);
 
-      // Check for errors
+      // Check for critical errors (race goals is essential)
       if (!goalsRes.ok) throw new Error('Failed to fetch race goals');
-      if (!historyRes.ok) throw new Error('Failed to fetch race history');
-      if (!analysisRes.ok) throw new Error('Failed to fetch race analysis');
-      if (!scheduleRes.ok) throw new Error('Failed to fetch training schedule');
-      if (!stageRes.ok) throw new Error('Failed to fetch training stage');
-      if (!programRes.ok) throw new Error('Failed to fetch weekly program');
 
-      // Parse responses
+      // Parse race goals (critical)
       const goalsData = await goalsRes.json();
-      const historyData = await historyRes.json();
-      const analysisData = await analysisRes.json();
-      const scheduleData = await scheduleRes.json();
-      const stageData = await stageRes.json();
-      const programData = await programRes.json();
-
-      // Update state
+      console.log('[CoachPage] Fetched race goals:', goalsData.goals);
       setRaceGoals(goalsData.goals || []);
-      setRaceHistory(historyData.history || []);
-      setRaceAnalysis(analysisData);
-      setTrainingSchedule(scheduleData.schedule || null);
-      setTrainingStage(stageData);
-      setWeeklyProgram(programData.program || null);
+
+      // Parse other responses with graceful degradation
+      if (historyRes.ok) {
+        const historyData = await historyRes.json();
+        setRaceHistory(historyData.history || []);
+      } else {
+        console.warn('Failed to fetch race history');
+        setRaceHistory([]);
+      }
+
+      if (analysisRes.ok) {
+        const analysisData = await analysisRes.json();
+        setRaceAnalysis(analysisData);
+      } else {
+        console.warn('Failed to fetch race analysis');
+        setRaceAnalysis(null);
+      }
+
+      if (scheduleRes.ok) {
+        const scheduleData = await scheduleRes.json();
+        setTrainingSchedule(scheduleData.schedule || null);
+      } else {
+        console.warn('Failed to fetch training schedule');
+        setTrainingSchedule(null);
+      }
+
+      if (stageRes.ok) {
+        const stageData = await stageRes.json();
+        setTrainingStage(stageData);
+      } else {
+        console.warn('Failed to fetch training stage');
+        setTrainingStage(null);
+      }
+
+      if (programRes.ok) {
+        const programData = await programRes.json();
+        setWeeklyProgram(programData.program || null);
+      } else {
+        console.warn('Failed to fetch weekly program');
+        setWeeklyProgram(null);
+      }
 
       // Check if onboarding needed (no race goals)
       if (!goalsData.goals || goalsData.goals.length === 0) {
