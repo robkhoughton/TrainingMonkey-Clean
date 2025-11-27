@@ -133,72 +133,74 @@ const CoachPage: React.FC = () => {
   // DATA FETCHING
   // ============================================================================
 
-  useEffect(() => {
-    const fetchCoachData = async () => {
-      const startTime = performance.now();
-      setIsLoading(true);
-      setError(null);
+  const fetchCoachData = async () => {
+    const startTime = performance.now();
+    setIsLoading(true);
+    setError(null);
 
-      try {
-        // Fetch all data in parallel
-        const [
-          goalsRes,
-          historyRes,
-          analysisRes,
-          scheduleRes,
-          stageRes,
-          programRes
-        ] = await Promise.all([
-          fetch('/api/coach/race-goals'),
-          fetch('/api/coach/race-history'),
-          fetch('/api/coach/race-analysis'),
-          fetch('/api/coach/training-schedule'),
-          fetch('/api/coach/training-stage'),
-          fetch('/api/coach/weekly-program')
-        ]);
+    try {
+      // Fetch all data in parallel
+      const [
+        goalsRes,
+        historyRes,
+        analysisRes,
+        scheduleRes,
+        stageRes,
+        programRes
+      ] = await Promise.all([
+        fetch('/api/coach/race-goals'),
+        fetch('/api/coach/race-history'),
+        fetch('/api/coach/race-analysis'),
+        fetch('/api/coach/training-schedule'),
+        fetch('/api/coach/training-stage'),
+        fetch('/api/coach/weekly-program')
+      ]);
 
-        // Check for errors
-        if (!goalsRes.ok) throw new Error('Failed to fetch race goals');
-        if (!historyRes.ok) throw new Error('Failed to fetch race history');
-        if (!analysisRes.ok) throw new Error('Failed to fetch race analysis');
-        if (!scheduleRes.ok) throw new Error('Failed to fetch training schedule');
-        if (!stageRes.ok) throw new Error('Failed to fetch training stage');
-        if (!programRes.ok) throw new Error('Failed to fetch weekly program');
+      // Check for errors
+      if (!goalsRes.ok) throw new Error('Failed to fetch race goals');
+      if (!historyRes.ok) throw new Error('Failed to fetch race history');
+      if (!analysisRes.ok) throw new Error('Failed to fetch race analysis');
+      if (!scheduleRes.ok) throw new Error('Failed to fetch training schedule');
+      if (!stageRes.ok) throw new Error('Failed to fetch training stage');
+      if (!programRes.ok) throw new Error('Failed to fetch weekly program');
 
-        // Parse responses
-        const goalsData = await goalsRes.json();
-        const historyData = await historyRes.json();
-        const analysisData = await analysisRes.json();
-        const scheduleData = await scheduleRes.json();
-        const stageData = await stageRes.json();
-        const programData = await programRes.json();
+      // Parse responses
+      const goalsData = await goalsRes.json();
+      const historyData = await historyRes.json();
+      const analysisData = await analysisRes.json();
+      const scheduleData = await scheduleRes.json();
+      const stageData = await stageRes.json();
+      const programData = await programRes.json();
 
-        // Update state
-        setRaceGoals(goalsData.goals || []);
-        setRaceHistory(historyData.history || []);
-        setRaceAnalysis(analysisData);
-        setTrainingSchedule(scheduleData.schedule || null);
-        setTrainingStage(stageData);
-        setWeeklyProgram(programData.program || null);
+      // Update state
+      setRaceGoals(goalsData.goals || []);
+      setRaceHistory(historyData.history || []);
+      setRaceAnalysis(analysisData);
+      setTrainingSchedule(scheduleData.schedule || null);
+      setTrainingStage(stageData);
+      setWeeklyProgram(programData.program || null);
 
-        // Check if onboarding needed (no race goals)
-        if (!goalsData.goals || goalsData.goals.length === 0) {
-          setShowOnboarding(true);
-        }
-
-        // Report performance
-        const loadTime = performance.now() - startTime;
-        perfMonitor.reportMetrics(loadTime);
-
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load coach data';
-        setError(errorMessage);
-        perfMonitor.reportMetrics(0, errorMessage);
-      } finally {
-        setIsLoading(false);
+      // Check if onboarding needed (no race goals)
+      if (!goalsData.goals || goalsData.goals.length === 0) {
+        setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);  // Hide onboarding if goals exist
       }
-    };
 
+      // Report performance
+      const loadTime = performance.now() - startTime;
+      perfMonitor.reportMetrics(loadTime);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load coach data';
+      setError(errorMessage);
+      perfMonitor.reportMetrics(0, errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchCoachData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -478,17 +480,17 @@ const CoachPage: React.FC = () => {
 
       {/* Race Goals Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <RaceGoalsManager goals={raceGoals} onGoalsChange={() => window.location.reload()} />
+        <RaceGoalsManager goals={raceGoals} onGoalsChange={fetchCoachData} />
       </div>
 
       {/* Race History Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <RaceHistoryManager history={raceHistory} onHistoryChange={() => window.location.reload()} />
+        <RaceHistoryManager history={raceHistory} onHistoryChange={fetchCoachData} />
       </div>
 
       {/* Training Schedule Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <TrainingScheduleConfig schedule={trainingSchedule} onScheduleChange={() => window.location.reload()} />
+        <TrainingScheduleConfig schedule={trainingSchedule} onScheduleChange={fetchCoachData} />
       </div>
 
       {/* Timeline Visualization Card */}
@@ -498,7 +500,7 @@ const CoachPage: React.FC = () => {
 
       {/* Weekly Training Program Card */}
       <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <WeeklyProgramDisplay program={weeklyProgram} onRefresh={() => window.location.reload()} />
+        <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
       </div>
 
       {/* Debug Info (remove in production) */}
