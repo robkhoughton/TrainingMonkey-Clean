@@ -633,14 +633,14 @@ def save_weekly_program(
     query = """
         INSERT INTO weekly_programs 
         (user_id, week_start_date, program_json, predicted_acwr, predicted_divergence, 
-         generated_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+         generated_at)
+        VALUES (%s, %s, %s, %s, %s, NOW())
         ON CONFLICT (user_id, week_start_date) 
         DO UPDATE SET 
             program_json = EXCLUDED.program_json,
             predicted_acwr = EXCLUDED.predicted_acwr,
             predicted_divergence = EXCLUDED.predicted_divergence,
-            updated_at = NOW()
+            generated_at = NOW()
         RETURNING id
     """
     
