@@ -10099,7 +10099,7 @@ def get_race_goals():
         race_goals = db_utils.execute_query(
             """
             SELECT id, user_id, race_name, race_date, race_type, priority, 
-                   target_time, notes, created_at, updated_at
+                   target_time, notes, elevation_gain_feet, created_at, updated_at
             FROM race_goals 
             WHERE user_id = %s 
             ORDER BY race_date ASC
@@ -10121,8 +10121,9 @@ def get_race_goals():
                     'priority': goal[5],
                     'target_time': goal[6],
                     'notes': goal[7],
-                    'created_at': goal[8],
-                    'updated_at': goal[9]
+                    'elevation_gain_feet': goal[8],
+                    'created_at': goal[9],
+                    'updated_at': goal[10]
                 }
                 
                 # Serialize dates
@@ -10205,6 +10206,7 @@ def create_race_goal():
         race_type = data.get('race_type')
         target_time = data.get('target_time')
         notes = data.get('notes')
+        elevation_gain_feet = data.get('elevation_gain_feet')
         
         logger.info(f"Creating race goal for user {user_id}: {race_name} ({priority})")
         
@@ -10212,11 +10214,11 @@ def create_race_goal():
         result = db_utils.execute_query(
             """
             INSERT INTO race_goals 
-                (user_id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at
+                (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, created_at, updated_at
             """,
-            (user_id, race_name, race_date, race_type, priority, target_time, notes),
+            (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet),
             fetch=True
         )
         
@@ -10230,8 +10232,9 @@ def create_race_goal():
                 'priority': goal[4],
                 'target_time': goal[5],
                 'notes': goal[6],
-                'created_at': goal[7],
-                'updated_at': goal[8]
+                'elevation_gain_feet': goal[7],
+                'created_at': goal[8],
+                'updated_at': goal[9]
             }
             
             # Serialize dates
@@ -10337,6 +10340,9 @@ def update_race_goal(goal_id):
         if 'notes' in data:
             update_fields.append('notes = %s')
             update_values.append(data['notes'])
+        if 'elevation_gain_feet' in data:
+            update_fields.append('elevation_gain_feet = %s')
+            update_values.append(data['elevation_gain_feet'])
         
         if not update_fields:
             return jsonify({'success': False, 'error': 'No fields to update'}), 400
@@ -10351,7 +10357,7 @@ def update_race_goal(goal_id):
             UPDATE race_goals 
             SET {', '.join(update_fields)}
             WHERE id = %s AND user_id = %s
-            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, created_at, updated_at
+            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, created_at, updated_at
         """
         
         result = db_utils.execute_query(query, tuple(update_values), fetch=True)
@@ -10366,8 +10372,9 @@ def update_race_goal(goal_id):
                 'priority': goal[4],
                 'target_time': goal[5],
                 'notes': goal[6],
-                'created_at': goal[7],
-                'updated_at': goal[8]
+                'elevation_gain_feet': goal[7],
+                'created_at': goal[8],
+                'updated_at': goal[9]
             }
             
             # Serialize dates

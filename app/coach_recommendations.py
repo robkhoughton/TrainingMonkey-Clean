@@ -41,7 +41,7 @@ DEFAULT_MAX_TOKENS = 4000  # Longer for structured 7-day programs
 def get_race_goals(user_id: int) -> List[Dict]:
     """Fetch user's race goals ordered by date."""
     query = """
-        SELECT id, race_name, race_date, race_type, priority, target_time, notes
+        SELECT id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet
         FROM race_goals
         WHERE user_id = %s
         ORDER BY race_date ASC
@@ -60,7 +60,8 @@ def get_race_goals(user_id: int) -> List[Dict]:
             'race_type': row['race_type'],
             'priority': row['priority'],
             'target_time': row['target_time'],
-            'notes': row['notes']
+            'notes': row['notes'],
+            'elevation_gain_feet': row['elevation_gain_feet']
         })
     
     return goals
@@ -285,6 +286,8 @@ def format_race_goals_for_prompt(race_goals: List[Dict]) -> str:
             line += f" | {goal['race_type']}"
         if goal['target_time']:
             line += f" | Target: {goal['target_time']}"
+        if goal['elevation_gain_feet']:
+            line += f" | Vert: {goal['elevation_gain_feet']:,} ft"
         lines.append(line)
     
     return "\n".join(lines)

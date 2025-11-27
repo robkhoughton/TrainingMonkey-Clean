@@ -13,6 +13,7 @@ interface RaceGoal {
   priority: 'A' | 'B' | 'C';
   target_time: string | null;
   notes: string | null;
+  elevation_gain_feet: number | null;
 }
 
 interface RaceGoalsManagerProps {
@@ -37,7 +38,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
     race_type: '',
     priority: 'B' as 'A' | 'B' | 'C',
     target_time: '',
-    notes: ''
+    notes: '',
+    elevation_gain_feet: ''
   });
 
   // ============================================================================
@@ -52,7 +54,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
       race_type: '',
       priority: 'B',
       target_time: '',
-      notes: ''
+      notes: '',
+      elevation_gain_feet: ''
     });
     setShowForm(true);
     setError(null);
@@ -66,7 +69,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
       race_type: goal.race_type || '',
       priority: goal.priority,
       target_time: goal.target_time || '',
-      notes: goal.notes || ''
+      notes: goal.notes || '',
+      elevation_gain_feet: goal.elevation_gain_feet?.toString() || ''
     });
     setShowForm(true);
     setError(null);
@@ -90,7 +94,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
         race_type: formData.race_type.trim() || null,
         priority: formData.priority,
         target_time: formData.target_time.trim() || null,
-        notes: formData.notes.trim() || null
+        notes: formData.notes.trim() || null,
+        elevation_gain_feet: formData.elevation_gain_feet.trim() ? parseInt(formData.elevation_gain_feet) : null
       };
 
       const url = editingGoal
@@ -348,6 +353,27 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
                 />
               </div>
 
+              {/* Elevation Gain */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
+                  Elevation Gain (ft)
+                </label>
+                <input
+                  type="number"
+                  value={formData.elevation_gain_feet}
+                  onChange={(e) => setFormData({ ...formData, elevation_gain_feet: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px'
+                  }}
+                  placeholder="e.g., 18000"
+                  min="0"
+                />
+              </div>
+
               {/* Notes */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
@@ -480,7 +506,7 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
                       )}
                     </div>
 
-                    {/* Race Type & Target Time */}
+                    {/* Race Type, Target Time & Elevation */}
                     <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: '#7f8c8d' }}>
                       {goal.race_type && (
                         <div>
@@ -490,6 +516,11 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
                       {goal.target_time && (
                         <div>
                           <strong>Target:</strong> {goal.target_time}
+                        </div>
+                      )}
+                      {goal.elevation_gain_feet && (
+                        <div>
+                          <strong>Vert:</strong> {goal.elevation_gain_feet.toLocaleString()} ft
                         </div>
                       )}
                     </div>

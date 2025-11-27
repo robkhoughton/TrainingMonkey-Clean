@@ -19,6 +19,7 @@ interface RaceGoal {
   priority: 'A' | 'B' | 'C';
   target_time: string | null;
   notes: string | null;
+  elevation_gain_feet: number | null;
 }
 
 interface RaceHistory {
