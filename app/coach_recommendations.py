@@ -658,7 +658,12 @@ def save_weekly_program(
         fetch=True
     )
     
-    program_id = result[0][0] if result else None
+    if result and len(result) > 0:
+        # Handle both dict and tuple result formats
+        program_id = result[0]['id'] if hasattr(result[0], 'keys') else result[0][0]
+    else:
+        program_id = None
+    
     logger.info(f"Saved weekly program {program_id} for user {user_id}, week {week_start}")
     
     return program_id
