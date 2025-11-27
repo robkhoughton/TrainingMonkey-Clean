@@ -10140,7 +10140,7 @@ def get_race_goals():
         
         return jsonify({
             'success': True,
-            'race_goals': goals_list
+            'goals': goals_list
         })
         
     except Exception as e:
