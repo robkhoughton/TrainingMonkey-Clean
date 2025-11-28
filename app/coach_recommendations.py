@@ -699,8 +699,14 @@ def get_cached_weekly_program(
         logger.info(f"No cached program found for user {user_id}, week {week_start}")
         return None
     
-    program_json = result[0][0]
-    generated_at = result[0][1]
+    # Handle both dict and tuple result formats
+    row = result[0]
+    if hasattr(row, 'keys'):
+        program_json = row['program_json']
+        generated_at = row['generated_at']
+    else:
+        program_json = row[0]
+        generated_at = row[1]
     
     # Parse JSON
     if isinstance(program_json, str):
