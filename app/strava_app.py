@@ -10899,13 +10899,13 @@ def upload_race_history_screenshot():
         user_id = current_user.id
         
         # Check if file was uploaded
-        if 'file' not in request.files:
+        if 'screenshot' not in request.files:
             return jsonify({
                 'success': False,
                 'error': 'No file uploaded'
             }), 400
         
-        file = request.files['file']
+        file = request.files['screenshot']
         
         if file.filename == '':
             return jsonify({
