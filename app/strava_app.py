@@ -10695,22 +10695,21 @@ def create_race_history_bulk():
         # Bulk insert using executemany pattern
         inserted_count = 0
         try:
-            conn = db_utils.get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.executemany(
-                """
-                INSERT INTO race_history 
-                    (user_id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
-                """,
-                validated_races
-            )
-            
-            inserted_count = cursor.rowcount
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with db_utils.get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.executemany(
+                    """
+                    INSERT INTO race_history 
+                        (user_id, race_date, race_name, distance_miles, finish_time_minutes, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                    """,
+                    validated_races
+                )
+                
+                inserted_count = cursor.rowcount
+                conn.commit()
+                cursor.close()
             
             logger.info(f"Successfully bulk inserted {inserted_count} race history records for user {user_id}")
             
