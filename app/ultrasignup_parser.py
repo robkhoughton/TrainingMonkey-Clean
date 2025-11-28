@@ -22,7 +22,7 @@ ALLOWED_IMAGE_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
 ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp']
 
 # Claude API configuration
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '').strip()  # Strip whitespace/newlines
 ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 CLAUDE_MODEL = 'claude-3-5-sonnet-20241022'  # Latest model with vision
 
