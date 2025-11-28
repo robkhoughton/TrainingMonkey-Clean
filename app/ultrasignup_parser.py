@@ -24,7 +24,7 @@ ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp']
 # Claude API configuration
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '').strip()  # Strip whitespace/newlines
 ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
-CLAUDE_MODEL = 'claude-3-7-sonnet-20250219'  # Claude 3.7 Sonnet - latest with vision (same as training recommendations)
+CLAUDE_MODEL = 'claude-sonnet-4-5'  # Claude Sonnet 4.5 - current balanced model with vision
 
 
 def validate_image_file(file_data: bytes, filename: str) -> Tuple[bool, Optional[str]]:

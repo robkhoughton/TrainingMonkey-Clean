@@ -35,7 +35,7 @@ logger = logging.getLogger('llm_recommendations')
 
 # Constants
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = "claude-3-7-sonnet-20250219"  # Use the latest Claude model
+DEFAULT_MODEL = "claude-sonnet-4-5"  # Claude Sonnet 4.5 - current balanced model
 DEFAULT_VALID_DAYS = 1
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 ACTIVITY_ANALYSIS_DAYS = 28
