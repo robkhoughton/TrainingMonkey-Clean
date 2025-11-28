@@ -81,6 +81,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   // ============================================================================
 
   const getIntensityColor = (intensity: string): string => {
+    if (!intensity) return '#95a5a6';
     switch (intensity.toLowerCase()) {
       case 'low': return '#2ecc71'; // green
       case 'moderate': return '#f39c12'; // orange
@@ -90,6 +91,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   };
 
   const getWorkoutTypeIcon = (workoutType: string): string => {
+    if (!workoutType) return '🏃';
     const type = workoutType.toLowerCase();
     if (type.includes('long')) return '🏃‍♂️';
     if (type.includes('tempo')) return '⚡';

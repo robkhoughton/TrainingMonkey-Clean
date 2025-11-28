@@ -41,6 +41,7 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   // ============================================================================
 
   const getStageColor = (stage: string): string => {
+    if (!stage) return '#7f8c8d';
     switch (stage.toLowerCase()) {
       case 'base': return '#3498db'; // blue
       case 'build': return '#2ecc71'; // green
@@ -53,6 +54,7 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   };
 
   const getPriorityColor = (priority: string): string => {
+    if (!priority) return '#95a5a6';
     switch (priority.toUpperCase()) {
       case 'A': return '#e74c3c'; // red
       case 'B': return '#f39c12'; // orange

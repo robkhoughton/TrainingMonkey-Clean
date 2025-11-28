@@ -559,9 +559,21 @@ def determine_sport_type(activity):
 def calculate_cycling_external_load(distance_miles, average_speed_mph=None, elevation_gain_feet=0):
     """
     Convert cycling activity to running-equivalent external load
-
-    Based on research-validated conversion factors that account for cycling efficiency
-    compared to running biomechanics and energy expenditure.
+    
+    Based on Dr. Edward Coyle's research (University of Texas) comparing caloric
+    expenditure between cycling and running. Running burns ~110 cal/mile, while
+    cycling ranges from 26-49 cal/mile depending on speed.
+    
+    Research-validated conversion factors (Coyle, UT Austin):
+    - 10 mph cycling: 4.2:1 ratio (26 cal/mile cycling vs 110 cal/mile running)
+    - 15 mph cycling: 3.5:1 ratio (31 cal/mile)
+    - 20 mph cycling: 2.9:1 ratio (38 cal/mile)
+    - 25 mph cycling: 2.3:1 ratio (47 cal/mile)
+    
+    Implementation uses these research values with minor smoothing for speed ranges.
+    Lower intensity cycling requires significantly more distance to match running's
+    training stimulus due to reduced impact forces, seated position, and mechanical
+    efficiency advantages.
 
     Args:
         distance_miles (float): Cycling distance in miles
@@ -575,16 +587,17 @@ def calculate_cycling_external_load(distance_miles, average_speed_mph=None, elev
         logger.info(
             f"Calculating cycling external load: {distance_miles} miles, {average_speed_mph} mph, {elevation_gain_feet} ft")
 
-        # Speed-based distance conversion (research-validated ratios)
-        # These factors account for cycling efficiency vs running energy expenditure
+        # Speed-based distance conversion (Dr. Edward Coyle, University of Texas)
+        # Based on caloric equivalence: Running ~110 cal/mile vs cycling 26-49 cal/mile
+        # Research: 10mph=4.2:1, 15mph=3.5:1, 20mph=2.9:1, 25mph=2.3:1
         if average_speed_mph is None or average_speed_mph <= 12:
-            conversion_factor = 3.0  # Leisure cycling - higher factor due to low intensity
+            conversion_factor = 4.0  # Leisure cycling (research: 4.2 @ 10mph, 26 cal/mi)
         elif average_speed_mph <= 16:
-            conversion_factor = 3.1  # Moderate cycling - peak efficiency difference
+            conversion_factor = 3.5  # Moderate cycling (research: 3.5 @ 15mph, 31 cal/mi)
         elif average_speed_mph <= 20:
-            conversion_factor = 2.9  # Vigorous cycling - approaching running intensity
+            conversion_factor = 2.9  # Vigorous cycling (research: 2.9 @ 20mph, 38 cal/mi)
         else:
-            conversion_factor = 2.5  # Racing pace - high intensity, closer to running
+            conversion_factor = 2.4  # Racing pace (research: 2.3 @ 25mph, 1.9 @ 30mph)
 
         # Convert cycling distance to running equivalent
         running_equivalent_distance = distance_miles / conversion_factor
