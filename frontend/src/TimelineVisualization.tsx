@@ -88,22 +88,6 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   const currentWeekIndex = timeline.findIndex(w => w.is_current);
   const totalWeeks = timeline.length;
 
-  // Debug: Log races data
-  console.log('[Timeline] Total weeks:', totalWeeks);
-  console.log('[Timeline] Full timeline data:', JSON.stringify(timeline, null, 2));
-  const weeksWithRaces = timeline.filter(w => w.races && Array.isArray(w.races) && w.races.length > 0);
-  console.log('[Timeline] Weeks with races:', weeksWithRaces.length);
-  weeksWithRaces.forEach((week, idx) => {
-    console.log(`[Timeline] Week ${week.week_number} (${week.week_start}) has ${week.races?.length || 0} race(s):`, week.races);
-  });
-  
-  // Specific check for B races
-  const bRaces = timeline.flatMap(w => (w.races || []).filter(r => r.priority === 'B'));
-  console.log('[Timeline] Total B races found:', bRaces.length);
-  bRaces.forEach(race => {
-    console.log('[Timeline] B Race:', race);
-  });
-
   // Calculate reverse week numbers (weeks until race)
   // Last week (race week) = 0, first week = totalWeeks - 1
   const getWeeksUntilRace = (index: number): number => {
@@ -195,33 +179,29 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
                 )}
 
                 {/* Race Markers */}
-                {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => {
-                  console.log(`[Timeline] Rendering race marker: ${race.race_name} (${race.priority}) in week ${week.week_number}`);
-                  
-                  return (
-                    <div
-                      key={raceIndex}
-                      style={{
-                        position: 'absolute',
-                        top: week.is_current ? '-28px' : '-25px', // Reduced from -42px/-35px to fit within 30px padding
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        backgroundColor: getPriorityColor(race.priority),
-                        color: 'white',
-                        padding: '3px 6px',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                        zIndex: 15
-                      }}
-                      title={`${race.race_name} - ${race.date}`}
-                    >
-                      {race.priority}
-                    </div>
-                  );
-                })}
+                {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => (
+                  <div
+                    key={raceIndex}
+                    style={{
+                      position: 'absolute',
+                      top: week.is_current ? '-28px' : '-25px', // Reduced from -42px/-35px to fit within 30px padding
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      backgroundColor: getPriorityColor(race.priority),
+                      color: 'white',
+                      padding: '3px 6px',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      zIndex: 15
+                    }}
+                    title={`${race.race_name} - ${race.date}`}
+                  >
+                    {race.priority}
+                  </div>
+                ))}
               </div>
             );
           })}

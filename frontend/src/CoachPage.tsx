@@ -905,22 +905,6 @@ const CoachPage: React.FC = () => {
       {activeSubTab === 'history' && <RaceHistoryPage />}
       {activeSubTab === 'schedule' && <TrainingSchedulePage />}
 
-      {/* Debug Info (remove in production) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className={styles.card} style={{ marginBottom: '20px', opacity: 0.7 }}>
-          <h3 style={{ fontSize: '14px', marginBottom: '10px' }}>Debug Info:</h3>
-          <pre style={{ fontSize: '12px', overflow: 'auto', maxHeight: '200px' }}>
-            {JSON.stringify({
-              raceGoalsCount: raceGoals.length,
-              hasProgram: !!weeklyProgram,
-              trainingStage: trainingStage?.stage,
-              primaryRace: primaryRace?.race_name,
-              activeSubTab
-            }, null, 2)}
-          </pre>
-        </div>
-      )}
-
     </div>
   );
 };
