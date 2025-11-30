@@ -156,7 +156,8 @@ def get_api_key():
         logger.error("Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable or add to config.json.")
         raise ValueError("Anthropic API key not found")
 
-    return api_key
+    # Strip whitespace and newlines (common issue when reading from files)
+    return api_key.strip()
 
 
 def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=None):
