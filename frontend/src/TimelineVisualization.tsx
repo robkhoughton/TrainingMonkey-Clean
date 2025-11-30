@@ -117,17 +117,19 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
         overflowX: 'auto',
         marginBottom: '0.5rem',
         marginTop: '0',
-        padding: '30px 0 0.25rem 0' // Tighter padding
+        padding: '50px 0 0.25rem 0', // Increased from 30px to 50px to accommodate race markers above timeline
+        overflowY: 'visible' // Allow race markers to show above timeline
       }}>
         {/* Single Timeline Bar with Week Numbers */}
         <div style={{
           display: 'flex',
-          height: '60px', // Reduced from 80px
+          height: '60px',
           borderRadius: '30px',
-          overflow: 'hidden',
-          marginBottom: '0.25rem', // Tight spacing
+          overflow: 'visible', // Changed from 'hidden' to allow race markers above
+          marginBottom: '0.25rem',
           minWidth: `${totalWeeks * 60}px`,
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          position: 'relative' // Ensure positioned children (race markers) work correctly
         }}>
           {timeline.map((week, index) => {
             const isFirst = index === 0 || timeline[index - 1].stage !== week.stage;
@@ -194,20 +196,15 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
 
                 {/* Race Markers */}
                 {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => {
-                  // Calculate horizontal offset if multiple races in same week
-                  const horizontalOffset = week.races!.length > 1 ? (raceIndex - (week.races!.length - 1) / 2) * 25 : 0;
-                  // Calculate vertical offset to stack races
-                  const verticalOffset = raceIndex * 20;
-                  
-                  console.log(`[Timeline] Rendering race marker: ${race.race_name} (${race.priority}) in week ${week.week_number}, offset: ${horizontalOffset}px`);
+                  console.log(`[Timeline] Rendering race marker: ${race.race_name} (${race.priority}) in week ${week.week_number}`);
                   
                   return (
                     <div
                       key={raceIndex}
                       style={{
                         position: 'absolute',
-                        top: `${week.is_current ? -42 - verticalOffset : -35 - verticalOffset}px`,
-                        left: `calc(50% + ${horizontalOffset}px)`,
+                        top: week.is_current ? '-42px' : '-35px',
+                        left: '50%',
                         transform: 'translateX(-50%)',
                         backgroundColor: getPriorityColor(race.priority),
                         color: 'white',
