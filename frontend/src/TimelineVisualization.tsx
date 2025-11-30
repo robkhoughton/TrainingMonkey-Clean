@@ -94,7 +94,14 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   const weeksWithRaces = timeline.filter(w => w.races && Array.isArray(w.races) && w.races.length > 0);
   console.log('[Timeline] Weeks with races:', weeksWithRaces.length);
   weeksWithRaces.forEach((week, idx) => {
-    console.log(`[Timeline] Week ${idx} races:`, week.races);
+    console.log(`[Timeline] Week ${week.week_number} (${week.week_start}) has ${week.races?.length || 0} race(s):`, week.races);
+  });
+  
+  // Specific check for B races
+  const bRaces = timeline.flatMap(w => (w.races || []).filter(r => r.priority === 'B'));
+  console.log('[Timeline] Total B races found:', bRaces.length);
+  bRaces.forEach(race => {
+    console.log('[Timeline] B Race:', race);
   });
 
   // Calculate reverse week numbers (weeks until race)
