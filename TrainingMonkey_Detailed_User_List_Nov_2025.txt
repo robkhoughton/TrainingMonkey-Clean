@@ -1,0 +1,87 @@
+Using PostgreSQL with connection: postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.2...
+============================================================================================================================================
+TRAININGMONKEY - DETAILED USER REPORT
+Generated: 2025-11-29 08:40:29
+============================================================================================================================================
+
+Total Users: 42
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+  ID | Email                               | Primary Sport   | Activities |   Last Act | Days Signup | Journal
+--------------------------------------------------------------------------------------------------------------------------------------------
+   1 | rob.houghton.ca@gmail.com           | running         |        260 |     2d ago |          94 |     110
+   2 | tballaine@gmail.com                 | running         |        219 |    11d ago |          94 |      41
+   3 | iz.houghton@gmail.com               | running         |        246 |     4d ago |          94 |       1
+  58 | strava_187250886@training-monkey.co | road_running    |          5 |    71d ago |          64 |       0
+  59 | strava_11201359@training-monkey.com | road_running    |        150 |     5d ago |          64 |       0
+  60 | strava_23887099@training-monkey.com | other           |         97 |    63d ago |          61 |       0
+  61 | strava_131005522@training-monkey.co | cycling         |          0 |      Never |          61 |       0
+  62 | strava_42553735@training-monkey.com | road_running    |         98 |    62d ago |          60 |       0
+  63 | strava_172384120@training-monkey.co | cycling         |         91 |    61d ago |          60 |       0
+  64 | strava_93850899@training-monkey.com | trail_running   |         90 |    61d ago |          60 |       0
+  65 | strava_2770213@training-monkey.com  | cycling         |         48 |    62d ago |          57 |       0
+  66 | strava_19193387@training-monkey.com | road_running    |         37 |    58d ago |          57 |       0
+  67 | strava_34836383@training-monkey.com | running         |        111 |    26d ago |          57 |       0
+  68 | strava_82648699@training-monkey.com | trail_running   |        114 |    58d ago |          56 |       0
+  69 | strava_70459424@training-monkey.com | running         |          0 |      Never |          55 |       0
+  70 | strava_20656042@training-monkey.com | cycling         |         95 |    54d ago |          53 |       0
+  71 | strava_111597839@training-monkey.co | running         |         82 |    33d ago |          52 |       0
+  72 | strava_1177710@training-monkey.com  | trail_running   |         92 |    51d ago |          51 |       0
+  73 | strava_7049612@training-monkey.com  | cycling         |         62 |    49d ago |          47 |       0
+  74 | strava_27137814@training-monkey.com | road_running    |        102 |    45d ago |          44 |       0
+  75 | strava_8131901@training-monkey.com  | road_running    |         97 |    44d ago |          43 |       0
+  76 | strava_67035217@training-monkey.com | cycling         |          6 |    55d ago |          43 |       0
+  77 | strava_1727889@training-monkey.com  | cycling         |         95 |    40d ago |          40 |       0
+  78 | strava_121000216@training-monkey.co | other           |         92 |    35d ago |          34 |       0
+  79 | strava_15450549@training-monkey.com | cycling         |        114 |    34d ago |          33 |       0
+  80 | strava_42946799@training-monkey.com | triathlon       |        256 |     3d ago |          31 |       0
+  81 | strava_4516305@training-monkey.com  | running         |          0 |      Never |          26 |       0
+  82 | jamesadixon@hotmail.com             | cycling         |        135 |     3d ago |          25 |      17
+  83 | jmcabellom@training-monkey.com      | cycling         |        132 |    25d ago |          25 |       1
+  84 | strava_158866337@training-monkey.co | trail_running   |          8 |    25d ago |          24 |       0
+  85 | strava_112315636@training-monkey.co | cycling         |        107 |    23d ago |          22 |       0
+  86 | strava_65747037@training-monkey.com | cycling         |        122 |    19d ago |          18 |       0
+  87 | strava_3415653@training-monkey.com  | other           |        102 |    19d ago |          18 |       0
+  88 | strava_68066414@training-monkey.com | strength        |         97 |    14d ago |          14 |       1
+  89 | strava_23127837@training-monkey.com | running         |         15 |    18d ago |          13 |       0
+  90 | strava_25271246@training-monkey.com | road_running    |        136 |    13d ago |          12 |       0
+  91 | strava_26733214@training-monkey.com | cycling         |        115 |    11d ago |          10 |       0
+  92 | strava_21695899@training-monkey.com | road_running    |        104 |    11d ago |          10 |       1
+  93 | strava_145527949@training-monkey.co | other           |        107 |    11d ago |           9 |       1
+  94 | strava_109796322@training-monkey.co | cycling         |         16 |    13d ago |           8 |       0
+  95 | strava_11300748@training-monkey.com | road_running    |         40 |     4d ago |           3 |       0
+  96 | strava_374213@training-monkey.com   | cycling         |        104 |     3d ago |           2 |       0
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+SUMMARY STATISTICS:
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+Activities:
+  Total: 3,999
+  Users with activities: 39 (92.9%)
+  Average per user: 95.2
+
+Journal Entries:
+  Total: 173
+  Users with entries: 8 (19.0%)
+  Average per user: 4.1
+
+Primary Sport Distribution:
+  cycling: 15 (35.7%)
+  road_running: 9 (21.4%)
+  running: 8 (19.0%)
+  other: 4 (9.5%)
+  trail_running: 4 (9.5%)
+  triathlon: 1 (2.4%)
+  strength: 1 (2.4%)
+
+Activity Recency:
+  Active (last 7 days): 7 (16.7%)
+  Active (last 30 days): 21 (50.0%)
+  Never active: 3 (7.1%)
+
+Email Status:
+  Real emails: 4 (9.5%)
+  Synthetic emails: 38 (90.5%)
+
+============================================================================================================================================

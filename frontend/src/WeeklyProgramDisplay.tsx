@@ -133,7 +133,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   if (!program) {
     return (
       <div>
-        <h2 className={styles.cardHeader}>Weekly Training Program</h2>
+        <h2 className={styles.cardHeader}>Workout Plan</h2>
         <div style={{ textAlign: 'center', padding: '40px 20px', color: '#95a5a6' }}>
           <p style={{ fontSize: '18px', marginBottom: '15px' }}>No weekly program loaded</p>
           <p style={{ fontSize: '14px', marginBottom: '20px' }}>
@@ -144,41 +144,61 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
     );
   }
 
+  // Format date for header (e.g., "Dec 1, 2025")
+  const formatHeaderDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header - Prominent */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '1rem',
+        paddingBottom: '0.75rem',
+        borderBottom: '2px solid #e1e8ed'
+      }}>
         <div>
-          <h2 className={styles.cardHeader}>
-            Weekly Training Program
+          <h2 style={{
+            fontSize: '24px',
+            fontWeight: '700',
+            color: '#2c3e50',
+            margin: 0,
+            marginBottom: '0.25rem'
+          }}>
+            Workout Plan for the Week of {formatHeaderDate(program.week_start_date)}
           </h2>
-          <div style={{ fontSize: '14px', color: '#7f8c8d', marginTop: '5px' }}>
-            Week of {formatDate(program.week_start_date)}
-            {program.from_cache && (
-              <span style={{ 
-                marginLeft: '10px', 
-                padding: '2px 8px', 
-                backgroundColor: '#e8f4f8', 
-                borderRadius: '10px',
-                fontSize: '12px',
-                color: '#555'
-              }}>
-                Cached
-              </span>
-            )}
-          </div>
+          {program.from_cache && (
+            <span style={{ 
+              marginLeft: '0',
+              padding: '2px 8px', 
+              backgroundColor: '#e8f4f8', 
+              borderRadius: '10px',
+              fontSize: '11px',
+              color: '#555'
+            }}>
+              Cached
+            </span>
+          )}
         </div>
         <button
           onClick={handleRegenerate}
           disabled={isRegenerating}
           style={{
-            padding: '10px 20px',
+            padding: '8px 16px',
             backgroundColor: '#9b59b6',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
             cursor: isRegenerating ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
+            fontSize: '13px',
             fontWeight: '600',
             opacity: isRegenerating ? 0.6 : 1
           }}
@@ -203,16 +223,16 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
 
       {/* Week Summary */}
       <div style={{
-        padding: '20px',
+        padding: '1rem',
         backgroundColor: '#f8f9fa',
         borderRadius: '8px',
-        marginBottom: '20px',
+        marginBottom: '1rem',
         border: '1px solid #e1e8ed'
       }}>
-        <h3 style={{ marginTop: 0, marginBottom: '10px', fontSize: '16px', color: '#2c3e50' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '15px', color: '#2c3e50' }}>
           📋 Week Overview
         </h3>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#555' }}>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#555', textAlign: 'left' }}>
           {program.week_summary}
         </p>
       </div>
@@ -221,74 +241,71 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', 
-        gap: '15px', 
-        marginBottom: '20px' 
+        gap: '0.75rem', 
+        marginBottom: '1rem' 
       }}>
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: getACWRColor(program.predicted_metrics.acwr_estimate),
           color: 'white',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '3px' }}>
             {program.predicted_metrics.acwr_estimate.toFixed(2)}
           </div>
-          <div style={{ fontSize: '12px', opacity: 0.9 }}>Predicted ACWR</div>
+          <div style={{ fontSize: '11px', opacity: 0.9 }}>Predicted ACWR</div>
         </div>
 
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: getDivergenceColor(program.predicted_metrics.divergence_estimate),
           color: 'white',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '3px' }}>
             {program.predicted_metrics.divergence_estimate.toFixed(3)}
           </div>
-          <div style={{ fontSize: '12px', opacity: 0.9 }}>Predicted Divergence</div>
+          <div style={{ fontSize: '11px', opacity: 0.9 }}>Predicted Divergence</div>
         </div>
 
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: '#3498db',
           color: 'white',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '3px' }}>
             {program.predicted_metrics.total_weekly_miles.toFixed(1)}
           </div>
-          <div style={{ fontSize: '12px', opacity: 0.9 }}>Total Miles</div>
+          <div style={{ fontSize: '11px', opacity: 0.9 }}>Total Miles</div>
         </div>
       </div>
 
       {/* Key Workouts */}
       {program.key_workouts_this_week && program.key_workouts_this_week.length > 0 && (
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: '#fff3cd',
           border: '1px solid #ffeaa7',
           borderRadius: '8px',
-          marginBottom: '20px'
+          marginBottom: '1rem'
         }}>
-          <h3 style={{ marginTop: 0, marginBottom: '10px', fontSize: '14px', color: '#856404' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#856404' }}>
             ⭐ Key Workouts This Week:
           </h3>
-          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#856404' }}>
+          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#856404', textAlign: 'left' }}>
             {program.key_workouts_this_week.map((workout, index) => (
-              <li key={index} style={{ marginBottom: '5px' }}>{workout}</li>
+              <li key={index} style={{ marginBottom: '5px', textAlign: 'left' }}>{workout}</li>
             ))}
           </ul>
         </div>
       )}
 
       {/* Daily Program */}
-      <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#2c3e50' }}>
-        7-Day Training Schedule
-      </h3>
-      <div style={{ display: 'grid', gap: '15px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
         {program.daily_program.map((workout, index) => {
           const isToday = new Date(workout.date).toDateString() === new Date().toDateString();
           
@@ -298,7 +315,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               style={{
                 border: isToday ? '3px solid #f39c12' : '1px solid #e1e8ed',
                 borderRadius: '8px',
-                padding: '15px',
+                padding: '0.75rem',
                 backgroundColor: isToday ? '#fff9e6' : 'white',
                 position: 'relative'
               }}
@@ -320,65 +337,59 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 </div>
               )}
 
-              {/* Day & Date */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <div style={{ fontSize: '32px' }}>
+              {/* Workout Header: Icon, Type, Intensity, Duration */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '28px' }}>
                   {getWorkoutTypeIcon(workout.workout_type)}
                 </div>
-                <div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2c3e50' }}>
-                    {workout.day}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#7f8c8d' }}>
-                    {formatDate(workout.date)}
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    color: '#555',
+                    textAlign: 'left'
+                  }}>
+                    {workout.workout_type}
                   </div>
                 </div>
-                <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div style={{ textAlign: 'right' }}>
                   <div style={{
-                    padding: '4px 10px',
+                    padding: '3px 8px',
                     backgroundColor: getIntensityColor(workout.intensity),
                     color: 'white',
                     borderRadius: '12px',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: 'bold',
-                    marginBottom: '5px'
+                    marginBottom: '3px'
                   }}>
                     {workout.intensity.toUpperCase()}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#7f8c8d' }}>
+                  <div style={{ fontSize: '11px', color: '#7f8c8d' }}>
                     {workout.duration_estimate}
                   </div>
                 </div>
               </div>
 
-              {/* Workout Type */}
-              <div style={{
-                fontSize: '16px',
-                fontWeight: '600',
-                color: '#555',
-                marginBottom: '8px'
-              }}>
-                {workout.workout_type}
-              </div>
-
               {/* Description */}
               <div style={{
-                fontSize: '14px',
+                fontSize: '13px',
                 color: '#555',
-                marginBottom: '10px',
-                lineHeight: '1.5'
+                marginBottom: '0.75rem',
+                lineHeight: '1.5',
+                textAlign: 'left'
               }}>
                 {workout.description}
               </div>
 
               {/* Key Focus */}
               <div style={{
-                padding: '10px',
+                padding: '0.75rem',
                 backgroundColor: '#e8f4f8',
                 borderRadius: '6px',
-                fontSize: '13px',
+                fontSize: '12px',
                 color: '#555',
-                marginBottom: workout.terrain_notes ? '8px' : 0
+                marginBottom: workout.terrain_notes ? '0.5rem' : 0,
+                textAlign: 'left'
               }}>
                 <strong>Focus:</strong> {workout.key_focus}
               </div>
@@ -386,9 +397,10 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               {/* Terrain Notes */}
               {workout.terrain_notes && (
                 <div style={{
-                  fontSize: '13px',
+                  fontSize: '12px',
                   color: '#7f8c8d',
-                  fontStyle: 'italic'
+                  fontStyle: 'italic',
+                  textAlign: 'left'
                 }}>
                   🗺️ {workout.terrain_notes}
                 </div>
@@ -401,16 +413,16 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
       {/* Nutrition Reminder */}
       {program.nutrition_reminder && (
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: '#d1f2eb',
           border: '1px solid #a8e6cf',
           borderRadius: '8px',
-          marginBottom: '15px'
+          marginBottom: '0.75rem'
         }}>
-          <h3 style={{ marginTop: 0, marginBottom: '8px', fontSize: '14px', color: '#0e6655' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#0e6655' }}>
             🥗 Nutrition Reminder:
           </h3>
-          <p style={{ margin: 0, fontSize: '13px', color: '#0e6655', lineHeight: '1.5' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#0e6655', lineHeight: '1.5', textAlign: 'left' }}>
             {program.nutrition_reminder}
           </p>
         </div>
@@ -419,16 +431,16 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
       {/* Injury Prevention Note */}
       {program.injury_prevention_note && (
         <div style={{
-          padding: '15px',
+          padding: '0.75rem',
           backgroundColor: '#fce4ec',
           border: '1px solid #f8bbd0',
           borderRadius: '8px',
-          marginBottom: '15px'
+          marginBottom: '0.75rem'
         }}>
-          <h3 style={{ marginTop: 0, marginBottom: '8px', fontSize: '14px', color: '#c2185b' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#c2185b' }}>
             🏥 Injury Prevention:
           </h3>
-          <p style={{ margin: 0, fontSize: '13px', color: '#c2185b', lineHeight: '1.5' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#c2185b', lineHeight: '1.5', textAlign: 'left' }}>
             {program.injury_prevention_note}
           </p>
         </div>
@@ -436,10 +448,10 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
 
       {/* Footer Note */}
       <div style={{
-        padding: '15px',
+        padding: '0.75rem',
         backgroundColor: '#f8f9fa',
         borderRadius: '6px',
-        fontSize: '13px',
+        fontSize: '12px',
         color: '#7f8c8d',
         textAlign: 'center'
       }}>

@@ -78,7 +78,14 @@ function App() {
             ].map((tab, index) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                // Update URL to reflect active tab
+                const newUrl = tab.key === 'dashboard' 
+                  ? '/dashboard' 
+                  : `/dashboard?tab=${tab.key}`;
+                window.history.pushState({}, '', newUrl);
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -111,12 +118,11 @@ function App() {
           
           {/* App Branding - Upper Right */}
           <div style={{
-            paddingBottom: '8px',
-            paddingRight: '20px'
+            padding: '2px 20px'
           }}>
             <h1 style={{
               margin: 0,
-              fontSize: '1.5rem',
+              fontSize: '1.2rem',
               fontWeight: '900',
               color: '#1e293b',
               letterSpacing: '0.15em',
@@ -127,18 +133,16 @@ function App() {
               WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.1)'
             }}>
               <span style={{ 
-                fontSize: '1.8rem', 
-                color: '#7a9b76',
+                fontSize: '1.4rem', 
+                color: '#1B2E4B',
                 fontVariant: 'normal'
-              }}>Y</span>our{' '}
-              <span style={{ 
-                fontSize: '1.8rem', 
-                color: '#7a9b76',
+              }}>Y</span>our <span style={{ 
+                fontSize: '1.4rem', 
+                color: '#1B2E4B',
                 fontVariant: 'normal'
-              }}>T</span>raining{' '}
-              <span style={{ 
-                fontSize: '1.8rem', 
-                color: '#7a9b76',
+              }}>T</span>raining <span style={{ 
+                fontSize: '1.4rem', 
+                color: '#1B2E4B',
                 fontVariant: 'normal'
               }}>M</span>onkey
             </h1>

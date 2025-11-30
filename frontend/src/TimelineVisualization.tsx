@@ -88,86 +88,44 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   const currentWeekIndex = timeline.findIndex(w => w.is_current);
   const totalWeeks = timeline.length;
 
+  // Debug: Log races data
+  console.log('[Timeline] Total weeks:', totalWeeks);
+  console.log('[Timeline] Full timeline data:', JSON.stringify(timeline, null, 2));
+  const weeksWithRaces = timeline.filter(w => w.races && Array.isArray(w.races) && w.races.length > 0);
+  console.log('[Timeline] Weeks with races:', weeksWithRaces.length);
+  weeksWithRaces.forEach((week, idx) => {
+    console.log(`[Timeline] Week ${idx} races:`, week.races);
+  });
+
+  // Calculate reverse week numbers (weeks until race)
+  // Last week (race week) = 0, first week = totalWeeks - 1
+  const getWeeksUntilRace = (index: number): number => {
+    return totalWeeks - index - 1;
+  };
+
   return (
-    <div>
-      {/* Header */}
-      <h2 className={styles.cardHeader}>Training Timeline</h2>
-      <div style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '20px' }}>
-        {totalWeeks}-week plan to {trainingStage.race_name || 'your race'}
-      </div>
-
-      {/* Current Stage Info */}
-      <div style={{
-        padding: '15px 20px',
-        backgroundColor: getStageColor(trainingStage.stage),
-        color: 'white',
-        borderRadius: '8px',
-        marginBottom: '25px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '5px' }}>
-            {trainingStage.stage} Phase
-          </div>
-          <div style={{ fontSize: '14px', opacity: 0.9 }}>
-            {trainingStage.details}
-          </div>
-        </div>
-        {trainingStage.weeks_to_race !== null && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '32px', fontWeight: 'bold' }}>
-              {trainingStage.weeks_to_race}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.9 }}>
-              weeks to race
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Timeline Visualization */}
+    <div style={{ marginTop: '0', paddingTop: '0' }}>
+      {/* Consolidated Timeline Bar */}
       <div style={{
         overflowX: 'auto',
-        marginBottom: '20px',
-        padding: '20px 0'
+        marginBottom: '0.5rem',
+        marginTop: '0',
+        padding: '30px 0 0.25rem 0' // Tighter padding
       }}>
-        {/* Week Numbers */}
+        {/* Single Timeline Bar with Week Numbers */}
         <div style={{
           display: 'flex',
-          marginBottom: '10px',
-          minWidth: `${totalWeeks * 60}px`
-        }}>
-          {timeline.map((week, index) => (
-            <div
-              key={index}
-              style={{
-                flex: '0 0 60px',
-                textAlign: 'center',
-                fontSize: '11px',
-                fontWeight: week.is_current ? 'bold' : 'normal',
-                color: week.is_current ? '#f39c12' : '#7f8c8d'
-              }}
-            >
-              W{week.week_number}
-            </div>
-          ))}
-        </div>
-
-        {/* Timeline Bar */}
-        <div style={{
-          display: 'flex',
-          height: '60px',
+          height: '60px', // Reduced from 80px
           borderRadius: '30px',
           overflow: 'hidden',
-          marginBottom: '15px',
+          marginBottom: '0.25rem', // Tight spacing
           minWidth: `${totalWeeks * 60}px`,
           boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
         }}>
           {timeline.map((week, index) => {
             const isFirst = index === 0 || timeline[index - 1].stage !== week.stage;
-            const isLast = index === timeline.length - 1 || timeline[index + 1].stage !== week.stage;
+            const weeksUntilRace = getWeeksUntilRace(index);
+            const isRaceWeek = weeksUntilRace === 0;
 
             return (
               <div
@@ -178,256 +136,166 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
                   position: 'relative',
                   borderLeft: isFirst ? 'none' : '1px solid rgba(255,255,255,0.3)',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'default'
+                  cursor: 'default',
+                  padding: '4px 0'
                 }}
-                title={`Week ${week.week_number}: ${week.stage}`}
+                title={`${weeksUntilRace} weeks until race - ${week.stage}`}
               >
-                {/* Current Week Marker */}
+                {/* Week Number (reverse order - weeks until race) */}
+                <div style={{
+                  fontSize: isRaceWeek ? '14px' : '12px',
+                  fontWeight: week.is_current || isRaceWeek ? 'bold' : '600',
+                  color: 'white',
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
+                  marginBottom: '2px'
+                }}>
+                  {isRaceWeek ? 'RACE' : `${weeksUntilRace}`}
+                </div>
+
+                {/* Stage Label (on first week of each stage) */}
+                {isFirst && (
+                  <div style={{
+                    fontSize: '9px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                    textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    opacity: 0.9
+                  }}>
+                    {week.stage.slice(0, 4)}
+                  </div>
+                )}
+
+                {/* Current Week Marker - Pin */}
                 {week.is_current && (
                   <div style={{
                     position: 'absolute',
-                    top: '-25px',
+                    top: '-25px', // Reduced from -30px
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    fontSize: '24px'
+                    fontSize: '18px', // Slightly smaller
+                    zIndex: 20,
+                    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
                   }}>
                     📍
                   </div>
                 )}
 
                 {/* Race Markers */}
-                {week.races && week.races.map((race, raceIndex) => (
+                {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => (
                   <div
                     key={raceIndex}
                     style={{
                       position: 'absolute',
-                      top: '-35px',
+                      top: week.is_current ? '-42px' : '-35px', // Reduced spacing
                       left: '50%',
                       transform: 'translateX(-50%)',
                       backgroundColor: getPriorityColor(race.priority),
                       color: 'white',
-                      padding: '4px 8px',
+                      padding: '3px 6px', // Tighter padding
                       borderRadius: '4px',
-                      fontSize: '11px',
+                      fontSize: '10px', // Smaller font
                       fontWeight: 'bold',
                       whiteSpace: 'nowrap',
                       boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                      zIndex: 10
+                      zIndex: 15
                     }}
                     title={`${race.race_name} - ${race.date}`}
                   >
                     {race.priority}
                   </div>
                 ))}
-
-                {/* Stage Label (on first week of each stage) */}
-                {isFirst && (
-                  <div style={{
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                    color: 'white',
-                    textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
-                  }}>
-                    {week.stage.slice(0, 4)}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
 
-        {/* "You Are Here" Label */}
-        {currentWeekIndex >= 0 && (
-          <div style={{
-            display: 'flex',
-            minWidth: `${totalWeeks * 60}px`
-          }}>
-            <div style={{
-              flex: `0 0 ${currentWeekIndex * 60}px`
-            }}></div>
-            <div style={{
-              flex: '0 0 60px',
-              textAlign: 'center',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              color: '#f39c12'
-            }}>
-              YOU ARE HERE
-            </div>
-          </div>
-        )}
-
-        {/* Date Range */}
+        {/* Weeks until race label */}
         <div style={{
           display: 'flex',
-          marginTop: '15px',
           minWidth: `${totalWeeks * 60}px`,
+          alignItems: 'center',
+          marginTop: '0.25rem',
           fontSize: '11px',
-          color: '#95a5a6'
+          color: '#1e293b',
+          fontWeight: '600'
         }}>
-          {timeline.map((week, index) => {
-            const showDate = index === 0 || index === timeline.length - 1 || week.is_current;
-            return (
-              <div
-                key={index}
-                style={{
-                  flex: '0 0 60px',
-                  textAlign: 'center'
-                }}
-              >
-                {showDate && formatDateShort(week.week_start)}
-              </div>
-            );
-          })}
+          <span>Weeks until race</span>
         </div>
       </div>
 
-      {/* Stage Legend */}
+      {/* Stage Legend - Compact with Phase and Races on same line */}
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: '10px',
-        padding: '15px',
+        gap: '0.5rem',
+        padding: '0.5rem',
         backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-        fontSize: '13px'
+        borderRadius: '6px',
+        fontSize: '11px',
+        marginTop: '0.25rem',
+        alignItems: 'center'
       }}>
-        <div style={{ fontWeight: '600', width: '100%', marginBottom: '5px', color: '#2c3e50' }}>
-          Training Stage Guide:
+        <span style={{ fontWeight: '700', color: '#1e293b', marginRight: '0.25rem', textTransform: 'uppercase' }}>PHASES:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Base'), borderRadius: '3px' }}></div>
+          <span>Base</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Build'), borderRadius: '3px' }}></div>
+          <span>Build</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Specificity'), borderRadius: '3px' }}></div>
+          <span>Specificity</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Taper'), borderRadius: '3px' }}></div>
+          <span>Taper</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Peak'), borderRadius: '3px' }}></div>
+          <span>Peak</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ width: '14px', height: '14px', backgroundColor: getStageColor('Recovery'), borderRadius: '3px' }}></div>
+          <span>Recovery</span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Base'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Base - Building endurance foundation</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Build'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Build - Increasing volume & intensity</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Specificity'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Specificity - Race-specific training</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Taper'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Taper - Reducing volume, maintaining intensity</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Peak'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Peak - Race week!</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <div style={{
-            width: '20px',
-            height: '20px',
-            backgroundColor: getStageColor('Recovery'),
-            borderRadius: '4px'
-          }}></div>
-          <span>Recovery - Post-race rest & adaptation</span>
-        </div>
-      </div>
-
-      {/* Race Markers Legend */}
-      {timeline.some(w => w.races && w.races.length > 0) && (
-        <div style={{
-          marginTop: '15px',
-          padding: '15px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          fontSize: '13px'
-        }}>
-          <div style={{ fontWeight: '600', marginBottom: '8px', color: '#2c3e50' }}>
-            Race Priority Guide:
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{
-                padding: '4px 8px',
-                backgroundColor: getPriorityColor('A'),
-                color: 'white',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}>A</div>
-              <span>Primary season focus</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{
-                padding: '4px 8px',
-                backgroundColor: getPriorityColor('B'),
-                color: 'white',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}>B</div>
-              <span>Fitness evaluation race</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <div style={{
-                padding: '4px 8px',
-                backgroundColor: getPriorityColor('C'),
-                color: 'white',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}>C</div>
-              <span>Training volume race</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Help Text */}
-      <div style={{
-        marginTop: '20px',
-        padding: '15px',
-        backgroundColor: '#e8f4f8',
-        borderRadius: '6px',
-        fontSize: '13px',
-        color: '#555'
-      }}>
-        <strong>💡 How to Read This Timeline:</strong>
-        <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
-          <li>Each box represents one week of training</li>
-          <li>Colors indicate your current training phase</li>
-          <li>📍 marker shows your current position</li>
-          <li>Letter badges (A/B/C) mark upcoming races</li>
-          <li>Your training program adjusts based on which phase you're in</li>
-        </ul>
+        {/* Races on same line */}
+        {timeline.some(w => w.races && w.races.length > 0) && (
+          <>
+            <span style={{ fontWeight: '700', color: '#1e293b', marginLeft: '0.5rem', marginRight: '0.25rem', textTransform: 'uppercase' }}>RACES:</span>
+            <div style={{
+              padding: '2px 6px',
+              backgroundColor: getPriorityColor('A'),
+              color: 'white',
+              borderRadius: '3px',
+              fontSize: '10px',
+              fontWeight: 'bold'
+            }}>A</div>
+            <div style={{
+              padding: '2px 6px',
+              backgroundColor: getPriorityColor('B'),
+              color: 'white',
+              borderRadius: '3px',
+              fontSize: '10px',
+              fontWeight: 'bold'
+            }}>B</div>
+            <div style={{
+              padding: '2px 6px',
+              backgroundColor: getPriorityColor('C'),
+              color: 'white',
+              borderRadius: '3px',
+              fontSize: '10px',
+              fontWeight: 'bold'
+            }}>C</div>
+          </>
+        )}
       </div>
     </div>
   );

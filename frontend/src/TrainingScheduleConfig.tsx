@@ -68,7 +68,18 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
         setTotalHours(schedule.schedule.total_hours_per_week || 10);
         setAvailableDays(schedule.schedule.available_days || []);
         setTimeBlocks(schedule.schedule.time_blocks || {});
-        setConstraints(schedule.schedule.constraints || '');
+        
+        // Convert constraints array to text (one per line)
+        const constraintsArray = schedule.schedule.constraints;
+        if (Array.isArray(constraintsArray)) {
+          const constraintsText = constraintsArray
+            .map((c: any) => c.description || c)
+            .filter((line: string) => line)
+            .join('\n');
+          setConstraints(constraintsText);
+        } else {
+          setConstraints(constraintsArray || '');
+        }
       }
       
       setIncludeStrength(schedule.include_strength);
@@ -101,7 +112,18 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
         setTotalHours(schedule.schedule.total_hours_per_week || 10);
         setAvailableDays(schedule.schedule.available_days || []);
         setTimeBlocks(schedule.schedule.time_blocks || {});
-        setConstraints(schedule.schedule.constraints || '');
+        
+        // Convert constraints array to text
+        const constraintsArray = schedule.schedule.constraints;
+        if (Array.isArray(constraintsArray)) {
+          const constraintsText = constraintsArray
+            .map((c: any) => c.description || c)
+            .filter((line: string) => line)
+            .join('\n');
+          setConstraints(constraintsText);
+        } else {
+          setConstraints(constraintsArray || '');
+        }
       }
       setIncludeStrength(schedule.include_strength);
       setStrengthHours(schedule.strength_hours);
@@ -171,20 +193,27 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
     }
 
     try {
+      // Convert constraints text to array of constraint objects
+      const constraintsList = constraints.trim() 
+        ? constraints.trim().split('\n').filter(line => line.trim()).map(line => ({
+            description: line.trim()
+          }))
+        : [];
+
       const payload = {
-        schedule: {
+        training_schedule: {
           total_hours_per_week: totalHours,
           available_days: availableDays,
           time_blocks: timeBlocks,
-          constraints: constraints.trim() || null
+          constraints: constraintsList
         },
-        include_strength: includeStrength,
-        strength_hours: includeStrength ? strengthHours : 0,
+        include_strength_training: includeStrength,
+        strength_hours_per_week: includeStrength ? strengthHours : 0,
         include_mobility: includeMobility,
-        mobility_hours: includeMobility ? mobilityHours : 0,
+        mobility_hours_per_week: includeMobility ? mobilityHours : 0,
         include_cross_training: includeCrossTraining,
         cross_training_type: includeCrossTraining ? crossTrainingType : null,
-        cross_training_hours: includeCrossTraining ? crossTrainingHours : 0
+        cross_training_hours_per_week: includeCrossTraining ? crossTrainingHours : 0
       };
 
       const response = await fetch('/api/coach/training-schedule', {

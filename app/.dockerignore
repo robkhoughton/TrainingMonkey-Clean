@@ -23,6 +23,14 @@ env_example.txt
 *.bat
 *.ps1
 
+# Exclude migration and utility scripts (run manually, not needed in production)
+run_migration.py
+db_credentials_loader.py
+validate_sql_syntax.py
+check_*.py
+verify_*.py
+inspect_*.py
+
 # Exclude documentation and guides
 *.md
 README.md
@@ -68,3 +76,8 @@ npm-debug.log*
 # Exclude temporary files
 *.tmp
 *.temp
+
+# Exclude deployment scripts (run locally, not needed in container)
+deploy_*.py
+Dockerfile*
+.dockerignore

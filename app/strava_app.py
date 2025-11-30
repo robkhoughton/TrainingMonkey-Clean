@@ -10486,7 +10486,7 @@ def get_race_history():
         
         return jsonify({
             'success': True,
-            'race_history': history_list
+            'history': history_list
         })
         
     except Exception as e:
@@ -11027,16 +11027,18 @@ def get_training_schedule():
         
         return jsonify({
             'success': True,
-            'training_schedule': schedule_json,
-            'include_strength_training': settings_dict.get('include_strength_training', False),
-            'strength_hours_per_week': float(settings_dict.get('strength_hours_per_week', 0)) if settings_dict.get('strength_hours_per_week') else 0,
-            'include_mobility': settings_dict.get('include_mobility', False),
-            'mobility_hours_per_week': float(settings_dict.get('mobility_hours_per_week', 0)) if settings_dict.get('mobility_hours_per_week') else 0,
-            'include_cross_training': settings_dict.get('include_cross_training', False),
-            'cross_training_type': settings_dict.get('cross_training_type'),
-            'cross_training_hours_per_week': float(settings_dict.get('cross_training_hours_per_week', 0)) if settings_dict.get('cross_training_hours_per_week') else 0,
-            'schedule_last_updated': schedule_last_updated,
-            'is_default': is_default
+            'schedule': {
+                'schedule': schedule_json,
+                'include_strength': settings_dict.get('include_strength_training', False),
+                'strength_hours': float(settings_dict.get('strength_hours_per_week', 0)) if settings_dict.get('strength_hours_per_week') else 0,
+                'include_mobility': settings_dict.get('include_mobility', False),
+                'mobility_hours': float(settings_dict.get('mobility_hours_per_week', 0)) if settings_dict.get('mobility_hours_per_week') else 0,
+                'include_cross_training': settings_dict.get('include_cross_training', False),
+                'cross_training_type': settings_dict.get('cross_training_type'),
+                'cross_training_hours': float(settings_dict.get('cross_training_hours_per_week', 0)) if settings_dict.get('cross_training_hours_per_week') else 0,
+                'schedule_last_updated': schedule_last_updated,
+                'is_default': is_default
+            }
         })
         
     except Exception as e:
@@ -11210,6 +11212,15 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
     a_race_date = a_race['race_date']
     if isinstance(a_race_date, str):
         a_race_date = datetime.strptime(a_race_date, '%Y-%m-%d').date()
+    elif hasattr(a_race_date, 'isoformat'):  # Already a date object
+        pass  # Already a date
+    else:
+        # Try to convert if it's a date-like object
+        try:
+            a_race_date = a_race_date if isinstance(a_race_date, date) else datetime.strptime(str(a_race_date), '%Y-%m-%d').date()
+        except:
+            logger.error(f"Could not parse A race date: {a_race_date}")
+            return []
     
     # Generate timeline from now until race date (or 4 weeks past if race has passed)
     if a_race_date < current_date:
@@ -11220,8 +11231,11 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
     # Start from current week (Monday)
     start_date = current_date - timedelta(days=current_date.weekday())
     
+    logger.info(f"Timeline range: {start_date} to {end_date} (A race: {a_race_date}, B races: {len(b_races)}, C races: {len(c_races)})")
+    
     timeline = []
     current_week_start = start_date
+    week_number = 1
     
     # Generate weeks
     while current_week_start <= end_date:
@@ -11241,45 +11255,80 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
             races_this_week.append({
                 'priority': 'A',
                 'race_name': a_race['race_name'],
-                'race_date': a_race_date.strftime('%Y-%m-%d'),
+                'date': a_race_date.strftime('%Y-%m-%d'),  # Frontend expects 'date' not 'race_date'
                 'race_type': a_race.get('race_type')
             })
+            logger.info(f"Added A race to week {week_number}: {a_race['race_name']} on {a_race_date}")
         
         # Check B races
         for b_race in b_races:
-            b_race_date = b_race['race_date']
-            if isinstance(b_race_date, str):
-                b_race_date = datetime.strptime(b_race_date, '%Y-%m-%d').date()
-            if current_week_start <= b_race_date <= week_end:
-                races_this_week.append({
-                    'priority': 'B',
-                    'race_name': b_race['race_name'],
-                    'race_date': b_race_date.strftime('%Y-%m-%d'),
-                    'race_type': b_race.get('race_type')
-                })
+            try:
+                b_race_date = b_race['race_date']
+                if isinstance(b_race_date, str):
+                    b_race_date = datetime.strptime(b_race_date, '%Y-%m-%d').date()
+                elif hasattr(b_race_date, 'isoformat'):  # Already a date object
+                    pass  # Already a date
+                else:
+                    # Try to convert if it's a date-like object
+                    try:
+                        b_race_date = b_race_date if isinstance(b_race_date, date) else datetime.strptime(str(b_race_date), '%Y-%m-%d').date()
+                    except:
+                        logger.error(f"Could not parse B race date: {b_race_date} for race {b_race.get('race_name')}")
+                        continue
+                
+                logger.info(f"Checking B race {b_race.get('race_name')} on {b_race_date} against week {week_number} ({current_week_start} to {week_end})")
+                
+                if current_week_start <= b_race_date <= week_end:
+                    races_this_week.append({
+                        'priority': 'B',
+                        'race_name': b_race['race_name'],
+                        'date': b_race_date.strftime('%Y-%m-%d'),  # Frontend expects 'date' not 'race_date'
+                        'race_type': b_race.get('race_type')
+                    })
+                    logger.info(f"Added B race to week {week_number}: {b_race['race_name']} on {b_race_date}")
+            except Exception as e:
+                logger.error(f"Error processing B race {b_race.get('race_name', 'unknown')}: {str(e)}")
+                continue
         
         # Check C races
         for c_race in c_races:
-            c_race_date = c_race['race_date']
-            if isinstance(c_race_date, str):
-                c_race_date = datetime.strptime(c_race_date, '%Y-%m-%d').date()
-            if current_week_start <= c_race_date <= week_end:
-                races_this_week.append({
-                    'priority': 'C',
-                    'race_name': c_race['race_name'],
-                    'race_date': c_race_date.strftime('%Y-%m-%d'),
-                    'race_type': c_race.get('race_type')
-                })
+            try:
+                c_race_date = c_race['race_date']
+                if isinstance(c_race_date, str):
+                    c_race_date = datetime.strptime(c_race_date, '%Y-%m-%d').date()
+                elif hasattr(c_race_date, 'isoformat'):  # Already a date object
+                    pass  # Already a date
+                else:
+                    # Try to convert if it's a date-like object
+                    try:
+                        c_race_date = c_race_date if isinstance(c_race_date, date) else datetime.strptime(str(c_race_date), '%Y-%m-%d').date()
+                    except:
+                        logger.error(f"Could not parse C race date: {c_race_date} for race {c_race.get('race_name')}")
+                        continue
+                
+                if current_week_start <= c_race_date <= week_end:
+                    races_this_week.append({
+                        'priority': 'C',
+                        'race_name': c_race['race_name'],
+                        'date': c_race_date.strftime('%Y-%m-%d'),  # Frontend expects 'date' not 'race_date'
+                        'race_type': c_race.get('race_type')
+                    })
+                    logger.info(f"Added C race to week {week_number}: {c_race['race_name']} on {c_race_date}")
+            except Exception as e:
+                logger.error(f"Error processing C race {c_race.get('race_name', 'unknown')}: {str(e)}")
+                continue
         
         timeline.append({
+            'week_number': week_number,
             'week_start': current_week_start.strftime('%Y-%m-%d'),
             'week_end': week_end.strftime('%Y-%m-%d'),
             'stage': stage_info['stage'],
             'stage_description': stage_info['stage_description'],
-            'is_current_week': is_current_week,
-            'races': races_this_week
+            'is_current': is_current_week,  # Frontend expects 'is_current' not 'is_current_week'
+            'races': races_this_week if races_this_week else []  # Always include races array (empty if none)
         })
         
+        week_number += 1
         current_week_start += timedelta(weeks=1)
     
     return timeline
@@ -11396,13 +11445,19 @@ def get_training_stage():
                 'priority': goal[4],
                 'target_time': goal[5]
             }
+            # Normalize priority (strip whitespace, uppercase)
+            if 'priority' in goal_dict and goal_dict['priority']:
+                goal_dict['priority'] = str(goal_dict['priority']).strip().upper()
             # Serialize date
             if isinstance(goal_dict['race_date'], date):
                 goal_dict['race_date'] = goal_dict['race_date'].strftime('%Y-%m-%d')
             goals_list.append(goal_dict)
         
+        # Log all goals for debugging
+        logger.info(f"All race goals for user {user_id}: {[(g.get('race_name'), g.get('priority'), g.get('race_date')) for g in goals_list]}")
+        
         # Find A race
-        a_race = next((g for g in goals_list if g['priority'] == 'A'), None)
+        a_race = next((g for g in goals_list if g.get('priority') == 'A'), None)
         
         if not a_race:
             return jsonify({
@@ -11440,9 +11495,18 @@ def get_training_stage():
         else:
             stage_info['is_manual_override'] = False
         
-        # Separate B and C races
-        b_races = [g for g in goals_list if g['priority'] == 'B']
-        c_races = [g for g in goals_list if g['priority'] == 'C']
+        # Separate B and C races - use get() with default to handle missing priority
+        b_races = [g for g in goals_list if g.get('priority', '').strip().upper() == 'B']
+        c_races = [g for g in goals_list if g.get('priority', '').strip().upper() == 'C']
+        
+        logger.info(f"Timeline generation: A race = {a_race.get('race_name') if a_race else 'None'}, "
+                   f"B races count = {len(b_races)}, C races count = {len(c_races)}")
+        logger.info(f"All priorities in goals_list: {[g.get('priority') for g in goals_list]}")
+        if b_races:
+            for br in b_races:
+                logger.info(f"B race found: {br.get('race_name')} on {br.get('race_date')} with priority '{br.get('priority')}'")
+        else:
+            logger.warning(f"No B races found! Total goals: {len(goals_list)}, Priorities: {[g.get('priority') for g in goals_list]}")
         
         # Generate timeline
         timeline = _generate_timeline_data(a_race, b_races, c_races, current_date)

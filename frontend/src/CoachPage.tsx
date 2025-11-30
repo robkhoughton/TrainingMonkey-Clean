@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
-import RaceGoalsManager from './RaceGoalsManager';
-import RaceHistoryManager from './RaceHistoryManager';
-import TrainingScheduleConfig from './TrainingScheduleConfig';
 import WeeklyProgramDisplay from './WeeklyProgramDisplay';
 import TimelineVisualization from './TimelineVisualization';
+import RaceGoalsPage from './RaceGoalsPage';
+import RaceHistoryPage from './RaceHistoryPage';
+import TrainingSchedulePage from './TrainingSchedulePage';
 
 // ============================================================================
 // TYPESCRIPT INTERFACES
@@ -117,18 +117,17 @@ const CoachPage: React.FC = () => {
   usePagePerformanceMonitoring('coach');
   const perfMonitor = useComponentPerformanceMonitoring('CoachPage');
 
-  // State management
+  // State management (only what's needed for Coach page display)
   const [raceGoals, setRaceGoals] = useState<RaceGoal[]>([]);
-  const [raceHistory, setRaceHistory] = useState<RaceHistory[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [raceAnalysis, setRaceAnalysis] = useState<RaceAnalysis | null>(null);
-  const [trainingSchedule, setTrainingSchedule] = useState<TrainingSchedule | null>(null);
   const [weeklyProgram, setWeeklyProgram] = useState<WeeklyProgram | null>(null);
   const [trainingStage, setTrainingStage] = useState<TrainingStage | null>(null);
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+  
+  // Secondary navigation state
+  const [activeSubTab, setActiveSubTab] = useState<'workout' | 'goals' | 'history' | 'schedule'>('workout');
 
   // ============================================================================
   // DATA FETCHING
@@ -140,19 +139,13 @@ const CoachPage: React.FC = () => {
     setError(null);
 
     try {
-      // Fetch all data in parallel
+      // Fetch only data needed for Coach page display
       const [
         goalsRes,
-        historyRes,
-        analysisRes,
-        scheduleRes,
         stageRes,
         programRes
       ] = await Promise.all([
         fetch('/api/coach/race-goals'),
-        fetch('/api/coach/race-history'),
-        fetch('/api/coach/race-analysis'),
-        fetch('/api/coach/training-schedule'),
         fetch('/api/coach/training-stage'),
         fetch('/api/coach/weekly-program')
       ]);
@@ -160,44 +153,35 @@ const CoachPage: React.FC = () => {
       // Check for critical errors (race goals is essential)
       if (!goalsRes.ok) throw new Error('Failed to fetch race goals');
 
-      // Parse race goals (critical)
+      // Parse race goals (critical for countdown banner)
       const goalsData = await goalsRes.json();
-      console.log('[CoachPage] Fetched race goals:', goalsData.goals);
       setRaceGoals(goalsData.goals || []);
 
-      // Parse other responses with graceful degradation
-      if (historyRes.ok) {
-        const historyData = await historyRes.json();
-        setRaceHistory(historyData.history || []);
-      } else {
-        console.warn('Failed to fetch race history');
-        setRaceHistory([]);
-      }
-
-      if (analysisRes.ok) {
-        const analysisData = await analysisRes.json();
-        setRaceAnalysis(analysisData);
-      } else {
-        console.warn('Failed to fetch race analysis');
-        setRaceAnalysis(null);
-      }
-
-      if (scheduleRes.ok) {
-        const scheduleData = await scheduleRes.json();
-        setTrainingSchedule(scheduleData.schedule || null);
-      } else {
-        console.warn('Failed to fetch training schedule');
-        setTrainingSchedule(null);
-      }
-
+      // Parse training stage (for timeline and countdown banner color)
       if (stageRes.ok) {
         const stageData = await stageRes.json();
-        setTrainingStage(stageData);
+        // API returns { current_stage: {...}, timeline: [...] }
+        // Transform to match TrainingStage interface
+        // Ensure races arrays are always arrays (not null)
+        const transformedTimeline = (stageData.timeline || []).map((week: any) => ({
+          ...week,
+          races: Array.isArray(week.races) ? week.races : []
+        }));
+        
+        setTrainingStage({
+          stage: stageData.current_stage?.stage || null,
+          weeks_to_race: stageData.current_stage?.weeks_to_race || null,
+          race_name: stageData.current_stage?.race_name || null,
+          priority: stageData.current_stage?.priority || null,
+          details: stageData.current_stage?.stage_description || '',
+          timeline: transformedTimeline
+        });
       } else {
         console.warn('Failed to fetch training stage');
         setTrainingStage(null);
       }
 
+      // Parse weekly program
       if (programRes.ok) {
         const programData = await programRes.json();
         setWeeklyProgram(programData.program || null);
@@ -322,7 +306,7 @@ const CoachPage: React.FC = () => {
       <div className={styles.dashboardContainer}>
         <div className={styles.card} style={{ maxWidth: '600px', margin: '40px auto', padding: '40px' }}>
           <h1 style={{ fontSize: '32px', marginBottom: '20px', textAlign: 'center' }}>
-            Welcome to Your Training Monkey Coach! 🐵
+            Welcome to Coach YTM! 🐵
           </h1>
           <p style={{ fontSize: '18px', color: '#7f8c8d', marginBottom: '30px', textAlign: 'center' }}>
             Let's set up your coaching profile to generate personalized training programs.
@@ -348,7 +332,10 @@ const CoachPage: React.FC = () => {
 
           <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
             <button
-              onClick={() => setShowOnboarding(false)}
+              onClick={() => {
+                setShowOnboarding(false);
+                setActiveSubTab('goals'); // Navigate to Race Goals tab
+              }}
               style={{
                 padding: '14px 28px',
                 fontSize: '16px',
@@ -403,131 +390,391 @@ const CoachPage: React.FC = () => {
     <div className={styles.dashboardContainer}>
       
       {/* ============================================================
-          HEADER
+          HEADER (matching Guide page style)
       ============================================================ */}
-      <div className={styles.card} style={{ 
-        marginBottom: '20px', 
-        padding: '30px',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        color: 'white',
-        textAlign: 'center'
-      }}>
-        <h1 style={{ 
-          fontSize: '36px', 
-          margin: '0 0 10px 0', 
-          fontWeight: 'bold',
-          textShadow: '2px 2px 4px rgba(0,0,0,0.3)'
-        }}>
-          Your Training Monkey Coach 🐵
-        </h1>
-        <p style={{ 
-          fontSize: '18px', 
-          margin: 0, 
-          opacity: 0.95,
-          textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-        }}>
-          Divergence-Optimized Training Programs for Ultrarunners
-        </p>
-      </div>
-
-      {/* ============================================================
-          COUNTDOWN BANNER (if race goal exists)
-      ============================================================ */}
-      {primaryRace && daysToRace !== null && (
-        <div className={styles.card} style={{ 
-          marginBottom: '20px', 
-          padding: '25px',
-          background: daysToRace <= 14 ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' : 
-                      daysToRace <= 30 ? 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' :
-                      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-          color: 'white',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '10px' }}>
-            {daysToRace}
+      <style>{`
+        .coach-header {
+          background: linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%);
+          color: white;
+          text-align: right;
+          padding: 1.2rem 1.6rem; /* 80% of 1.5rem and 2rem */
+          position: relative;
+          overflow: hidden;
+          min-height: 180px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 0;
+        }
+        .coach-header::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: 
+            radial-gradient(circle at 20% 30%, rgba(230, 240, 255, 0.3) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(125, 156, 184, 0.25) 0%, transparent 50%),
+            radial-gradient(circle at 50% 50%, rgba(180, 200, 220, 0.2) 0%, transparent 60%),
+            radial-gradient(circle at 10% 80%, rgba(27, 46, 75, 0.25) 0%, transparent 45%),
+            radial-gradient(circle at 90% 20%, rgba(100, 130, 160, 0.2) 0%, transparent 50%);
+          pointer-events: none;
+          mix-blend-mode: multiply;
+        }
+        .coach-header::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-image: 
+            repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+            repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0, 0, 0, 0.02) 2px, rgba(0, 0, 0, 0.02) 4px);
+          pointer-events: none;
+          opacity: 0.4;
+        }
+        .coach-header-logo {
+          flex-shrink: 0;
+          width: 200px;
+          height: 200px;
+          margin-left: 1.6rem; /* 80% of 2rem */
+          filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+        }
+        .coach-header-logo img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          display: block;
+        }
+        .coach-header-content {
+          position: relative;
+          z-index: 2;
+          max-width: 500px;
+          margin: 0;
+          margin-right: calc(50% - 700px);
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          height: 100%;
+          text-align: right;
+        }
+        .coach-header-content h1 {
+          font-size: 2.5rem;
+          font-weight: 700;
+          margin: 0.5rem 0;
+          text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+          white-space: nowrap;
+          line-height: 1.2;
+        }
+        .coach-header-content .subtitle {
+          font-size: 1.2rem;
+          margin: 0.25rem 0;
+          opacity: 0.95;
+          font-weight: 300;
+          text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+          line-height: 1.4;
+        }
+        @media (max-width: 768px) {
+          .coach-header {
+            min-height: 160px;
+            padding: 0.8rem; /* 80% of 1rem */
+            flex-direction: column;
+            text-align: center;
+          }
+          .coach-header-logo {
+            width: 150px;
+            height: 150px;
+            margin-left: 1rem;
+          }
+          .coach-header-content {
+            margin-right: 0;
+            text-align: center;
+          }
+          .coach-header-content h1 {
+            font-size: 2rem;
+            white-space: nowrap;
+          }
+          .coach-header-content .subtitle {
+            font-size: 1.1rem;
+          }
+        }
+        @media (max-width: 480px) {
+          .coach-header {
+            padding: 1.2rem 0.8rem; /* 80% of 1.5rem and 1rem */
+            min-height: 140px;
+          }
+          .coach-header-logo {
+            width: 120px;
+            height: 120px;
+            margin-left: 0.4rem; /* 80% of 0.5rem */
+          }
+          .coach-header-content h1 {
+            font-size: 1.8rem;
+            white-space: nowrap;
+          }
+        }
+      `}</style>
+      <div className="coach-header">
+        {/* YTM Logo - Left Side */}
+        <div className="coach-header-logo">
+          <img 
+            src="/static/images/YTM_waterColor_patch800x800_clean.webp" 
+            alt="Your Training Monkey - YTM Logo"
+          />
+        </div>
+        
+        {/* Header Text - Right Side with Secondary Nav */}
+        <div className="coach-header-content">
+          <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
+            <h1>Coach YTM</h1>
+            <p className="subtitle">Divergence-Optimized Training Programs for Ultrarunners</p>
           </div>
-          <div style={{ fontSize: '20px', marginBottom: '5px' }}>
-            {daysToRace === 1 ? 'day' : 'days'} until {primaryRace.race_name}
-          </div>
-          <div style={{ fontSize: '16px', opacity: 0.9 }}>
-            {primaryRace.race_type} • {primaryRace.race_date} • Priority {primaryRace.priority}
-          </div>
-          {trainingStage && (
-            <div style={{ 
-              marginTop: '15px', 
-              fontSize: '16px', 
-              padding: '10px 20px',
-              background: 'rgba(255, 255, 255, 0.2)',
-              borderRadius: '20px',
+          
+          {/* Secondary Navigation - Right side under header text with white border container */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'flex-end',
+            marginTop: '1rem'
+          }}>
+            <div style={{
+              border: '2px solid white',
+              borderRadius: '10px',
+              padding: '0.5rem',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              backdropFilter: 'blur(10px)',
               display: 'inline-block'
             }}>
-              Current Stage: <strong>{trainingStage.stage}</strong>
+              <ul style={{
+                display: 'flex',
+                gap: '0.5rem',
+                listStyle: 'none',
+                alignItems: 'center',
+                margin: 0,
+                padding: 0,
+                flexWrap: 'nowrap'
+              }}>
+                {[
+                  { key: 'workout', label: 'Workout Plan' },
+                  { key: 'goals', label: 'Race Goals' },
+                  { key: 'history', label: 'Race History' },
+                  { key: 'schedule', label: 'Training Schedule' }
+                ].map((tab) => (
+                  <li key={tab.key} style={{ flexShrink: 0 }}>
+                    <a
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setActiveSubTab(tab.key as 'workout' | 'goals' | 'history' | 'schedule');
+                      }}
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.6rem 1rem',
+                        background: activeSubTab === tab.key 
+                          ? 'rgba(255, 255, 255, 0.95)' 
+                          : 'rgba(255, 255, 255, 0.7)',
+                        color: activeSubTab === tab.key ? '#1B2E4B' : '#1f2937',
+                        textDecoration: 'none',
+                        fontWeight: activeSubTab === tab.key ? '700' : '500',
+                        fontSize: activeSubTab === tab.key ? '0.95rem' : '0.9rem',
+                        border: '2px solid',
+                        borderColor: activeSubTab === tab.key 
+                          ? 'rgba(27, 46, 75, 0.3)' 
+                          : 'transparent',
+                        borderRadius: '8px',
+                        transition: 'all 0.3s ease',
+                        boxShadow: activeSubTab === tab.key 
+                          ? '0 2px 6px rgba(27, 46, 75, 0.2)' 
+                          : '0 1px 3px rgba(0, 0, 0, 0.05)',
+                        position: 'relative',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        whiteSpace: 'nowrap',
+                        minWidth: 'auto'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (activeSubTab !== tab.key) {
+                          e.currentTarget.style.color = '#667eea';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.95)';
+                          e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(102, 126, 234, 0.15)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (activeSubTab !== tab.key) {
+                          e.currentTarget.style.color = '#1f2937';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.7)';
+                          e.currentTarget.style.borderColor = 'transparent';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.05)';
+                        }
+                      }}
+                    >
+                      {/* Top arrow for active tab - white */}
+                      {activeSubTab === tab.key && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '-12px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '10px solid transparent',
+                          borderRight: '10px solid transparent',
+                          borderBottom: '10px solid white',
+                          filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))',
+                          zIndex: 10
+                        }}></div>
+                      )}
+                      {/* Center-aligned text */}
+                      <span style={{ 
+                        display: 'block', 
+                        textAlign: 'center',
+                        fontWeight: activeSubTab === tab.key ? '700' : '500',
+                        fontSize: activeSubTab === tab.key ? '0.95rem' : '0.9rem',
+                        letterSpacing: activeSubTab === tab.key ? '0.02em' : 'normal'
+                      }}>
+                        {tab.label}
+                      </span>
+                      {/* Bottom arrow for active tab - white */}
+                      {activeSubTab === tab.key && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-12px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '10px solid transparent',
+                          borderRight: '10px solid transparent',
+                          borderTop: '10px solid white',
+                          filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))',
+                          zIndex: 10
+                        }}></div>
+                      )}
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
-          )}
+          </div>
         </div>
+      </div>
+
+      {/* ============================================================
+          BOUNDARY BETWEEN HEADER AND COUNTDOWN (2px white gap)
+      ============================================================ */}
+      <div style={{
+        height: '0.125rem', // 2px on desktop (16px base)
+        backgroundColor: 'white',
+        marginBottom: '0'
+      }}></div>
+
+      {/* ============================================================
+          COUNTDOWN BANNER (two columns, matches phase color)
+      ============================================================ */}
+      {primaryRace && daysToRace !== null && (() => {
+        // Get phase color for banner background - Navy-based with subtle phase hints
+        const getPhaseColor = (stage: string | null): string => {
+          if (!stage) return 'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)';
+          switch (stage.toLowerCase()) {
+            case 'base': 
+              // Navy with subtle blue hint
+              return 'linear-gradient(135deg, #8FA8C4 0%, #2A3F5C 100%)';
+            case 'build': 
+              // Navy with subtle teal/green hint
+              return 'linear-gradient(135deg, #7FA5A8 0%, #2A4A4F 100%)';
+            case 'specificity': 
+              // Navy with subtle warm accent
+              return 'linear-gradient(135deg, #9A8F7D 0%, #3A2F1F 100%)';
+            case 'taper': 
+              // Navy with subtle red/pink hint
+              return 'linear-gradient(135deg, #A88F9A 0%, #4A2F3A 100%)';
+            case 'peak': 
+              // Navy with subtle purple hint
+              return 'linear-gradient(135deg, #9A8FA8 0%, #3A2F4A 100%)';
+            case 'recovery': 
+              // Navy with subtle gray hint
+              return 'linear-gradient(135deg, #8FA0A8 0%, #2A3A4A 100%)';
+            default: 
+              return 'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)';
+          }
+        };
+        
+        return (
+          <div className={styles.card} style={{ 
+            marginBottom: '0 !important', // Override CSS class default margin
+            padding: '1rem 1.25rem',
+            background: trainingStage?.stage ? getPhaseColor(trainingStage.stage) : 
+                        daysToRace <= 14 ? 'linear-gradient(135deg, #A88F9A 0%, #4A2F3A 100%)' : // Navy with warm hint for urgent
+                        daysToRace <= 30 ? 'linear-gradient(135deg, #9A8FA8 0%, #3A2F4A 100%)' : // Navy with purple hint for approaching
+                        'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)', // Default navy
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2rem'
+          }}>
+            {/* Left Column: Days Until Race */}
+            <div style={{ flexShrink: 0 }}>
+              <div style={{ fontSize: '48px', fontWeight: 'bold', lineHeight: '1' }}>
+                {daysToRace}
+              </div>
+              <div style={{ fontSize: '16px', marginTop: '5px', opacity: 0.9 }}>
+                {daysToRace === 1 ? 'day' : 'days'}
+              </div>
+            </div>
+            
+            {/* Right Column: Race Description */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '5px' }}>
+                {primaryRace.race_name}
+              </div>
+              <div style={{ fontSize: '16px', opacity: 0.9 }}>
+                {primaryRace.race_type} • {primaryRace.race_date} • Priority {primaryRace.priority}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ============================================================
+          TIMELINE VISUALIZATION (immediately below countdown with minimal gap)
+      ============================================================ */}
+      {trainingStage && trainingStage.timeline && trainingStage.timeline.length > 0 && (
+        <>
+          {/* Minimal white gap - reduced to absolute minimum */}
+          <div style={{
+            height: '1px', // Absolute minimum 1px
+            backgroundColor: 'white',
+            margin: '0',
+            padding: '0',
+            lineHeight: '0'
+          }}></div>
+          <div className={styles.card} style={{ 
+            marginTop: '0 !important', 
+            marginBottom: '0.125rem !important', 
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem',
+            paddingLeft: '1rem',
+            paddingRight: '1rem'
+          }}>
+            <TimelineVisualization trainingStage={trainingStage} />
+          </div>
+        </>
       )}
 
       {/* ============================================================
-          NO RACE GOAL NOTICE
+          TAB CONTENT AREA - Route to separate pages
       ============================================================ */}
-      {!primaryRace && (
-        <div className={styles.card} style={{ 
-          marginBottom: '20px', 
-          padding: '25px',
-          background: '#f8f9fa',
-          border: '2px dashed #3498db',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ color: '#3498db', marginBottom: '10px' }}>
-            📅 No Race Goal Set
-          </h3>
-          <p style={{ color: '#7f8c8d', marginBottom: '15px' }}>
-            Add a race goal to unlock personalized training programs and race-day countdown!
-          </p>
-          <button
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#3498db',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '16px'
-            }}
-          >
-            Add Race Goal
-          </button>
+      {activeSubTab === 'workout' && (
+        <div className={styles.card} style={{ marginBottom: '0.125rem', padding: '0.75rem 1rem' }}>
+          <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
         </div>
       )}
-
-      {/* ============================================================
-          PLACEHOLDER SECTIONS (to be implemented in Tasks 8-10)
-      ============================================================ */}
-
-      {/* Race Goals Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <RaceGoalsManager goals={raceGoals} onGoalsChange={fetchCoachData} />
-      </div>
-
-      {/* Race History Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <RaceHistoryManager history={raceHistory} onHistoryChange={fetchCoachData} />
-      </div>
-
-      {/* Training Schedule Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <TrainingScheduleConfig schedule={trainingSchedule} onScheduleChange={fetchCoachData} />
-      </div>
-
-      {/* Timeline Visualization Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <TimelineVisualization trainingStage={trainingStage} />
-      </div>
-
-      {/* Weekly Training Program Card */}
-      <div className={styles.card} style={{ marginBottom: '20px' }}>
-        <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
-      </div>
+      {activeSubTab === 'goals' && <RaceGoalsPage />}
+      {activeSubTab === 'history' && <RaceHistoryPage />}
+      {activeSubTab === 'schedule' && <TrainingSchedulePage />}
 
       {/* Debug Info (remove in production) */}
       {process.env.NODE_ENV === 'development' && (
@@ -536,11 +783,10 @@ const CoachPage: React.FC = () => {
           <pre style={{ fontSize: '12px', overflow: 'auto', maxHeight: '200px' }}>
             {JSON.stringify({
               raceGoalsCount: raceGoals.length,
-              raceHistoryCount: raceHistory.length,
-              hasSchedule: !!trainingSchedule,
               hasProgram: !!weeklyProgram,
               trainingStage: trainingStage?.stage,
-              primaryRace: primaryRace?.race_name
+              primaryRace: primaryRace?.race_name,
+              activeSubTab
             }, null, 2)}
           </pre>
         </div>

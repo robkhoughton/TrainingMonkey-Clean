@@ -1,0 +1,137 @@
+Using PostgreSQL with connection: postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.2...
+================================================================================
+TRAININGMONKEY COMPREHENSIVE USER REPORT
+Generated: 2025-11-28 18:41:49
+================================================================================
+
+================================================================================
+1. USER BASE OVERVIEW
+================================================================================
+
+Total Registered Users: 42
+
+Account Status Breakdown:
+  active: 38 (90.5%)
+  pending_verification: 4 (9.5%)
+
+Signup Timeline (Last 6 Months):
+  2025-11: 16 new users
+  2025-10: 16 new users
+  2025-09: 7 new users
+  2025-08: 3 new users
+
+================================================================================
+2. EMAIL COLLECTION STATUS
+================================================================================
+
+Email Type Distribution:
+  Real: 4 users (9.5%)
+  Synthetic: 38 users (90.5%)
+
+Real emails from new users (last 30 days): 1
+
+================================================================================
+3. ENGAGEMENT & ACTIVITY
+================================================================================
+
+Users with at least one activity: 39 (92.9%)
+
+User Activity Levels:
+  Active (last 7 days): 7 users (avg 170 activities)
+  Recent (8-30 days): 14 users (avg 99 activities)
+  Dormant (31-90 days): 18 users (avg 79 activities)
+
+Total Activities Tracked: 3,999
+
+================================================================================
+4. ONBOARDING STATUS
+================================================================================
+
+Onboarding Completion:
+  Completed: 38 (90.5%)
+  Not Started: 4 (9.5%)
+
+================================================================================
+5. STRAVA INTEGRATION
+================================================================================
+
+Strava Connection Status:
+  Connected: 42 (100.0%)
+  Not Connected: 0 (0.0%)
+
+Activities synced in last 7 days: 46
+
+================================================================================
+6. FEATURE USAGE
+================================================================================
+
+Journal Usage:
+  Total entries: 173
+  Users with entries: 8 (19.0%)
+
+AI Recommendations (last 30 days):
+  Total generated: 67
+  Users receiving: 17
+
+================================================================================
+7. TOP USERS BY ACTIVITY
+================================================================================
+
+Top 10 Most Active Users:
+   1. User   1:  260 activities | Last: 2025-11-27 | Member: 94 days
+   2. User  80:  256 activities | Last: 2025-11-26 | Member: 30 days
+   3. User   3:  246 activities | Last: 2025-11-25 | Member: 94 days
+   4. User   2:  219 activities | Last: 2025-11-18 | Member: 94 days
+   5. User  59:  150 activities | Last: 2025-11-24 | Member: 64 days
+   6. User  90:  136 activities | Last: 2025-11-16 | Member: 12 days
+   7. User  82:  135 activities | Last: 2025-11-26 | Member: 24 days
+   8. User  83:  132 activities | Last: 2025-11-04 | Member: 24 days
+   9. User  86:  122 activities | Last: 2025-11-10 | Member: 18 days
+  10. User  91:  115 activities | Last: 2025-11-18 | Member: 9 days
+
+================================================================================
+8. GROWTH METRICS
+================================================================================
+
+New User Signups:
+  Last 7 days:  2 users
+  Last 30 days: 16 users
+  Last 90 days: 39 users
+
+================================================================================
+9. SYSTEM HEALTH INDICATORS
+================================================================================
+
+Potential Issues:
+  Users 7+ days old without Strava: 0
+  Users 7+ days old with incomplete onboarding: 4
+  Users 30+ days old with synthetic emails: 22
+
+Data Quality:
+  Activities with TRIMP calculated: 2,417 (60.4%)
+  Activities with load calculated: 2,645 (66.1%)
+
+================================================================================
+10. EXECUTIVE SUMMARY
+================================================================================
+
+Platform Health Score: GOOD
+
+Key Metrics:
+  - Total Users: 42
+  - Active Users (7 days): 7
+  - Strava Connected: 42 (100.0%)
+  - Onboarding Completion: 38
+  - Total Activities: 3,999
+  - Real Email Adoption: 90.5%
+
+Growth Trajectory: POSITIVE
+
+Recommendations:
+  1. Email collection on track
+  2. Focus on user retention - many dormant accounts
+  3. Deploy admin notification fix to track new signups
+
+================================================================================
+Report completed: 2025-11-28 18:42:01
+================================================================================

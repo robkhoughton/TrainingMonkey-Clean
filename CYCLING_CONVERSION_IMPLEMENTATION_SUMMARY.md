@@ -35,6 +35,55 @@
 
 This directly addresses her feedback about getting too much credit for easy rides.
 
+## ⚠️ Important: Sync Behavior
+
+**Q: If User #3 syncs the last 30 days, will her existing rides be recalculated?**
+
+**A: NO** - The sync process only imports NEW activities (not already in database).
+
+From `strava_training_load.py` lines 1867-1876:
+```python
+# Check if activity already exists in database
+existing = execute_query(
+    "SELECT 1 FROM activities WHERE activity_id = %s AND user_id = %s",
+    (activity_id, user_id),
+    fetch=True
+)
+
+if existing:
+    logger.info(f"Activity {activity_id} already in database - skipping")
+    continue
+```
+
+**Result:** Her existing cycling activities will continue to show OLD conversion factors (3.0/3.1) until manually recalculated.
+
+## Retroactive Recalculation (Recommended)
+
+To update User #3's existing cycling activities with new factors, run the migration script:
+
+### Option 1: Last 30 Days Only
+```bash
+python app/recalculate_cycling_loads.py --user_id 3 --days 30
+```
+
+### Option 2: All Historical Data
+```bash
+python app/recalculate_cycling_loads.py --user_id 3 --all
+```
+
+### What the Script Does:
+1. ✅ Finds all cycling activities for the user
+2. ✅ Recalculates `cycling_equivalent_miles` with NEW factors (4.0/3.5/2.9/2.4)
+3. ✅ Updates `total_load_miles` and `distance_miles`
+4. ✅ Triggers ACWR and divergence recalculation
+5. ✅ Provides detailed logging of changes
+
+### Expected Impact for User #3:
+- Easy/moderate rides (≤16 mph): **11-25% reduction** in training load
+- Vigorous rides (17-20 mph): **No change** (already correct)
+- Weekly ACWR will **decrease** (more accurate for her activity level)
+- Historical charts will show corrected values
+
 ## Testing Recommendations
 
 Before deploying, verify:

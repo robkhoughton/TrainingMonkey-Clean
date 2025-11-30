@@ -308,3 +308,4 @@ Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'r
 
 **Future Action**: When creating new pages that fetch data, copy the pattern from `Dashboard`, `Activities`, or `Journal` pages.
 
+

@@ -599,6 +599,19 @@ def generate_weekly_program(
         # Parse response
         program = parse_weekly_program_response(response_text)
         
+        # Fix dates to match week_start_date (LLM might generate incorrect dates)
+        # Calculate correct dates for Monday-Sunday of the target week
+        days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        for i, workout in enumerate(program.get('daily_program', [])):
+            # Calculate correct date: Monday + i days
+            correct_date = target_week_start + timedelta(days=i)
+            workout['date'] = correct_date.strftime('%Y-%m-%d')
+            # Ensure day name matches the date
+            workout['day'] = days_of_week[i]
+        
+        # Ensure week_start_date matches target
+        program['week_start_date'] = target_week_start.strftime('%Y-%m-%d')
+        
         # Add metadata
         program['generated_at'] = datetime.now().isoformat()
         program['user_id'] = user_id

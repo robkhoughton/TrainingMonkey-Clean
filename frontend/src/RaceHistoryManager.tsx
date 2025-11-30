@@ -243,7 +243,15 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
       const data = await response.json();
 
       // Show results
-      alert(`Successfully saved ${data.saved} race(s). ${data.failed} failed.`);
+      const savedCount = data.count || 0;
+      const totalAttempted = extractedRaces.length;
+      const failedCount = totalAttempted - savedCount;
+      
+      if (failedCount > 0) {
+        alert(`Successfully saved ${savedCount} race(s). ${failedCount} failed to save.`);
+      } else {
+        alert(`Successfully saved ${savedCount} race(s)!`);
+      }
 
       // Refresh and close
       setShowScreenshotUpload(false);

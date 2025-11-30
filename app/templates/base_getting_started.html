@@ -27,89 +27,88 @@
     
     <!-- Monkey Mascot Styles -->
     <style>
-        /* Monkey mascot styling with circular text */
+        /* Monkey mascot styling */
         .monkey-mascot {
             position: relative;
             z-index: 2;
-            width: 120px;
-            height: 120px;
+            width: 200px;
+            height: 200px;
             margin-left: 2rem;
+            padding: 1rem;
             filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
-            transition: transform 0.3s ease;
-        }
-
-        .monkey-mascot:hover {
-            transform: scale(1.05) rotate(5deg);
         }
 
         .monkey-mascot img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            display: block;
         }
 
-        /* Circular text around monkey mascot */
-        .circular-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            pointer-events: none;
-            z-index: 3;
+        /* Header styling - constrain to content height */
+        .header {
+            position: relative !important;
+            min-height: 0 !important;
+            max-height: 200px !important;
+            height: 200px !important;
+            padding: 0 2rem !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
         }
-
-        .circular-text svg {
-            width: 100%;
-            height: 100%;
+        
+        .header-content {
+            flex: 1 !important;
+            max-height: none !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            margin-right: 2rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
         }
-
-        .circular-text text {
-            fill: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-weight: 600;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        
+        .header-content h1 {
+            margin: 0.5rem 0 !important;
+            line-height: 1.2 !important;
+        }
+        
+        .header-content p {
+            margin: 0.25rem 0 !important;
+            line-height: 1.4 !important;
+        }
+        
+        .monkey-mascot {
+            flex-shrink: 0 !important;
+            margin: 0 !important;
+            margin-left: 2rem !important;
         }
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .monkey-mascot {
-                width: 80px;
-                height: 80px;
+                width: 300px;
+                height: 300px;
                 margin-left: 1rem;
             }
-
-            .circular-text {
-                width: 140px;
-                height: 140px;
-                font-size: 12px;
+            
+            .header-content {
+                max-height: 300px;
             }
         }
 
         @media (max-width: 480px) {
             .monkey-mascot {
-                width: 60px;
-                height: 60px;
+                width: 200px;
+                height: 200px;
                 margin-left: 0.5rem;
             }
-
-            .circular-text {
-                width: 100px;
-                height: 100px;
-                font-size: 10px;
+            
+            .header-content {
+                max-height: 200px;
             }
         }
 
@@ -118,6 +117,13 @@
             background-color: #f1f5f9;
             padding-top: 4px;
             position: relative;
+        }
+
+        .dashboard-tabs-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-right: 20px;
         }
 
         .dashboard-tabs-nav {
@@ -171,6 +177,30 @@
             background-color: #cbd5e1;
             color: #475569;
         }
+
+        /* App Branding - Upper Right */
+        .app-branding {
+            padding: 2px 20px;
+        }
+
+        .app-branding h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: #1e293b;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            font-family: "Arial Black", "Arial Bold", sans-serif;
+            text-shadow: 2px 2px 0px rgba(59, 130, 246, 0.15);
+            -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.1);
+        }
+
+        .app-branding .highlight {
+            font-size: 1.4rem;
+            color: #7a9b76;
+            font-variant: normal;
+        }
     </style>
     
     {% block extra_head %}{% endblock %}
@@ -178,55 +208,41 @@
 <body data-user-authenticated="{{ 'true' if user_context and user_context.is_authenticated else 'false' }}" {% block body_attributes %}{% endblock %}>
     <!-- Dashboard Navigation Tabs - At the very top -->
     <div class="dashboard-tabs-container">
-        <nav class="dashboard-tabs-nav">
-            <a href="/dashboard" class="dashboard-tab{% if request.endpoint == 'dashboard' %} active{% endif %}">
-                <span>Dashboard</span>
-            </a>
-            <a href="/activities" class="dashboard-tab{% if request.endpoint == 'activities' %} active{% endif %}">
-                <span>Activities</span>
-            </a>
-            <a href="/journal" class="dashboard-tab{% if request.endpoint == 'journal' %} active{% endif %}">
-                <span>Journal</span>
-            </a>
-            <a href="/guide" class="dashboard-tab{% if request.endpoint == 'guide' %} active{% endif %}">
-                <span>Guide</span>
-            </a>
-            <a href="/settings/profile" class="dashboard-tab{% if 'settings' in request.endpoint or 'acwr' in request.endpoint %} active{% endif %}">
-                <span>Settings</span>
-            </a>
-        </nav>
+        <div class="dashboard-tabs-wrapper">
+            <nav class="dashboard-tabs-nav">
+                <a href="/dashboard" class="dashboard-tab{% if request.endpoint == 'dashboard' %} active{% endif %}">
+                    <span>Dashboard</span>
+                </a>
+                <a href="/activities" class="dashboard-tab{% if request.endpoint == 'activities' %} active{% endif %}">
+                    <span>Activities</span>
+                </a>
+                <a href="/journal" class="dashboard-tab{% if request.endpoint == 'journal' %} active{% endif %}">
+                    <span>Journal</span>
+                </a>
+                <a href="/dashboard?tab=coach" class="dashboard-tab{% if request.endpoint == 'coach' %} active{% endif %}">
+                    <span>Coach</span>
+                </a>
+                <a href="/guide" class="dashboard-tab{% if request.endpoint == 'guide' %} active{% endif %}">
+                    <span>Guide</span>
+                </a>
+                <a href="/settings/profile" class="dashboard-tab{% if 'settings' in request.endpoint or 'acwr' in request.endpoint %} active{% endif %}">
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <!-- App Branding - Upper Right -->
+            <div class="app-branding">
+                <h1>
+                    <span class="highlight">Y</span>our <span class="highlight">T</span>raining <span class="highlight">M</span>onkey
+                </h1>
+            </div>
+        </div>
     </div>
 
     <!-- Header -->
     <header class="header">
         <div class="monkey-mascot">
-            <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="Your Training Monkey Mascot">
-            <div class="circular-text">
-                <svg viewBox="0 0 200 200">
-                    <defs>
-                        <!-- Drop shadow filter -->
-                        <filter id="textShadow" x="-50%" y="-50%" width="200%" height="200%">
-                            <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.3)"/>
-                        </filter>
-                        <!-- Upper half circle path -->
-                        <path id="upperCircle" d="M 20, 100 A 80,80 0 0,1 180, 100"/>
-                        <!-- Lower half circle path (reversed for upright text) -->
-                        <path id="lowerCircle" d="M 20, 100 A 80,80 0 0,0 180, 100"/>
-                    </defs>
-                    <!-- Upper text -->
-                    <text font-size="18" font-weight="700" filter="url(#textShadow)">
-                        <textPath href="#upperCircle" startOffset="50%" text-anchor="middle">
-                            Your Training Monkey
-                        </textPath>
-                    </text>
-                    <!-- Lower text (upright) -->
-                    <text>
-                        <textPath href="#lowerCircle" startOffset="50%" text-anchor="middle">
-                            Prevent Injuries - Train Smarter
-                        </textPath>
-                    </text>
-                </svg>
-            </div>
+            <img src="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}" alt="Your Training Monkey - YTM Logo">
         </div>
         <div class="header-content">
             {% block header_title %}
