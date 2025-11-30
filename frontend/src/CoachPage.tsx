@@ -8,6 +8,161 @@ import RaceHistoryPage from './RaceHistoryPage';
 import TrainingSchedulePage from './TrainingSchedulePage';
 
 // ============================================================================
+// STRATEGIC CONTEXT DISPLAY COMPONENT (Collapsible Sections)
+// ============================================================================
+
+interface StrategicContextProps {
+  strategicContext: {
+    race_context_periodization: string;
+    load_management_pattern_analysis: string;
+    strategic_rationale: string;
+  };
+}
+
+const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicContext }) => {
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const CollapsibleSection = ({ 
+    id, 
+    title, 
+    emoji, 
+    content, 
+    bgColor, 
+    borderColor, 
+    textColor 
+  }: { 
+    id: string; 
+    title: string; 
+    emoji: string; 
+    content: string; 
+    bgColor: string; 
+    borderColor: string; 
+    textColor: string;
+  }) => {
+    const isExpanded = expandedSection === id;
+
+    return (
+      <div style={{
+        marginBottom: '0.75rem',
+        border: `1px solid ${borderColor}`,
+        borderRadius: '8px',
+        overflow: 'hidden'
+      }}>
+        <button
+          onClick={() => toggleSection(id)}
+          style={{
+            width: '100%',
+            padding: '1rem',
+            backgroundColor: bgColor,
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            textAlign: 'left'
+          }}
+        >
+          <h3 style={{
+            fontSize: '16px',
+            fontWeight: '600',
+            color: textColor,
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            {emoji} {title}
+          </h3>
+          <span style={{ fontSize: '18px', color: textColor }}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
+        </button>
+        {isExpanded && (
+          <div style={{
+            padding: '1rem',
+            backgroundColor: 'white',
+            borderTop: `1px solid ${borderColor}`
+          }}>
+            <p style={{
+              margin: 0,
+              lineHeight: '1.7',
+              color: '#374151',
+              fontSize: '15px',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {content}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem' }}>
+      <h2 style={{
+        fontSize: '20px',
+        fontWeight: '700',
+        marginBottom: '1rem',
+        color: '#1e293b',
+        borderBottom: '2px solid #e1e8ed',
+        paddingBottom: '0.5rem'
+      }}>
+        🎯 Strategic Analysis & Context
+      </h2>
+
+      <CollapsibleSection
+        id="race"
+        title="Race Context & Periodization"
+        emoji="🏁"
+        content={strategicContext.race_context_periodization}
+        bgColor="#f0f9ff"
+        borderColor="#3b82f6"
+        textColor="#1e40af"
+      />
+
+      <CollapsibleSection
+        id="load"
+        title="Load Management & Pattern Analysis"
+        emoji="📊"
+        content={strategicContext.load_management_pattern_analysis}
+        bgColor="#fef3c7"
+        borderColor="#f59e0b"
+        textColor="#92400e"
+      />
+
+      <CollapsibleSection
+        id="rationale"
+        title="Strategic Rationale & Training Science"
+        emoji="🧠"
+        content={strategicContext.strategic_rationale}
+        bgColor="#f0fdf4"
+        borderColor="#10b981"
+        textColor="#065f46"
+      />
+
+      {/* Integration Hint */}
+      <div style={{
+        marginTop: '1rem',
+        padding: '0.75rem',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '6px',
+        fontSize: '13px',
+        color: '#6b7280',
+        fontStyle: 'italic',
+        textAlign: 'center'
+      }}>
+        💡 Visit the <strong>Journal</strong> page daily for today's specific guidance and post-workout analysis
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // TYPESCRIPT INTERFACES
 // ============================================================================
 
@@ -69,6 +224,11 @@ interface WeeklyProgram {
   key_workouts_this_week: string[];
   nutrition_reminder?: string;
   injury_prevention_note?: string;
+  strategic_context?: {
+    race_context_periodization: string;
+    load_management_pattern_analysis: string;
+    strategic_rationale: string;
+  };
   from_cache?: boolean;
 }
 
@@ -779,125 +939,108 @@ const CoachPage: React.FC = () => {
       ============================================================ */}
       {activeSubTab === 'workout' && (
         <>
-          {/* Weekly Workout Plan */}
-          <div className={styles.card} style={{ marginBottom: '0.125rem', padding: '0.75rem 1rem' }}>
+          {/* Card 1: This Week at a Glance */}
+          {weeklyProgram && (
+            <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                marginBottom: '1rem'
+              }}>
+                <h2 style={{
+                  fontSize: '22px',
+                  fontWeight: '700',
+                  color: '#2c3e50',
+                  margin: 0
+                }}>
+                  ⚡ This Week at a Glance
+                </h2>
+                {trainingStage?.stage && (
+                  <div style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase'
+                  }}>
+                    {trainingStage.stage}
+                  </div>
+                )}
+              </div>
+
+              {/* Week Summary */}
+              <p style={{
+                fontSize: '15px',
+                lineHeight: '1.6',
+                color: '#374151',
+                marginBottom: '1rem'
+              }}>
+                {weeklyProgram.week_summary}
+              </p>
+
+              {/* Key Workouts */}
+              <div style={{ marginBottom: '1rem' }}>
+                <h3 style={{
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: '#1e293b',
+                  marginBottom: '0.5rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}>
+                  🔑 Key Workouts
+                </h3>
+                <ul style={{
+                  margin: 0,
+                  paddingLeft: '1.5rem',
+                  fontSize: '14px',
+                  lineHeight: '1.8'
+                }}>
+                  {weeklyProgram.key_workouts_this_week?.map((workout, idx) => (
+                    <li key={idx} style={{ color: '#374151' }}>{workout}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Predicted Impact */}
+              <div style={{
+                display: 'flex',
+                gap: '1rem',
+                padding: '0.75rem',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '6px'
+              }}>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>TOTAL MILES</div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{weeklyProgram.predicted_metrics?.total_weekly_miles || 'N/A'}</div>
+                </div>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>PREDICTED ACWR</div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{weeklyProgram.predicted_metrics?.acwr_estimate?.toFixed(2) || 'N/A'}</div>
+                </div>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>DIVERGENCE</div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
+                    {weeklyProgram.predicted_metrics?.divergence_estimate !== undefined 
+                      ? (weeklyProgram.predicted_metrics.divergence_estimate >= 0 ? '+' : '') + weeklyProgram.predicted_metrics.divergence_estimate.toFixed(2)
+                      : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Card 2: 7-Day Workout Plan */}
+          <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem' }}>
             <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
           </div>
 
-          {/* Strategic Context - Below Workout Plan */}
+          {/* Card 3: Strategic Analysis & Context - Enhanced with collapsible sections */}
           {weeklyProgram?.strategic_context && (
-            <div className={styles.card} style={{ marginTop: '1rem', marginBottom: '0.125rem', padding: '1rem' }}>
-              <h2 style={{ 
-                fontSize: '20px', 
-                fontWeight: '700', 
-                marginBottom: '1rem', 
-                color: '#1e293b',
-                borderBottom: '2px solid #e1e8ed',
-                paddingBottom: '0.5rem'
-              }}>
-                📊 Weekly Strategy & Context
-              </h2>
-
-              {/* Weekly Focus */}
-              <div style={{ 
-                marginBottom: '1rem', 
-                padding: '1rem', 
-                backgroundColor: '#f0f9ff', 
-                borderRadius: '8px',
-                borderLeft: '4px solid #3b82f6'
-              }}>
-                <h3 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600', 
-                  marginBottom: '0.5rem', 
-                  color: '#1e40af',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  🎯 This Week's Focus
-                </h3>
-                <p style={{ 
-                  margin: 0, 
-                  lineHeight: '1.6', 
-                  color: '#374151',
-                  fontSize: '15px'
-                }}>
-                  {weeklyProgram.strategic_context.weekly_focus}
-                </p>
-              </div>
-
-              {/* Load Management Strategy */}
-              <div style={{ 
-                marginBottom: '1rem', 
-                padding: '1rem', 
-                backgroundColor: '#fef3c7', 
-                borderRadius: '8px',
-                borderLeft: '4px solid #f59e0b'
-              }}>
-                <h3 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600', 
-                  marginBottom: '0.5rem', 
-                  color: '#92400e',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  📈 Load Management Strategy
-                </h3>
-                <p style={{ 
-                  margin: 0, 
-                  lineHeight: '1.6', 
-                  color: '#374151',
-                  fontSize: '15px'
-                }}>
-                  {weeklyProgram.strategic_context.load_management_strategy}
-                </p>
-              </div>
-
-              {/* Pattern Insights */}
-              <div style={{ 
-                padding: '1rem', 
-                backgroundColor: '#f0fdf4', 
-                borderRadius: '8px',
-                borderLeft: '4px solid #10b981'
-              }}>
-                <h3 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600', 
-                  marginBottom: '0.5rem', 
-                  color: '#065f46',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  🔍 Recent Training Patterns
-                </h3>
-                <p style={{ 
-                  margin: 0, 
-                  lineHeight: '1.6', 
-                  color: '#374151',
-                  fontSize: '15px'
-                }}>
-                  {weeklyProgram.strategic_context.pattern_insights}
-                </p>
-              </div>
-
-              {/* Integration Hint */}
-              <div style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                backgroundColor: '#f8f9fa',
-                borderRadius: '6px',
-                fontSize: '13px',
-                color: '#6b7280',
-                fontStyle: 'italic',
-                textAlign: 'center'
-              }}>
-                💡 Visit the <strong>Journal</strong> page daily for today's specific guidance and post-workout analysis
-              </div>
-            </div>
+            <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
           )}
         </>
       )}

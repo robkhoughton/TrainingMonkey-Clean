@@ -24,7 +24,15 @@ from typing import Dict, List, Optional, Tuple, Any
 from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
 from db_utils import execute_query
-from llm_recommendations_module import call_anthropic_api, load_training_guide, get_user_coaching_spectrum, get_coaching_tone_instructions
+from llm_recommendations_module import (
+    call_anthropic_api, 
+    load_training_guide, 
+    get_user_coaching_spectrum, 
+    get_coaching_tone_instructions,
+    get_user_recommendation_style,
+    get_adjusted_thresholds,
+    analyze_pattern_flags
+)
 
 # Setup logging
 logging.basicConfig(
@@ -36,6 +44,10 @@ logger = logging.getLogger('coach_recommendations')
 # Constants
 CACHE_EXPIRY_DAYS = 3  # Weekly programs valid for 3 days
 DEFAULT_MAX_TOKENS = 4000  # Longer for structured 7-day programs
+
+# Temperature settings optimized for different generation tasks
+WEEKLY_PROGRAM_TEMPERATURE = 0.5  # Structured JSON output - needs consistency
+STRATEGIC_CONTEXT_TEMPERATURE = 0.75  # Rich narrative analysis - benefits from creativity
 
 
 def get_race_goals(user_id: int) -> List[Dict]:
@@ -271,6 +283,35 @@ def get_recent_journal_observations(user_id: int, days: int = 7) -> List[Dict]:
     return observations
 
 
+def get_recent_autopsy_insights(user_id: int, days: int = 7) -> Optional[Dict]:
+    """Fetch recent autopsy analyses for learning integration."""
+    query = """
+        SELECT alignment_score, autopsy_analysis, date
+        FROM journal_entries
+        WHERE user_id = %s
+        AND date >= CURRENT_DATE - INTERVAL '%s days'
+        AND alignment_score IS NOT NULL
+        ORDER BY date DESC
+    """
+    results = execute_query(query, (user_id, days), fetch=True)
+    
+    if not results or len(results) == 0:
+        return None
+    
+    scores = [row['alignment_score'] for row in results if row['alignment_score']]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    
+    # Get most recent insights summary (first 200 chars)
+    latest_insights = results[0]['autopsy_analysis'][:200] if results[0]['autopsy_analysis'] else ""
+    
+    return {
+        'count': len(results),
+        'avg_alignment': round(avg_score, 1),
+        'alignment_scores': scores,
+        'latest_insights': latest_insights
+    }
+
+
 def format_race_goals_for_prompt(race_goals: List[Dict]) -> str:
     """Format race goals as readable text for LLM prompt."""
     if not race_goals:
@@ -392,6 +433,12 @@ def build_weekly_program_prompt(
     journal_obs = get_recent_journal_observations(user_id)
     training_guide = load_training_guide()
     
+    # Get personalization data (from Dashboard LLM system)
+    risk_tolerance = get_user_recommendation_style(user_id)
+    thresholds = get_adjusted_thresholds(risk_tolerance)
+    autopsy_insights = get_recent_autopsy_insights(user_id, days=7)
+    pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
+    
     # Get coaching tone
     spectrum_value = get_user_coaching_spectrum(user_id)
     tone_instructions = get_coaching_tone_instructions(spectrum_value)
@@ -418,6 +465,11 @@ def build_weekly_program_prompt(
 
 Training Week: {target_week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}
 
+ATHLETE RISK TOLERANCE: {risk_tolerance.upper()} ({thresholds['description']})
+- ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
+- Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
+- Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
+
 Current Training Metrics (Last 28 Days):
 - External ACWR: {ext_acwr}
 - Internal ACWR: {int_acwr}
@@ -425,6 +477,17 @@ Current Training Metrics (Last 28 Days):
 - Days Since Rest: {current_metrics.get('days_since_rest', 'N/A')}
 - 7-Day Avg Training Load: {seven_day} miles
 - 28-Day Avg Training Load: {twentyeight_day} miles
+
+**PATTERN ANALYSIS**
+
+Red Flags: {', '.join(pattern_flags['red_flags']) if pattern_flags.get('red_flags') else 'None detected'}
+Positive Patterns: {', '.join(pattern_flags['positive_patterns']) if pattern_flags.get('positive_patterns') else 'None identified'}
+Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags.get('warnings') else 'None'}
+
+**AUTOPSY LEARNING**
+
+{f"Recent Analyses: {autopsy_insights['count']} autopsies, Average Alignment: {autopsy_insights['avg_alignment']}/10" if autopsy_insights else "No recent autopsy data available"}
+{f"Key Learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
 
 **RACE GOALS**
 
@@ -502,9 +565,9 @@ Return your response as a valid JSON object with this exact structure:
   "nutrition_reminder": "Brief nutrition guidance for this week's training load",
   "injury_prevention_note": "Key consideration for staying healthy this week",
   "strategic_context": {{
-    "weekly_focus": "2-3 sentences explaining the primary training goal this week and how it aligns with current training stage. Be specific about what adaptations you're targeting.",
-    "load_management_strategy": "2-3 sentences explaining ACWR targets, volume/intensity balance, and the rationale for this week's loading pattern. Include predicted week-end ACWR.",
-    "pattern_insights": "2-3 sentences observing recent training response, key adaptations noted, and any specific considerations to monitor this week based on journal observations."
+    "race_context_periodization": "150-200 words. Explain where athlete is in training cycle (Week X of Y to [Race Name]). Describe current training phase goals. Explain how this week builds toward race readiness and upcoming phase transitions. Frame B/C races as checkpoints. Reference race-specific preparation elements being developed.",
+    "load_management_pattern_analysis": "200-250 words. State athlete's PERSONALIZED THRESHOLDS (use actual values: ACWR >{thresholds['acwr_high_risk']}, Divergence <{thresholds['divergence_overtraining']}, Max Days Rest: {thresholds['days_since_rest_max']}). Provide ACWR strategy with current→predicted trajectory. Include PATTERN ANALYSIS using this exact format: '✅ POSITIVE PATTERNS: [list]', '⚠️ WARNINGS: [list]', '🚫 RED FLAGS: [list]'. If autopsy data available, include: 'AUTOPSY LEARNING ({autopsy_insights['count'] if autopsy_insights else 0} recent analyses, avg alignment: {autopsy_insights['avg_alignment'] if autopsy_insights else 'N/A'}/10): [insights]'",
+    "strategic_rationale": "200 words. Explain physiological targets this week (what adaptations). Reference specific Training Guide principles being applied (quote section). Explain why workouts structured this way for athlete's {risk_tolerance} risk profile. Include recovery strategy rationale based on athlete's patterns. Apply {coaching_tone} throughout."
   }}
 }}
 
@@ -606,7 +669,7 @@ def generate_weekly_program(
         response_text = call_anthropic_api(
             prompt,
             max_tokens=DEFAULT_MAX_TOKENS,
-            temperature=0.7,
+            temperature=WEEKLY_PROGRAM_TEMPERATURE,  # Use optimized temperature for JSON structure
             timeout=90  # Extended timeout: weekly programs are complex and take longer
         )
         

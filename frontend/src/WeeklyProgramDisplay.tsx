@@ -29,9 +29,9 @@ interface WeeklyProgram {
   nutrition_reminder?: string;
   injury_prevention_note?: string;
   strategic_context?: {
-    weekly_focus: string;
-    load_management_strategy: string;
-    pattern_insights: string;
+    race_context_periodization: string;
+    load_management_pattern_analysis: string;
+    strategic_rationale: string;
   };
   from_cache?: boolean;
 }

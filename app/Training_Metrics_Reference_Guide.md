@@ -338,3 +338,73 @@ Recent Pattern: Divergence trending negative for 6 consecutive days
 
 **Claude Response Framework: "METRIC ASSESSMENT:** Concerning divergence drift pattern with 6-day negative trend approaching critical threshold (-0.15). Internal ACWR (1.34) exceeds safe range while external remains acceptable, indicating physiological stress accumulation outpacing mechanical adaptation. TODAY: Active recovery mandatory - limit to 45-60 minutes easy trail hiking or Zone 1 running only. Target TRIMP <30 to arrest internal stress accumulation. WEEKLY: Immediate intervention protocol - reduce intensity for 5-7 days with no sessions above moderate effort (TRIMP <60). Focus on maintaining aerobic volume at reduced intensity until divergence improves. MONITOR: Daily divergence tracking critical - must reverse negative trend within 3-4 days. Target improvement to -0.08 or better before resuming quality sessions. If reaches -0.15, implement full rest protocol."
 ```
+
+---
+
+## Weekly Strategic Analysis Examples
+
+### Example 1: Build Phase - Balanced Risk Athlete
+```
+RACE CONTEXT & PERIODIZATION:
+Week 8 of 22 to Western States 100 (June 28, 2026). BUILD PHASE (Weeks 5-12): Currently focused on lactate threshold development and building muscular endurance for sustained climbing. This is the foundation phase where we're developing the aerobic engine and climbing strength you'll need for race-specific work. This week continues progressive overload (8% volume increase from last week) while introducing more vertical gain in key sessions. We're building toward Specificity Phase (Weeks 13-18) where we'll add race-specific terrain simulation and back-to-back long runs. Lake Sonoma 100K (April 11) serves as a critical B race checkpoint - 16 weeks out. This Build phase ensures you arrive at that evaluation race with strong aerobic fitness.
+
+LOAD MANAGEMENT & PATTERN ANALYSIS:
+YOUR PERSONALIZED THRESHOLDS (Balanced Risk Tolerance):
+ACWR High Risk: >1.25 | Divergence Overtraining: <-0.18 | Max Days No Rest: 6
+
+ACWR STRATEGY: Current 1.02 (optimal) → Predicted week-end: 1.08 (optimal). This week's 8% volume increase (45→48 miles) keeps you in optimal ACWR range (0.8-1.25) with room for progressive overload. Two quality sessions (Tuesday tempo, Thursday hills) balanced with 5 easier days maintains sustainable loading pattern.
+
+PATTERN ANALYSIS:
+✅ POSITIVE PATTERNS: Consistent energy levels (avg 4.2/5 last 7 days) indicating strong adaptation | RPE trending down for equivalent paces - efficiency improving | Recovery within 48hrs after hard sessions - good resilience
+⚠️ WARNINGS: Slight uptick in reported pain during hill sessions (15% avg) → Monitor knee tracking during Thursday's hill repeats | 4 consecutive training days - Friday recovery is critical for quality Saturday long run
+🚫 RED FLAGS: None detected
+
+AUTOPSY LEARNING (5 recent analyses, avg alignment: 8.4/10): You're following prescribed workouts well with smart adjustments when fatigued. Recent pattern shows you respond best to intensity when energy is 4+/5. Tuesday's tempo positioned strategically after weekend rest when energy peaks.
+
+STRATEGIC RATIONALE:
+This week targets lactate threshold (LT) development - your ability to sustain hard effort below anaerobic threshold. The Tuesday tempo session (4mi @ LT within 8mi total) combined with Thursday's hill repeats creates coordinated stimulus for aerobic-anaerobic transition improvement. Following Weekly Planning Priority #3: "Build Phase emphasizes progressive volume increases (5-10% weekly) with 1-2 quality sessions while maintaining aerobic base." Your 8% volume increase is conservative compared to 10% ceiling, ensuring sustainable adaptation while respecting your stated preference for injury prevention over rapid gains. Friday's rest day positioned mid-week because autopsy data shows your energy drops on day 5 without rest - strategic placement maintains quality for Saturday's key 16-mile long run.
+```
+
+### Example 2: Taper Phase - Conservative Risk Athlete
+```
+RACE CONTEXT & PERIODIZATION:
+Week 20 of 22 to Leadville 100 (August 17, 2025). TAPER PHASE (Weeks 19-21): Peak training complete - now reducing volume while maintaining intensity sharpness. This is the critical freshness phase where fitness is preserved while fatigue dissipates. This week implements 30% volume reduction (68→48 miles) with shortened but intense sessions to maintain neuromuscular readiness. You're 2 weeks from race day - physical adaptations are locked in, focus shifts to arriving fresh and confident.
+
+LOAD MANAGEMENT & PATTERN ANALYSIS:
+YOUR PERSONALIZED THRESHOLDS (Conservative Risk Tolerance):
+ACWR High Risk: >1.15 | Divergence Overtraining: <-0.15 | Max Days No Rest: 5
+
+ACWR STRATEGY: Current 1.23 (elevated) → Predicted week-end: 0.95 (optimal taper range). Aggressive volume reduction moves you from Build-phase loading into optimal taper zone (0.8-1.0) by week's end. This 30% cut is appropriate for your conservative profile - prioritizes arriving fresh over maintaining peak fitness. Three quality sessions remain (Tue/Thu/Sat) but shortened to preserve intensity without fatigue accumulation.
+
+PATTERN ANALYSIS:
+✅ POSITIVE PATTERNS: Divergence recovering nicely (-0.04 improving from -0.08 two weeks ago) - fatigue dissipating as planned | Energy levels rebounding (4.0/5 avg, up from 3.2/5 during peak loading) | RPE for equivalent efforts dropping - freshness returning
+⚠️ WARNINGS: Sleep quality variable (journal notes indicate 2 poor nights last week) → Prioritize sleep hygiene during taper - adaptation happens during rest | Mild pre-race anxiety noted in journal - normal but monitor for overcompensation training
+🚫 RED FLAGS: None detected - taper progressing well
+
+AUTOPSY LEARNING (7 recent analyses, avg alignment: 9.1/10): Excellent compliance during taper - you've resisted urge to "cram" additional training. Recent autopsies show you're trusting the process and following prescribed volume reductions. This discipline will pay dividends on race day.
+
+STRATEGIC RATIONALE:
+Taper is counterintuitive - doing less feels wrong when race approaches. But training adaptations take 10-14 days to manifest, so this week's work won't improve race-day fitness. Goal: maximize freshness-to-fitness ratio. Following Taper Phase principle: "Volume reduced 25-40%, maintain 1-2 intensity touch-points, emphasize recovery and mental preparation." Your conservative risk tolerance means we're on the higher end of volume reduction (30%) - better to arrive 2% undertrained and 100% fresh than perfectly trained but 5% fatigued. Tuesday's short tempo (3mi @ LT) and Thursday's 6x2min hill bursts maintain neuromuscular recruitment patterns without accumulating fatigue. Race week (next week) drops to 40% volume with final sharpening session Wednesday.
+```
+
+### Example 3: Recovery Phase - Aggressive Risk Athlete
+```
+RACE CONTEXT & PERIODIZATION:
+Week 2 of Recovery Phase following Cascade Crest 100 (August 30, 2025). POST-RACE RECOVERY (Weeks 1-4): Allowing complete physiological restoration after maximum effort. This is arguably the most important phase - proper recovery prevents chronic fatigue and injury while preserving long-term development. Next training block begins Week 5 with 12-week build toward Bandera 100K (January 11, 2026). This week increases volume slightly (20→28 miles) - still well below pre-race baseline but progressing from Week 1 active recovery.
+
+LOAD MANAGEMENT & PATTERN ANALYSIS:
+YOUR PERSONALIZED THRESHOLDS (Aggressive Risk Tolerance):
+ACWR High Risk: >1.35 | Divergence Overtraining: <-0.20 | Max Days No Rest: 7
+
+ACWR STRATEGY: Current 0.52 (very low) → Predicted week-end: 0.68 (still low, appropriate for recovery). Your aggressive profile typically pushes boundaries, but recovery is non-negotiable. This conservative 40% volume increase (20→28 miles) reflects your tendency to return too quickly - we're holding you back intentionally. ACWR will remain below 0.8 for 2 more weeks before normal training resumes. All sessions remain Zone 1-2 only despite your desire for intensity.
+
+PATTERN ANALYSIS:
+✅ POSITIVE PATTERNS: Divergence improving nicely (-0.11 recovering from -0.18 post-race) - inflammation resolving | Sleep quality normalizing (journal reports improving each day) | Appetite returning - metabolic recovery progressing
+⚠️ WARNINGS: You attempted an unscheduled 6-mile run on Day 3 (per autopsy) when only 3-mile walk was prescribed - classic aggressive-risk behavior | Energy level feels "normal" (4/5) but this is deceptive during recovery - cellular repair continues for 2-3 weeks | Journal notes show frustration with easy pace - mental challenge typical for aggressive athletes
+🚫 RED FLAGS: Lingering quad soreness beyond Day 10 (slight concern) → Continue avoiding hills and technical terrain until Week 3 | One elevated resting HR reading (journal noted) - requires monitoring
+
+AUTOPSY LEARNING (3 recovery-phase analyses, avg alignment: 6.3/10): Your compliance during recovery phase is weaker than during training - predictable for aggressive-risk profile. You added volume/intensity to 2 of 3 prescribed easy sessions. While not immediately harmful, this pattern delays full recovery and increases injury risk when normal training resumes. This week's plan accounts for your tendency to exceed prescription by setting conservative targets.
+
+STRATEGIC RATIONALE:
+Recovery is hardest for aggressive athletes - you're wired to push, but the 100-mile effort created deep physiological debt that requires patience. Training Adaptation Timeline: Cellular repair continues 2-3 weeks post-race even when feeling "normal." Muscular micro-damage from 20+ hours of running needs complete healing before loading resumes. Your energy "feels good" because acute fatigue resolved, but deeper systems (hormonal, immune, cellular) still recovering. Following Recovery Phase Priority #1: "Volume restricted to 30-50% of pre-race baseline for Weeks 1-2, all sessions Zone 1-2 intensity regardless of athlete profile." We're at 40% this week (28 vs 70-mile pre-race average). Week 3 increases to 60%, Week 4 to 80%, normal training Week 5. This conservative timeline protects against the "feeling good so ramping too fast" trap that aggressive athletes fall into. Your next race (Bandera, 19 weeks out) allows proper periodization - no need to rush recovery.
+```
