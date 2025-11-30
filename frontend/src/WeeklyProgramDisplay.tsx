@@ -28,6 +28,11 @@ interface WeeklyProgram {
   key_workouts_this_week: string[];
   nutrition_reminder?: string;
   injury_prevention_note?: string;
+  strategic_context?: {
+    weekly_focus: string;
+    load_management_strategy: string;
+    pattern_insights: string;
+  };
   from_cache?: boolean;
 }
 

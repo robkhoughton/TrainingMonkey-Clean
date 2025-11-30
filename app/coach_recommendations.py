@@ -500,7 +500,12 @@ Return your response as a valid JSON object with this exact structure:
     "Thursday: Tempo work for lactate threshold development"
   ],
   "nutrition_reminder": "Brief nutrition guidance for this week's training load",
-  "injury_prevention_note": "Key consideration for staying healthy this week"
+  "injury_prevention_note": "Key consideration for staying healthy this week",
+  "strategic_context": {{
+    "weekly_focus": "2-3 sentences explaining the primary training goal this week and how it aligns with current training stage. Be specific about what adaptations you're targeting.",
+    "load_management_strategy": "2-3 sentences explaining ACWR targets, volume/intensity balance, and the rationale for this week's loading pattern. Include predicted week-end ACWR.",
+    "pattern_insights": "2-3 sentences observing recent training response, key adaptations noted, and any specific considerations to monitor this week based on journal observations."
+  }}
 }}
 
 **IMPORTANT:**
@@ -536,6 +541,15 @@ def parse_weekly_program_response(response_text: str) -> Dict:
         # Validate daily_program has 7 days
         if len(program['daily_program']) != 7:
             logger.warning(f"Expected 7 days in program, got {len(program['daily_program'])}")
+        
+        # Provide default strategic_context if missing (for backward compatibility)
+        if 'strategic_context' not in program:
+            logger.warning("No strategic_context in response, using defaults")
+            program['strategic_context'] = {
+                'weekly_focus': "Focus on consistent training and progressive overload aligned with your training stage.",
+                'load_management_strategy': "Manage ACWR within optimal ranges (0.8-1.3) to balance adaptation with injury prevention.",
+                'pattern_insights': "Continue monitoring energy levels and recovery indicators through daily journal observations."
+            }
         
         logger.info("Successfully parsed weekly program JSON")
         return program

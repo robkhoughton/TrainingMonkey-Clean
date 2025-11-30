@@ -768,9 +768,128 @@ const CoachPage: React.FC = () => {
           TAB CONTENT AREA - Route to separate pages
       ============================================================ */}
       {activeSubTab === 'workout' && (
-        <div className={styles.card} style={{ marginBottom: '0.125rem', padding: '0.75rem 1rem' }}>
-          <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
-        </div>
+        <>
+          {/* Weekly Workout Plan */}
+          <div className={styles.card} style={{ marginBottom: '0.125rem', padding: '0.75rem 1rem' }}>
+            <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
+          </div>
+
+          {/* Strategic Context - Below Workout Plan */}
+          {weeklyProgram?.strategic_context && (
+            <div className={styles.card} style={{ marginTop: '1rem', marginBottom: '0.125rem', padding: '1rem' }}>
+              <h2 style={{ 
+                fontSize: '20px', 
+                fontWeight: '700', 
+                marginBottom: '1rem', 
+                color: '#1e293b',
+                borderBottom: '2px solid #e1e8ed',
+                paddingBottom: '0.5rem'
+              }}>
+                📊 Weekly Strategy & Context
+              </h2>
+
+              {/* Weekly Focus */}
+              <div style={{ 
+                marginBottom: '1rem', 
+                padding: '1rem', 
+                backgroundColor: '#f0f9ff', 
+                borderRadius: '8px',
+                borderLeft: '4px solid #3b82f6'
+              }}>
+                <h3 style={{ 
+                  fontSize: '16px', 
+                  fontWeight: '600', 
+                  marginBottom: '0.5rem', 
+                  color: '#1e40af',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  🎯 This Week's Focus
+                </h3>
+                <p style={{ 
+                  margin: 0, 
+                  lineHeight: '1.6', 
+                  color: '#374151',
+                  fontSize: '15px'
+                }}>
+                  {weeklyProgram.strategic_context.weekly_focus}
+                </p>
+              </div>
+
+              {/* Load Management Strategy */}
+              <div style={{ 
+                marginBottom: '1rem', 
+                padding: '1rem', 
+                backgroundColor: '#fef3c7', 
+                borderRadius: '8px',
+                borderLeft: '4px solid #f59e0b'
+              }}>
+                <h3 style={{ 
+                  fontSize: '16px', 
+                  fontWeight: '600', 
+                  marginBottom: '0.5rem', 
+                  color: '#92400e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  📈 Load Management Strategy
+                </h3>
+                <p style={{ 
+                  margin: 0, 
+                  lineHeight: '1.6', 
+                  color: '#374151',
+                  fontSize: '15px'
+                }}>
+                  {weeklyProgram.strategic_context.load_management_strategy}
+                </p>
+              </div>
+
+              {/* Pattern Insights */}
+              <div style={{ 
+                padding: '1rem', 
+                backgroundColor: '#f0fdf4', 
+                borderRadius: '8px',
+                borderLeft: '4px solid #10b981'
+              }}>
+                <h3 style={{ 
+                  fontSize: '16px', 
+                  fontWeight: '600', 
+                  marginBottom: '0.5rem', 
+                  color: '#065f46',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  🔍 Recent Training Patterns
+                </h3>
+                <p style={{ 
+                  margin: 0, 
+                  lineHeight: '1.6', 
+                  color: '#374151',
+                  fontSize: '15px'
+                }}>
+                  {weeklyProgram.strategic_context.pattern_insights}
+                </p>
+              </div>
+
+              {/* Integration Hint */}
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '6px',
+                fontSize: '13px',
+                color: '#6b7280',
+                fontStyle: 'italic',
+                textAlign: 'center'
+              }}>
+                💡 Visit the <strong>Journal</strong> page daily for today's specific guidance and post-workout analysis
+              </div>
+            </div>
+          )}
+        </>
       )}
       {activeSubTab === 'goals' && <RaceGoalsPage />}
       {activeSubTab === 'history' && <RaceHistoryPage />}
