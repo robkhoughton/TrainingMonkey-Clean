@@ -712,11 +712,15 @@ const CoachPage: React.FC = () => {
                         'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)', // Default navy
             color: 'white',
             display: 'flex',
-            alignItems: 'center',
-            gap: '2rem'
+            alignItems: 'center'
           }}>
-            {/* Left Column: Days Until Race */}
-            <div style={{ flexShrink: 0 }}>
+            {/* 5-segment layout: 1=empty, 2=countdown, 3=empty, 4=race info, 5=empty */}
+            
+            {/* Segment 1: Empty (20% width) */}
+            <div style={{ flex: '0 0 20%' }}></div>
+            
+            {/* Segment 2: Days Countdown (20% width) */}
+            <div style={{ flex: '0 0 20%', textAlign: 'center' }}>
               <div style={{ fontSize: '48px', fontWeight: 'bold', lineHeight: '1' }}>
                 {daysToRace}
               </div>
@@ -725,8 +729,11 @@ const CoachPage: React.FC = () => {
               </div>
             </div>
             
-            {/* Right Column: Race Description */}
-            <div style={{ flex: 1 }}>
+            {/* Segment 3: Empty (20% width) */}
+            <div style={{ flex: '0 0 20%' }}></div>
+            
+            {/* Segment 4: Race Description (20% width) */}
+            <div style={{ flex: '0 0 20%' }}>
               <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '5px' }}>
                 {primaryRace.race_name}
               </div>
@@ -734,6 +741,9 @@ const CoachPage: React.FC = () => {
                 {primaryRace.race_type} • {primaryRace.race_date} • Priority {primaryRace.priority}
               </div>
             </div>
+            
+            {/* Segment 5: Empty (20% width) */}
+            <div style={{ flex: '0 0 20%' }}></div>
           </div>
         );
       })()}
