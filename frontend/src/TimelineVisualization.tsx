@@ -193,29 +193,38 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
                 )}
 
                 {/* Race Markers */}
-                {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => (
-                  <div
-                    key={raceIndex}
-                    style={{
-                      position: 'absolute',
-                      top: week.is_current ? '-42px' : '-35px', // Reduced spacing
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      backgroundColor: getPriorityColor(race.priority),
-                      color: 'white',
-                      padding: '3px 6px', // Tighter padding
-                      borderRadius: '4px',
-                      fontSize: '10px', // Smaller font
-                      fontWeight: 'bold',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                      zIndex: 15
-                    }}
-                    title={`${race.race_name} - ${race.date}`}
-                  >
-                    {race.priority}
-                  </div>
-                ))}
+                {week.races && Array.isArray(week.races) && week.races.length > 0 && week.races.map((race, raceIndex) => {
+                  // Calculate horizontal offset if multiple races in same week
+                  const horizontalOffset = week.races!.length > 1 ? (raceIndex - (week.races!.length - 1) / 2) * 25 : 0;
+                  // Calculate vertical offset to stack races
+                  const verticalOffset = raceIndex * 20;
+                  
+                  console.log(`[Timeline] Rendering race marker: ${race.race_name} (${race.priority}) in week ${week.week_number}, offset: ${horizontalOffset}px`);
+                  
+                  return (
+                    <div
+                      key={raceIndex}
+                      style={{
+                        position: 'absolute',
+                        top: `${week.is_current ? -42 - verticalOffset : -35 - verticalOffset}px`,
+                        left: `calc(50% + ${horizontalOffset}px)`,
+                        transform: 'translateX(-50%)',
+                        backgroundColor: getPriorityColor(race.priority),
+                        color: 'white',
+                        padding: '3px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        zIndex: 15
+                      }}
+                      title={`${race.race_name} - ${race.date}`}
+                    >
+                      {race.priority}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
