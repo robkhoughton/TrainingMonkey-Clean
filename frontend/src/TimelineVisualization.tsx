@@ -117,7 +117,7 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
         overflowX: 'auto',
         marginBottom: '0.5rem',
         marginTop: '0',
-        padding: '50px 0 0.25rem 0', // Increased from 30px to 50px to accommodate race markers above timeline
+        padding: '30px 0 0.25rem 0', // Keep original tight padding
         overflowY: 'visible' // Allow race markers to show above timeline
       }}>
         {/* Single Timeline Bar with Week Numbers */}
@@ -203,7 +203,7 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
                       key={raceIndex}
                       style={{
                         position: 'absolute',
-                        top: week.is_current ? '-42px' : '-35px',
+                        top: week.is_current ? '-28px' : '-25px', // Reduced from -42px/-35px to fit within 30px padding
                         left: '50%',
                         transform: 'translateX(-50%)',
                         backgroundColor: getPriorityColor(race.priority),
