@@ -159,7 +159,7 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
         fontStyle: 'italic',
         textAlign: 'center'
       }}>
-        💡 Visit the <strong>Journal</strong> page daily for today's specific guidance and post-workout analysis
+        Visit the <a href="/dashboard?tab=journal" style={{ color: '#007bff', textDecoration: 'underline', fontWeight: '600' }}>Journal</a> page daily for today's specific guidance and post-workout analysis
       </div>
     </div>
   );
@@ -908,7 +908,6 @@ const CoachPage: React.FC = () => {
             marginBottom: '0 !important', // Override CSS class default margin
             padding: '1rem 1.25rem',
             background: 'linear-gradient(90deg, #1B2E4B 0%, #4A5F7F 50%, #B8C5D6 100%)', // Darker gradient: deep navy to lighter gray-blue
-            color: textColor,
             display: 'flex',
             alignItems: 'center'
           }}>
@@ -917,8 +916,8 @@ const CoachPage: React.FC = () => {
             {/* Segment 1: Empty (20% width) */}
             <div style={{ flex: '0 0 20%' }}></div>
             
-            {/* Segment 2: Days Countdown (20% width) */}
-            <div style={{ flex: '0 0 20%', textAlign: 'center' }}>
+            {/* Segment 2: Days Countdown (20% width) - Phase colored text on dark side */}
+            <div style={{ flex: '0 0 20%', textAlign: 'center', color: textColor }}>
               <div style={{ fontSize: '48px', fontWeight: 'bold', lineHeight: '1' }}>
                 {daysToRace}
               </div>
@@ -930,8 +929,8 @@ const CoachPage: React.FC = () => {
             {/* Segment 3: Empty (20% width) */}
             <div style={{ flex: '0 0 20%' }}></div>
             
-            {/* Segment 4: Race Description (20% width) */}
-            <div style={{ flex: '0 0 20%' }}>
+            {/* Segment 4: Race Description (20% width) - Dark navy text on light side */}
+            <div style={{ flex: '0 0 20%', color: '#1B2E4B' }}>
               <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '5px' }}>
                 {primaryRace.race_name}
               </div>
