@@ -581,7 +581,21 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             textAlign: 'left',
             lineHeight: '1.5'
           }}>
-            💡 This program is optimized for your race goals, current fitness, and weekly schedule. Adjust as needed based on how you feel!
+            This program is optimized for your{' '}
+            <a 
+              href="/dashboard?tab=coach&subtab=goals" 
+              style={{ color: '#007bff', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              race goals
+            </a>
+            , current fitness, and{' '}
+            <a 
+              href="/dashboard?tab=coach&subtab=schedule" 
+              style={{ color: '#007bff', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              weekly schedule
+            </a>
+            . Adjust as needed based on how you feel!
           </div>
         </div>
       </div>
