@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 
 // ============================================================================
@@ -14,6 +14,11 @@ interface DailyWorkout {
   intensity: string;
   key_focus: string;
   terrain_notes?: string;
+}
+
+interface AutopsyData {
+  alignment_score: number;
+  date: string;
 }
 
 interface WeeklyProgram {
@@ -48,6 +53,42 @@ interface WeeklyProgramDisplayProps {
 const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, onRefresh }) => {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autopsyScores, setAutopsyScores] = useState<Record<string, number>>({});
+
+  // Fetch autopsy alignment scores for the week
+  useEffect(() => {
+    if (!program) return;
+
+    const fetchAutopsyScores = async () => {
+      try {
+        // Calculate week date range
+        const weekStart = new Date(program.week_start_date);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+
+        // Fetch journal entries for the week (which contain autopsy data)
+        const response = await fetch(`/api/journal?days=7&date_from=${program.week_start_date}`);
+        if (!response.ok) return;
+
+        const result = await response.json();
+        if (!result.success) return;
+
+        // Extract autopsy scores by date
+        const scores: Record<string, number> = {};
+        result.data.forEach((entry: any) => {
+          if (entry.ai_autopsy?.alignment_score) {
+            scores[entry.date] = entry.ai_autopsy.alignment_score;
+          }
+        });
+
+        setAutopsyScores(scores);
+      } catch (err) {
+        console.error('Error fetching autopsy scores:', err);
+      }
+    };
+
+    fetchAutopsyScores();
+  }, [program]);
 
   // ============================================================================
   // HANDLERS
@@ -312,7 +353,18 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
       {/* Daily Program */}
       <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
         {program.daily_program.map((workout, index) => {
-          const isToday = new Date(workout.date).toDateString() === new Date().toDateString();
+          const workoutDate = new Date(workout.date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          workoutDate.setHours(0, 0, 0, 0);
+          
+          const isToday = workoutDate.getTime() === today.getTime();
+          const isPast = workoutDate < today;
+          const isFuture = workoutDate > today;
+          
+          // Get autopsy score for past days
+          const autopsyScore = autopsyScores[workout.date];
+          const hasAutopsy = isPast && autopsyScore !== undefined;
           
           return (
             <div
@@ -321,24 +373,55 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 border: isToday ? '3px solid #f39c12' : '1px solid #e1e8ed',
                 borderRadius: '8px',
                 padding: '0.75rem',
-                backgroundColor: isToday ? '#fff9e6' : 'white',
-                position: 'relative'
+                backgroundColor: isToday ? '#fff9e6' : isPast ? '#f8f9fa' : 'white',
+                position: 'relative',
+                opacity: isPast && !hasAutopsy ? 0.7 : 1
               }}
             >
-              {/* Today Badge */}
+              {/* Today Badge with Journal Link */}
               {isToday && (
+                <a
+                  href="/dashboard?tab=journal"
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    padding: '6px 14px',
+                    backgroundColor: '#f39c12',
+                    color: 'white',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="View today's detailed training decision on Journal page"
+                >
+                  TODAY → JOURNAL
+                </a>
+              )}
+              
+              {/* Autopsy Alignment Badge for Past Days */}
+              {hasAutopsy && (
                 <div style={{
                   position: 'absolute',
                   top: '10px',
                   right: '10px',
-                  padding: '4px 12px',
-                  backgroundColor: '#f39c12',
+                  padding: '6px 12px',
+                  backgroundColor: autopsyScore >= 8 ? '#27ae60' : autopsyScore >= 6 ? '#f39c12' : '#e74c3c',
                   color: 'white',
                   borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold'
-                }}>
-                  TODAY
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title={`Autopsy alignment score: ${autopsyScore}/10`}
+              >
+                📋 {autopsyScore}/10
                 </div>
               )}
 

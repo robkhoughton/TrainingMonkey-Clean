@@ -1752,6 +1752,7 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     
     Enhanced version includes Training Reference Framework and Risk Tolerance personalization
     for evidence-based, consistent recommendations aligned with the comprehensive prompt.
+    Also includes reference to Coach page weekly plan for consistency.
     """
 
     # Get user's risk tolerance and personalized thresholds
@@ -1763,6 +1764,50 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     if not training_guide:
         logger.warning("Training guide not available for autopsy-informed prompt")
         training_guide = "Apply evidence-based training principles focusing on ACWR management and recovery."
+
+    # Get weekly program context from Coach page
+    weekly_program_context = ""
+    try:
+        from coach_recommendations import get_weekly_program
+        from datetime import datetime, timedelta
+        
+        # Find which week the target date falls into
+        target_date_obj = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        # Get the Monday of the week containing target_date
+        days_since_monday = target_date_obj.weekday()
+        week_start = target_date_obj - timedelta(days=days_since_monday)
+        
+        weekly_program = get_weekly_program(user_id, week_start)
+        
+        if weekly_program and not weekly_program.get('error'):
+            # Find the specific day's plan
+            day_name = target_date_obj.strftime('%A')
+            daily_plan = None
+            for day in weekly_program.get('daily_program', []):
+                if day.get('day') == day_name:
+                    daily_plan = day
+                    break
+            
+            if daily_plan:
+                weekly_program_context = f"""
+COACH PAGE WEEKLY PLAN FOR {target_date_str} ({day_name}):
+- Planned Workout: {daily_plan.get('workout_type', 'N/A')}
+- Description: {daily_plan.get('description', 'N/A')}
+- Duration: {daily_plan.get('duration_estimate', 'N/A')}
+- Intensity: {daily_plan.get('intensity', 'N/A')}
+- Key Focus: {daily_plan.get('key_focus', 'N/A')}
+
+CRITICAL: Your Daily Recommendation must be CONSISTENT with the Coach page weekly plan above. 
+If current metrics suggest adjusting the plan (e.g., rest day due to high ACWR), explain the deviation clearly.
+Otherwise, provide tactical execution guidance for the planned workout."""
+            else:
+                weekly_program_context = f"\nNOTE: Weekly program exists but no specific plan found for {day_name}"
+        else:
+            weekly_program_context = "\nNOTE: No weekly program available from Coach page. Provide standalone recommendation."
+            
+    except Exception as e:
+        logger.warning(f"Could not fetch weekly program context: {str(e)}")
+        weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
 
     autopsy_context = ""
     if autopsy_insights:
@@ -1806,6 +1851,8 @@ CURRENT METRICS:
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 - 7-day Avg Load: {current_metrics.get('seven_day_avg_load') or 0:.2f} miles/day
 
+{weekly_program_context}
+
 {autopsy_context}
 
 ### TRAINING REFERENCE FRAMEWORK
@@ -1839,6 +1886,7 @@ CRITICAL REQUIREMENTS:
 - Reference specific numbers from the metrics
 - Write naturally and concisely
 - Focus on actionable guidance that demonstrates learning from recent patterns
+- ENSURE consistency with Coach page weekly plan (if provided) or explain deviations based on metrics
 """
 
     return prompt
