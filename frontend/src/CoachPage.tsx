@@ -115,13 +115,13 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
         borderBottom: '2px solid #e1e8ed',
         paddingBottom: '0.5rem'
       }}>
-        🎯 Strategic Analysis & Context
+        Strategic Analysis & Context
       </h2>
 
       <CollapsibleSection
         id="race"
         title="Race Context & Periodization"
-        emoji="🏁"
+        emoji=""
         content={strategicContext.race_context_periodization}
         bgColor="#f0f9ff"
         borderColor="#3b82f6"
@@ -131,7 +131,7 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
       <CollapsibleSection
         id="load"
         title="Load Management & Pattern Analysis"
-        emoji="📊"
+        emoji=""
         content={strategicContext.load_management_pattern_analysis}
         bgColor="#fef3c7"
         borderColor="#f59e0b"
@@ -141,7 +141,7 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
       <CollapsibleSection
         id="rationale"
         title="Strategic Rationale & Training Science"
-        emoji="🧠"
+        emoji=""
         content={strategicContext.strategic_rationale}
         bgColor="#f0fdf4"
         borderColor="#10b981"
