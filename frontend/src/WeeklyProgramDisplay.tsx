@@ -546,7 +546,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               borderRadius: '8px'
             }}>
               <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#0e6655', fontWeight: '600' }}>
-                🥗 Nutrition Reminder
+                Nutrition Reminder
               </h3>
               <p style={{ margin: 0, fontSize: '13px', color: '#0e6655', lineHeight: '1.6', textAlign: 'left' }}>
                 {program.nutrition_reminder}
@@ -563,7 +563,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               borderRadius: '8px'
             }}>
               <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#c2185b', fontWeight: '600' }}>
-                🏥 Injury Prevention
+                Injury Prevention
               </h3>
               <p style={{ margin: 0, fontSize: '13px', color: '#c2185b', lineHeight: '1.6', textAlign: 'left' }}>
                 {program.injury_prevention_note}
