@@ -890,12 +890,12 @@ const CoachPage: React.FC = () => {
           if (!stage) return '#ffffff';
           
           const stageColors: { [key: string]: string } = {
-            'base': '#7ec8e3',      // Light blue
-            'build': '#81c784',     // Light green
-            'specificity': '#ffb74d', // Light orange
-            'taper': '#ba68c8',     // Light purple
-            'peak': '#e57373',      // Light red
-            'recovery': '#90a4ae'   // Light gray
+            'base': '#3498db',      // Blue (matches timeline)
+            'build': '#2ecc71',     // Green (matches timeline)
+            'specificity': '#f39c12', // Orange (matches timeline)
+            'taper': '#e74c3c',     // Red (matches timeline)
+            'peak': '#9b59b6',      // Purple (matches timeline)
+            'recovery': '#95a5a6'   // Gray (matches timeline)
           };
           
           return stageColors[stage.toLowerCase()] || '#ffffff';
