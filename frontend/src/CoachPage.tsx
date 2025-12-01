@@ -95,7 +95,8 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
               lineHeight: '1.7',
               color: '#374151',
               fontSize: '15px',
-              whiteSpace: 'pre-wrap'
+              whiteSpace: 'pre-wrap',
+              textAlign: 'left'
             }}>
               {content}
             </p>
@@ -106,14 +107,15 @@ const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicCon
   };
 
   return (
-    <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem' }}>
+    <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem', maxWidth: '1200px', margin: '0 auto 0.75rem auto' }}>
       <h2 style={{
         fontSize: '20px',
         fontWeight: '700',
         marginBottom: '1rem',
         color: '#1e293b',
         borderBottom: '2px solid #e1e8ed',
-        paddingBottom: '0.5rem'
+        paddingBottom: '0.5rem',
+        textAlign: 'left'
       }}>
         Strategic Analysis & Context
       </h2>
