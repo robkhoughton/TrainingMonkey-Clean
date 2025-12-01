@@ -330,26 +330,6 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         </div>
       </div>
 
-      {/* Key Workouts */}
-      {program.key_workouts_this_week && program.key_workouts_this_week.length > 0 && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#fff3cd',
-          border: '1px solid #ffeaa7',
-          borderRadius: '8px',
-          marginBottom: '1rem'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '15px', color: '#856404', fontWeight: '600' }}>
-            Key Workouts This Week:
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#856404', textAlign: 'left' }}>
-            {program.key_workouts_this_week.map((workout, index) => (
-              <li key={index} style={{ marginBottom: '5px', textAlign: 'left' }}>{workout}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* 2-Column Layout: Workout Cards (Left) + Notes (Right) */}
       <div style={{ 
         display: 'grid', 
@@ -372,6 +352,10 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             // Get autopsy score for past days
             const autopsyScore = autopsyScores[workout.date];
             const hasAutopsy = isPast && autopsyScore !== undefined;
+            
+            // Determine if this is a key workout (moderate or high intensity)
+            const isKeyWorkout = workout.intensity && 
+              (workout.intensity.toLowerCase() === 'moderate' || workout.intensity.toLowerCase() === 'high');
             
             return (
               <div
@@ -408,6 +392,29 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 >
                   TODAY → JOURNAL
                 </a>
+              )}
+              
+              {/* Key Workout Badge (for moderate/high intensity workouts) */}
+              {isKeyWorkout && !isToday && !hasAutopsy && (
+                <div style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  padding: '6px 12px',
+                  backgroundColor: '#ffc107',
+                  color: '#856404',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  border: '1px solid #856404'
+                }}
+                title="Key workout this week"
+              >
+                ⭐ KEY WORKOUT
+              </div>
               )}
               
               {/* Autopsy Alignment Badge for Past Days */}
