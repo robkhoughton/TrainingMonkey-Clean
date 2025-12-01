@@ -731,7 +731,11 @@ const CoachPage: React.FC = () => {
         {/* Header Text - Right Side with Secondary Nav */}
         <div className="coach-header-content">
           <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
-            <h1>Coach YTM</h1>
+            <h1>
+              <span style={{ color: '#7ec8e3', fontWeight: '800', fontSize: '1.1em' }}>Y</span>our{' '}
+              <span style={{ color: '#7ec8e3', fontWeight: '800', fontSize: '1.1em' }}>T</span>raining{' '}
+              <span style={{ color: '#7ec8e3', fontWeight: '800', fontSize: '1.1em' }}>M</span>onkey
+            </h1>
             <p className="subtitle">Divergence-Optimized Training Programs for Ultrarunners</p>
           </div>
           
