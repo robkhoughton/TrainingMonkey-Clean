@@ -311,11 +311,13 @@ const CoachPage: React.FC = () => {
       const [
         goalsRes,
         stageRes,
-        programRes
+        programRes,
+        reviewStatusRes
       ] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/training-stage'),
-        fetch('/api/coach/weekly-program')
+        fetch('/api/coach/weekly-program'),
+        fetch('/api/coach/schedule-review-status')
       ]);
 
       // Check for critical errors (race goals is essential)
@@ -356,6 +358,19 @@ const CoachPage: React.FC = () => {
       } else {
         console.warn('Failed to fetch weekly program');
         setWeeklyProgram(null);
+      }
+
+      // Parse schedule review status
+      if (reviewStatusRes.ok) {
+        const reviewData = await reviewStatusRes.json();
+        if (reviewData.success) {
+          setScheduleReviewStatus({
+            needs_review: reviewData.needs_review,
+            week_start: reviewData.week_start,
+            is_sunday: reviewData.is_sunday
+          });
+          setShowScheduleReviewBanner(reviewData.needs_review);
+        }
       }
 
       // Check if onboarding needed (no race goals)
@@ -417,6 +432,26 @@ const CoachPage: React.FC = () => {
       return `${hours}h ${mins}m`;
     }
     return `${mins}m`;
+  };
+
+  const handleAcceptSchedule = async () => {
+    try {
+      const response = await fetch('/api/coach/schedule-review-accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        setShowScheduleReviewBanner(false);
+        setScheduleReviewStatus(prev => prev ? { ...prev, needs_review: false } : null);
+      }
+    } catch (err) {
+      console.error('Error accepting schedule:', err);
+    }
+  };
+
+  const handleDismissBanner = () => {
+    setShowScheduleReviewBanner(false);
   };
 
   // ============================================================================
@@ -843,39 +878,30 @@ const CoachPage: React.FC = () => {
           COUNTDOWN BANNER (two columns, matches phase color)
       ============================================================ */}
       {primaryRace && daysToRace !== null && (() => {
-        // Get phase color for banner background - Navy-based with subtle phase hints
-        const getPhaseColor = (stage: string | null): string => {
-          if (!stage) return 'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)';
-          switch (stage.toLowerCase()) {
-            case 'base': 
-              // Navy with subtle blue hint
-              return 'linear-gradient(135deg, #8FA8C4 0%, #2A3F5C 100%)';
-            case 'build': 
-              // Navy with subtle teal/green hint
-              return 'linear-gradient(135deg, #7FA5A8 0%, #2A4A4F 100%)';
-            case 'specificity': 
-              // Navy with subtle warm accent
-              return 'linear-gradient(135deg, #9A8F7D 0%, #3A2F1F 100%)';
-            case 'taper': 
-              // Navy with subtle red/pink hint
-              return 'linear-gradient(135deg, #A88F9A 0%, #4A2F3A 100%)';
-            case 'peak': 
-              // Navy with subtle purple hint
-              return 'linear-gradient(135deg, #9A8FA8 0%, #3A2F4A 100%)';
-            case 'recovery': 
-              // Navy with subtle gray hint
-              return 'linear-gradient(135deg, #8FA0A8 0%, #2A3A4A 100%)';
-            default: 
-              return 'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)';
-          }
+        // Get phase color for text based on training stage
+        const getPhaseTextColor = (stage: string | null): string => {
+          if (!stage) return '#ffffff';
+          
+          const stageColors: { [key: string]: string } = {
+            'base': '#7ec8e3',      // Light blue
+            'build': '#81c784',     // Light green
+            'specificity': '#ffb74d', // Light orange
+            'taper': '#ba68c8',     // Light purple
+            'peak': '#e57373',      // Light red
+            'recovery': '#90a4ae'   // Light gray
+          };
+          
+          return stageColors[stage.toLowerCase()] || '#ffffff';
         };
+        
+        const textColor = trainingStage?.stage ? getPhaseTextColor(trainingStage.stage) : '#ffffff';
         
         return (
           <div className={styles.card} style={{ 
             marginBottom: '0 !important', // Override CSS class default margin
             padding: '1rem 1.25rem',
-            background: 'linear-gradient(90deg, #1B2E4B 0%, #7D9CB8 50%, #E6F0FF 100%)', // Inverted YTM banner gradient (dark to light)
-            color: 'white',
+            background: 'linear-gradient(90deg, #1B2E4B 0%, #4A5F7F 50%, #B8C5D6 100%)', // Darker gradient: deep navy to lighter gray-blue
+            color: textColor,
             display: 'flex',
             alignItems: 'center'
           }}>
@@ -912,6 +938,81 @@ const CoachPage: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ============================================================
+          SCHEDULE REVIEW BANNER (Sunday only)
+      ============================================================ */}
+      {scheduleReviewStatus?.needs_review && showScheduleReviewBanner && (
+        <div className={styles.card} style={{
+          marginTop: '0.75rem',
+          marginBottom: '0.75rem',
+          padding: '1rem 1.25rem',
+          backgroundColor: '#fff3cd',
+          border: '2px solid #ffc107',
+          borderRadius: '8px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#856404', fontSize: '18px', fontWeight: '600' }}>
+                📅 Review Your Training Schedule for Next Week
+              </h3>
+              <p style={{ margin: 0, color: '#856404', fontSize: '14px' }}>
+                Week of {scheduleReviewStatus.week_start ? new Date(scheduleReviewStatus.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''} - Confirm your availability before Sunday 6 PM
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+              <button
+                onClick={handleAcceptSchedule}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ✓ Keep Current Schedule
+              </button>
+              <button
+                onClick={() => setActiveSubTab('schedule')}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ✏️ Update Schedule
+              </button>
+              <button
+                onClick={handleDismissBanner}
+                style={{
+                  padding: '10px 15px',
+                  backgroundColor: 'transparent',
+                  color: '#856404',
+                  border: '1px solid #856404',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================
           TIMELINE VISUALIZATION (immediately below countdown with minimal gap)

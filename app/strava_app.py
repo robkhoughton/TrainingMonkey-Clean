@@ -5723,6 +5723,22 @@ def weekly_program_cron():
                 error_count += 1
                 logger.error(f"Error generating program for user {user_id}: {str(user_error)}", exc_info=True)
 
+        # Reset schedule review status for all users (prepare for next week's review)
+        if mode == 'full':  # Only on Sunday full generation
+            try:
+                logger.info("Resetting schedule review status for all users...")
+                execute_query(
+                    """
+                    UPDATE user_settings
+                    SET schedule_review_status = 'pending'
+                    WHERE schedule_review_week_start IS NULL 
+                       OR schedule_review_week_start < CURRENT_DATE
+                    """
+                )
+                logger.info("✓ Schedule review status reset complete")
+            except Exception as reset_error:
+                logger.error(f"Error resetting schedule review status: {reset_error}")
+
         result_summary = {
             'message': 'Weekly program generation completed',
             'mode': mode,
