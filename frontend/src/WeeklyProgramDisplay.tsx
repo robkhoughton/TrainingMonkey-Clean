@@ -350,34 +350,41 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         </div>
       )}
 
-      {/* Daily Program */}
-      <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
-        {program.daily_program.map((workout, index) => {
-          const workoutDate = new Date(workout.date);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          workoutDate.setHours(0, 0, 0, 0);
-          
-          const isToday = workoutDate.getTime() === today.getTime();
-          const isPast = workoutDate < today;
-          const isFuture = workoutDate > today;
-          
-          // Get autopsy score for past days
-          const autopsyScore = autopsyScores[workout.date];
-          const hasAutopsy = isPast && autopsyScore !== undefined;
-          
-          return (
-            <div
-              key={index}
-              style={{
-                border: isToday ? '3px solid #f39c12' : '1px solid #e1e8ed',
-                borderRadius: '8px',
-                padding: '0.75rem',
-                backgroundColor: isToday ? '#fff9e6' : isPast ? '#f8f9fa' : 'white',
-                position: 'relative',
-                opacity: isPast && !hasAutopsy ? 0.7 : 1
-              }}
-            >
+      {/* 2-Column Layout: Workout Cards (Left) + Notes (Right) */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'minmax(0, 1fr) 380px',
+        gap: '1.5rem',
+        marginBottom: '1rem'
+      }}>
+        {/* LEFT COLUMN: Daily Workout Cards */}
+        <div style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
+          {program.daily_program.map((workout, index) => {
+            const workoutDate = new Date(workout.date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            workoutDate.setHours(0, 0, 0, 0);
+            
+            const isToday = workoutDate.getTime() === today.getTime();
+            const isPast = workoutDate < today;
+            const isFuture = workoutDate > today;
+            
+            // Get autopsy score for past days
+            const autopsyScore = autopsyScores[workout.date];
+            const hasAutopsy = isPast && autopsyScore !== undefined;
+            
+            return (
+              <div
+                key={index}
+                style={{
+                  border: isToday ? '3px solid #f39c12' : '1px solid #e1e8ed',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  backgroundColor: isToday ? '#fff9e6' : isPast ? '#f8f9fa' : 'white',
+                  position: 'relative',
+                  opacity: isPast && !hasAutopsy ? 0.7 : 1
+                }}
+              >
               {/* Today Badge with Journal Link */}
               {isToday && (
                 <a
@@ -482,10 +489,10 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
 
               {/* Description */}
               <div style={{
-                fontSize: '13px',
+                fontSize: '14px',
                 color: '#555',
                 marginBottom: '0.75rem',
-                lineHeight: '1.5',
+                lineHeight: '1.6',
                 textAlign: 'left'
               }}>
                 {workout.description}
@@ -496,10 +503,11 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 padding: '0.75rem',
                 backgroundColor: '#e8f4f8',
                 borderRadius: '6px',
-                fontSize: '12px',
+                fontSize: '13px',
                 color: '#555',
                 marginBottom: workout.terrain_notes ? '0.5rem' : 0,
-                textAlign: 'left'
+                textAlign: 'left',
+                lineHeight: '1.6'
               }}>
                 <strong>Focus:</strong> {workout.key_focus}
               </div>
@@ -507,7 +515,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               {/* Terrain Notes */}
               {workout.terrain_notes && (
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '13px',
                   color: '#7f8c8d',
                   fontStyle: 'italic',
                   textAlign: 'left'
@@ -518,55 +526,64 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             </div>
           );
         })}
-      </div>
-
-      {/* Nutrition Reminder */}
-      {program.nutrition_reminder && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#d1f2eb',
-          border: '1px solid #a8e6cf',
-          borderRadius: '8px',
-          marginBottom: '0.75rem'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#0e6655' }}>
-            🥗 Nutrition Reminder:
-          </h3>
-          <p style={{ margin: 0, fontSize: '13px', color: '#0e6655', lineHeight: '1.5', textAlign: 'left' }}>
-            {program.nutrition_reminder}
-          </p>
         </div>
-      )}
 
-      {/* Injury Prevention Note */}
-      {program.injury_prevention_note && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#fce4ec',
-          border: '1px solid #f8bbd0',
-          borderRadius: '8px',
-          marginBottom: '0.75rem'
+        {/* RIGHT COLUMN: Weekly Notes (Sticky) */}
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '0.75rem',
+          position: 'sticky',
+          top: '20px',
+          alignSelf: 'start'
         }}>
-          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#c2185b' }}>
-            🏥 Injury Prevention:
-          </h3>
-          <p style={{ margin: 0, fontSize: '13px', color: '#c2185b', lineHeight: '1.5', textAlign: 'left' }}>
-            {program.injury_prevention_note}
-          </p>
-        </div>
-      )}
+          {/* Nutrition Reminder */}
+          {program.nutrition_reminder && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#d1f2eb',
+              border: '1px solid #a8e6cf',
+              borderRadius: '8px'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#0e6655', fontWeight: '600' }}>
+                🥗 Nutrition Reminder
+              </h3>
+              <p style={{ margin: 0, fontSize: '13px', color: '#0e6655', lineHeight: '1.6', textAlign: 'left' }}>
+                {program.nutrition_reminder}
+              </p>
+            </div>
+          )}
 
-      {/* Footer Note */}
-      <div style={{
-        padding: '0.75rem',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '6px',
-        fontSize: '12px',
-        color: '#7f8c8d',
-        textAlign: 'center'
-      }}>
-        💡 This program is optimized for your race goals, current fitness, and weekly schedule.
-        Adjust as needed based on how you feel!
+          {/* Injury Prevention Note */}
+          {program.injury_prevention_note && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#fce4ec',
+              border: '1px solid #f8bbd0',
+              borderRadius: '8px'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#c2185b', fontWeight: '600' }}>
+                🏥 Injury Prevention
+              </h3>
+              <p style={{ margin: 0, fontSize: '13px', color: '#c2185b', lineHeight: '1.6', textAlign: 'left' }}>
+                {program.injury_prevention_note}
+              </p>
+            </div>
+          )}
+
+          {/* Helper Note */}
+          <div style={{
+            padding: '0.75rem',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '6px',
+            fontSize: '12px',
+            color: '#7f8c8d',
+            textAlign: 'left',
+            lineHeight: '1.5'
+          }}>
+            💡 This program is optimized for your race goals, current fitness, and weekly schedule. Adjust as needed based on how you feel!
+          </div>
+        </div>
       </div>
     </div>
   );
