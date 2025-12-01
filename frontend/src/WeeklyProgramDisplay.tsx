@@ -276,7 +276,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         border: '1px solid #e1e8ed'
       }}>
         <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '15px', color: '#2c3e50' }}>
-          ⚡ This Week at a Glance
+          This Week at a Glance
         </h3>
         <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#555', textAlign: 'left' }}>
           {program.week_summary}
@@ -340,7 +340,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
           marginBottom: '1rem'
         }}>
           <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '13px', color: '#856404' }}>
-            ⭐ Key Workouts This Week:
+            Key Workouts This Week:
           </h3>
           <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#856404', textAlign: 'left' }}>
             {program.key_workouts_this_week.map((workout, index) => (
