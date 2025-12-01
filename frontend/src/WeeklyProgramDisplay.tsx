@@ -235,7 +235,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         border: '1px solid #e1e8ed'
       }}>
         <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '15px', color: '#2c3e50' }}>
-          📋 Week Overview
+          ⚡ This Week at a Glance
         </h3>
         <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#555', textAlign: 'left' }}>
           {program.week_summary}

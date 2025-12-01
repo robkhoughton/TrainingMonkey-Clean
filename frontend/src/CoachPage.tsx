@@ -939,106 +939,12 @@ const CoachPage: React.FC = () => {
       ============================================================ */}
       {activeSubTab === 'workout' && (
         <>
-          {/* Card 1: This Week at a Glance */}
-          {weeklyProgram && (
-            <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem' }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                marginBottom: '1rem'
-              }}>
-                <h2 style={{
-                  fontSize: '22px',
-                  fontWeight: '700',
-                  color: '#2c3e50',
-                  margin: 0
-                }}>
-                  ⚡ This Week at a Glance
-                </h2>
-                {trainingStage?.stage && (
-                  <div style={{
-                    padding: '6px 12px',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    textTransform: 'uppercase'
-                  }}>
-                    {trainingStage.stage}
-                  </div>
-                )}
-              </div>
-
-              {/* Week Summary */}
-              <p style={{
-                fontSize: '15px',
-                lineHeight: '1.6',
-                color: '#374151',
-                marginBottom: '1rem'
-              }}>
-                {weeklyProgram.week_summary}
-              </p>
-
-              {/* Key Workouts */}
-              <div style={{ marginBottom: '1rem' }}>
-                <h3 style={{
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#1e293b',
-                  marginBottom: '0.5rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em'
-                }}>
-                  🔑 Key Workouts
-                </h3>
-                <ul style={{
-                  margin: 0,
-                  paddingLeft: '1.5rem',
-                  fontSize: '14px',
-                  lineHeight: '1.8'
-                }}>
-                  {weeklyProgram.key_workouts_this_week?.map((workout, idx) => (
-                    <li key={idx} style={{ color: '#374151' }}>{workout}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Predicted Impact */}
-              <div style={{
-                display: 'flex',
-                gap: '1rem',
-                padding: '0.75rem',
-                backgroundColor: '#f8f9fa',
-                borderRadius: '6px'
-              }}>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>TOTAL MILES</div>
-                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{weeklyProgram.predicted_metrics?.total_weekly_miles || 'N/A'}</div>
-                </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>PREDICTED ACWR</div>
-                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{weeklyProgram.predicted_metrics?.acwr_estimate?.toFixed(2) || 'N/A'}</div>
-                </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>DIVERGENCE</div>
-                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
-                    {weeklyProgram.predicted_metrics?.divergence_estimate !== undefined 
-                      ? (weeklyProgram.predicted_metrics.divergence_estimate >= 0 ? '+' : '') + weeklyProgram.predicted_metrics.divergence_estimate.toFixed(2)
-                      : 'N/A'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Card 2: 7-Day Workout Plan */}
+          {/* 7-Day Workout Plan */}
           <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem' }}>
             <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
           </div>
 
-          {/* Card 3: Strategic Analysis & Context - Enhanced with collapsible sections */}
+          {/* Strategic Analysis & Context - Enhanced with collapsible sections */}
           {weeklyProgram?.strategic_context && (
             <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
           )}

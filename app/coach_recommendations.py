@@ -287,7 +287,7 @@ def get_recent_autopsy_insights(user_id: int, days: int = 7) -> Optional[Dict]:
     """Fetch recent autopsy analyses for learning integration."""
     query = """
         SELECT alignment_score, autopsy_analysis, date
-        FROM journal_entries
+        FROM ai_autopsies
         WHERE user_id = %s
         AND date >= CURRENT_DATE - INTERVAL '%s days'
         AND alignment_score IS NOT NULL
