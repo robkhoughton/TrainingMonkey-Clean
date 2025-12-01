@@ -342,8 +342,30 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 </div>
               )}
 
-              {/* Workout Header: Icon, Type, Intensity, Duration */}
+              {/* Workout Header: Day, Icon, Type, Intensity, Duration */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                {/* Day of Week and Date */}
+                <div style={{ 
+                  minWidth: '70px',
+                  textAlign: 'left'
+                }}>
+                  <div style={{
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    color: '#2c3e50',
+                    lineHeight: '1.2'
+                  }}>
+                    {workout.day}
+                  </div>
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#7f8c8d',
+                    lineHeight: '1.2'
+                  }}>
+                    {formatDate(workout.date)}
+                  </div>
+                </div>
+                
                 <div style={{ fontSize: '28px' }}>
                   {getWorkoutTypeIcon(workout.workout_type)}
                 </div>
