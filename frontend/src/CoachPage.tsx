@@ -22,6 +22,9 @@ interface StrategicContextProps {
 const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicContext }) => {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
+  // Debug: log the strategic context to see what we're receiving
+  console.log('Strategic Context Data:', strategicContext);
+
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
