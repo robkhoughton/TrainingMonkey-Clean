@@ -289,6 +289,14 @@ const CoachPage: React.FC = () => {
   // Secondary navigation state
   const [activeSubTab, setActiveSubTab] = useState<'workout' | 'goals' | 'history' | 'schedule'>('workout');
 
+  // Schedule review state
+  const [scheduleReviewStatus, setScheduleReviewStatus] = useState<{
+    needs_review: boolean;
+    week_start: string;
+    is_sunday: boolean;
+  } | null>(null);
+  const [showScheduleReviewBanner, setShowScheduleReviewBanner] = useState<boolean>(false);
+
   // ============================================================================
   // DATA FETCHING
   // ============================================================================

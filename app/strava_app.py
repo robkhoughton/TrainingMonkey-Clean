@@ -11121,6 +11121,26 @@ def save_training_schedule():
         
         logger.info(f"Successfully saved training schedule for user {user_id}")
         
+        # Mark schedule as reviewed for upcoming week if this is a Sunday update
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        if today.weekday() == 6:  # Sunday
+            # Calculate next Monday
+            days_until_monday = 1
+            next_monday = today + timedelta(days=days_until_monday)
+            
+            db_utils.execute_query(
+                """
+                UPDATE user_settings
+                SET schedule_review_week_start = %s,
+                    schedule_review_status = 'updated',
+                    schedule_review_timestamp = NOW()
+                WHERE id = %s
+                """,
+                (next_monday, user_id)
+            )
+            logger.info(f"Marked schedule as reviewed for week of {next_monday}")
+        
         return jsonify({
             'success': True,
             'message': 'Training schedule saved successfully'
@@ -11132,6 +11152,160 @@ def save_training_schedule():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/coach/schedule-review-status', methods=['GET'])
+@login_required
+def get_schedule_review_status():
+    """
+    Check if user needs to review their schedule for upcoming week.
+    Returns: { needs_review: bool, week_start: date, current_status: str }
+    """
+    try:
+        user_id = current_user.id
+        from datetime import datetime, timedelta
+        
+        today = datetime.now().date()
+        day_of_week = today.weekday()
+        
+        # Calculate next Monday
+        days_until_monday = (7 - day_of_week) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        next_monday = today + timedelta(days=days_until_monday)
+        
+        # Check review status
+        result = db_utils.execute_query(
+            """
+            SELECT schedule_review_week_start, schedule_review_status, schedule_review_timestamp
+            FROM user_settings
+            WHERE id = %s
+            """,
+            (user_id,),
+            fetch=True
+        )
+        
+        if not result:
+            return jsonify({'error': 'User not found'}), 404
+        
+        row = dict(result[0])
+        reviewed_week = row.get('schedule_review_week_start')
+        status = row.get('schedule_review_status', 'pending')
+        
+        # Needs review if:
+        # 1. It's Sunday (day 6)
+        # 2. AND (no review recorded OR review is for a different week OR status is pending)
+        needs_review = (
+            day_of_week == 6 and 
+            (reviewed_week != next_monday or status == 'pending')
+        )
+        
+        return jsonify({
+            'success': True,
+            'needs_review': needs_review,
+            'week_start': next_monday.isoformat(),
+            'current_status': status,
+            'is_sunday': day_of_week == 6
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking schedule review status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/schedule-review-accept', methods=['POST'])
+@login_required
+def accept_current_schedule():
+    """
+    User accepts current schedule for upcoming week (no changes needed).
+    """
+    try:
+        user_id = current_user.id
+        from datetime import datetime, timedelta
+        
+        today = datetime.now().date()
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        next_monday = today + timedelta(days=days_until_monday)
+        
+        db_utils.execute_query(
+            """
+            UPDATE user_settings
+            SET schedule_review_week_start = %s,
+                schedule_review_status = 'accepted',
+                schedule_review_timestamp = NOW()
+            WHERE id = %s
+            """,
+            (next_monday, user_id)
+        )
+        
+        logger.info(f"User {user_id} accepted current schedule for week of {next_monday}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Schedule accepted for next week'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error accepting schedule: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _validate_training_schedule(schedule: dict) -> tuple:
+    """
+    Validate training schedule JSON structure
+    
+    Args:
+        schedule: Training schedule dictionary
+        
+    Returns:
+        (is_valid, error_message) - error_message is None if valid
+    """
+    # Check required keys
+    required_keys = ['available_days', 'time_blocks', 'constraints']
+    for key in required_keys:
+        if key not in schedule:
+            return False, f"Missing required field: {key}"
+    
+    # Validate available_days
+    available_days = schedule['available_days']
+    if not isinstance(available_days, list):
+        return False, "available_days must be an array"
+    
+    valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in available_days:
+        if not isinstance(day, str):
+            return False, "available_days must contain strings"
+        if day.lower() not in valid_days:
+            return False, f"Invalid day name: {day}. Must be one of: {', '.join(valid_days)}"
+    
+    if len(available_days) == 0:
+        return False, "At least one day must be available"
+    
+    # Validate time_blocks
+    time_blocks = schedule['time_blocks']
+    if not isinstance(time_blocks, dict):
+        return False, "time_blocks must be an object"
+    
+    valid_time_blocks = ['morning', 'midday', 'evening', 'night']
+    for day, blocks in time_blocks.items():
+        if day.lower() not in valid_days:
+            return False, f"Invalid day in time_blocks: {day}"
+        if not isinstance(blocks, list):
+            return False, f"time_blocks for {day} must be an array"
+        for block in blocks:
+            if not isinstance(block, str):
+                return False, f"time_blocks for {day} must contain strings"
+            if block.lower() not in valid_time_blocks:
+                return False, f"Invalid time block '{block}' for {day}. Must be one of: {', '.join(valid_time_blocks)}"
+    
+    # Validate constraints
+    constraints = schedule['constraints']
+    if not isinstance(constraints, list):
+        return False, "constraints must be an array"
+    
+    return True, None
 
 
 def _calculate_training_stage(a_race_date: date, current_date: date) -> dict:
