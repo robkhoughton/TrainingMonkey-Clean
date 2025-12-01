@@ -609,10 +609,22 @@ def parse_weekly_program_response(response_text: str) -> Dict:
         if 'strategic_context' not in program:
             logger.warning("No strategic_context in response, using defaults")
             program['strategic_context'] = {
-                'weekly_focus': "Focus on consistent training and progressive overload aligned with your training stage.",
-                'load_management_strategy': "Manage ACWR within optimal ranges (0.8-1.3) to balance adaptation with injury prevention.",
-                'pattern_insights': "Continue monitoring energy levels and recovery indicators through daily journal observations."
+                'race_context_periodization': "Continue training aligned with your current training stage and race timeline. Focus on progressive development appropriate for your phase.",
+                'load_management_pattern_analysis': "Manage ACWR within optimal ranges (0.8-1.3) to balance adaptation with injury prevention. Monitor training response patterns through daily observations.",
+                'strategic_rationale': "Apply evidence-based training principles from the Training Reference Guide to build fitness systematically while managing fatigue and injury risk."
             }
+        
+        # Handle legacy field names (convert old format to new format)
+        if 'strategic_context' in program:
+            sc = program['strategic_context']
+            # If old field names exist, map them to new names
+            if 'weekly_focus' in sc and 'race_context_periodization' not in sc:
+                logger.warning("Converting legacy strategic_context field names to new format")
+                program['strategic_context'] = {
+                    'race_context_periodization': sc.get('weekly_focus', ''),
+                    'load_management_pattern_analysis': sc.get('load_management_strategy', ''),
+                    'strategic_rationale': sc.get('pattern_insights', '')
+                }
         
         logger.info("Successfully parsed weekly program JSON")
         return program
