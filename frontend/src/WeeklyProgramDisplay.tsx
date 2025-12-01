@@ -438,7 +438,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                     color: '#2c3e50',
                     lineHeight: '1.2'
                   }}>
-                    {workout.day}
+                    {new Date(workout.date).toLocaleDateString('en-US', { weekday: 'long' })}
                   </div>
                   <div style={{
                     fontSize: '12px',
