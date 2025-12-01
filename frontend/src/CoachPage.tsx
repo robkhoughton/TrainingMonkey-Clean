@@ -866,10 +866,7 @@ const CoachPage: React.FC = () => {
           <div className={styles.card} style={{ 
             marginBottom: '0 !important', // Override CSS class default margin
             padding: '1rem 1.25rem',
-            background: trainingStage?.stage ? getPhaseColor(trainingStage.stage) : 
-                        daysToRace <= 14 ? 'linear-gradient(135deg, #A88F9A 0%, #4A2F3A 100%)' : // Navy with warm hint for urgent
-                        daysToRace <= 30 ? 'linear-gradient(135deg, #9A8FA8 0%, #3A2F4A 100%)' : // Navy with purple hint for approaching
-                        'linear-gradient(135deg, #7D9CB8 0%, #1B2E4B 100%)', // Default navy
+            background: 'linear-gradient(90deg, #1B2E4B 0%, #7D9CB8 50%, #E6F0FF 100%)', // Inverted YTM banner gradient (dark to light)
             color: 'white',
             display: 'flex',
             alignItems: 'center'
