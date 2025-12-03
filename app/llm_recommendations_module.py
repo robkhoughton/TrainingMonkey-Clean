@@ -1077,22 +1077,33 @@ def parse_llm_response(response_text):
     logger.info(f"Parsing response of length {len(cleaned_response)}")
     logger.info(f"Response preview: {cleaned_response[:200]}...")
 
-    # FIXED: Handle the actual format Claude is using based on database evidence
-    # Database shows Claude is using **DAILY RECOMMENDATION:** format, not ## headers
+    # Try multiple formats in order of preference (most specific to most general)
+    # Format 1: Plain text headers (DAILY RECOMMENDATION on its own line)
+    daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s*\n+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
+                            cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
-    # Method 1: Look for **DAILY RECOMMENDATION:** format (current Claude format)
-    daily_match = re.search(r'\*\*DAILY\s+RECOMMENDATION:\*\*\s*(.*?)(?=\*\*WEEKLY|\*\*PATTERN|$)',
-                            cleaned_response, re.DOTALL | re.IGNORECASE)
+    weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s*\n+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
+                             cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
-    weekly_match = re.search(r'\*\*WEEKLY\s+(?:PLANNING|RECOMMENDATION):\*\*\s*(.*?)(?=\*\*PATTERN|$)',
-                             cleaned_response, re.DOTALL | re.IGNORECASE)
+    insights_match = re.search(r'^PATTERN\s+INSIGHTS\s*\n+(.*?)$',
+                               cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
-    insights_match = re.search(r'\*\*PATTERN\s+INSIGHTS:\*\*\s*(.*?)$',
-                               cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    # Method 2: Try ## headers (fallback for compatibility)
+    # Format 2: Bold headers with colons (**DAILY RECOMMENDATION:**)
     if not daily_match:
-        daily_match = re.search(r'##\s*DAILY\s+RECOMMENDATION:?\s*(.*?)(?=##\s*WEEKLY|$)',
+        daily_match = re.search(r'\*\*DAILY\s+RECOMMENDATION:?\*\*\s*(.*?)(?=\*\*WEEKLY|\*\*PATTERN|$)',
+                                cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    if not weekly_match:
+        weekly_match = re.search(r'\*\*WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\*\*\s*(.*?)(?=\*\*PATTERN|$)',
+                                 cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    if not insights_match:
+        insights_match = re.search(r'\*\*PATTERN\s+INSIGHTS:?\*\*\s*(.*?)$',
+                                   cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    # Format 3: Markdown headers with ## (## DAILY RECOMMENDATION)
+    if not daily_match:
+        daily_match = re.search(r'##\s*DAILY\s+RECOMMENDATION:?\s*(.*?)(?=##\s*WEEKLY|##\s*PATTERN|$)',
                                 cleaned_response, re.DOTALL | re.IGNORECASE)
 
     if not weekly_match:
@@ -1103,18 +1114,41 @@ def parse_llm_response(response_text):
         insights_match = re.search(r'##\s*PATTERN\s+INSIGHTS:?\s*(.*?)$',
                                    cleaned_response, re.DOTALL | re.IGNORECASE)
 
-    # Extract matched sections
+    # Format 4: Markdown headers with # (# DAILY RECOMMENDATION) - what Claude actually returned
+    if not daily_match:
+        daily_match = re.search(r'#\s+DAILY\s+RECOMMENDATION\s*\n+(.*?)(?=#\s+WEEKLY|#\s+PATTERN|$)',
+                                cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    if not weekly_match:
+        weekly_match = re.search(r'#\s+WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s*\n+(.*?)(?=#\s+PATTERN|$)',
+                                 cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    if not insights_match:
+        insights_match = re.search(r'#\s+PATTERN\s+INSIGHTS\s*\n+(.*?)$',
+                                   cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    # Extract matched sections and log which format was used
+    format_used = "unknown"
     if daily_match:
         sections['daily_recommendation'] = daily_match.group(1).strip()
-        logger.info(f"Found daily section: {len(sections['daily_recommendation'])} chars")
+        # Determine which format matched by checking the pattern
+        if re.search(r'^DAILY\s+RECOMMENDATION\s*\n', cleaned_response, re.MULTILINE | re.IGNORECASE):
+            format_used = "plain_text_headers"
+        elif re.search(r'\*\*DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
+            format_used = "bold_headers"
+        elif re.search(r'##\s*DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
+            format_used = "markdown_headers_double"
+        elif re.search(r'#\s+DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
+            format_used = "markdown_headers_single"
+        logger.info(f"✅ Found daily section ({format_used}): {len(sections['daily_recommendation'])} chars")
 
     if weekly_match:
         sections['weekly_recommendation'] = weekly_match.group(1).strip()
-        logger.info(f"Found weekly section: {len(sections['weekly_recommendation'])} chars")
+        logger.info(f"✅ Found weekly section: {len(sections['weekly_recommendation'])} chars")
 
     if insights_match:
         sections['pattern_insights'] = insights_match.group(1).strip()
-        logger.info(f"Found insights section: {len(sections['pattern_insights'])} chars")
+        logger.info(f"✅ Found insights section: {len(sections['pattern_insights'])} chars")
 
     # CRITICAL FIX: Based on database evidence, Claude is returning single consolidated responses
     # If no separate sections found, use the entire response as daily recommendation
@@ -1137,6 +1171,9 @@ def parse_llm_response(response_text):
     for key in sections:
         if sections[key]:
             sections[key] = process_markdown(sections[key])
+            # Remove excessive blank lines (more than one consecutive newline)
+            sections[key] = re.sub(r'\n{3,}', '\n\n', sections[key])  # 3+ newlines → 2 newlines
+            sections[key] = sections[key].strip()
 
     # Final validation and logging
     logger.info("FINAL PARSED SECTIONS:")
@@ -1597,11 +1634,13 @@ def get_recent_autopsy_insights(user_id, days=3):
             if autopsy['alignment_score']:
                 alignment_scores.append(autopsy['alignment_score'])
 
-            # Extract learning insights section
+            # Extract learning insights section - capture more for critical cases
             analysis = autopsy['autopsy_analysis'] or ""
             if "LEARNING INSIGHTS" in analysis.upper():
                 insights_section = analysis.split("LEARNING INSIGHTS")[-1]
-                key_insights.append(insights_section[:200])  # First 200 chars
+                # For low alignment scores (<4), capture more context for critical guidance (injury, medical issues)
+                char_limit = 500 if autopsy.get('alignment_score', 10) < 4 else 300
+                key_insights.append(insights_section[:char_limit])
 
         avg_alignment = sum(alignment_scores) / len(alignment_scores) if alignment_scores else 5
 
@@ -1614,6 +1653,49 @@ def get_recent_autopsy_insights(user_id, days=3):
 
     except Exception as e:
         logger.error(f"Error getting recent autopsy insights: {str(e)}")
+        return None
+
+
+def get_recent_journal_notes(user_id, days=3):
+    """
+    Get recent journal notes to provide context for recommendation generation.
+    Notes may contain critical information about injury status, medical constraints,
+    or reasons for deviating from prescriptions.
+    """
+    try:
+        cutoff_date = (get_app_current_date() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        recent_notes = execute_query(
+            """
+            SELECT date, notes, energy_level, rpe_score, pain_percentage
+            FROM journal_entries
+            WHERE user_id = %s AND date >= %s AND notes IS NOT NULL AND notes != ''
+            ORDER BY date DESC
+            LIMIT 5
+            """,
+            (user_id, cutoff_date),
+            fetch=True
+        )
+
+        if not recent_notes:
+            return None
+
+        # Format notes for prompt inclusion
+        formatted_notes = []
+        for row in recent_notes:
+            note_data = dict(row)
+            date_str = note_data['date'].strftime('%Y-%m-%d') if hasattr(note_data['date'], 'strftime') else str(note_data['date'])
+            notes_text = note_data['notes']
+            energy = note_data.get('energy_level', '-')
+            rpe = note_data.get('rpe_score', '-')
+            pain = note_data.get('pain_percentage', '-')
+
+            formatted_notes.append(f"  {date_str}: Energy {energy}/5, RPE {rpe}/10, Pain {pain}%\n  Notes: {notes_text}")
+
+        return "\n\n".join(formatted_notes)
+
+    except Exception as e:
+        logger.error(f"Error getting recent journal notes: {str(e)}")
         return None
 
 
@@ -1664,26 +1746,6 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None):
     except Exception as e:
         logger.error(f"Error generating autopsy-informed decision: {str(e)}")
         return None
-
-
-def get_user_coaching_spectrum(user_id):
-    """NEW FUNCTION: Helper function to get user's coaching spectrum preference"""
-    try:
-        # Use execute_query (already imported) instead of db.execute
-        result = execute_query("""
-            SELECT coaching_style_spectrum 
-            FROM user_settings 
-            WHERE id = %s
-        """, (user_id,), fetch=True)
-
-        if result and len(result) > 0:
-            return result[0]['coaching_style_spectrum']
-        else:
-            return 50  # Default to supportive
-
-    except Exception as e:
-        logger.error(f"Error fetching coaching spectrum for user {user_id}: {str(e)}")
-        return 50  # Default to supportive
 
 
 def create_autopsy_prompt_with_coaching_style(date_str, prescribed_action, actual_activities,
@@ -1809,6 +1871,18 @@ Otherwise, provide tactical execution guidance for the planned workout."""
         logger.warning(f"Could not fetch weekly program context: {str(e)}")
         weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
 
+    # Get recent journal notes for additional context (may contain injury/medical info)
+    recent_notes = get_recent_journal_notes(user_id, days=3)
+    notes_context = ""
+    if recent_notes:
+        notes_context = f"""
+RECENT JOURNAL NOTES (Last 3 Days):
+{recent_notes}
+
+CRITICAL: If notes mention injury, pain, rehabilitation, medical issues, or reasons for
+deviating from prescription, these override normal training progression logic.
+"""
+
     autopsy_context = ""
     if autopsy_insights:
         alignment_trend = autopsy_insights.get('alignment_trend', [])
@@ -1819,12 +1893,19 @@ Otherwise, provide tactical execution guidance for the planned workout."""
 RECENT AUTOPSY LEARNING ({autopsy_insights['count']} analyses):
 - Average Alignment Score: {autopsy_insights['avg_alignment']}/10
 - Alignment Trend: {trend_description} ({alignment_trend})
-- Key Learning: {autopsy_insights['latest_insights'][:150] if autopsy_insights['latest_insights'] else 'No specific insights'}
+- Key Learning: {autopsy_insights['latest_insights'] if autopsy_insights['latest_insights'] else 'No specific insights'}
 
-COACHING ADAPTATION STRATEGY:
-- If alignment >7: Build on successful patterns, athlete follows guidance well
-- If alignment 4-7: Address recurring deviations, simplify recommendations
-- If alignment <4: Major strategy change needed, focus on compliance over optimization
+AUTOPSY-INFORMED ADAPTATION (CRITICAL):
+- The autopsy analysis above identifies the ROOT CAUSE of alignment mismatches
+- If alignment <4: The autopsy contains SPECIFIC STRATEGY CHANGES needed - READ IT CAREFULLY
+- Common root causes and correct coaching responses:
+  * INJURY/PAIN mentioned in autopsy or notes → OVERRIDE ACWR logic, prescribe rehabilitation protocol
+  * User notes indicate medical constraints → HONOR those constraints, do not push volume
+  * Non-compliance pattern → Simplify guidance for better adherence
+  * External constraints (time, access) → Adjust for athlete's reality
+- DO NOT assume low alignment = simplification needed
+- APPLY THE AUTOPSY'S SPECIFIC RECOMMENDATIONS, not generic defaults
+- When injury/medical issues present: Current metrics (ACWR, divergence) are SECONDARY to safe recovery
 """
     else:
         autopsy_context = """
@@ -1853,6 +1934,8 @@ CURRENT METRICS:
 
 {weekly_program_context}
 
+{notes_context}
+
 {autopsy_context}
 
 ### TRAINING REFERENCE FRAMEWORK
@@ -1862,21 +1945,32 @@ INSTRUCTIONS:
 Using the Training Reference Framework above, provide a complete training analysis with three sections that demonstrates learning from recent autopsy patterns.
 Adapt your coaching approach based on the athlete's demonstrated preferences, adherence patterns, and risk tolerance.
 
-ADAPTIVE COACHING LOGIC:
-- High recent alignment: Reinforce successful approaches, maintain recommendation style
-- Mixed alignment: Address specific recurring deviations, provide clearer guidance
-- Low alignment: Simplify recommendations, focus on achievable targets over optimization
-- Always respect the athlete's personalized risk tolerance thresholds listed above
+CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
+1. INJURY/MEDICAL STATUS (from autopsy or notes) - HIGHEST PRIORITY
+   - If injury/pain/rehabilitation mentioned → Conservative protocol overrides all other metrics
+   - Ignore ACWR optimization when injury present
+2. AUTOPSY-SPECIFIC GUIDANCE (from Key Learning above)
+   - Apply the exact strategy changes recommended in autopsy analysis
+   - Don't assume low alignment = simplify; read what autopsy actually says
+3. CURRENT METRICS (ACWR, divergence, days since rest)
+   - Only apply normal training progression if no injury/medical issues present
+4. ATHLETE RISK TOLERANCE
+   - Respect personalized thresholds, but medical safety always trumps risk tolerance
 
-REQUIRED OUTPUT FORMAT:
+REQUIRED OUTPUT FORMAT (CRITICAL - FOLLOW EXACTLY):
 
-**DAILY RECOMMENDATION:**
+Your response must have exactly three sections with these headers on their own lines:
+
+DAILY RECOMMENDATION
+
 [Provide tomorrow's specific workout recommendation. Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression) from the Training Reference Framework. Use the athlete's personalized thresholds, not standard ranges. Assessment paragraph + workout details + monitoring guidance. 150-200 words]
 
-**WEEKLY PLANNING:**
+WEEKLY PLANNING
+
 [Provide weekly strategy analysis: address current ACWR trend, recovery cycle, upcoming week structure. Reference autopsy learning patterns and apply weekly planning priorities from the guide. Adjust recommendations to match the athlete's {recommendation_style} risk tolerance. 100-150 words]
 
-**PATTERN INSIGHTS:**
+PATTERN INSIGHTS
+
 [Identify 2-3 key observations from recent training patterns and autopsy analyses using the pattern recognition framework. Interpret metrics relative to this athlete's personalized thresholds. What's working well? What needs attention? Forward-looking insights. 75-100 words]
 
 CRITICAL REQUIREMENTS:
@@ -1885,6 +1979,8 @@ CRITICAL REQUIREMENTS:
 - Keep each section focused and actionable
 - Reference specific numbers from the metrics
 - Write naturally and concisely
+- Use COMPACT FORMATTING: Single line breaks between paragraphs, no excessive whitespace
+- Avoid markdown formatting (no #, ##, or **bold**) - use plain text only
 - Focus on actionable guidance that demonstrates learning from recent patterns
 - ENSURE consistency with Coach page weekly plan (if provided) or explain deviations based on metrics
 """

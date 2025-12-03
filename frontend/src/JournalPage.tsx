@@ -37,6 +37,114 @@ interface JournalResponse {
   error?: string;
 }
 
+// Function to format training decision text with styled components
+const formatTrainingDecision = (text: string): React.ReactNode => {
+  if (!text || text === 'No AI recommendation available') {
+    return <span style={{ fontStyle: 'italic', color: '#6b7280' }}>{text}</span>;
+  }
+
+  // Split by lines and process each
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  
+  lines.forEach((line, index) => {
+    const trimmedLine = line.trim();
+    
+    // Skip empty lines
+    if (!trimmedLine) {
+      elements.push(<br key={`br-${index}`} />);
+      return;
+    }
+    
+    // Check for headers (##)
+    if (trimmedLine.startsWith('##')) {
+      const headerText = trimmedLine.replace(/^##+\s*/, '');
+      elements.push(
+        <h3 key={`h3-${index}`} style={{
+          fontSize: '1rem',
+          fontWeight: '700',
+          color: '#1e293b',
+          marginTop: index > 0 ? '1rem' : '0',
+          marginBottom: '0.5rem',
+          paddingBottom: '0.25rem',
+          borderBottom: '2px solid #e2e8f0'
+        }}>
+          {formatBoldText(headerText)}
+        </h3>
+      );
+      return;
+    }
+    
+    // Check for main headers (#)
+    if (trimmedLine.startsWith('# ')) {
+      const headerText = trimmedLine.replace(/^#+\s*/, '');
+      elements.push(
+        <h2 key={`h2-${index}`} style={{
+          fontSize: '1.1rem',
+          fontWeight: '700',
+          color: '#1e293b',
+          marginTop: index > 0 ? '1.25rem' : '0',
+          marginBottom: '0.75rem',
+          paddingBottom: '0.5rem',
+          borderBottom: '3px solid #3b82f6'
+        }}>
+          {formatBoldText(headerText)}
+        </h2>
+      );
+      return;
+    }
+    
+    // Regular paragraph
+    const paragraph = (
+      <p key={`p-${index}`} style={{
+        margin: '0.5rem 0',
+        lineHeight: '1.6',
+        color: '#374151'
+      }}>
+        {formatBoldText(trimmedLine)}
+      </p>
+    );
+    elements.push(paragraph);
+  });
+  
+  return <div>{elements}</div>;
+};
+
+// Helper function to format bold text (**text**)
+const formatBoldText = (text: string): React.ReactNode => {
+  const parts: React.ReactNode[] = [];
+  const boldRegex = /\*\*(.*?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  
+  while ((match = boldRegex.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    
+    // Add bold text
+    parts.push(
+      <strong key={`bold-${key++}`} style={{
+        fontWeight: '700',
+        color: '#1e293b'
+      }}>
+        {match[1]}
+      </strong>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  
+  return parts.length > 0 ? <>{parts}</> : text;
+};
+
 const JournalPage: React.FC = () => {
   // Performance monitoring
   usePagePerformanceMonitoring('journal');
@@ -499,15 +607,14 @@ const JournalPage: React.FC = () => {
                               </span>
                             </div>
                             <div style={{
-                              fontSize: '0.85rem',
-                              lineHeight: '1.45',
+                              fontSize: '0.9rem',
+                              lineHeight: '1.7',
                               color: '#374151',
-                              whiteSpace: 'pre-wrap',
                               textAlign: 'left',
                               maxHeight: '400px',
                               overflowY: 'auto'
                             }}>
-                              {entry.todays_decision}
+                              {formatTrainingDecision(entry.todays_decision)}
                             </div>
                           </div>
                         ) : (
@@ -587,13 +694,13 @@ const JournalPage: React.FC = () => {
                         }}>
                           <div style={{
                             fontSize: '0.875rem',
-                            lineHeight: '1.4',
+                            lineHeight: '1.6',
                             maxHeight: '120px',
                             overflowY: 'auto',
                             color: '#374151',
                             textAlign: 'left'
                           }}>
-                            {entry.todays_decision || 'No AI recommendation available'}
+                            {formatTrainingDecision(entry.todays_decision || 'No AI recommendation available')}
                           </div>
                         </div>
                       </td>
@@ -779,8 +886,21 @@ const JournalPage: React.FC = () => {
                         const isRestDay = !entry.activity_summary || entry.activity_summary.type === 'rest';
                         const isToday = entry.is_today;
 
-                        // NEW: State 0 - Today with no activity, show "Mark as Rest Day" button
-                        if (isToday && isRestDay && !isSaved) {
+                        // State 1: Unsaved changes - Show Save button (CHECK THIS FIRST)
+                        if (hasUnsaved || (!isSaved && !isCurrentlySaving)) {
+                          return (
+                            <button
+                              onClick={() => handleSave(entry.date)}
+                              disabled={isCurrentlySaving}
+                              className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
+                            >
+                              {isCurrentlySaving ? '💾 Saving...' : '💾 Save'}
+                            </button>
+                          );
+                        }
+
+                        // State 0: Today with no activity and NO observations, show "Mark as Rest Day" button
+                        if (isToday && isRestDay && !isSaved && !hasUnsaved) {
                           return (
                             <button
                               onClick={() => handleMarkRestDay(entry.date)}
@@ -793,19 +913,6 @@ const JournalPage: React.FC = () => {
                               }}
                             >
                               {isCurrentlySaving ? '🛌 Marking...' : '🛌 Mark as Rest Day'}
-                            </button>
-                          );
-                        }
-
-                        // State 1: Unsaved changes - Show Save button
-                        if (hasUnsaved || (!isSaved && !isCurrentlySaving)) {
-                          return (
-                            <button
-                              onClick={() => handleSave(entry.date)}
-                              disabled={isCurrentlySaving}
-                              className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
-                            >
-                              {isCurrentlySaving ? '💾 Saving...' : '💾 Save'}
                             </button>
                           );
                         }
@@ -1048,7 +1155,7 @@ const JournalPage: React.FC = () => {
                             margin: '0 0 1.2em 0',
                             fontWeight: '400'
                           }}>
-                            {para}
+                            {formatBoldText(para)}
                           </p>
                         );
                       })}
@@ -1100,7 +1207,7 @@ const JournalPage: React.FC = () => {
                             margin: '0 0 1.2em 0',
                             fontWeight: '400'
                           }}>
-                            {para}
+                            {formatBoldText(para)}
                           </p>
                         );
                       })}
