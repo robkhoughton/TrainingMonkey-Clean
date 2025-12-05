@@ -2,7 +2,7 @@
 
 {% block title %}Guide - Your Training Monkey{% endblock %}
 
-{% block meta_description %}Master Your Training Monkey with comprehensive tutorials, advanced features, and expert tips. Learn to optimize your training load analysis and prevent injuries.{% endblock %}
+{% block meta_description %}Master Your Training Monkey with comprehensive tutorials, advanced features, and expert tips. Learn to optimize your training and prevent injuries.{% endblock %}
 
 {% block meta_keywords %}training monkey tutorials, advanced features, training optimization, injury prevention, training load analysis, expert tips{% endblock %}
 
@@ -15,10 +15,78 @@
 {% block header_title %}
 <h1>Guide</h1>
 <p class="subtitle">Master advanced features and unlock your full training potential</p>
-<p class="description">Discover comprehensive tutorials, expert tips, and advanced techniques to optimize your training load analysis and prevent injuries.</p>
+<p class="description">Discover comprehensive tutorials, expert tips, and advanced techniques to optimize your training and prevent injuries.</p>
 {% endblock %}
 
 {% block content %}
+        <!-- Training Cycle Overview -->
+        <section class="setup-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 3rem 2rem; border-radius: 12px; margin-bottom: 2rem;">
+            <h2 style="color: white; text-align: center; margin-bottom: 1rem;">The Training Cycle:</h2>
+            <p style="text-align: center; font-size: 1.1rem; margin-bottom: 3rem; opacity: 0.95;">How Your Training Monkey works to optimize your training and prevent injuries</p>
+            
+            <!-- Circular Training Cycle -->
+            <div style="position: relative; width: 380px; height: 380px; margin: 0 auto; max-width: 90vw; max-height: 90vw;">
+                <!-- Circular Path with Arrowheads -->
+                <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
+                    <defs>
+                        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                            <polygon points="0 0, 10 3, 0 6" fill="rgba(255, 255, 255, 0.6)" />
+                        </marker>
+                    </defs>
+                    <!-- Circle with arrowheads -->
+                    <circle cx="190" cy="190" r="130" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="2" marker-mid="url(#arrowhead)"/>
+                    <!-- Arrow markers at cardinal points -->
+                    <path d="M 190 60 L 197 67" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Top right -->
+                    <path d="M 320 190 L 313 197" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Right down -->
+                    <path d="M 190 320 L 183 313" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Bottom left -->
+                    <path d="M 60 190 L 67 183" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Left up -->
+                </svg>
+                
+                <!-- Step 1: Train (Top) -->
+                <div style="position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Train (record)</h3>
+                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Complete your workout on Strava</p>
+                </div>
+                
+                <!-- Step 2: Monitor (Right) -->
+                <div style="position: absolute; top: 50%; right: 0; transform: translate(50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Monitor (past)</h3>
+                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Check <a href="/dashboard" style="color: white; text-decoration: underline;">Dashboard</a> for your current training status</p>
+                </div>
+                
+                <!-- Step 3: Journal (Bottom) -->
+                <div style="position: absolute; bottom: 0; left: 50%; transform: translate(-50%, 50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Journal (present)</h3>
+                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Use the <a href="/journal" style="color: white; text-decoration: underline;">Journal</a> to reflect on today's workout</p>
+                </div>
+                
+                <!-- Step 4: Plan (Left) -->
+                <div style="position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Plan (future)</h3>
+                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Get YTM <a href="/dashboard?tab=coach" style="color: white; text-decoration: underline;">Coach</a> recommendations for your upcoming training strategy</p>
+                </div>
+            </div>
+            
+            <!-- Responsive adjustment for smaller screens -->
+            <style>
+                @media (max-width: 768px) {
+                    .setup-section > div[style*="width: 380px"] {
+                        width: 300px !important;
+                        height: 300px !important;
+                    }
+                    .setup-section svg circle {
+                        cx: 150 !important;
+                        cy: 150 !important;
+                        r: 100 !important;
+                    }
+                    .setup-section > div[style*="width: 380px"] > div {
+                        width: 130px !important;
+                        font-size: 0.9rem !important;
+                    }
+                }
+            </style>
+        </section>
+
         <!-- Quick Start Guide -->
         <section class="setup-section">
             <h2>Quick Start Guide</h2>

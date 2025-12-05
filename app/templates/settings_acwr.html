@@ -1,9 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACWR Visualization - Your Training Monkey</title>
+{% extends "base_settings.html" %}
+
+{% block title %}ACWR Visualization - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Visualize and configure ACWR (Acute:Chronic Workload Ratio) parameters for training load analysis and injury prevention.{% endblock %}
+
+{% set active_section = 'acwr' %}
+
+{% block body_attributes %}data-settings-page="true"{% endblock %}
+
+{% block header_title %}
+<h1>ACWR Settings</h1>
+<p class="subtitle">Configure ACWR Parameters</p>
+<p class="description">Visualize and adjust Acute:Chronic Workload Ratio parameters for optimal training load analysis and injury prevention.</p>
+{% endblock %}
+
+{% block extra_head %}
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -292,140 +303,10 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
     </style>
-</head>
-<body>
-    <!-- Navigation Bar - matching Guide page style -->
-    <div style="
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(8px);
-        padding: 1rem 2rem;
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    ">
-        <nav style="
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            max-width: 1200px;
-            margin: 0 auto;
-            position: relative;
-            z-index: 10;
-            gap: 2rem;
-        ">
-            <a href="/settings/profile" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>👤</span>
-                <span>Profile</span>
-            </a>
-            <a href="/settings/hrzones" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>❤️</span>
-                <span>HR Zones</span>
-            </a>
-            <a href="/settings/training" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>🏃</span>
-                <span>Training</span>
-            </a>
-            <a href="/settings/coaching" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>🔔</span>
-                <span>Coaching</span>
-            </a>
-            <a href="/acwr-visualization" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #667eea;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 600;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#667eea'">
-                <span>📊</span>
-                <span>ACWR</span>
-                <div style="
-                    position: absolute;
-                    bottom: -0.5rem;
-                    left: 0;
-                    right: 0;
-                    height: 2px;
-                    background: #667eea;
-                    border-radius: 1px;
-                "></div>
-            </a>
-        </nav>
-    </div>
+{% endblock %}
 
+{% block content %}
     <div class="container-fluid">
-        <div class="row">
-            <!-- Header -->
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center py-3">
-                    <h1 class="h3 mb-0">Parameter Visualization</h1>
-                </div>
-            </div>
-        </div>
-        
         <div class="row">
             <!-- Control Panel -->
             <div class="col-md-3">
@@ -3288,6 +3169,5 @@
         }
 
     </script>
-</body>
-</html>
+{% endblock %}
 

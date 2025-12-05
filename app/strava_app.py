@@ -11,11 +11,11 @@ import logging
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    print("✅ Environment variables loaded from .env file")
+    print("[OK] Environment variables loaded from .env file")
 except ImportError:
-    print("⚠️  python-dotenv not installed. Install with: pip install python-dotenv")
+    print("[WARN] python-dotenv not installed. Install with: pip install python-dotenv")
 except FileNotFoundError:
-    print("⚠️  No .env file found. Run: python setup_environment.py")
+    print("[WARN] No .env file found. Run: python setup_environment.py")
 import time
 import json
 import db_utils
@@ -4052,6 +4052,14 @@ def get_journal_entries():
                     'generated_at') else None
             }
 
+            # Determine if this entry is complete (has observations saved)
+            has_observations = bool(
+                obs_data.get('energy_level') or
+                obs_data.get('rpe_score') or
+                obs_data.get('pain_percentage') or
+                (obs_data.get('notes') and obs_data.get('notes').strip())
+            )
+
             journal_entry = {
                 'date': date_str,
                 'is_today': is_today,
@@ -4062,11 +4070,36 @@ def get_journal_entries():
                 'todays_decision': todays_decision,
                 'activity_summary': activity_summary,
                 'observations': observations,
-                'ai_autopsy': ai_autopsy
+                'ai_autopsy': ai_autopsy,
+                'has_observations': has_observations,
+                'is_next_incomplete': False  # Will be set below
             }
 
             journal_entries.append(journal_entry)
             current_date += timedelta(days=1)
+
+        # Identify the next incomplete workout (earliest date with recommendation but no observations)
+        # Sort chronologically first (oldest to newest) to find the earliest incomplete
+        journal_entries_chrono = sorted(journal_entries, key=lambda x: x['date'])
+
+        for entry in journal_entries_chrono:
+            # Next incomplete = has a recommendation, no observations, and has a workout (not a future date without activity)
+            has_recommendation = entry['todays_decision'] and 'No recommendation available' not in entry['todays_decision']
+
+            if has_recommendation and not entry['has_observations']:
+                entry['is_next_incomplete'] = True
+                logger.info(f"Marked {entry['date']} as next incomplete workout for user {current_user.id}")
+                break  # Only mark the first (earliest) incomplete entry
+
+        # Filter out future dates that don't have recommendations
+        # Only show future dates if they have an actual recommendation
+        journal_entries = [
+            entry for entry in journal_entries
+            if not entry['is_future'] or (
+                entry['todays_decision'] and
+                'No recommendation available' not in entry['todays_decision']
+            )
+        ]
 
         journal_entries = [ensure_date_serialization(entry) for entry in journal_entries]
         journal_entries.sort(key=lambda x: x['date'], reverse=True)
@@ -4134,16 +4167,8 @@ def get_unified_recommendation_for_date(date_obj, user_id):
             logger.info(
                 f"FOUND recommendation for user {user_id} on {date_str}: {len(recommendation_text)} characters")
 
-            # Determine appropriate label based on whether it's today, past, or future
-            if date_obj == user_current_date:
-                date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
-            elif date_obj < user_current_date:
-                date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
-            else:
-                # FUTURE date: Frontend adds its own header, so just return the decision text
-                return recommendation_text
-
-            return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
+            # Frontend adds its own headers - just return clean text
+            return recommendation_text
         
         else:
             # No recommendation found for this target_date
@@ -5077,24 +5102,41 @@ def save_journal_entry():
                         autopsy_insights
                     )
                     recommendation_text = call_anthropic_api(prompt)
-                
+
                 if recommendation_text:
                     recommendation_text = recommendation_text.strip()
-                    
+
+                    # CRITICAL FIX: Parse LLM response into separate sections
+                    # This ensures Journal displays ONLY daily recommendation, not weekly planning and pattern insights
+                    from llm_recommendations_module import parse_llm_response
+                    sections = parse_llm_response(recommendation_text)
+
+                    daily_rec = sections.get('daily_recommendation', '')
+                    weekly_rec = sections.get('weekly_recommendation', '')
+                    pattern_insights_text = sections.get('pattern_insights', '')
+
+                    # Fallback: if parsing failed, use full text as daily recommendation
+                    if not daily_rec and recommendation_text:
+                        daily_rec = recommendation_text
+                        logger.warning("Parser returned empty daily_recommendation, using full text")
+
+                    logger.info(f"✅ Parsed LLM sections - Daily: {len(daily_rec)} chars, Weekly: {len(weekly_rec)} chars, Insights: {len(pattern_insights_text)} chars")
+
                     # Check if recommendation already exists for tomorrow
                     existing_rec = db_utils.execute_query(
                         "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
                         (current_user.id, tomorrow_date_str),
                         fetch=True
                     )
-                    
+
                     if existing_rec:
-                        # UPDATE existing recommendation
+                        # UPDATE existing recommendation with parsed sections
                         logger.info(f"📝 Updating existing recommendation for {tomorrow_date_str}")
                         db_utils.execute_query(
                             """
                             UPDATE llm_recommendations
                             SET daily_recommendation = %s,
+                                weekly_recommendation = %s,
                                 pattern_insights = %s,
                                 raw_response = %s,
                                 generated_at = NOW(),
@@ -5104,8 +5146,9 @@ def save_journal_entry():
                             WHERE user_id = %s AND target_date = %s
                             """,
                             (
-                                recommendation_text,
-                                f"Updated with autopsy from {date_str} (alignment: {alignment_score}/10)" if alignment_score else f"Updated with autopsy from {date_str}",
+                                daily_rec,
+                                weekly_rec if weekly_rec else f"Updated with autopsy from {date_str}",
+                                pattern_insights_text if pattern_insights_text else (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
                                 recommendation_text,
                                 alignment_score,
                                 current_user.id,
@@ -5113,11 +5156,11 @@ def save_journal_entry():
                             )
                         )
                     else:
-                        # INSERT new recommendation
+                        # INSERT new recommendation with parsed sections
                         logger.info(f"📝 Creating new recommendation for {tomorrow_date_str}")
                         from unified_metrics_service import UnifiedMetricsService
                         current_metrics_for_save = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
-                        
+
                         from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
                         recommendation_data = {
                             'generation_date': date_str,
@@ -5126,9 +5169,9 @@ def save_journal_entry():
                             'data_start_date': date_str,
                             'data_end_date': date_str,
                             'metrics_snapshot': current_metrics_for_save,
-                            'daily_recommendation': recommendation_text,
-                            'weekly_recommendation': 'See previous weekly guidance',
-                            'pattern_insights': f"Generated with autopsy from {date_str} (alignment: {alignment_score}/10)" if alignment_score else f"Generated with autopsy from {date_str}",
+                            'daily_recommendation': daily_rec,
+                            'weekly_recommendation': weekly_rec if weekly_rec else 'See weekly program on Coach page',
+                            'pattern_insights': pattern_insights_text if pattern_insights_text else (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
                             'raw_response': recommendation_text,
                             'user_id': current_user.id,
                             'is_autopsy_informed': True,
@@ -6541,106 +6584,109 @@ def get_heart_rate_zones():
             except:
                 custom_boundaries = None
 
-        # Calculate default zones with formulas
-        if method == 'percentage':
-            # Simple percentage method
-            calculated_zones = {
-                'zone1': {
-                    'min': int(max_hr * 0.50),
-                    'max': int(max_hr * 0.60),
-                    'name': 'Recovery',
-                    'min_formula': f'50% × {max_hr} = {int(max_hr * 0.50)}',
-                    'max_formula': f'60% × {max_hr} = {int(max_hr * 0.60)}',
-                    'min_calculation': 0.50,
-                    'max_calculation': 0.60
-                },
-                'zone2': {
-                    'min': int(max_hr * 0.60),
-                    'max': int(max_hr * 0.70),
-                    'name': 'Aerobic Base',
-                    'min_formula': f'60% × {max_hr} = {int(max_hr * 0.60)}',
-                    'max_formula': f'70% × {max_hr} = {int(max_hr * 0.70)}',
-                    'min_calculation': 0.60,
-                    'max_calculation': 0.70
-                },
-                'zone3': {
-                    'min': int(max_hr * 0.70),
-                    'max': int(max_hr * 0.80),
-                    'name': 'Aerobic',
-                    'min_formula': f'70% × {max_hr} = {int(max_hr * 0.70)}',
-                    'max_formula': f'80% × {max_hr} = {int(max_hr * 0.80)}',
-                    'min_calculation': 0.70,
-                    'max_calculation': 0.80
-                },
-                'zone4': {
-                    'min': int(max_hr * 0.80),
-                    'max': int(max_hr * 0.90),
-                    'name': 'Threshold',
-                    'min_formula': f'80% × {max_hr} = {int(max_hr * 0.80)}',
-                    'max_formula': f'90% × {max_hr} = {int(max_hr * 0.90)}',
-                    'min_calculation': 0.80,
-                    'max_calculation': 0.90
-                },
-                'zone5': {
-                    'min': int(max_hr * 0.90),
-                    'max': max_hr,
-                    'name': 'VO2 Max',
-                    'min_formula': f'90% × {max_hr} = {int(max_hr * 0.90)}',
-                    'max_formula': f'Max HR = {max_hr}',
-                    'min_calculation': 0.90,
-                    'max_calculation': 1.00
-                }
+        # Always calculate BOTH methods for comparison table
+        hr_reserve = max_hr - resting_hr
+        
+        # Percentage method zones
+        percentage_zones = {
+            'zone1': {
+                'min': int(max_hr * 0.50),
+                'max': int(max_hr * 0.60),
+                'name': 'Recovery',
+                'min_formula': f'50% × {max_hr} = {int(max_hr * 0.50)}',
+                'max_formula': f'60% × {max_hr} = {int(max_hr * 0.60)}',
+                'min_calculation': 0.50,
+                'max_calculation': 0.60
+            },
+            'zone2': {
+                'min': int(max_hr * 0.60),
+                'max': int(max_hr * 0.70),
+                'name': 'Aerobic Base',
+                'min_formula': f'60% × {max_hr} = {int(max_hr * 0.60)}',
+                'max_formula': f'70% × {max_hr} = {int(max_hr * 0.70)}',
+                'min_calculation': 0.60,
+                'max_calculation': 0.70
+            },
+            'zone3': {
+                'min': int(max_hr * 0.70),
+                'max': int(max_hr * 0.80),
+                'name': 'Aerobic',
+                'min_formula': f'70% × {max_hr} = {int(max_hr * 0.70)}',
+                'max_formula': f'80% × {max_hr} = {int(max_hr * 0.80)}',
+                'min_calculation': 0.70,
+                'max_calculation': 0.80
+            },
+            'zone4': {
+                'min': int(max_hr * 0.80),
+                'max': int(max_hr * 0.90),
+                'name': 'Threshold',
+                'min_formula': f'80% × {max_hr} = {int(max_hr * 0.80)}',
+                'max_formula': f'90% × {max_hr} = {int(max_hr * 0.90)}',
+                'min_calculation': 0.80,
+                'max_calculation': 0.90
+            },
+            'zone5': {
+                'min': int(max_hr * 0.90),
+                'max': max_hr,
+                'name': 'VO2 Max',
+                'min_formula': f'90% × {max_hr} = {int(max_hr * 0.90)}',
+                'max_formula': f'Max HR = {max_hr}',
+                'min_calculation': 0.90,
+                'max_calculation': 1.00
             }
-        else:
-            # Heart Rate Reserve method (Karvonen)
-            hr_reserve = max_hr - resting_hr
-            calculated_zones = {
-                'zone1': {
-                    'min': int(resting_hr + hr_reserve * 0.50),
-                    'max': int(resting_hr + hr_reserve * 0.60),
-                    'name': 'Recovery',
-                    'min_formula': f'{resting_hr} + (50% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.50)}',
-                    'max_formula': f'{resting_hr} + (60% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.60)}',
-                    'min_calculation': 0.50,
-                    'max_calculation': 0.60
-                },
-                'zone2': {
-                    'min': int(resting_hr + hr_reserve * 0.60),
-                    'max': int(resting_hr + hr_reserve * 0.70),
-                    'name': 'Aerobic Base',
-                    'min_formula': f'{resting_hr} + (60% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.60)}',
-                    'max_formula': f'{resting_hr} + (70% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.70)}',
-                    'min_calculation': 0.60,
-                    'max_calculation': 0.70
-                },
-                'zone3': {
-                    'min': int(resting_hr + hr_reserve * 0.70),
-                    'max': int(resting_hr + hr_reserve * 0.80),
-                    'name': 'Aerobic',
-                    'min_formula': f'{resting_hr} + (70% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.70)}',
-                    'max_formula': f'{resting_hr} + (80% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.80)}',
-                    'min_calculation': 0.70,
-                    'max_calculation': 0.80
-                },
-                'zone4': {
-                    'min': int(resting_hr + hr_reserve * 0.80),
-                    'max': int(resting_hr + hr_reserve * 0.90),
-                    'name': 'Threshold',
-                    'min_formula': f'{resting_hr} + (80% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.80)}',
-                    'max_formula': f'{resting_hr} + (90% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.90)}',
-                    'min_calculation': 0.80,
-                    'max_calculation': 0.90
-                },
-                'zone5': {
-                    'min': int(resting_hr + hr_reserve * 0.90),
-                    'max': max_hr,
-                    'name': 'VO2 Max',
-                    'min_formula': f'{resting_hr} + (90% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.90)}',
-                    'max_formula': f'Max HR = {max_hr}',
-                    'min_calculation': 0.90,
-                    'max_calculation': 1.00
-                }
+        }
+        
+        # Karvonen method zones
+        karvonen_zones = {
+            'zone1': {
+                'min': int(resting_hr + hr_reserve * 0.50),
+                'max': int(resting_hr + hr_reserve * 0.60),
+                'name': 'Recovery',
+                'min_formula': f'{resting_hr} + (50% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.50)}',
+                'max_formula': f'{resting_hr} + (60% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.60)}',
+                'min_calculation': 0.50,
+                'max_calculation': 0.60
+            },
+            'zone2': {
+                'min': int(resting_hr + hr_reserve * 0.60),
+                'max': int(resting_hr + hr_reserve * 0.70),
+                'name': 'Aerobic Base',
+                'min_formula': f'{resting_hr} + (60% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.60)}',
+                'max_formula': f'{resting_hr} + (70% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.70)}',
+                'min_calculation': 0.60,
+                'max_calculation': 0.70
+            },
+            'zone3': {
+                'min': int(resting_hr + hr_reserve * 0.70),
+                'max': int(resting_hr + hr_reserve * 0.80),
+                'name': 'Aerobic',
+                'min_formula': f'{resting_hr} + (70% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.70)}',
+                'max_formula': f'{resting_hr} + (80% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.80)}',
+                'min_calculation': 0.70,
+                'max_calculation': 0.80
+            },
+            'zone4': {
+                'min': int(resting_hr + hr_reserve * 0.80),
+                'max': int(resting_hr + hr_reserve * 0.90),
+                'name': 'Threshold',
+                'min_formula': f'{resting_hr} + (80% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.80)}',
+                'max_formula': f'{resting_hr} + (90% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.90)}',
+                'min_calculation': 0.80,
+                'max_calculation': 0.90
+            },
+            'zone5': {
+                'min': int(resting_hr + hr_reserve * 0.90),
+                'max': max_hr,
+                'name': 'VO2 Max',
+                'min_formula': f'{resting_hr} + (90% × {hr_reserve}) = {int(resting_hr + hr_reserve * 0.90)}',
+                'max_formula': f'Max HR = {max_hr}',
+                'min_calculation': 0.90,
+                'max_calculation': 1.00
             }
+        }
+        
+        # Use the appropriate method as the calculated zones
+        calculated_zones = karvonen_zones if method in ['karvonen', 'reserve'] else percentage_zones
 
         # Apply custom overrides if they exist
         final_zones = calculated_zones.copy()
@@ -6663,9 +6709,11 @@ def get_heart_rate_zones():
             'method': method,
             'resting_hr': resting_hr,
             'max_hr': max_hr,
-            'hr_reserve': max_hr - resting_hr if method == 'reserve' else None,
+            'hr_reserve': hr_reserve,
             'has_custom_zones': custom_boundaries is not None,
-            'calculated_zones': calculated_zones  # Always include calculated for reference
+            'percentage_zones': percentage_zones,  # Always include for comparison
+            'karvonen_zones': karvonen_zones,  # Always include for comparison
+            'calculated_zones': calculated_zones  # The active method's zones
         })
 
     except Exception as e:
@@ -6677,51 +6725,53 @@ def get_heart_rate_zones():
 @app.route('/api/settings/profile', methods=['POST'])
 @login_required
 def update_profile_settings():
-    """Update profile settings (birthdate, gender, email)"""
+    """Update profile settings (birthdate from month/year)"""
     try:
         data = request.get_json()
-        
+
         # Validate required fields
-        required_fields = ['email', 'birthdate', 'gender']
+        required_fields = ['birth_month', 'birth_year']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({'error': f'{field} is required'}), 400
-        
-        # Validate and parse birthdate
-        from datetime import datetime, date
+
+        # Validate and parse birthdate from month/year
+        from datetime import date
         try:
-            birthdate = datetime.strptime(data['birthdate'], '%Y-%m-%d').date()
-            
-            # Validate birthdate is reasonable (at least 13 years old, not in future)
-            today = date.today()
-            min_birthdate = date(today.year - 100, today.month, today.day)
-            max_birthdate = date(today.year - 13, today.month, today.day)
-            
-            if birthdate > max_birthdate:
-                return jsonify({'error': 'You must be at least 13 years old'}), 400
-            if birthdate < min_birthdate:
-                return jsonify({'error': 'Invalid birthdate (too far in the past)'}), 400
-                
-        except ValueError:
-            return jsonify({'error': 'Invalid birthdate format. Use YYYY-MM-DD'}), 400
-        
-        # Validate gender
-        if data['gender'] not in ['male', 'female', 'other']:
-            return jsonify({'error': 'Invalid gender selection'}), 400
-        
+            birth_month = int(data['birth_month'])
+            birth_year = int(data['birth_year'])
+
+            # Validate birth month
+            if birth_month < 1 or birth_month > 12:
+                return jsonify({'error': 'Invalid birth month'}), 400
+
+            # Validate birth year (at least 13 years old, not more than 100 years old)
+            current_year = date.today().year
+            min_year = current_year - 100
+            max_year = current_year - 13
+
+            if birth_year < min_year or birth_year > max_year:
+                return jsonify({'error': 'You must be between 13 and 100 years old'}), 400
+
+            # Create birthdate with day=1 for privacy
+            birthdate = date(birth_year, birth_month, 1)
+
+        except (ValueError, TypeError) as e:
+            return jsonify({'error': 'Invalid birth month or year'}), 400
+
         # Calculate age from birthdate for backward compatibility
         from settings_utils import calculate_age_from_birthdate
         age = calculate_age_from_birthdate(birthdate)
-        
-        # Update user profile with both birthdate and calculated age
+
+        # Update user profile with birthdate and calculated age
         db_utils.execute_query("""
-            UPDATE user_settings 
-            SET email = %s, birthdate = %s, age = %s, gender = %s, updated_at = NOW()
+            UPDATE user_settings
+            SET birthdate = %s, age = %s, updated_at = NOW()
             WHERE id = %s
-        """, (data['email'], birthdate, age, data['gender'], current_user.id))
-        
+        """, (birthdate, age, current_user.id))
+
         return jsonify({'success': True, 'message': 'Profile settings updated successfully'})
-        
+
     except Exception as e:
         app.logger.error(f"Error updating profile settings: {str(e)}")
         return jsonify({'error': 'Failed to update profile settings'}), 500
@@ -6740,7 +6790,7 @@ def update_training_settings():
                 return jsonify({'error': f'{field} is required'}), 400
         
         # Validate primary sport
-        valid_sports = ['running', 'cycling', 'swimming', 'triathlon', 'strength', 'other']
+        valid_sports = ['trail_running', 'running', 'road_running', 'cycling', 'swimming', 'triathlon', 'strength', 'other']
         if data['primary_sport'] not in valid_sports:
             return jsonify({'error': 'Invalid primary sport selection'}), 400
         
@@ -9832,30 +9882,43 @@ def welcome_post_strava():
 def welcome_stage1():
     """Handle Stage 1 form submission (Essential Setup) using existing onboarding system"""
     user_id = current_user.id
-    
+
     try:
-        age = request.form.get('age')
+        birth_month = request.form.get('birth_month')
+        birth_year = request.form.get('birth_year')
         gender = request.form.get('gender')
         training_experience = request.form.get('training_experience')
         primary_sport = request.form.get('primary_sport')
         resting_hr = request.form.get('resting_hr')
         max_hr = request.form.get('max_hr')
         coaching_tone = request.form.get('coaching_tone')
-        
+
         # Get legal acceptance status
         terms_accepted = request.form.get('terms_accepted') == 'on'
         privacy_accepted = request.form.get('privacy_accepted') == 'on'
         disclaimer_accepted = request.form.get('disclaimer_accepted') == 'on'
-        
+
         # Validate required fields
-        if not all([age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone]):
+        if not all([birth_month, birth_year, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('welcome_post_strava'))
-        
+
         # Validate legal acceptance
         if not all([terms_accepted, privacy_accepted, disclaimer_accepted]):
             flash('Please accept all legal agreements to continue.', 'error')
             return redirect(url_for('welcome_post_strava'))
+
+        # Create birthdate from month and year (set day to 1 for privacy)
+        from datetime import date
+        try:
+            birthdate = date(int(birth_year), int(birth_month), 1)
+        except (ValueError, TypeError) as e:
+            flash('Invalid birth date provided.', 'error')
+            return redirect(url_for('welcome_post_strava'))
+
+        # Calculate age from birthdate
+        from settings_utils import calculate_age_from_birthdate
+        age = calculate_age_from_birthdate(birthdate)
         
         # Map coaching tone to spectrum value
         tone_map = {
@@ -9870,13 +9933,13 @@ def welcome_stage1():
         from db_utils import get_db_connection
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                # Update profile data
+                # Update profile data including birthdate and calculated age
                 cursor.execute("""
-                    UPDATE user_settings 
-                    SET age = %s, gender = %s, training_experience = %s, primary_sport = %s,
+                    UPDATE user_settings
+                    SET birthdate = %s, age = %s, gender = %s, training_experience = %s, primary_sport = %s,
                         resting_hr = %s, max_hr = %s, coaching_tone = %s, coaching_style_spectrum = %s
                     WHERE id = %s
-                """, (age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
+                """, (birthdate, age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
                 
                 # Update legal acceptance timestamps
                 from datetime import datetime
@@ -11271,56 +11334,56 @@ def accept_current_schedule():
 def _validate_training_schedule(schedule: dict) -> tuple:
     """
     Validate training schedule JSON structure
-    
+
     Args:
         schedule: Training schedule dictionary
-        
+
     Returns:
         (is_valid, error_message) - error_message is None if valid
     """
     # Check required keys
-    required_keys = ['available_days', 'time_blocks', 'constraints']
+    required_keys = ['available_days', 'long_run_days', 'constraints']
     for key in required_keys:
         if key not in schedule:
             return False, f"Missing required field: {key}"
-    
+
     # Validate available_days
     available_days = schedule['available_days']
     if not isinstance(available_days, list):
         return False, "available_days must be an array"
-    
+
     valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     for day in available_days:
         if not isinstance(day, str):
             return False, "available_days must contain strings"
         if day.lower() not in valid_days:
             return False, f"Invalid day name: {day}. Must be one of: {', '.join(valid_days)}"
-    
+
     if len(available_days) == 0:
         return False, "At least one day must be available"
-    
-    # Validate time_blocks
-    time_blocks = schedule['time_blocks']
-    if not isinstance(time_blocks, dict):
-        return False, "time_blocks must be an object"
-    
-    valid_time_blocks = ['morning', 'midday', 'evening', 'night']
-    for day, blocks in time_blocks.items():
+
+    # Validate long_run_days
+    long_run_days = schedule['long_run_days']
+    if not isinstance(long_run_days, list):
+        return False, "long_run_days must be an array"
+
+    for day in long_run_days:
+        if not isinstance(day, str):
+            return False, "long_run_days must contain strings"
         if day.lower() not in valid_days:
-            return False, f"Invalid day in time_blocks: {day}"
-        if not isinstance(blocks, list):
-            return False, f"time_blocks for {day} must be an array"
-        for block in blocks:
-            if not isinstance(block, str):
-                return False, f"time_blocks for {day} must contain strings"
-            if block.lower() not in valid_time_blocks:
-                return False, f"Invalid time block '{block}' for {day}. Must be one of: {', '.join(valid_time_blocks)}"
-    
+            return False, f"Invalid day name in long_run_days: {day}"
+        # Check that long run days are also in available days
+        if day not in available_days:
+            return False, f"Long run day '{day}' must also be in available_days"
+
+    if len(long_run_days) == 0:
+        return False, "At least one long run day must be selected"
+
     # Validate constraints
     constraints = schedule['constraints']
     if not isinstance(constraints, list):
         return False, "constraints must be an array"
-    
+
     return True, None
 
 
@@ -11466,8 +11529,7 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
                         logger.error(f"Could not parse B race date: {b_race_date} for race {b_race.get('race_name')}")
                         continue
                 
-                logger.info(f"Checking B race {b_race.get('race_name')} on {b_race_date} against week {week_number} ({current_week_start} to {week_end})")
-                
+                # Only log when race is actually added (not every check)
                 if current_week_start <= b_race_date <= week_end:
                     races_this_week.append({
                         'priority': 'B',
@@ -11527,56 +11589,56 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
 def _validate_training_schedule(schedule: dict) -> tuple:
     """
     Validate training schedule JSON structure
-    
+
     Args:
         schedule: Training schedule dictionary
-        
+
     Returns:
         (is_valid, error_message) - error_message is None if valid
     """
     # Check required keys
-    required_keys = ['available_days', 'time_blocks', 'constraints']
+    required_keys = ['available_days', 'long_run_days', 'constraints']
     for key in required_keys:
         if key not in schedule:
             return False, f"Missing required field: {key}"
-    
+
     # Validate available_days
     available_days = schedule['available_days']
     if not isinstance(available_days, list):
         return False, "available_days must be an array"
-    
+
     valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     for day in available_days:
         if not isinstance(day, str):
             return False, "available_days must contain strings"
         if day.lower() not in valid_days:
             return False, f"Invalid day name: {day}. Must be one of: {', '.join(valid_days)}"
-    
+
     if len(available_days) == 0:
         return False, "At least one day must be available"
-    
-    # Validate time_blocks
-    time_blocks = schedule['time_blocks']
-    if not isinstance(time_blocks, dict):
-        return False, "time_blocks must be an object"
-    
-    valid_time_blocks = ['morning', 'midday', 'evening', 'night']
-    for day, blocks in time_blocks.items():
+
+    # Validate long_run_days
+    long_run_days = schedule['long_run_days']
+    if not isinstance(long_run_days, list):
+        return False, "long_run_days must be an array"
+
+    for day in long_run_days:
+        if not isinstance(day, str):
+            return False, "long_run_days must contain strings"
         if day.lower() not in valid_days:
-            return False, f"Invalid day in time_blocks: {day}"
-        if not isinstance(blocks, list):
-            return False, f"time_blocks for {day} must be an array"
-        for block in blocks:
-            if not isinstance(block, str):
-                return False, f"time_blocks for {day} must contain strings"
-            if block.lower() not in valid_time_blocks:
-                return False, f"Invalid time block '{block}' for {day}. Must be one of: {', '.join(valid_time_blocks)}"
-    
+            return False, f"Invalid day name in long_run_days: {day}"
+        # Check that long run days are also in available days
+        if day not in available_days:
+            return False, f"Long run day '{day}' must also be in available_days"
+
+    if len(long_run_days) == 0:
+        return False, "At least one long run day must be selected"
+
     # Validate constraints
     constraints = schedule['constraints']
     if not isinstance(constraints, list):
         return False, "constraints must be an array"
-    
+
     for idx, constraint in enumerate(constraints):
         if not isinstance(constraint, dict):
             return False, f"Constraint {idx + 1} must be an object"
@@ -11585,7 +11647,7 @@ def _validate_training_schedule(schedule: dict) -> tuple:
             return False, f"Constraint {idx + 1} type must be a string"
         if 'description' in constraint and not isinstance(constraint['description'], str):
             return False, f"Constraint {idx + 1} description must be a string"
-    
+
     return True, None
 
 

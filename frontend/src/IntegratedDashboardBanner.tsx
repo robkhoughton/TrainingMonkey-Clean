@@ -363,7 +363,7 @@ const IntegratedDashboardBanner: React.FC<IntegratedDashboardBannerProps> = ({
               fontFamily: 'Arial, sans-serif',
               fontWeight: '900'
             }}>
-              Your Training Monkey
+              <span style={{ color: '#8FA89E' }}>Y</span>our <span style={{ color: '#8FA89E' }}>T</span>raining <span style={{ color: '#8FA89E' }}>M</span>onkey
             </h1>
 
             <p style={{

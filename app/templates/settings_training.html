@@ -1,8 +1,10 @@
-{% extends "base_getting_started.html" %}
+{% extends "base_settings.html" %}
 
 {% block title %}Training Settings - Your Training Monkey{% endblock %}
 
 {% block meta_description %}Configure your training goals, experience level, and training preferences for personalized recommendations.{% endblock %}
+
+{% set active_section = 'training' %}
 
 {% block body_attributes %}data-settings-page="true"{% endblock %}
 
@@ -10,22 +12,6 @@
 <h1>Training Settings</h1>
 <p class="subtitle">Training Goals & Experience Configuration</p>
 <p class="description">Set up your training goals, experience level, and preferences to receive personalized training recommendations.</p>
-{% endblock %}
-
-{% block navigation %}
-<!-- Settings Navigation -->
-<nav class="nav">
-    <div class="nav-content">
-        <a href="/" class="nav-logo">Your Training Monkey</a>
-        <ul class="nav-links">
-            <li><a href="/settings/profile">Profile</a></li>
-            <li><a href="/settings/hrzones">HR Zones</a></li>
-            <li><a href="/settings/training" class="active">Training</a></li>
-            <li><a href="/settings/coaching">Coaching</a></li>
-            <li><a href="/settings/acwr">ACWR</a></li>
-        </ul>
-    </div>
-</nav>
 {% endblock %}
 
 {% block extra_head %}
@@ -53,30 +39,33 @@
         <div class="form-container">
         <div class="form-group">
             <label for="primary_sport">Primary Sport</label>
+            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 0.75rem; margin-bottom: 0.75rem; border-radius: 4px;">
+                <p style="margin: 0; font-size: 0.875rem; color: #92400e; font-weight: 600;">⚠️ This app is built specifically for trail runners</p>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: #78350f;">If you're not a trail runner, this app may not meet your needs. Other sports are supported only for cross-training purposes.</p>
+            </div>
             <select id="primary_sport" name="primary_sport" required>
                 <option value="">Select Your Primary Sport</option>
-                <option value="running" {% if user and user.primary_sport == 'running' %}selected{% endif %}>Running</option>
-                <option value="cycling" {% if user and user.primary_sport == 'cycling' %}selected{% endif %}>Cycling</option>
-                <option value="swimming" {% if user and user.primary_sport == 'swimming' %}selected{% endif %}>Swimming</option>
-                <option value="triathlon" {% if user and user.primary_sport == 'triathlon' %}selected{% endif %}>Triathlon</option>
-                <option value="strength" {% if user and user.primary_sport == 'strength' %}selected{% endif %}>Strength Training</option>
-                <option value="other" {% if user and user.primary_sport == 'other' %}selected{% endif %}>Other</option>
+                <option value="trail_running" {% if user and (user.primary_sport == 'trail_running' or user.primary_sport == 'running') %}selected{% endif %}>🏔️ Trail Running (Recommended)</option>
+                <option value="running" {% if user and user.primary_sport == 'running' and user.primary_sport != 'trail_running' %}selected{% endif %}>Running (Road/Flat)</option>
+                <option value="cycling" {% if user and user.primary_sport == 'cycling' %}selected{% endif %}>Cycling (Cross-training only)</option>
+                <option value="swimming" {% if user and user.primary_sport == 'swimming' %}selected{% endif %}>Swimming (Cross-training only)</option>
+                <option value="strength" {% if user and user.primary_sport == 'strength' %}selected{% endif %}>Strength Training (Cross-training only)</option>
+                <option value="other" {% if user and user.primary_sport == 'other' %}selected{% endif %}>Other (Cross-training only)</option>
             </select>
-            <small style="color: #6b7280; font-size: 0.875rem;">Your main training focus for load calculations</small>
+            <small style="color: #6b7280; font-size: 0.875rem;">Your main training focus for load calculations. <strong>Trail running is recommended</strong> as this app is optimized for elevation-aware training analysis.</small>
         </div>
 
         <div class="form-group">
-            <label for="secondary_sport">Secondary Sport</label>
+            <label for="secondary_sport">Secondary Sport (Cross-Training)</label>
             <select id="secondary_sport" name="secondary_sport">
                 <option value="">Select Secondary Sport (Optional)</option>
                 <option value="running" {% if user and user.secondary_sport == 'running' %}selected{% endif %}>Running</option>
                 <option value="cycling" {% if user and user.secondary_sport == 'cycling' %}selected{% endif %}>Cycling</option>
                 <option value="swimming" {% if user and user.secondary_sport == 'swimming' %}selected{% endif %}>Swimming</option>
-                <option value="triathlon" {% if user and user.secondary_sport == 'triathlon' %}selected{% endif %}>Triathlon</option>
                 <option value="strength" {% if user and user.secondary_sport == 'strength' %}selected{% endif %}>Strength Training</option>
                 <option value="other" {% if user and user.secondary_sport == 'other' %}selected{% endif %}>Other</option>
             </select>
-            <small style="color: #6b7280; font-size: 0.875rem;">Additional sport for cross-training analysis</small>
+            <small style="color: #6b7280; font-size: 0.875rem;">Additional sport for cross-training analysis. This app's primary focus is trail running.</small>
         </div>
 
         <div class="form-group">

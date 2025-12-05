@@ -6,6 +6,7 @@ import TimelineVisualization from './TimelineVisualization';
 import RaceGoalsPage from './RaceGoalsPage';
 import RaceHistoryPage from './RaceHistoryPage';
 import TrainingSchedulePage from './TrainingSchedulePage';
+import YTMSpinner from './YTMSpinner';
 
 // ============================================================================
 // STRATEGIC CONTEXT DISPLAY COMPONENT (Collapsible Sections)
@@ -288,6 +289,7 @@ const CoachPage: React.FC = () => {
   const [trainingStage, setTrainingStage] = useState<TrainingStage | null>(null);
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadingMessage, setLoadingMessage] = useState<string>('Loading your coaching dashboard...');
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   
@@ -309,7 +311,13 @@ const CoachPage: React.FC = () => {
   const fetchCoachData = async () => {
     const startTime = performance.now();
     setIsLoading(true);
+    setLoadingMessage('Loading your coaching dashboard...');
     setError(null);
+
+    // Show helpful message if loading takes a while (program generation)
+    const longLoadTimer = setTimeout(() => {
+      setLoadingMessage('Generating your personalized weekly program... This may take 30-90 seconds. ☕');
+    }, 3000);
 
     try {
       // Fetch only data needed for Coach page display
@@ -394,6 +402,7 @@ const CoachPage: React.FC = () => {
       setError(errorMessage);
       perfMonitor.reportMetrics(0, errorMessage);
     } finally {
+      clearTimeout(longLoadTimer);
       setIsLoading(false);
     }
   };
@@ -466,11 +475,20 @@ const CoachPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className={styles.dashboardContainer}>
-        <div className={styles.card} style={{ textAlign: 'center', padding: '60px 20px' }}>
-          <div className={styles.spinner}></div>
-          <p style={{ marginTop: '20px', color: '#7f8c8d' }}>
-            Loading your coaching dashboard...
+        <div className={styles.card} style={{
+          textAlign: 'center',
+          padding: '60px 20px',
+          backgroundColor: '#f8fafc'
+        }}>
+          <YTMSpinner />
+          <p style={{ marginTop: '20px', color: '#7f8c8d', fontSize: '16px', lineHeight: '1.6' }}>
+            {loadingMessage}
           </p>
+          {loadingMessage.includes('30-90 seconds') && (
+            <p style={{ marginTop: '10px', color: '#95a5a6', fontSize: '14px' }}>
+              Your AI coach is analyzing your training data, race goals, and recent performance to create an optimized plan.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -737,9 +755,7 @@ const CoachPage: React.FC = () => {
         <div className="coach-header-content">
           <div style={{ textAlign: 'right', marginBottom: '1rem' }}>
             <h1>
-              <span style={{ color: '#8FA89E', fontWeight: '800', fontSize: '1.1em' }}>Y</span>our{' '}
-              <span style={{ color: '#8FA89E', fontWeight: '800', fontSize: '1.1em' }}>T</span>raining{' '}
-              <span style={{ color: '#8FA89E', fontWeight: '800', fontSize: '1.1em' }}>M</span>onkey
+              YTM Coach
             </h1>
             <p className="subtitle">Divergence-Optimized Training Programs for Ultrarunners</p>
           </div>
@@ -909,7 +925,7 @@ const CoachPage: React.FC = () => {
           <div className={styles.card} style={{ 
             marginBottom: '0 !important', // Override CSS class default margin
             padding: '1rem 1.25rem',
-            background: 'linear-gradient(90deg, #1B2E4B 0%, #4A5F7F 50%, #B8C5D6 100%)', // Darker gradient: deep navy to lighter gray-blue
+            background: 'radial-gradient(circle at center, #7D9CB8 0%, #4A5F7F 50%, #1B2E4B 100%)', // Radial gradient from center - medium center radiating out to darker
             display: 'flex',
             alignItems: 'center'
           }}>
@@ -931,8 +947,8 @@ const CoachPage: React.FC = () => {
             {/* Segment 3: Empty (20% width) */}
             <div style={{ flex: '0 0 20%' }}></div>
             
-            {/* Segment 4: Race Description (20% width) - Dark navy text on light side */}
-            <div style={{ flex: '0 0 20%', color: '#1B2E4B' }}>
+            {/* Segment 4: Race Description (20% width) - Phase colored text matching countdown */}
+            <div style={{ flex: '0 0 20%', color: textColor }}>
               <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '5px' }}>
                 {primaryRace.race_name}
               </div>

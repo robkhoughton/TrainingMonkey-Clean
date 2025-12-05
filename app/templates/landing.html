@@ -18,11 +18,11 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="https://yourtrainingmonkey.com/">
 
-    <!-- Favicon - Monkey Mascot -->
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
-    <link rel="shortcut icon" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <!-- Favicon - YTM Logo -->
+    <link rel="icon" type="image/webp" sizes="32x32" href="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}">
+    <link rel="icon" type="image/webp" sizes="16x16" href="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}">
 
     <!-- Structured Data for SEO (JSON-LD) -->
     <script type="application/ld+json">
@@ -72,7 +72,16 @@
             box-sizing: border-box;
         }
 
+        /* Flexbox layout to prevent footer flash */
+        html, body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
+            display: flex;
+            flex-direction: column;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
             color: #1f2937;
@@ -84,9 +93,16 @@
             background-attachment: fixed;
         }
 
-        /* Compact Header - Reduced from 4rem to 2.5rem */
+        /* Main content wrapper to push footer to bottom */
+        .page-wrapper {
+            flex: 1 0 auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Compact Header - Matching Guide/Settings palette */
         .header {
-            background: linear-gradient(315deg, rgba(59, 130, 246, 0.95) 0%, rgba(99, 102, 241, 0.9) 50%, rgba(139, 92, 246, 0.8) 100%);
+            background: linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%);
             color: white;
             text-align: right;
             padding: 1.5rem 2rem;
@@ -98,61 +114,22 @@
             justify-content: space-between;
         }
 
-        /* Monkey mascot styling with circular text */
+        /* YTM logo styling with circular text */
         .monkey-mascot {
             position: relative;
-            z-index: 2;
-            width: 120px;
-            height: 120px;
+            flex-shrink: 0;
+            width: 300px;
+            height: 300px;
             margin-left: 2rem;
             filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
-            transition: transform 0.3s ease;
-        }
-
-        /* Circular text around monkey mascot */
-        .circular-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            pointer-events: none;
-            z-index: 3;
-        }
-
-        .circular-text svg {
-            width: 100%;
-            height: 100%;
-        }
-
-        .circular-text text {
-            fill: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-weight: 600;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
-        .monkey-mascot:hover {
-            transform: scale(1.05) rotate(5deg);
+            z-index: 2;
         }
 
         .monkey-mascot img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            display: block;
         }
 
         .header::before {
@@ -162,8 +139,28 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
-            opacity: 0.3;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(230, 240, 255, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(125, 156, 184, 0.25) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(180, 200, 220, 0.2) 0%, transparent 60%),
+                radial-gradient(circle at 10% 80%, rgba(27, 46, 75, 0.25) 0%, transparent 45%),
+                radial-gradient(circle at 90% 20%, rgba(100, 130, 160, 0.2) 0%, transparent 50%);
+            pointer-events: none;
+            mix-blend-mode: multiply;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image:
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0, 0, 0, 0.02) 2px, rgba(0, 0, 0, 0.02) 4px);
+            pointer-events: none;
+            opacity: 0.4;
         }
 
         .header-content {
@@ -639,7 +636,7 @@
 
         /* Compact CTA Section */
         .cta-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, rgba(27, 46, 75, 0.95) 0%, rgba(125, 156, 184, 0.92) 100%);
             color: white;
             text-align: center;
             padding: 2.5rem 2rem; /* Reduced from 4rem */
@@ -747,14 +744,17 @@
             }
 
             .monkey-mascot {
-                width: 80px;
-                height: 80px;
+                width: 150px;
+                height: 150px;
                 margin-left: 1rem;
             }
 
             .circular-text {
-                width: 140px;
-                height: 140px;
+                width: 220px;
+                height: 220px;
+            }
+
+            .circular-text text {
                 font-size: 12px;
             }
 
@@ -787,14 +787,17 @@
 
         @media (max-width: 480px) {
             .monkey-mascot {
-                width: 60px;
-                height: 60px;
+                width: 120px;
+                height: 120px;
                 margin-left: 0.5rem;
             }
 
             .circular-text {
-                width: 100px;
-                height: 100px;
+                width: 180px;
+                height: 180px;
+            }
+
+            .circular-text text {
                 font-size: 10px;
             }
 
@@ -833,8 +836,9 @@
     </style>
 </head>
 <body>
-    <div class="above-fold">
-        <nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10; display: flex; flex-direction: column; gap: 0.5rem;">
+    <div class="page-wrapper">
+        <div class="above-fold">
+            <nav style="position: absolute; top: 2rem; right: 2rem; z-index: 10; display: flex; flex-direction: column; gap: 0.5rem;">
             <a href="/login" style="
                 display: inline-block;
                 background: rgba(255,255,255,0.9);
@@ -880,48 +884,22 @@
         <!-- Header Section -->
         <section class="header">
             <div class="monkey-mascot">
-                <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="Your Training Monkey Mascot">
-                <div class="circular-text">
-                    <svg viewBox="0 0 200 200">
-                        <defs>
-                            <!-- Drop shadow filter -->
-                            <filter id="textShadow" x="-50%" y="-50%" width="200%" height="200%">
-                                <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.3)"/>
-                            </filter>
-                            <!-- Upper half circle path -->
-                            <path id="upperCircle" d="M 20, 100 A 80,80 0 0,1 180, 100"/>
-                            <!-- Lower half circle path (reversed for upright text) -->
-                            <path id="lowerCircle" d="M 20, 100 A 80,80 0 0,0 180, 100"/>
-                        </defs>
-                        <!-- Upper text -->
-                        <text font-size="18" font-weight="700" filter="url(#textShadow)">
-                            <textPath href="#upperCircle" startOffset="50%" text-anchor="middle">
-                                Your Training Monkey
-                            </textPath>
-                        </text>
-                        <!-- Lower text (upright) -->
-                        <text>
-                            <textPath href="#lowerCircle" startOffset="50%" text-anchor="middle">
-                                Prevent Injuries - Train Smarter
-                            </textPath>
-                        </text>
-                    </svg>
-                </div>
+                <img src="{{ url_for('static', filename='images/YTM_Logo_byandfor.webp') }}" alt="Your Training Monkey - Built for Trail Runners, By Trail Runners">
             </div>
             <div class="header-content fade-in">
                 <h1>Your Training Monkey</h1>
                 <p class="subtitle">Prevent Injuries — Train Smarter</p>
                 <p class="description">The only platform with patent-pending <strong>normalized divergence analysis</strong> that reveals when your body and training are out of sync—the key to training smart and avoiding injury.</p>
-                <div style="margin-top: 1.5rem;">
+                <div style="margin-top: 1rem;">
                     <a href="/tutorials" class="btn btn-learn-more" style="
                         display: inline-block;
-                        padding: 0.75rem 1.5rem;
+                        padding: 0.5rem 1.5rem;
                         background: rgba(255, 255, 255, 0.2);
                         color: white;
                         text-decoration: none;
                         border-radius: 8px;
                         font-weight: 600;
-                        font-size: 1rem;
+                        font-size: 0.95rem;
                         border: 2px solid rgba(255, 255, 255, 0.3);
                         transition: all 0.3s ease;
                         backdrop-filter: blur(10px);
@@ -941,10 +919,10 @@
                 <!-- Left: TAKE ACTION -->
                 <div>
                     <div class="band-label band-action" id="take-action-header" style="background: rgba(139, 92, 246, 0.9); color: white; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin: 1rem 0 1rem 1rem; cursor: pointer; transition: all 0.3s ease;" onclick="scrollToStravaButton()" onmouseover="this.style.background='rgba(139, 92, 246, 1)'; this.style.transform='scale(1.05)'" onmouseout="this.style.background='rgba(139, 92, 246, 0.9)'; this.style.transform='scale(1)'">Take Action</div>
-                    <h2 class="demo-title">Are YOU At Risk? <img src="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}" alt="🐒" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-left: 0.5rem; border: 2px solid rgba(139, 92, 246, 0.3);"></h2>
+                    <h2 class="demo-title">Are YOU At Risk? <img src="{{ url_for('static', filename='images/YTM_waterColor_patch800x800_clean.webp') }}" alt="YTM" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-left: 0.5rem; border: 2px solid rgba(139, 92, 246, 0.3);"></h2>
                     <p class="demo-subtitle">Explore how <i>Your Training Monkey</i> analyzes your training balance in real-time to assess your risk of overtraining or injury.</p>
                     <div class="steps-stack" style="margin-top: 0.75rem;">
-                        <div class="step-card"><div class="step-number">1</div><h3 class="step-title">Connect Strava</h3><p class="step-description">Securely link<i>Your Training Monkey</i> to your Strava account to import your training history and ongoing activities.</p></div>
+                        <div class="step-card"><div class="step-number">1</div><h3 class="step-title">Connect Strava</h3><p class="step-description">Securely link <i>Your Training Monkey</i> to your Strava account to import your training history and ongoing activities.</p></div>
                         <div class="step-card"><div class="step-number">2</div><h3 class="step-title">Analyze Patterns</h3><p class="step-description">Our patent-pending algorithm compares external work and internal load to reveal <strong>mismatches</strong> between what you're doing and how you're responding — An early warning sign of overtraining or injury risk.</p></div>
                         <div class="step-card"><div class="step-number">3</div><h3 class="step-title">Train Smarter</h3><p class="step-description">Real-time intelligence guides daily training decisions. Get daily recommendations to avoid injury and optimize performance.</p></div>
                     </div>
@@ -960,7 +938,7 @@
                             </div>
                         </div>
                         <div class="analysis-card">
-                            <div class="analysis-header">🤖 AI Analysis</div>
+                            <div class="analysis-header">AI Analysis</div>
                             <div class="analysis-meta">For 8/25/2025 • Today’s Training Decision</div>
                             <div class="analysis-body">
                                 <p><strong>Divergence Alert:</strong> Critical overtraining signals detected. Your internal ACWR (1.34) exceeds safe thresholds while external ACWR (0.99) remains normal—your body is stressed beyond what the external work suggests.</p>
@@ -975,10 +953,10 @@
                 </div>
             </div>
         </section>
-      
-    </div>
 
-    <!-- Value Propositions: concise, non-redundant strip -->
+        </div>
+
+        <!-- Value Propositions: concise, non-redundant strip -->
     <section class="value-section">
         <div class="value-container">
             <div class="value-header">
@@ -1004,7 +982,7 @@
                     <div class="value-icon">🏔️</div>
                     <div class="value-text">
                         <h4 class="value-title">Built for Vert</h4>
-                        <p class="value-description">Built for trail runners, by trail runners who know how to count vert. Both distance and vertical gain are included in our algorithm to more realisticallymonitor your physical work.</p>
+                        <p class="value-description">Built for trail runners, by trail runners who know how to count vert. Both distance and vertical gain are included in our algorithm to more realistically monitor your physical work.</p>
                     </div>
                 </div>
             </div>
@@ -1029,20 +1007,15 @@
             <p style="margin-top: 1rem; opacity: 0.8; font-size: 0.95rem;">
                 Requires 28+ days of training data for reliable analysis
             </p>
-            <p style="margin-top: 0.5rem; opacity: 0.7; font-size: 0.85rem; color: #6b7280;">
+            <p style="margin-top: 0.5rem; opacity: 0.7; font-size: 0.85rem;">
                 ⚡ Authorization expires quickly - please complete the process promptly
-            </p>
-            <p style="margin-top: 0.5rem; opacity: 0.8; font-size: 0.9rem;">
-                Contact: <a href="mailto:support@yourtrainingmonkey.com" style="color: #1e40af; text-decoration: none; font-weight: 500;">support@yourtrainingmonkey.com</a>
             </p>
         </div>
     </section>
+    </div>
 
-    <!-- Footer Patent Band -->
-    <footer class="patent-footer">
-        <span class="badge">Patent Pending</span>
-        Revolutionary Technology Available Nowhere Else
-    </footer>
+    <!-- Footer -->
+    {% include 'partials/footer.html' %}
 
     <script>
         // Demo Scenarios

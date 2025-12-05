@@ -1,0 +1,52 @@
+/* YTM Spinner Component Styles */
+
+/* 1. The Container: Holds everything together */
+.ytm-spinner-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto;
+}
+
+/* 2. The Background (Compass): Rotates */
+.ytm-spinner-container .compass-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  /* This creates the infinite rotation */
+  animation: spin 4s linear infinite;
+  z-index: 1; /* Sits behind */
+  opacity: 1; /* Ensure full opacity */
+  filter: contrast(1.3) saturate(1.2); /* Enhance visibility */
+}
+
+/* 3. The Foreground (Monkey): Static */
+.ytm-spinner-container .monkey-fg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  z-index: 2; /* Sits on top */
+  /* Optional: Small breathing animation to make him look alive */
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* 4. The Animation Logic */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); } /* Expands slightly */
+  100% { transform: scale(1); }
+}
+

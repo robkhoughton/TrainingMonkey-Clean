@@ -6,6 +6,8 @@ import ActivitiesPage from './ActivitiesPage';
 import JournalPage from './JournalPage';
 import CoachPage from './CoachPage';
 import SettingsPage from './SettingsPage';
+// import SpinnerTestPage from './SpinnerTestPage'; // Hidden - keeping for internal use
+import Footer from './Footer';
 
 function App() {
   // Get initial tab from URL parameters
@@ -42,13 +44,15 @@ function App() {
         return null;
       case 'settings':
         return <SettingsPage />;
+      // case 'spinner': // Hidden - keeping for internal use
+      //   return <SpinnerTestPage />;
       default:
         return <TrainingLoadDashboard onNavigateToTab={setActiveTab} />;
     }
   };
 
   return (
-    <div className="App">
+    <div className="App" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {/* Your existing tab navigation code */}
       <div style={{
         backgroundColor: '#f1f5f9',
@@ -74,7 +78,8 @@ function App() {
               { key: 'journal', label: 'Journal' },
               { key: 'coach', label: 'Coach' },
               { key: 'guide', label: 'Guide' },
-              { key: 'settings', label: 'Settings' }
+              { key: 'settings', label: 'Settings' },
+              { key: 'spinner', label: 'Spinner' }
             ].map((tab, index) => (
             <button
               key={tab.key}
@@ -134,15 +139,15 @@ function App() {
             }}>
               <span style={{ 
                 fontSize: '1.4rem', 
-                color: '#1B2E4B',
+                color: '#8FA89E',
                 fontVariant: 'normal'
               }}>Y</span>our <span style={{ 
                 fontSize: '1.4rem', 
-                color: '#1B2E4B',
+                color: '#8FA89E',
                 fontVariant: 'normal'
               }}>T</span>raining <span style={{ 
                 fontSize: '1.4rem', 
-                color: '#1B2E4B',
+                color: '#8FA89E',
                 fontVariant: 'normal'
               }}>M</span>onkey
             </h1>
@@ -153,12 +158,15 @@ function App() {
       {/* Content area */}
       <main style={{
         backgroundColor: 'white',
-        minHeight: 'calc(100vh - 60px)',
+        flex: '1',
         position: 'relative',
         zIndex: 1
       }}>
         {renderTabContent()}
       </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 }

@@ -1,8 +1,10 @@
-{% extends "base_getting_started.html" %}
+{% extends "base_settings.html" %}
 
 {% block title %}Heart Rate Zones Settings - Your Training Monkey{% endblock %}
 
 {% block meta_description %}Configure your heart rate zones for accurate TRIMP calculations and training load analysis.{% endblock %}
+
+{% set active_section = 'hrzones' %}
 
 {% block body_attributes %}data-settings-page="true"{% endblock %}
 
@@ -12,26 +14,10 @@
 <p class="description">Set up your heart rate zones for accurate training load analysis and personalized training recommendations.</p>
 {% endblock %}
 
-{% block navigation %}
-<!-- Settings Navigation -->
-<nav class="nav">
-    <div class="nav-content">
-        <a href="/" class="nav-logo">Your Training Monkey</a>
-        <ul class="nav-links">
-            <li><a href="/settings/profile">Profile</a></li>
-            <li><a href="/settings/hrzones" class="active">HR Zones</a></li>
-            <li><a href="/settings/training">Training</a></li>
-            <li><a href="/settings/coaching">Coaching</a></li>
-            <li><a href="/settings/acwr">ACWR</a></li>
-        </ul>
-    </div>
-</nav>
-{% endblock %}
-
 {% block content %}
 <!-- Heart Rate Configuration Section -->
 <section class="setup-section">
-    <h2>❤️ Heart Rate Configuration</h2>
+    <h2>Heart Rate Configuration</h2>
     
     <form id="hrzonesForm" method="POST" action="/api/settings/heart-rate-zones">
         <div class="form-container">
@@ -53,16 +39,16 @@
                     <option value="percentage" {% if user and user.hr_zones_method == 'percentage' %}selected{% endif %}>Percentage of Max HR</option>
                     <option value="karvonen" {% if user and user.hr_zones_method == 'karvonen' %}selected{% endif %}>Karvonen (Heart Rate Reserve)</option>
                 </select>
-                <small style="color: #6b7280; font-size: 0.875rem;">💡 Changes will recalculate all your past training data. <a href="/tutorials#heart-rate-zones-setup" target="_blank" style="color: #3b82f6; text-decoration: none;">Learn more about methods</a></small>
+                <small style="color: #6b7280; font-size: 0.875rem;">Changes will recalculate all your past training data. <a href="/tutorials#heart-rate-zones-setup" target="_blank" style="color: #3b82f6; text-decoration: none;">Learn more about methods</a></small>
             </div>
         </div>
 
         <div class="button-container">
             <button type="submit" class="btn">
-                💾 Save HR Zone Settings
+                Save HR Zone Settings
             </button>
             <a href="/tutorials#heart-rate-zones-setup" class="btn btn-secondary" target="_blank">
-                📚 Learn About HR Zones
+                Learn About HR Zones
             </a>
         </div>
     </form>
@@ -70,7 +56,7 @@
 
 <!-- Heart Rate Zones Comparison Table -->
 <section class="setup-section" id="zonesComparison" style="display: none;">
-    <h2>🎯 Your Heart Rate Zones Comparison</h2>
+    <h2>Your Heart Rate Zones Comparison</h2>
     
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <div></div>
@@ -296,16 +282,20 @@
             const displayMin = isEditing?.min ?? zone.min;
             const displayMax = isEditing?.max ?? zone.max;
 
+            // Get pre-calculated zones from API
+            const percentageZone = zonesData.percentage_zones[zoneKey];
+            const karvonenZone = zonesData.karvonen_zones[zoneKey];
+
             row.innerHTML = `
                 <td style="padding: 0.75rem; font-weight: 600; color: ${zoneColor};">Zone ${zoneNumber}</td>
                 <td style="padding: 0.75rem; color: #374151;">${zoneName}</td>
                 <td style="padding: 0.75rem; text-align: center; color: #374151;">
-                    <div style="font-weight: 600;">${Math.round(zonesData.max_hr * (0.5 + index * 0.1))} - ${Math.round(zonesData.max_hr * (0.6 + index * 0.1))}</div>
-                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${50 + index * 10}-${60 + index * 10}%</div>` : ''}
+                    <div style="font-weight: 600;">${percentageZone.min} - ${percentageZone.max}</div>
+                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${percentageZone.min_formula}<br>${percentageZone.max_formula}</div>` : ''}
                 </td>
                 <td style="padding: 0.75rem; text-align: center; color: #374151;">
-                    <div style="font-weight: 600;">${Math.round(zonesData.resting_hr + (zonesData.max_hr - zonesData.resting_hr) * (0.5 + index * 0.1))} - ${Math.round(zonesData.resting_hr + (zonesData.max_hr - zonesData.resting_hr) * (0.6 + index * 0.1))}</div>
-                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${zonesData.resting_hr} + ${50 + index * 10}-${60 + index * 10}% × ${zonesData.max_hr - zonesData.resting_hr}</div>` : ''}
+                    <div style="font-weight: 600;">${karvonenZone.min} - ${karvonenZone.max}</div>
+                    ${showFormulas ? `<div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">${karvonenZone.min_formula}<br>${karvonenZone.max_formula}</div>` : ''}
                 </td>
                 <td style="padding: 0.75rem; text-align: center; background: #fef3c7; color: #374151; font-weight: 600; border: 2px solid #dc2626; border-top: none;">${displayMin} - ${displayMax}</td>
                 <td style="padding: 0.5rem; text-align: center;">

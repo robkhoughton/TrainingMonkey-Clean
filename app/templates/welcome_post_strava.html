@@ -478,20 +478,42 @@
                     <!-- Left Column: Skinny Fields (Numbers) -->
                     <div class="form-column">
                         <div class="form-group">
-                            <label for="age">Age</label>
-                            <input type="number" id="age" name="age" min="13" max="100" placeholder="e.g., 28" required>
+                            <label for="birth_month">Birth Month</label>
+                            <select id="birth_month" name="birth_month" required>
+                                <option value="">Select Month</option>
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
                         </div>
-                        
+
+                        <div class="form-group">
+                            <label for="birth_year">Birth Year</label>
+                            <select id="birth_year" name="birth_year" required>
+                                <option value="">Select Year</option>
+                            </select>
+                            <div class="form-help">Used to calculate age for heart rate zones (month/year only for privacy)</div>
+                        </div>
+
                         <div class="form-group">
                             <label for="resting_hr">Resting Heart Rate (BPM)</label>
                             <input type="number" id="resting_hr" name="resting_hr" min="40" max="100" placeholder="e.g., 60" required>
                             <div class="form-help">Measure when you wake up, before getting out of bed</div>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="max_hr">Maximum Heart Rate (BPM)</label>
                             <input type="number" id="max_hr" name="max_hr" min="120" max="220" placeholder="e.g., 180" required>
-                            <div class="form-help">Calculated automatically from your age, but you can adjust if needed</div>
+                            <div class="form-help">Calculated automatically from your birth year, but you can adjust if needed</div>
                         </div>
                     </div>
                     
@@ -520,13 +542,18 @@
                         
                         <div class="form-group">
                             <label for="primary_sport">Primary Sport</label>
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 0.75rem; margin-bottom: 0.75rem; border-radius: 4px;">
+                                <p style="margin: 0; font-size: 0.875rem; color: #92400e; font-weight: 600;">⚠️ Built by Trail Runners, For Trail Runners</p>
+                                <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: #78350f;">This app is optimized specifically for trail runners. If you're not a trail runner, this may not be the right fit for you.</p>
+                            </div>
                             <select id="primary_sport" name="primary_sport" required>
                                 <option value="">Select Primary Sport</option>
-                                <option value="trail_running">Trail running</option>
-                                <option value="road_running">Road running</option>
-                                <option value="cycling">Cycling</option>
-                                <option value="other">Other</option>
+                                <option value="trail_running" selected>🏔️ Trail Running (Recommended)</option>
+                                <option value="road_running">Road Running (Not Recommended)</option>
+                                <option value="cycling">Cycling (Cross-training only)</option>
+                                <option value="other">Other (Cross-training only)</option>
                             </select>
+                            <small style="color: #6b7280; font-size: 0.875rem; display: block; margin-top: 0.5rem;">This app's algorithms are specifically designed for trail running with elevation-aware load calculations.</small>
                         </div>
                         
                         <div class="form-group">
@@ -599,19 +626,33 @@
             img.parentNode.appendChild(fallbackText);
         }
 
-        // Auto-calculate max HR when age is entered and validate form
+        // Auto-calculate max HR when birth year is entered and validate form
         document.addEventListener('DOMContentLoaded', function() {
-            const ageInput = document.getElementById('age');
+            const birthMonthSelect = document.getElementById('birth_month');
+            const birthYearSelect = document.getElementById('birth_year');
             const maxHrInput = document.getElementById('max_hr');
             const submitBtn = document.getElementById('submitBtn');
-            
-            // Auto-calculate max HR
-            ageInput.addEventListener('input', function() {
-                const age = parseInt(this.value);
-                if (age && age >= 13 && age <= 100) {
+
+            // Populate birth year dropdown (current year - 13 to current year - 100)
+            const currentYear = new Date().getFullYear();
+            const minYear = currentYear - 100;
+            const maxYear = currentYear - 13;
+
+            for (let year = maxYear; year >= minYear; year--) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                birthYearSelect.appendChild(option);
+            }
+
+            // Auto-calculate max HR from birth year
+            function calculateMaxHR() {
+                const birthYear = parseInt(birthYearSelect.value);
+                if (birthYear) {
+                    const age = currentYear - birthYear;
                     const calculatedMaxHr = 220 - age;
                     maxHrInput.value = calculatedMaxHr;
-                    
+
                     // Add a subtle highlight to show it was auto-calculated
                     maxHrInput.style.backgroundColor = '#f0f9ff';
                     setTimeout(() => {
@@ -619,11 +660,15 @@
                     }, 1000);
                 }
                 validateForm();
-            });
-            
+            }
+
+            birthYearSelect.addEventListener('change', calculateMaxHR);
+            birthMonthSelect.addEventListener('change', validateForm);
+
             // Form validation function
             function validateForm() {
-                const age = document.getElementById('age').value;
+                const birthMonth = birthMonthSelect.value;
+                const birthYear = birthYearSelect.value;
                 const gender = document.getElementById('gender').value;
                 const trainingExperience = document.getElementById('training_experience').value;
                 const primarySport = document.getElementById('primary_sport').value;
@@ -634,27 +679,28 @@
                 const privacyAccepted = document.getElementById('privacy_accepted').checked;
                 const disclaimerAccepted = document.getElementById('disclaimer_accepted').checked;
 
-                const isValid = age && gender && trainingExperience && primarySport && 
-                               restingHr && maxHr && coachingTone && 
+                const isValid = birthMonth && birthYear && gender && trainingExperience && primarySport &&
+                               restingHr && maxHr && coachingTone &&
                                termsAccepted && privacyAccepted && disclaimerAccepted;
 
                 submitBtn.disabled = !isValid;
             }
-            
+
             // Add event listeners for all form fields
-            const formFields = ['age', 'gender', 'training_experience', 'primary_sport', 
+            const formFields = ['gender', 'training_experience', 'primary_sport',
                               'resting_hr', 'max_hr', 'coaching_tone'];
-            
+
             formFields.forEach(fieldId => {
-                document.getElementById(fieldId).addEventListener('input', validateForm);
-                document.getElementById(fieldId).addEventListener('change', validateForm);
+                const field = document.getElementById(fieldId);
+                field.addEventListener('input', validateForm);
+                field.addEventListener('change', validateForm);
             });
-            
+
             // Add event listeners for legal checkboxes
             document.getElementById('terms_accepted').addEventListener('change', validateForm);
             document.getElementById('privacy_accepted').addEventListener('change', validateForm);
             document.getElementById('disclaimer_accepted').addEventListener('change', validateForm);
-            
+
             // Initial validation
             validateForm();
         });

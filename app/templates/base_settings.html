@@ -22,91 +22,185 @@
     <!-- Getting Started CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/getting_started.css') }}">
     
-    <!-- Monkey Mascot Styles -->
+    <!-- Header Styles - Matching Coach Page -->
     <style>
-        /* Monkey mascot styling */
-        .monkey-mascot {
-            position: relative;
-            z-index: 2;
-            width: 200px;
-            height: 200px;
-            margin-left: 2rem;
-            padding: 1rem;
-            filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+        /* Flexbox layout to prevent footer flash */
+        html, body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
         }
 
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-content {
+            flex: 1 0 auto;
+        }
+
+        /* Coach-style header styling */
+        .header {
+            background: linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%);
+            color: white;
+            text-align: right;
+            padding: 1.2rem 1.6rem 1.8rem 1.6rem;
+            position: relative;
+            overflow: visible;
+            min-height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(230, 240, 255, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(125, 156, 184, 0.25) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(180, 200, 220, 0.2) 0%, transparent 60%),
+                radial-gradient(circle at 10% 80%, rgba(27, 46, 75, 0.25) 0%, transparent 45%),
+                radial-gradient(circle at 90% 20%, rgba(100, 130, 160, 0.2) 0%, transparent 50%);
+            pointer-events: none;
+            mix-blend-mode: multiply;
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0, 0, 0, 0.02) 2px, rgba(0, 0, 0, 0.02) 4px);
+            pointer-events: none;
+            opacity: 0.4;
+        }
+        
+        .monkey-mascot {
+            flex-shrink: 0;
+            width: 200px;
+            height: 200px;
+            margin-left: 1.6rem;
+            filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+            position: relative;
+            z-index: 2;
+        }
+        
         .monkey-mascot img {
             width: 100%;
             height: 100%;
             object-fit: contain;
             display: block;
         }
-
-        /* Header styling - constrain to content height */
-        .header {
-            position: relative !important;
-            min-height: 0 !important;
-            max-height: 200px !important;
-            height: 200px !important;
-            padding: 0 2rem !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            overflow: hidden !important;
-            box-sizing: border-box !important;
-        }
         
         .header-content {
-            flex: 1 !important;
-            max-height: none !important;
-            height: auto !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            margin-right: 2rem !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: center !important;
+            position: relative;
+            z-index: 2;
+            max-width: 500px;
+            margin: 0;
+            margin-right: calc(50% - 700px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            text-align: right;
         }
         
         .header-content h1 {
-            margin: 0.5rem 0 !important;
-            line-height: 1.2 !important;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            white-space: nowrap;
+            line-height: 1.2;
+            color: white;
         }
         
-        .header-content p {
-            margin: 0.25rem 0 !important;
-            line-height: 1.4 !important;
+        .header-content .subtitle {
+            font-size: 1.2rem;
+            margin: 0.25rem 0;
+            opacity: 0.95;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            line-height: 1.4;
+            color: white;
         }
         
-        .monkey-mascot {
-            flex-shrink: 0 !important;
-            margin: 0 !important;
-            margin-left: 2rem !important;
+        .header-content .description {
+            font-size: 1rem;
+            margin: 0.25rem 0;
+            opacity: 0.9;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            line-height: 1.4;
+            color: white;
         }
-
+        
         /* Responsive adjustments */
         @media (max-width: 768px) {
+            .header {
+                min-height: 160px;
+                padding: 0.8rem;
+                flex-direction: column;
+                text-align: center;
+            }
+            
             .monkey-mascot {
-                width: 300px;
-                height: 300px;
+                width: 150px;
+                height: 150px;
                 margin-left: 1rem;
             }
             
             .header-content {
-                max-height: 300px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .monkey-mascot {
-                width: 200px;
-                height: 200px;
-                margin-left: 0.5rem;
+                margin-right: 0;
+                text-align: center;
             }
             
-            .header-content {
-                max-height: 200px;
+            .header-content h1 {
+                font-size: 2rem;
+                white-space: nowrap;
             }
+            
+            .header-content .subtitle {
+                font-size: 1.1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header {
+                padding: 1.2rem 0.8rem;
+                min-height: 140px;
+            }
+            
+            .monkey-mascot {
+                width: 120px;
+                height: 120px;
+                margin-left: 0.4rem;
+            }
+            
+            .header-content h1 {
+                font-size: 1.8rem;
+                white-space: nowrap;
+            }
+        }
+        
+        /* Secondary Navigation Hover Effects */
+        .header-content a:hover {
+            background: rgba(255, 255, 255, 0.95) !important;
+            color: #667eea !important;
+            border-color: rgba(102, 126, 234, 0.3) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15) !important;
         }
 
         /* Dashboard Navigation Tabs - Matching React Frontend */
@@ -195,91 +289,10 @@
 
         .app-branding .highlight {
             font-size: 1.4rem;
-            color: #7a9b76;
+            color: #8FA89E;
             font-variant: normal;
         }
 
-        /* Settings Sub-Navigation Bar (Inline with header) */
-        .settings-nav {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
-            backdrop-filter: blur(8px);
-            padding: 1.25rem 2rem;
-            border-bottom: 2px solid rgba(102, 126, 234, 0.2);
-            border-top: 1px solid rgba(102, 126, 234, 0.1);
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.05);
-        }
-
-        .settings-nav-content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            max-width: 1200px;
-            margin: 0 auto;
-            position: relative;
-            z-index: 10;
-            gap: 2rem;
-            flex-wrap: wrap;
-        }
-
-        /* Add a label before navigation items */
-        .settings-nav-content::before {
-            content: 'Settings:';
-            font-weight: 700;
-            color: #667eea;
-            font-size: 0.9rem;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            margin-right: 1rem;
-            padding-right: 1.5rem;
-            border-right: 2px solid rgba(102, 126, 234, 0.3);
-        }
-
-        .settings-nav a {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 1rem;
-            background-color: rgba(255, 255, 255, 0.6);
-            color: #1f2937;
-            border: 2px solid transparent;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            position: relative;
-            text-decoration: none;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-
-        .settings-nav a:hover {
-            color: #667eea;
-            background-color: rgba(255, 255, 255, 0.9);
-            border-color: rgba(102, 126, 234, 0.3);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15);
-        }
-
-        .settings-nav a.active {
-            color: white;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            font-weight: 600;
-            border-color: #667eea;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        .settings-nav a.active::before {
-            content: '▸';
-            position: absolute;
-            left: -0.5rem;
-            font-size: 1.2rem;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: translateX(0); }
-            50% { opacity: 0.6; transform: translateX(-3px); }
-        }
 
         /* Settings Content Styling */
         .settings-content {
@@ -429,34 +442,71 @@
             <p class="subtitle">Configure Your Training Analysis</p>
             <p class="description">Personalize your Training Monkey experience with custom settings for optimal training load analysis and injury prevention.</p>
             {% endblock %}
+            
+            <!-- Settings Sub-Navigation - Right side under header text with white border container -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 1rem; padding: 12px 0; overflow: visible;">
+                <div style="border: 2px solid white; border-radius: 10px; padding: 0.5rem; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); display: inline-block; overflow: visible;">
+                    <ul style="display: flex; gap: 0.5rem; list-style: none; align-items: center; margin: 0; padding: 0; flex-wrap: nowrap; overflow: visible;">
+                        <li style="flex-shrink: 0;">
+                            <a href="/settings/profile" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'profile' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'profile' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'profile' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'profile' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'profile' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'profile' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'profile' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'profile' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'profile' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'profile' %}0.02em{% else %}normal{% endif %};">Profile</span>
+                                {% if active_section == 'profile' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li style="flex-shrink: 0;">
+                            <a href="/settings/hrzones" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'hrzones' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'hrzones' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'hrzones' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'hrzones' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'hrzones' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'hrzones' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'hrzones' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'hrzones' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'hrzones' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'hrzones' %}0.02em{% else %}normal{% endif %};">HR Zones</span>
+                                {% if active_section == 'hrzones' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li style="flex-shrink: 0;">
+                            <a href="/settings/training" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'training' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'training' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'training' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'training' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'training' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'training' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'training' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'training' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'training' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'training' %}0.02em{% else %}normal{% endif %};">Training</span>
+                                {% if active_section == 'training' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li style="flex-shrink: 0;">
+                            <a href="/settings/coaching" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'alerts' or active_section == 'coaching' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'alerts' or active_section == 'coaching' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'alerts' or active_section == 'coaching' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'alerts' or active_section == 'coaching' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'alerts' or active_section == 'coaching' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'alerts' or active_section == 'coaching' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'alerts' or active_section == 'coaching' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'alerts' or active_section == 'coaching' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'alerts' or active_section == 'coaching' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'alerts' or active_section == 'coaching' %}0.02em{% else %}normal{% endif %};">AI Personality</span>
+                                {% if active_section == 'alerts' or active_section == 'coaching' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li style="flex-shrink: 0;">
+                            <a href="/acwr-visualization" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'acwr' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'acwr' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'acwr' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'acwr' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'acwr' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'acwr' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'acwr' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'acwr' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'acwr' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'acwr' %}0.02em{% else %}normal{% endif %};">ACWR</span>
+                                {% if active_section == 'acwr' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </header>
-
-    <!-- Settings Sub-Navigation (Inline with header) -->
-    <div class="settings-nav">
-        <div class="settings-nav-content">
-            <a href="/settings/profile" {% if active_section == 'profile' %}class="active"{% endif %}>
-                <span>👤</span>
-                <span>Profile</span>
-            </a>
-            <a href="/settings/hrzones" {% if active_section == 'hrzones' %}class="active"{% endif %}>
-                <span>❤️</span>
-                <span>HR Zones</span>
-            </a>
-            <a href="/settings/training" {% if active_section == 'training' %}class="active"{% endif %}>
-                <span>🏃</span>
-                <span>Training</span>
-            </a>
-            <a href="/settings/coaching" {% if active_section == 'alerts' %}class="active"{% endif %}>
-                <span>🔔</span>
-                <span>Coaching</span>
-            </a>
-            <a href="/acwr-visualization" {% if active_section == 'acwr' %}class="active"{% endif %}>
-                <span>📊</span>
-                <span>ACWR</span>
-            </a>
-        </div>
-    </div>
 
     <!-- Main Content -->
     <main class="main-content">
@@ -468,9 +518,7 @@
     </main>
 
     <!-- Footer -->
-    <footer class="footer">
-        <p>&copy; 2024 TrainingMonkey. All rights reserved.</p>
-    </footer>
+    {% include 'partials/footer.html' %}
 
     <!-- JavaScript -->
     <script>
@@ -490,3 +538,4 @@
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
+

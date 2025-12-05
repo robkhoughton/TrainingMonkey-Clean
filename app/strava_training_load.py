@@ -1875,9 +1875,19 @@ def process_activities_for_date_range(client, start_date, end_date=None, hr_conf
                 logger.info(f"Activity {activity_id} already in database - skipping")
                 continue
 
+            # Fetch detailed activity to get device_name (required for Garmin attribution)
+            # Note: get_activities() returns SummaryActivity which lacks device_name
+            # We need to call get_activity() to get DetailedActivity with all fields
+            try:
+                detailed_activity = client.get_activity(activity_id)
+                logger.info(f"Fetched detailed activity {activity_id} for device attribution")
+            except Exception as e:
+                logger.warning(f"Could not fetch detailed activity {activity_id}: {e}. Using summary data.")
+                detailed_activity = activity
+
             # Calculate training load (only for supported activities)
             logger.info(f"PROCESSING supported activity {activity_id}: {activity_type}")
-            load_data = calculate_training_load(activity, client, hr_config, user_id)
+            load_data = calculate_training_load(detailed_activity, client, hr_config, user_id)
             load_data['user_id'] = user_id
 
             # Save to database

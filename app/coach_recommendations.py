@@ -360,20 +360,24 @@ def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
     """Format training schedule for LLM prompt."""
     if not schedule_data or not schedule_data.get('schedule'):
         return "Training schedule not configured - assume 5-6 days/week availability."
-    
+
     sched = schedule_data['schedule']
     lines = []
-    
+
     if sched.get('total_hours_per_week'):
         lines.append(f"Total Weekly Training Time: {sched['total_hours_per_week']} hours")
-    
+
     if sched.get('available_days'):
         days = ', '.join(sched['available_days'])
         lines.append(f"Available Days: {days}")
-    
+
+    if sched.get('long_run_days'):
+        long_run_days = ', '.join(sched['long_run_days'])
+        lines.append(f"Long Run Days (90+ min): {long_run_days}")
+
     if sched.get('constraints'):
         lines.append(f"Constraints: {sched['constraints']}")
-    
+
     # Supplemental training
     supps = []
     if schedule_data.get('include_strength'):
@@ -382,10 +386,10 @@ def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
         supps.append(f"Mobility: {schedule_data['mobility_hours']}h/week")
     if schedule_data.get('include_cross_training'):
         supps.append(f"{schedule_data['cross_training_type']}: {schedule_data['cross_training_hours']}h/week")
-    
+
     if supps:
         lines.append(f"Supplemental Training: {', '.join(supps)}")
-    
+
     return "\n".join(lines)
 
 
@@ -591,9 +595,18 @@ def parse_weekly_program_response(response_text: str) -> Dict:
     Returns:
         Parsed program dictionary or raises ValueError
     """
+    import re
+    
+    # Strip markdown code fences if present (Claude sometimes wraps JSON in ```json)
+    cleaned_text = response_text.strip()
+    json_match = re.search(r'```json\s*(.*?)\s*```', cleaned_text, re.DOTALL)
+    if json_match:
+        cleaned_text = json_match.group(1).strip()
+        logger.info("Stripped markdown code fences from response")
+    
     try:
         # Try to parse as JSON directly
-        program = json.loads(response_text.strip())
+        program = json.loads(cleaned_text)
         
         # Validate required fields
         required_fields = ['week_start_date', 'week_summary', 'predicted_metrics', 'daily_program']
@@ -657,19 +670,17 @@ def generate_weekly_program(
     
     Args:
         user_id: User ID
-        target_week_start: Monday of target week (defaults to next Monday)
+        target_week_start: Monday of target week (defaults to current week's Monday)
         force_regenerate: If True, bypass cache and regenerate (used for mid-week adjustments)
     
     Returns:
         Dictionary containing program data and metadata
     """
-    # Default to next Monday if not specified
+    # Default to current week's Monday if not specified
     if target_week_start is None:
         current_date = get_app_current_date()
-        days_until_monday = (7 - current_date.weekday()) % 7
-        if days_until_monday == 0:
-            days_until_monday = 7  # If today is Monday, target next Monday
-        target_week_start = current_date + timedelta(days=days_until_monday)
+        days_since_monday = current_date.weekday()
+        target_week_start = current_date - timedelta(days=days_since_monday)
     
     logger.info(f"Generating weekly program for user {user_id}, week starting {target_week_start}")
     
@@ -830,19 +841,17 @@ def get_or_generate_weekly_program(
     
     Args:
         user_id: User ID
-        week_start: Monday of target week (defaults to next Monday)
+        week_start: Monday of target week (defaults to current week's Monday)
         force_regenerate: Force new generation even if cached
     
     Returns:
         Program dictionary with metadata
     """
-    # Default to next Monday
+    # Default to current week's Monday
     if week_start is None:
         current_date = get_app_current_date()
-        days_until_monday = (7 - current_date.weekday()) % 7
-        if days_until_monday == 0:
-            days_until_monday = 7
-        week_start = current_date + timedelta(days=days_until_monday)
+        days_since_monday = current_date.weekday()
+        week_start = current_date - timedelta(days=days_since_monday)
     
     # Check cache first
     if not force_regenerate:

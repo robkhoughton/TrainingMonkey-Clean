@@ -596,7 +596,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
   return (
     <div style={{
       background: `linear-gradient(135deg, #778899 0%, #C0C0C0 50%, #F5F5F5 100%)`, // Muted gradient closer to card background
-      padding: '1rem',
+      padding: '0.5rem',
       borderRadius: '0.5rem', // Match dashboard cards
       marginBottom: '1rem',
       boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)' // Match dashboard cards
@@ -624,37 +624,41 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
 
         {/* Card 1: Branding (Far Left) */}
         <div style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          borderRadius: '0.5rem', // Match dashboard cards
-          padding: '0.75rem',
+          backgroundColor: '#233858',
+          borderRadius: '0.5rem',
+          padding: '0',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           textAlign: 'center',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)', // Match dashboard cards
-          backdropFilter: 'blur(10px)',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
           position: 'relative',
           overflow: 'hidden',
-          minHeight: '80px', // Compact height
-          backgroundImage: `url('/static/training-monkey-runner.webp')`,
-          backgroundSize: '95%', // Slightly smaller to fit comfortably
-          backgroundPosition: 'center 8%', // Positioned higher to reveal YTM on cap
-          backgroundRepeat: 'no-repeat'
+          maxHeight: '180px'
         }}>
-          {/* Clean logo - no text overlay */}
+          <img
+            src="/static/images/YTM_Logo_cropped.webp"
+            alt="Your Training Monkey Logo"
+            style={{
+              width: '100%',
+              height: '180px',
+              objectFit: 'cover'
+            }}
+          />
         </div>
 
         {/* Card 2: Training Balance (with Gauges) */}
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0.75rem',
+          padding: '0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          minHeight: '80px' // Maintaining original height constraint
+          minHeight: '155px',
+          maxHeight: '155px'
         }}>
           {/* Dynamic Risk Assessment Title */}
           {(() => {
@@ -738,12 +742,13 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0.75rem',
+          padding: '0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          minHeight: '80px'
+          minHeight: '155px',
+          maxHeight: '155px'
         }}>
           <ContextualTooltip
             content={
@@ -876,14 +881,15 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0.75rem',
+          padding: '0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: '0.5rem',
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          minHeight: '80px'
+          minHeight: '155px',
+          maxHeight: '155px'
         }}>
           <h3 style={{
             margin: '0',

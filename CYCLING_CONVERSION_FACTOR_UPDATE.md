@@ -242,3 +242,5 @@ Track these metrics post-deployment:
 This update aligns TrainingMonkey's cycling conversion factors with published sports science research, addressing user feedback about over-credited easy rides while maintaining accuracy at higher intensities. The changes improve training load accuracy by 11-25% for the majority of recreational cyclists who ride at easy to moderate speeds.
 
 
+
+

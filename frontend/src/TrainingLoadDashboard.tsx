@@ -1326,68 +1326,150 @@ const getRecommendationDateContext = (recommendation) => {
       </div>
 
       {/* Coaching Link Section */}
-      <div className={styles.chartContainer}>
+      <div className={styles.chartContainer} style={{ marginBottom: 0, borderBottom: '2px solid #0f172a' }}>
         <div style={{
           padding: '2rem',
-          textAlign: 'center',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: 'linear-gradient(90deg, rgba(125, 156, 184, 0.92) 0%, rgba(27, 46, 75, 0.92) 100%)',
           borderRadius: '0.75rem',
           color: 'white',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2rem',
+          justifyContent: 'space-between',
+          position: 'relative',
+          overflow: 'hidden'
         }}>
+          {/* Background texture overlay - matching guide/settings */}
           <div style={{
-            fontSize: '3rem',
-            marginBottom: '1rem'
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `
+              radial-gradient(circle at 20% 30%, rgba(125, 156, 184, 0.3) 0%, transparent 50%),
+              radial-gradient(circle at 80% 70%, rgba(27, 46, 75, 0.25) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(80, 100, 120, 0.2) 0%, transparent 60%)
+            `,
+            pointerEvents: 'none',
+            mixBlendMode: 'multiply'
+          }}></div>
+
+          {/* Left: YTM Logo */}
+          <div style={{
+            flexShrink: 0,
+            width: '210px',
+            height: '210px',
+            position: 'relative',
+            zIndex: 2
           }}>
-            🧠
+            <img
+              src="/static/images/YTM_Logo_byandfor.webp"
+              alt="Your Training Monkey Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.3))'
+              }}
+            />
           </div>
-          <h2 style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            marginBottom: '0.75rem',
-            color: 'white'
+
+          {/* Center: Text Content */}
+          <div style={{
+            flex: 1,
+            textAlign: 'center',
+            padding: '0 2.5rem',
+            position: 'relative',
+            zIndex: 2
           }}>
-            Your AI Training Coach
-          </h2>
-          <p style={{
-            fontSize: '1rem',
-            marginBottom: '1.5rem',
-            opacity: 0.95,
-            maxWidth: '600px',
-            margin: '0 auto 1.5rem'
-          }}>
-            Get comprehensive coaching analysis including weekly strategy, training stage guidance,
-            race preparation, and personalized AI recommendations based on your training patterns.
-          </p>
-          <button
-            onClick={() => onNavigateToTab?.('coach')}
-            style={{
-              padding: '0.875rem 2rem',
+            <div style={{
+              display: 'inline-block',
+              backgroundColor: 'rgba(255, 215, 0, 0.9)',
+              color: '#1e293b',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '1rem',
+              marginBottom: '0.75rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+            }}>
+              ✨ AI-Powered Insights
+            </div>
+            <h2 style={{
+              fontSize: '1.75rem',
+              fontWeight: '700',
+              marginBottom: '0.5rem',
+              color: 'white',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
+              lineHeight: '1.2'
+            }}>
+              Ready for Your Personal AI Coach?
+            </h2>
+            <p style={{
               fontSize: '1rem',
-              fontWeight: '600',
-              backgroundColor: 'white',
-              color: '#667eea',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-              transition: 'all 0.2s ease',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-            }}
-          >
-            <span>View Full Coaching Analysis</span>
-            <span style={{ fontSize: '1.2rem' }}>→</span>
-          </button>
+              opacity: 0.95,
+              lineHeight: '1.6',
+              marginBottom: '0.5rem',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.2)'
+            }}>
+              Get weekly training strategy, race preparation guidance, and personalized recommendations
+              that adapt to YOUR patterns. Stop guessing—start training smarter.
+            </p>
+            <p style={{
+              fontSize: '0.9rem',
+              opacity: 0.9,
+              fontStyle: 'italic',
+              textShadow: '1px 1px 2px rgba(0,0,0,0.2)'
+            }}>
+              Analyzes your complete training history to deliver insights you won't find anywhere else.
+            </p>
+          </div>
+
+          {/* Right: Button */}
+          <div style={{
+            flexShrink: 0,
+            position: 'relative',
+            zIndex: 2
+          }}>
+            <button
+              onClick={() => onNavigateToTab?.('coach')}
+              style={{
+                padding: '1rem 2.5rem',
+                fontSize: '1.1rem',
+                fontWeight: '700',
+                backgroundColor: '#FF5722',
+                color: 'white',
+                border: '2px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '2rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(255, 87, 34, 0.4)',
+                transition: 'all 0.2s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                whiteSpace: 'nowrap',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'translateY(-3px) scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 87, 34, 0.6)';
+                e.currentTarget.style.backgroundColor = '#E64A19';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 87, 34, 0.4)';
+                e.currentTarget.style.backgroundColor = '#FF5722';
+              }}
+            >
+              <span>Get My Coach</span>
+              <span style={{ fontSize: '1.3rem' }}>→</span>
+            </button>
+          </div>
         </div>
       </div>
 

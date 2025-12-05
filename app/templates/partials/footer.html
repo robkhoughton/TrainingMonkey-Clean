@@ -1,0 +1,105 @@
+<!-- Footer - Reusable template partial -->
+<footer id="page-footer" style="background-color: #1e293b; color: #e2e8f0; padding: 1rem 1.5rem 0.75rem; margin-top: auto; border-top: 2px solid #0f172a; opacity: 0; transition: opacity 0.3s ease;">
+    <div style="max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-bottom: 0.75rem;">
+
+        <!-- Company Info -->
+        <div style="text-align: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; justify-content: center;">
+                <h3 style="color: #fff; font-size: 0.95rem; margin: 0; font-weight: 600; font-style: italic;">
+                    Your Training Monkey
+                </h3>
+                <a href="/faq#patent-technology" style="display: inline-block; background: rgba(255,255,255,0.1); padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; color: #cbd5e1; text-decoration: none; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.color='#fff'" onmouseout="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#cbd5e1'">
+                    Patent Pending
+                </a>
+            </div>
+            <p style="font-size: 0.8rem; line-height: 1.4; color: #cbd5e1; margin: 0;">
+                Built for trail runners by trail runners.<br>Train smarter, prevent injuries, optimize performance.
+            </p>
+        </div>
+
+        <!-- Legal -->
+        <div style="text-align: center;">
+            <h3 style="color: #fff; font-size: 0.95rem; margin-bottom: 0.35rem; font-weight: 600;">
+                Legal
+            </h3>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                <li style="margin-bottom: 0.1rem;">
+                    <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" style="color: #cbd5e1; text-decoration: none; font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#cbd5e1'">
+                        Privacy Policy
+                    </a>
+                </li>
+                <li style="margin-bottom: 0.1rem;">
+                    <a href="/legal/terms" target="_blank" rel="noopener noreferrer" style="color: #cbd5e1; text-decoration: none; font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#cbd5e1'">
+                        Terms &amp; Conditions
+                    </a>
+                </li>
+                <li style="margin-bottom: 0.1rem;">
+                    <a href="/legal/disclaimer" target="_blank" rel="noopener noreferrer" style="color: #cbd5e1; text-decoration: none; font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#cbd5e1'">
+                        Medical Disclaimer
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Support -->
+        <div style="text-align: center;">
+            <h3 style="color: #fff; font-size: 0.95rem; margin-bottom: 0.35rem; font-weight: 600;">
+                Support
+            </h3>
+            <a href="mailto:support@yourtrainingmonkey.com" style="color: #cbd5e1; text-decoration: none; font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#cbd5e1'">
+                support@yourtrainingmonkey.com
+            </a>
+        </div>
+    </div>
+
+    <!-- Copyright -->
+    <div style="border-top: 1px solid #0f172a; padding-top: 0.5rem; margin-top: 0.5rem; font-size: 0.75rem; color: #94a3b8; text-align: center;">
+        &copy; {{ current_year|default(2025) }} <span style="font-style: italic;">Your Training Monkey</span>, LLC. All rights reserved.
+    </div>
+</footer>
+
+<!-- Responsive Footer Styles -->
+<style>
+    /* Footer is now properly positioned by flexbox layout */
+    @media (max-width: 768px) {
+        footer {
+            padding: 1.25rem 1rem 0.75rem !important;
+        }
+        footer > div:first-child {
+            grid-template-columns: 1fr !important;
+            gap: 1rem !important;
+        }
+        footer h3 {
+            font-size: 0.9rem !important;
+        }
+    }
+</style>
+
+<!-- Footer visibility script - prevent flash -->
+<script>
+(function() {
+    // Prevent scroll restoration on navigation
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
+
+    // Show footer after page loads to prevent flash
+    function showFooter() {
+        const footer = document.getElementById('page-footer');
+        if (footer) {
+            footer.style.opacity = '1';
+        }
+    }
+
+    // Show footer when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', showFooter);
+    } else {
+        // DOM is already ready
+        showFooter();
+    }
+
+    // Fallback: ensure footer shows after a short delay regardless
+    setTimeout(showFooter, 100);
+})();
+</script>

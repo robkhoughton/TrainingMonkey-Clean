@@ -1078,14 +1078,16 @@ def parse_llm_response(response_text):
     logger.info(f"Response preview: {cleaned_response[:200]}...")
 
     # Try multiple formats in order of preference (most specific to most general)
-    # Format 1: Plain text headers (DAILY RECOMMENDATION on its own line)
-    daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s*\n+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
+    # Format 1: Plain text headers (content may be on same line OR next line)
+    # CRITICAL FIX: LLM sometimes puts content on same line: "DAILY RECOMMENDATION Your notes..."
+    # Changed \n+ (requires newline) to \s+ (matches space OR newline)
+    daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
                             cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
-    weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s*\n+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
+    weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
                              cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
-    insights_match = re.search(r'^PATTERN\s+INSIGHTS\s*\n+(.*?)$',
+    insights_match = re.search(r'^PATTERN\s+INSIGHTS\s+(.*?)$',
                                cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
     # Format 2: Bold headers with colons (**DAILY RECOMMENDATION:**)
@@ -1171,8 +1173,8 @@ def parse_llm_response(response_text):
     for key in sections:
         if sections[key]:
             sections[key] = process_markdown(sections[key])
-            # Remove excessive blank lines (more than one consecutive newline)
-            sections[key] = re.sub(r'\n{3,}', '\n\n', sections[key])  # 3+ newlines → 2 newlines
+            # Remove ALL blank lines - visual separation via styled headers instead
+            sections[key] = re.sub(r'\n{2,}', '\n', sections[key])  # All blank lines removed, single newlines only
             sections[key] = sections[key].strip()
 
     # Final validation and logging

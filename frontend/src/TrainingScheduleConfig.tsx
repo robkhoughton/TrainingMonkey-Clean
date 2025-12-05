@@ -9,7 +9,7 @@ interface TrainingSchedule {
   schedule: {
     total_hours_per_week?: number;
     available_days?: string[];
-    time_blocks?: { [key: string]: string[] };
+    long_run_days?: string[];
     constraints?: string;
   } | null;
   include_strength: boolean;
@@ -31,7 +31,6 @@ interface TrainingScheduleConfigProps {
 // ============================================================================
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const TIME_BLOCKS = ['Early Morning', 'Morning', 'Midday', 'Afternoon', 'Evening', 'Night'];
 
 // ============================================================================
 // COMPONENT
@@ -46,7 +45,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   // Form state
   const [totalHours, setTotalHours] = useState<number>(10);
   const [availableDays, setAvailableDays] = useState<string[]>(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
-  const [timeBlocks, setTimeBlocks] = useState<{ [key: string]: string[] }>({});
+  const [longRunDays, setLongRunDays] = useState<string[]>(['Saturday', 'Sunday']);
   const [constraints, setConstraints] = useState<string>('');
   
   // Supplemental training
@@ -67,8 +66,8 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       if (schedule.schedule) {
         setTotalHours(schedule.schedule.total_hours_per_week || 10);
         setAvailableDays(schedule.schedule.available_days || []);
-        setTimeBlocks(schedule.schedule.time_blocks || {});
-        
+        setLongRunDays(schedule.schedule.long_run_days || ['Saturday', 'Sunday']);
+
         // Convert constraints array to text (one per line)
         const constraintsArray = schedule.schedule.constraints;
         if (Array.isArray(constraintsArray)) {
@@ -81,7 +80,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
           setConstraints(constraintsArray || '');
         }
       }
-      
+
       setIncludeStrength(schedule.include_strength);
       setStrengthHours(schedule.strength_hours);
       setIncludeMobility(schedule.include_mobility);
@@ -111,8 +110,8 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       if (schedule.schedule) {
         setTotalHours(schedule.schedule.total_hours_per_week || 10);
         setAvailableDays(schedule.schedule.available_days || []);
-        setTimeBlocks(schedule.schedule.time_blocks || {});
-        
+        setLongRunDays(schedule.schedule.long_run_days || ['Saturday', 'Sunday']);
+
         // Convert constraints array to text
         const constraintsArray = schedule.schedule.constraints;
         if (Array.isArray(constraintsArray)) {
@@ -138,29 +137,19 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   const handleDayToggle = (day: string) => {
     if (availableDays.includes(day)) {
       setAvailableDays(availableDays.filter(d => d !== day));
-      // Remove time blocks for this day
-      const newTimeBlocks = { ...timeBlocks };
-      delete newTimeBlocks[day];
-      setTimeBlocks(newTimeBlocks);
+      // Also remove from long run days if it was selected
+      setLongRunDays(longRunDays.filter(d => d !== day));
     } else {
       setAvailableDays([...availableDays, day]);
     }
   };
 
-  const handleTimeBlockToggle = (day: string, block: string) => {
-    const currentBlocks = timeBlocks[day] || [];
-    let newBlocks;
-    
-    if (currentBlocks.includes(block)) {
-      newBlocks = currentBlocks.filter(b => b !== block);
+  const handleLongRunDayToggle = (day: string) => {
+    if (longRunDays.includes(day)) {
+      setLongRunDays(longRunDays.filter(d => d !== day));
     } else {
-      newBlocks = [...currentBlocks, block];
+      setLongRunDays([...longRunDays, day]);
     }
-    
-    setTimeBlocks({
-      ...timeBlocks,
-      [day]: newBlocks
-    });
   };
 
   const handleSubmit = async () => {
@@ -204,7 +193,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
         training_schedule: {
           total_hours_per_week: totalHours,
           available_days: availableDays,
-          time_blocks: timeBlocks,
+          long_run_days: longRunDays,
           constraints: constraintsList
         },
         include_strength_training: includeStrength,
@@ -540,46 +529,47 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
             </div>
           </div>
 
-          {/* Time Blocks (Optional) */}
+          {/* Long Run Days */}
           {availableDays.length > 0 && (
             <div style={{ marginBottom: '25px' }}>
               <label style={{ display: 'block', marginBottom: '10px', fontWeight: '600', fontSize: '15px' }}>
-                Preferred Time Blocks (Optional)
+                Long Run Days <span style={{ color: '#e74c3c' }}>*</span>
               </label>
               <div style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '10px' }}>
-                Select when you typically train on each day
+                Which days work for long runs (90+ minutes)?
               </div>
-              {availableDays.map(day => (
-                <div key={day} style={{ marginBottom: '15px' }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '8px', color: '#555' }}>
-                    {day}:
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', paddingLeft: '15px' }}>
-                    {TIME_BLOCKS.map(block => {
-                      const isSelected = (timeBlocks[day] || []).includes(block);
-                      return (
-                        <button
-                          key={block}
-                          type="button"
-                          onClick={() => handleTimeBlockToggle(day, block)}
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: isSelected ? '#3498db' : 'white',
-                            color: isSelected ? 'white' : '#555',
-                            border: isSelected ? '1px solid #3498db' : '1px solid #ddd',
-                            borderRadius: '15px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            fontWeight: isSelected ? '600' : 'normal'
-                          }}
-                        >
-                          {block}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
+                {DAYS.map(day => {
+                  const isDayAvailable = availableDays.includes(day);
+                  const isSelected = longRunDays.includes(day);
+                  return (
+                    <label
+                      key={day}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '10px',
+                        backgroundColor: isSelected ? '#e3f2fd' : isDayAvailable ? 'white' : '#f5f5f5',
+                        border: isSelected ? '2px solid #2196f3' : '1px solid #ddd',
+                        borderRadius: '6px',
+                        cursor: isDayAvailable ? 'pointer' : 'not-allowed',
+                        fontSize: '14px',
+                        fontWeight: isSelected ? '600' : 'normal',
+                        opacity: isDayAvailable ? 1 : 0.5
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleLongRunDayToggle(day)}
+                        disabled={!isDayAvailable}
+                        style={{ marginRight: '8px', width: '18px', height: '18px', cursor: isDayAvailable ? 'pointer' : 'not-allowed' }}
+                      />
+                      {day}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -600,7 +590,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
                 minHeight: '80px',
                 fontFamily: 'inherit'
               }}
-              placeholder="e.g., Work 9-5 weekdays, family dinner 6pm, no early morning runs on weekends..."
+              placeholder="e.g., Tuesday max 30 minutes, Need rest day after long runs, Traveling week of March 10..."
             />
           </div>
 

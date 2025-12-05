@@ -7,6 +7,8 @@ interface JournalEntry {
   is_today: boolean;
   is_future?: boolean;  // NEW: indicates if entry is for a future date
   is_tomorrow?: boolean;  // NEW: indicates if entry is for tomorrow
+  has_observations?: boolean;  // NEW: indicates if journal observations have been saved
+  is_next_incomplete?: boolean;  // NEW: indicates this is the next workout to complete
   todays_decision: string;
   activity_summary: {
     type: string;
@@ -356,6 +358,23 @@ const JournalPage: React.FC = () => {
 
   // NEW: Handle marking rest day
   const handleMarkRestDay = async (date: string) => {
+    // Prompt user for notes about why they're skipping the workout
+    const notes = window.prompt(
+      `Why are you skipping today's prescribed workout?\n\nEnter your notes (this will be used to generate an autopsy and inform tomorrow's recommendation):`,
+      'Decided to rest due to '
+    );
+
+    // If user cancels, don't proceed
+    if (notes === null) {
+      return;
+    }
+
+    // Require at least some input
+    if (!notes.trim()) {
+      alert('Please enter a reason for skipping the workout.');
+      return;
+    }
+
     try {
       setIsSaving(date);
 
@@ -367,7 +386,7 @@ const JournalPage: React.FC = () => {
         body: JSON.stringify({
           date: date,
           is_rest_day: true,
-          notes: 'Rest Day'
+          notes: notes.trim()
         }),
       });
 
@@ -385,7 +404,7 @@ const JournalPage: React.FC = () => {
       // Mark as saved
       setSavedEntries(prev => new Set(prev).add(date));
 
-      // Refresh journal data to get tomorrow's updated recommendation
+      // Refresh journal data to get updated autopsy and tomorrow's recommendation
       try {
         await fetchJournalData(centerDate);
       } catch (refreshErr) {
@@ -556,8 +575,8 @@ const JournalPage: React.FC = () => {
             <tbody>
               {journalData.map((entry) => (
                 <React.Fragment key={entry.date}>
-                  {/* Tomorrow's row - special rendering */}
-                  {entry.is_tomorrow ? (
+                  {/* Next Incomplete Workout row - special rendering */}
+                  {entry.is_next_incomplete ? (
                     <tr style={{
                       borderBottom: '2px solid #3b82f6',
                       backgroundColor: '#eff6ff'
@@ -572,7 +591,7 @@ const JournalPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Tomorrow's Recommendation - spans multiple columns */}
+                      {/* Next Workout Recommendation - spans multiple columns */}
                       <td colSpan={8} style={{ padding: '16px', verticalAlign: 'top' }}>
                         {entry.todays_decision && !entry.todays_decision.includes('No recommendation available') ? (
                           /* Has actual recommendation */
@@ -582,33 +601,55 @@ const JournalPage: React.FC = () => {
                             padding: '16px',
                             backgroundColor: 'white'
                           }}>
-                            <div style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
                               marginBottom: '12px',
                               gap: '8px'
                             }}>
-                              <span style={{ 
-                                fontSize: '1.1rem', 
-                                fontWeight: '600',
-                                color: '#1f2937'
-                              }}>
-                                Training Decision for Tomorrow
-                              </span>
-                              <span style={{
-                                backgroundColor: '#10b981',
-                                color: 'white',
-                                padding: '4px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.75rem',
-                                fontWeight: '600'
-                              }}>
-                                Autopsy-Informed
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                  fontSize: '1.1rem',
+                                  fontWeight: '600',
+                                  color: '#1f2937'
+                                }}>
+                                  Training Decision for {formatDate(entry.date)}
+                                </span>
+                                <span style={{
+                                  backgroundColor: '#10b981',
+                                  color: 'white',
+                                  padding: '4px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600'
+                                }}>
+                                  Autopsy-Informed
+                                </span>
+                              </div>
+                              {/* Compact Mark as Rest Day button */}
+                              <button
+                                onClick={() => handleMarkRestDay(entry.date)}
+                                disabled={isSaving === entry.date}
+                                style={{
+                                  backgroundColor: '#9333ea',
+                                  color: 'white',
+                                  padding: '6px 12px',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600',
+                                  cursor: isSaving === entry.date ? 'not-allowed' : 'pointer',
+                                  opacity: isSaving === entry.date ? 0.6 : 1,
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {isSaving === entry.date ? 'Marking...' : 'Mark as Rest Day'}
+                              </button>
                             </div>
                             <div style={{
                               fontSize: '0.9rem',
-                              lineHeight: '1.7',
+                              lineHeight: '1.6',
                               color: '#374151',
                               textAlign: 'left',
                               maxHeight: '400px',
@@ -627,43 +668,20 @@ const JournalPage: React.FC = () => {
                             textAlign: 'center'
                           }}>
                             <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📝</div>
-                            <div style={{ 
-                              fontSize: '1rem', 
+                            <div style={{
+                              fontSize: '1rem',
                               fontWeight: '600',
                               color: '#374151',
                               marginBottom: '8px'
                             }}>
-                              Ready to Plan Tomorrow's Workout?
-                            </div>
-                            <div style={{ 
-                              fontSize: '0.875rem', 
-                              color: '#6b7280',
-                              marginBottom: '16px',
-                              lineHeight: '1.5'
-                            }}>
-                              Complete your observations for today's workout to generate an autopsy-informed recommendation for tomorrow.
-                              <br />
-                              <strong style={{ color: '#374151' }}>Save today's Energy, RPE, Pain, and Notes.</strong>
+                              No Recommendation Available for {formatDate(entry.date)}
                             </div>
                             <div style={{
-                              display: 'inline-block',
-                              padding: '8px 16px',
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              borderRadius: '6px',
                               fontSize: '0.875rem',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
-                            onClick={() => {
-                              // Scroll to today's row
-                              const todayRow = document.querySelector('[style*="backgroundColor"][style*="#f0f9ff"]');
-                              if (todayRow) {
-                                todayRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              }
-                            }}
-                            >
-                              ⬆️ Complete Today's Journal
+                              color: '#6b7280',
+                              lineHeight: '1.5'
+                            }}>
+                              Generate fresh recommendations on the Dashboard tab.
                             </div>
                           </div>
                         )}
@@ -954,7 +972,7 @@ const JournalPage: React.FC = () => {
                     </td>
                   </tr>
                   )}
-                  {/* End of tomorrow/regular row conditional */}
+                  {/* End of next-incomplete/regular row conditional */}
 
                 </React.Fragment>
               ))}
@@ -1114,11 +1132,14 @@ const JournalPage: React.FC = () => {
                     display: 'flex',
                     gap: '40px',
                     position: 'relative',
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
+                    justifyContent: 'center',
+                    maxWidth: '100%'
                   }}>
                     {/* Column 1 */}
                     <div style={{
-                      flex: '1',
+                      flex: '0 1 auto',
+                      maxWidth: '70ch',
                       fontSize: '0.95rem',
                       lineHeight: '1.6',
                       color: '#374151',
@@ -1170,7 +1191,8 @@ const JournalPage: React.FC = () => {
                     
                     {/* Column 2 */}
                     <div style={{
-                      flex: '1',
+                      flex: '0 1 auto',
+                      maxWidth: '70ch',
                       fontSize: '0.95rem',
                       lineHeight: '1.6',
                       color: '#374151',

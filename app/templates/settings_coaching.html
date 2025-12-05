@@ -1,31 +1,16 @@
-{% extends "base_getting_started.html" %}
+{% extends "base_settings.html" %}
 
 {% block title %}Coaching Settings - Your Training Monkey{% endblock %}
 
 {% block meta_description %}Configure your AI coaching preferences, alert settings, and notification preferences for personalized training guidance.{% endblock %}
 
+{% set active_section = 'coaching' %}
+
 {% block body_attributes %}data-settings-page="true"{% endblock %}
 
 {% block header_title %}
-<h1>Coaching Settings</h1>
-<p class="subtitle">AI Coaching & Alert Configuration</p>
+<h1>AI Personality</h1>
 <p class="description">Customize your AI coaching experience with personalized alert settings and notification preferences.</p>
-{% endblock %}
-
-{% block navigation %}
-<!-- Settings Navigation -->
-<nav class="nav">
-    <div class="nav-content">
-        <a href="/" class="nav-logo">Your Training Monkey</a>
-        <ul class="nav-links">
-            <li><a href="/settings/profile">Profile</a></li>
-            <li><a href="/settings/hrzones">HR Zones</a></li>
-            <li><a href="/settings/training">Training</a></li>
-            <li><a href="/settings/coaching" class="active">Coaching</a></li>
-            <li><a href="/settings/acwr">ACWR</a></li>
-        </ul>
-    </div>
-</nav>
 {% endblock %}
 
 {% block extra_head %}
@@ -44,7 +29,7 @@
 
 <!-- Coaching Style Section -->
 <section class="setup-section">
-    <h2>🤖 AI Coaching Style</h2>
+    <h2>AI Coaching Style</h2>
     
     <form id="coachingForm" method="POST" action="/api/settings/coaching">
         <div class="form-container">
@@ -133,10 +118,10 @@
 
         <div class="button-container">
             <button type="submit" class="btn">
-                💾 Save Coaching Settings
+                Save Coaching Settings
             </button>
             <a href="/tutorials#coaching-settings-guide" class="btn btn-secondary" target="_blank">
-                📚 Learn More About Coaching Settings
+                Learn More About Coaching Settings
             </a>
         </div>
     </form>
@@ -144,7 +129,7 @@
 
 <!-- Alert Settings Section -->
 <section class="setup-section">
-    <h2>🔔 Alert & Notification Settings</h2>
+    <h2>Alert & Notification Settings</h2>
     
     <form id="alertsForm" method="POST" action="/api/settings/alerts">
         <div class="form-container">
@@ -171,10 +156,10 @@
 
         <div class="button-container">
             <button type="submit" class="btn">
-                💾 Save Alert Settings
+                Save Alert Settings
             </button>
             <a href="/tutorials#coaching-settings-guide" class="btn btn-secondary" target="_blank">
-                📚 Learn More About Coaching Settings
+                Learn More About Coaching Settings
             </a>
         </div>
     </form>
