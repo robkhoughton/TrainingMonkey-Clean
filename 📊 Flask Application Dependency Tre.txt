@@ -1,0 +1,69 @@
+ 📊 Flask Application Dependency Tree
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │ TIER 0: Root Application (1 file, 12,438 lines)                            │
+  │ ├─ strava_app.py [12,438 lines]                                            │
+  └─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │ TIER 1: Direct Dependencies (21 files, 12,630 lines, avg 601 lines/file)   │
+  │ ├─ db_utils.py [1,145]                                                      │
+  │ ├─ llm_recommendations_module.py [2,294]                                    │
+  │ ├─ strava_training_load.py [2,034]                                          │
+  │ ├─ enhanced_token_management.py [1,138]                                     │
+  │ ├─ acwr_visualization_routes.py [930]                                       │
+  │ ├─ acwr_configuration_admin.py [945]                                        │
+  │ ├─ acwr_migration_admin.py [804]                                            │
+  │ ├─ csrf_protection.py [528]                                                 │
+  │ ├─ optimized_acwr_service.py [516]                                          │
+  │ ├─ optimized_token_management.py [421]                                      │
+  │ ├─ settings_utils.py [416]                                                  │
+  │ ├─ db_connection_manager.py [294]                                           │
+  │ ├─ acwr_feature_flag_admin.py [236]                                         │
+  │ ├─ utils/data_aggregation.py [223]                                          │
+  │ ├─ timezone_utils.py [190]                                                  │
+  │ ├─ sync_fix.py [165]                                                        │
+  │ ├─ auth.py [150]                                                            │
+  │ ├─ utils/feature_flags.py [110]                                             │
+  │ ├─ utils/date_processing.py [47]                                            │
+  │ ├─ utils/secrets_manager.py [27]                                            │
+  │ └─ utils/__init__.py [17]                                                   │
+  └─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │ TIER 2: Secondary Dependencies (6 files, 3,658 lines, avg 610 lines/file)  │
+  │ ├─ acwr_configuration_service.py [1,014]                                    │
+  │ ├─ acwr_visualization_service.py [710]                                      │
+  │ ├─ acwr_migration_service.py [694]                                          │
+  │ ├─ unified_metrics_service.py [599]                                         │
+  │ ├─ acwr_calculation_service.py [386]                                        │
+  │ └─ acwr_feature_flag_monitor.py [255]                                       │
+  └─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+                              [No Further Dependencies]
+                     (Only standard library & external packages)
+
+  📈 Summary Statistics
+
+  | Metric             | Value                        |
+  |--------------------|------------------------------|
+  | Total Tiers        | 3 (Tier 0, 1, 2)             |
+  | Total Files        | 28 files                     |
+  | Total Lines        | 28,726 lines                 |
+  | Average Lines/File | 1,026 lines                  |
+  | Largest File       | strava_app.py (12,438 lines) |
+  | Dependency Depth   | Shallow (only 2 tiers deep)  |
+
+  🔍 Key Insights
+
+  - Core monolith: strava_app.py is 43% of total codebase (12,438/28,726 lines)
+  - Tier 1 heavy: 21 direct dependencies, relatively flat architecture
+  - ACWR dominance: 11 ACWR-related files across tiers (7,294 lines total)
+  - Clean separation: Only 2 tiers of dependencies indicates good modular design
+  - Missing files: 5 referenced files have been moved to scripts/ (migration tools)
+
+  The application has a flat dependency structure with most complexity in the main app file, suggesting potential for future refactoring to break up strava_app.py into smaller
+  modules.

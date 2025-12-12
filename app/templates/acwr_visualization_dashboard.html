@@ -23,6 +23,22 @@
     
     <!-- Custom CSS -->
     <style>
+        /* Flexbox layout for proper footer positioning */
+        html, body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container-fluid {
+            flex: 1 0 auto;
+        }
+
         .visualization-container {
             background: #f8f9fa;
             border-radius: 8px;
@@ -294,138 +310,234 @@
     </style>
 </head>
 <body>
-    <!-- Navigation Bar - matching Guide page style -->
-    <div style="
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(8px);
-        padding: 1rem 2rem;
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    ">
-        <nav style="
+    <style>
+        /* Dashboard Navigation Tabs */
+        .dashboard-tabs-container {
+            background-color: #f1f5f9;
+            padding-top: 4px;
+            position: relative;
+        }
+        .dashboard-tabs-wrapper {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            max-width: 1200px;
-            margin: 0 auto;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-right: 20px;
+        }
+        .dashboard-tabs-nav {
+            display: flex;
+            align-items: flex-end;
+            padding-left: 20px;
             position: relative;
             z-index: 10;
-            gap: 2rem;
-        ">
-            <a href="/settings/profile" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>👤</span>
-                <span>Profile</span>
-            </a>
-            <a href="/settings/hrzones" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>❤️</span>
-                <span>HR Zones</span>
-            </a>
-            <a href="/settings/training" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>🏃</span>
-                <span>Training</span>
-            </a>
-            <a href="/settings/coaching" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #1f2937;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 500;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#1f2937'">
-                <span>🔔</span>
-                <span>Coaching</span>
-            </a>
-            <a href="/acwr-visualization" style="
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 0;
-                background-color: transparent;
-                color: #667eea;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                font-weight: 600;
-                transition: color 0.3s ease;
-                position: relative;
-                text-decoration: none;
-            " onmouseover="this.style.color='#667eea'" onmouseout="this.style.color='#667eea'">
-                <span>📊</span>
-                <span>ACWR</span>
-                <div style="
-                    position: absolute;
-                    bottom: -0.5rem;
-                    left: 0;
-                    right: 0;
-                    height: 2px;
-                    background: #667eea;
-                    border-radius: 1px;
-                "></div>
-            </a>
-        </nav>
+        }
+        .dashboard-tab {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 6px 16px 7px 16px;
+            border: none;
+            background-color: #e2e8f0;
+            color: #64748b;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            position: relative;
+            margin-right: 2px;
+            transition: all 0.2s ease;
+            min-width: 120px;
+            justify-content: center;
+            z-index: 10;
+            border-top-left-radius: 0;
+            border-top-right-radius: 8px;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            transform: translateY(1px);
+            box-shadow: none;
+            text-decoration: none;
+        }
+        .dashboard-tab:first-child {
+            border-top-left-radius: 8px;
+        }
+        .dashboard-tab.active {
+            background-color: white;
+            color: #1e293b;
+            font-weight: 600;
+            z-index: 20;
+            transform: translateY(0);
+            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+        }
+        .dashboard-tab:hover:not(.active) {
+            background-color: #cbd5e1;
+            color: #475569;
+        }
+        .app-branding {
+            padding: 2px 20px;
+        }
+        .app-branding h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: #1e293b;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            font-family: "Arial Black", "Arial Bold", sans-serif;
+            text-shadow: 2px 2px 0px rgba(59, 130, 246, 0.15);
+        }
+        .app-branding .highlight {
+            font-size: 1.4rem;
+            color: #8FA89E;
+            font-variant: normal;
+        }
+        /* Header Banner */
+        .acwr-header {
+            background: linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%);
+            color: white;
+            text-align: right;
+            padding: 1.2rem 1.6rem 1.8rem 1.6rem;
+            position: relative;
+            overflow: visible;
+            min-height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0;
+        }
+        .acwr-header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(230, 240, 255, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(125, 156, 184, 0.25) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(180, 200, 220, 0.2) 0%, transparent 60%);
+            pointer-events: none;
+            mix-blend-mode: multiply;
+        }
+        .acwr-header-logo {
+            flex-shrink: 0;
+            width: 200px;
+            height: 200px;
+            margin-left: calc(25% - 350px);
+            filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
+            position: relative;
+            z-index: 2;
+        }
+        .acwr-header-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .acwr-header-content {
+            position: relative;
+            z-index: 2;
+            max-width: 500px;
+            margin: 0;
+            margin-right: calc(25% - 350px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            text-align: right;
+        }
+        .acwr-header-content h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            white-space: nowrap;
+            line-height: 1.2;
+            color: white;
+        }
+        .acwr-header-content .subtitle {
+            font-size: 1.2rem;
+            margin: 0.25rem 0;
+            opacity: 0.95;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            line-height: 1.4;
+            color: white;
+        }
+        .acwr-header-content .description {
+            font-size: 1rem;
+            margin: 0.25rem 0;
+            opacity: 0.9;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            line-height: 1.4;
+            color: white;
+        }
+        @media (max-width: 768px) {
+            .acwr-header {
+                min-height: 160px;
+                padding: 0.8rem;
+                flex-direction: column;
+                text-align: center;
+            }
+            .acwr-header-logo {
+                width: 150px;
+                height: 150px;
+                margin-left: 0;
+            }
+            .acwr-header-content {
+                margin-right: 0;
+                margin-left: 0;
+                text-align: center;
+            }
+            .acwr-header-content h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+
+    <!-- Dashboard Navigation Tabs -->
+    <div class="dashboard-tabs-container">
+        <div class="dashboard-tabs-wrapper">
+            <nav class="dashboard-tabs-nav">
+                <a href="/dashboard" class="dashboard-tab"><span>Dashboard</span></a>
+                <a href="/activities" class="dashboard-tab"><span>Activities</span></a>
+                <a href="/journal" class="dashboard-tab"><span>Journal</span></a>
+                <a href="/dashboard?tab=coach" class="dashboard-tab"><span>Coach</span></a>
+                <a href="/guide" class="dashboard-tab"><span>Guide</span></a>
+                <a href="/settings/profile" class="dashboard-tab active"><span>Settings</span></a>
+            </nav>
+            <div class="app-branding">
+                <h1><span class="highlight">Y</span>our <span class="highlight">T</span>raining <span class="highlight">M</span>onkey</h1>
+            </div>
+        </div>
     </div>
 
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Header -->
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center py-3">
-                    <h1 class="h3 mb-0">Parameter Visualization</h1>
+    <!-- Header Banner -->
+    <header class="acwr-header">
+        <div class="acwr-header-logo">
+            <img src="/static/images/YTM_waterColor_patch800x800_clean.webp" alt="Your Training Monkey - YTM Logo">
+        </div>
+        <div class="acwr-header-content">
+            <h1>ACWR Settings</h1>
+            <p class="subtitle">Acute:Chronic Workload Ratio Visualization</p>
+            <p class="description">Configure and visualize your training load parameters for optimal injury prevention.</p>
+
+            <!-- Settings Sub-Navigation -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 1rem; padding: 12px 0; overflow: visible;">
+                <div style="border: 2px solid white; border-radius: 10px; padding: 0.5rem; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); display: inline-block; overflow: visible;">
+                    <ul style="display: flex; gap: 0.5rem; list-style: none; align-items: center; margin: 0; padding: 0; flex-wrap: nowrap; overflow: visible;">
+                        <li style="flex-shrink: 0;"><a href="/settings/profile" style="display: inline-block; padding: 0.6rem 1rem; background: rgba(255, 255, 255, 0.7); color: #1f2937; text-decoration: none; font-weight: 500; font-size: 0.9rem; border: 2px solid transparent; border-radius: 8px; white-space: nowrap;">Profile</a></li>
+                        <li style="flex-shrink: 0;"><a href="/settings/hrzones" style="display: inline-block; padding: 0.6rem 1rem; background: rgba(255, 255, 255, 0.7); color: #1f2937; text-decoration: none; font-weight: 500; font-size: 0.9rem; border: 2px solid transparent; border-radius: 8px; white-space: nowrap;">HR Zones</a></li>
+                        <li style="flex-shrink: 0;"><a href="/settings/training" style="display: inline-block; padding: 0.6rem 1rem; background: rgba(255, 255, 255, 0.7); color: #1f2937; text-decoration: none; font-weight: 500; font-size: 0.9rem; border: 2px solid transparent; border-radius: 8px; white-space: nowrap;">Training</a></li>
+                        <li style="flex-shrink: 0;"><a href="/settings/coaching" style="display: inline-block; padding: 0.6rem 1rem; background: rgba(255, 255, 255, 0.7); color: #1f2937; text-decoration: none; font-weight: 500; font-size: 0.9rem; border: 2px solid transparent; border-radius: 8px; white-space: nowrap;">AI Personality</a></li>
+                        <li style="flex-shrink: 0;"><a href="/acwr-visualization" style="display: inline-block; padding: 0.6rem 1rem; background: rgba(255, 255, 255, 0.95); color: #1B2E4B; text-decoration: none; font-weight: 700; font-size: 0.95rem; border: 2px solid rgba(27, 46, 75, 0.3); border-radius: 8px; box-shadow: 0 2px 6px rgba(27, 46, 75, 0.2); position: relative; white-space: nowrap;">
+                            <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white;"></div>
+                            ACWR
+                            <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white;"></div>
+                        </a></li>
+                    </ul>
                 </div>
             </div>
         </div>
-        
+    </header>
+
+    <div class="container-fluid" style="padding-top: 1rem;">
         <div class="row">
             <!-- Control Panel -->
             <div class="col-md-3">
@@ -3340,6 +3452,9 @@
         }
 
     </script>
+
+    <!-- Footer -->
+    {% include 'partials/footer.html' %}
 </body>
 </html>
 

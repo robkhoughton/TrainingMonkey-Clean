@@ -9,7 +9,7 @@
  * - Component-level performance
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 
 interface RUMMetrics {
   page: string;
@@ -172,21 +172,21 @@ export const useComponentPerformanceMonitoring = (componentName: string) => {
   const fetchStartTime = useRef<number | null>(null);
   const fetchEndTime = useRef<number | null>(null);
 
-  const trackFetchStart = () => {
+  const trackFetchStart = useCallback(() => {
     fetchStartTime.current = performance.now();
-  };
+  }, []);
 
-  const trackFetchEnd = () => {
+  const trackFetchEnd = useCallback(() => {
     fetchEndTime.current = performance.now();
-  };
+  }, []);
 
-  const reportMetrics = (dataPoints?: number, error?: string) => {
+  const reportMetrics = useCallback((dataPoints?: number, error?: string) => {
     const totalTime = performance.now() - startTime.current;
-    const fetchTime = (fetchStartTime.current && fetchEndTime.current) 
-      ? fetchEndTime.current - fetchStartTime.current 
+    const fetchTime = (fetchStartTime.current && fetchEndTime.current)
+      ? fetchEndTime.current - fetchStartTime.current
       : 0;
-    const processTime = fetchEndTime.current 
-      ? performance.now() - fetchEndTime.current 
+    const processTime = fetchEndTime.current
+      ? performance.now() - fetchEndTime.current
       : 0;
 
     const metrics: ComponentPerformanceMetrics = {
@@ -208,13 +208,13 @@ export const useComponentPerformanceMonitoring = (componentName: string) => {
     });
 
     sendMetrics('/api/analytics/component-performance', metrics);
-  };
+  }, [componentName]);
 
-  return {
+  return useMemo(() => ({
     trackFetchStart,
     trackFetchEnd,
     reportMetrics
-  };
+  }), [trackFetchStart, trackFetchEnd, reportMetrics]);
 };
 
 /**

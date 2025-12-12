@@ -19,74 +19,6 @@
 {% endblock %}
 
 {% block content %}
-        <!-- Training Cycle Overview -->
-        <section class="setup-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 3rem 2rem; border-radius: 12px; margin-bottom: 2rem;">
-            <h2 style="color: white; text-align: center; margin-bottom: 1rem;">The Training Cycle:</h2>
-            <p style="text-align: center; font-size: 1.1rem; margin-bottom: 3rem; opacity: 0.95;">How Your Training Monkey works to optimize your training and prevent injuries</p>
-            
-            <!-- Circular Training Cycle -->
-            <div style="position: relative; width: 380px; height: 380px; margin: 0 auto; max-width: 90vw; max-height: 90vw;">
-                <!-- Circular Path with Arrowheads -->
-                <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
-                    <defs>
-                        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                            <polygon points="0 0, 10 3, 0 6" fill="rgba(255, 255, 255, 0.6)" />
-                        </marker>
-                    </defs>
-                    <!-- Circle with arrowheads -->
-                    <circle cx="190" cy="190" r="130" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="2" marker-mid="url(#arrowhead)"/>
-                    <!-- Arrow markers at cardinal points -->
-                    <path d="M 190 60 L 197 67" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Top right -->
-                    <path d="M 320 190 L 313 197" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Right down -->
-                    <path d="M 190 320 L 183 313" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Bottom left -->
-                    <path d="M 60 190 L 67 183" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="3" stroke-linecap="round"/> <!-- Left up -->
-                </svg>
-                
-                <!-- Step 1: Train (Top) -->
-                <div style="position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
-                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Train (record)</h3>
-                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Complete your workout on Strava</p>
-                </div>
-                
-                <!-- Step 2: Monitor (Right) -->
-                <div style="position: absolute; top: 50%; right: 0; transform: translate(50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
-                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Monitor (past)</h3>
-                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Check <a href="/dashboard" style="color: white; text-decoration: underline;">Dashboard</a> for your current training status</p>
-                </div>
-                
-                <!-- Step 3: Journal (Bottom) -->
-                <div style="position: absolute; bottom: 0; left: 50%; transform: translate(-50%, 50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
-                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Journal (present)</h3>
-                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Use the <a href="/journal" style="color: white; text-decoration: underline;">Journal</a> to reflect on today's workout</p>
-                </div>
-                
-                <!-- Step 4: Plan (Left) -->
-                <div style="position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); text-align: center; padding: 0.75rem 1rem; background: rgba(255, 255, 255, 0.15); border-radius: 8px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); width: 160px;">
-                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem; color: white; font-weight: 700;">Plan (future)</h3>
-                    <p style="font-size: 0.75rem; opacity: 0.9; margin: 0; line-height: 1.3;">Get YTM <a href="/dashboard?tab=coach" style="color: white; text-decoration: underline;">Coach</a> recommendations for your upcoming training strategy</p>
-                </div>
-            </div>
-            
-            <!-- Responsive adjustment for smaller screens -->
-            <style>
-                @media (max-width: 768px) {
-                    .setup-section > div[style*="width: 380px"] {
-                        width: 300px !important;
-                        height: 300px !important;
-                    }
-                    .setup-section svg circle {
-                        cx: 150 !important;
-                        cy: 150 !important;
-                        r: 100 !important;
-                    }
-                    .setup-section > div[style*="width: 380px"] > div {
-                        width: 130px !important;
-                        font-size: 0.9rem !important;
-                    }
-                }
-            </style>
-        </section>
-
         <!-- Quick Start Guide -->
         <section class="setup-section">
             <h2>Quick Start Guide</h2>
@@ -193,6 +125,36 @@
             </div>
         </section>
 
+        <!-- Training Cycle Overview -->
+        <section class="setup-section" style="background: white; padding: 2rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: center;">
+                <div style="position: relative; display: inline-block; max-width: 100%;">
+                    <img src="{{ url_for('static', filename='images/TrainingCycle.png') }}"
+                         alt="Training Cycle: Train, Monitor, Reflect, Plan"
+                         style="max-width: 100%; height: auto; max-height: 500px; display: block;">
+
+                    <!-- Clickable overlay links positioned over each box -->
+                    <!-- Monitor (past) - right side box → Dashboard -->
+                    <a href="/dashboard"
+                       title="Go to Dashboard"
+                       style="position: absolute; top: 28%; right: 0%; width: 28%; height: 28%; cursor: pointer;"
+                       aria-label="Monitor your training status on the Dashboard"></a>
+
+                    <!-- Reflect (present) - bottom box → Journal -->
+                    <a href="/dashboard?tab=journal"
+                       title="Go to Journal"
+                       style="position: absolute; bottom: 2%; left: 50%; transform: translateX(-50%); width: 28%; height: 25%; cursor: pointer;"
+                       aria-label="Reflect on your workouts in the Journal"></a>
+
+                    <!-- Plan (future) - left side box → Coach -->
+                    <a href="/dashboard?tab=coach"
+                       title="Go to Coach"
+                       style="position: absolute; top: 28%; left: 0%; width: 28%; height: 30%; cursor: pointer;"
+                       aria-label="Get coaching recommendations for your training plan"></a>
+                </div>
+            </div>
+        </section>
+
         <!-- Tutorial Categories -->
         <section class="tutorial-section" id="tutorial-categories">
             <h2>Comprehensive Learning Resources</h2>
@@ -242,13 +204,18 @@
                     </div>
                 </div>
 
-                <div class="tutorial-category">
-                    <h3>📱 Advanced Features</h3>
+                <div class="tutorial-category coming-soon-category">
+                    <h3>📱 Advanced Features <span class="coming-soon-badge">Coming Soon</span></h3>
                     <p>Explore advanced features and customization options.</p>
+                    <!-- Advanced Features tutorials - Coming Soon
                     <div class="tutorial-links">
                         <a href="/tutorials#data-export-analysis" class="tutorial-link">Data Export & Analysis</a>
                         <a href="/tutorials#custom-metrics" class="tutorial-link">Custom Metrics</a>
                         <a href="/tutorials#third-party-integrations" class="tutorial-link">Third-party Integrations</a>
+                    </div>
+                    -->
+                    <div class="coming-soon-message">
+                        <p>These features are currently in development. Stay tuned!</p>
                     </div>
                 </div>
 
@@ -263,10 +230,8 @@
                 </div>
             </div>
             
-            <div class="tutorial-buttons">
+            <div class="tutorial-buttons" style="display: flex; justify-content: center;">
                 <a href="/tutorials" class="btn btn-primary">View All Tutorials</a>
-                <a href="/faq" class="btn btn-secondary">FAQs</a>
-                <a href="/dashboard" class="btn btn-secondary">Go to Dashboard</a>
             </div>
         </section>
 
@@ -346,6 +311,41 @@
 
 {% block extra_scripts %}
 <style>
+    /* Coming Soon Badge Styles */
+    .coming-soon-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .coming-soon-category {
+        opacity: 0.85;
+        position: relative;
+    }
+
+    .coming-soon-message {
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-top: 0.5rem;
+    }
+
+    .coming-soon-message p {
+        margin: 0;
+        color: #92400e;
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+
     /* FAQ Styles */
     .faq-section {
         margin: 3rem 0;
@@ -441,25 +441,22 @@ function closeUnderConstructionPopup() {
 
 function toggleFAQ(element) {
     const faqItem = element.parentElement;
-    const isActive = faqItem.classList.contains('active');
     const toggleButton = element.querySelector('.faq-toggle');
-    
-    // Close all other FAQ items
+    const wasActive = faqItem.classList.contains('active');
+
+    // Close all FAQ items first
     document.querySelectorAll('.faq-item').forEach(item => {
         item.classList.remove('active');
-        const otherToggle = item.querySelector('.faq-toggle');
-        if (otherToggle) {
-            otherToggle.textContent = '+';
+        const toggle = item.querySelector('.faq-toggle');
+        if (toggle) {
+            toggle.textContent = '+';
         }
     });
-    
-    // Toggle current item
-    if (!isActive) {
+
+    // If item wasn't active, open it. If it was active, leave it closed.
+    if (!wasActive) {
         faqItem.classList.add('active');
         toggleButton.textContent = '-';
-    } else {
-        faqItem.classList.remove('active');
-        toggleButton.textContent = '+';
     }
 }
 

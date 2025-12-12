@@ -107,7 +107,7 @@ def get_race_history(user_id: int, limit: int = 10) -> List[Dict]:
 
 
 def get_training_schedule(user_id: int) -> Optional[Dict]:
-    """Fetch user's training schedule from user_settings."""
+    """Fetch user's training schedule from user_settings and cross-training disciplines."""
     query = """
         SELECT training_schedule_json, include_strength_training, strength_hours_per_week,
                include_mobility, mobility_hours_per_week, include_cross_training,
@@ -116,26 +116,46 @@ def get_training_schedule(user_id: int) -> Optional[Dict]:
         WHERE id = %s
     """
     results = execute_query(query, (user_id,), fetch=True)
-    
+
     if not results or not results[0]:
         return None
-    
+
     row = results[0]
     schedule_json = row['training_schedule_json']
-    
+
     # Parse JSON if it's a string
     if isinstance(schedule_json, str):
         try:
             schedule_json = json.loads(schedule_json)
         except:
             schedule_json = None
-    
+
+    # Fetch multi-discipline cross-training data
+    disciplines_query = """
+        SELECT discipline, allocation_type, allocation_value
+        FROM user_cross_training_disciplines
+        WHERE user_id = %s AND enabled = TRUE
+        ORDER BY discipline
+    """
+    disciplines_result = execute_query(disciplines_query, (user_id,), fetch=True)
+
+    cross_training_disciplines = []
+    if disciplines_result:
+        for d in disciplines_result:
+            cross_training_disciplines.append({
+                'discipline': d['discipline'],
+                'allocation_type': d['allocation_type'],
+                'allocation_value': float(d['allocation_value'])
+            })
+
     return {
         'schedule': schedule_json,
         'include_strength': row['include_strength_training'],
         'strength_hours': float(row['strength_hours_per_week']) if row['strength_hours_per_week'] else 0,
         'include_mobility': row['include_mobility'],
         'mobility_hours': float(row['mobility_hours_per_week']) if row['mobility_hours_per_week'] else 0,
+        'cross_training_disciplines': cross_training_disciplines,
+        # Legacy fields for backward compatibility
         'include_cross_training': row['include_cross_training'],
         'cross_training_type': row['cross_training_type'],
         'cross_training_hours': float(row['cross_training_hours_per_week']) if row['cross_training_hours_per_week'] else 0
@@ -357,7 +377,7 @@ def format_race_history_for_prompt(race_history: List[Dict], trend: Dict) -> str
 
 
 def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
-    """Format training schedule for LLM prompt."""
+    """Format training schedule for LLM prompt with multi-discipline support."""
     if not schedule_data or not schedule_data.get('schedule'):
         return "Training schedule not configured - assume 5-6 days/week availability."
 
@@ -384,7 +404,18 @@ def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
         supps.append(f"Strength: {schedule_data['strength_hours']}h/week")
     if schedule_data.get('include_mobility'):
         supps.append(f"Mobility: {schedule_data['mobility_hours']}h/week")
-    if schedule_data.get('include_cross_training'):
+
+    # Multi-discipline cross-training
+    cross_training_disciplines = schedule_data.get('cross_training_disciplines', [])
+    if cross_training_disciplines:
+        for d in cross_training_disciplines:
+            discipline_name = d['discipline'].replace('_', ' ').title()
+            if d['allocation_type'] == 'hours':
+                supps.append(f"{discipline_name}: {d['allocation_value']}h/week")
+            else:
+                supps.append(f"{discipline_name}: {d['allocation_value']}% of training time")
+    elif schedule_data.get('include_cross_training'):
+        # Fallback to legacy single cross-training for backward compatibility
         supps.append(f"{schedule_data['cross_training_type']}: {schedule_data['cross_training_hours']}h/week")
 
     if supps:
@@ -676,11 +707,19 @@ def generate_weekly_program(
     Returns:
         Dictionary containing program data and metadata
     """
-    # Default to current week's Monday if not specified
+    # Default to appropriate week's Monday if not specified
     if target_week_start is None:
         current_date = get_app_current_date()
-        days_since_monday = current_date.weekday()
-        target_week_start = current_date - timedelta(days=days_since_monday)
+        day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
+
+        # On Sunday, target the upcoming week (next Monday) since current week is almost over
+        # On all other days, target the current week's Monday
+        if day_of_week == 6:  # Sunday
+            # Target next Monday (1 day ahead)
+            target_week_start = current_date + timedelta(days=1)
+        else:
+            # Target current week's Monday
+            target_week_start = current_date - timedelta(days=day_of_week)
     
     logger.info(f"Generating weekly program for user {user_id}, week starting {target_week_start}")
     
@@ -847,12 +886,20 @@ def get_or_generate_weekly_program(
     Returns:
         Program dictionary with metadata
     """
-    # Default to current week's Monday
+    # Default to appropriate week's Monday
     if week_start is None:
         current_date = get_app_current_date()
-        days_since_monday = current_date.weekday()
-        week_start = current_date - timedelta(days=days_since_monday)
-    
+        day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
+
+        # On Sunday, target the upcoming week (next Monday) since current week is almost over
+        # On all other days, target the current week's Monday
+        if day_of_week == 6:  # Sunday
+            # Target next Monday (1 day ahead)
+            week_start = current_date + timedelta(days=1)
+        else:
+            # Target current week's Monday
+            week_start = current_date - timedelta(days=day_of_week)
+
     # Check cache first
     if not force_regenerate:
         cached = get_cached_weekly_program(user_id, week_start)

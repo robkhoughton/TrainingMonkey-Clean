@@ -5,6 +5,13 @@ import styles from './TrainingLoadDashboard.module.css';
 // INTERFACES
 // ============================================================================
 
+interface CrossTrainingDiscipline {
+  discipline: string;
+  enabled: boolean;
+  allocation_type: 'hours' | 'percentage';
+  allocation_value: number;
+}
+
 interface TrainingSchedule {
   schedule: {
     total_hours_per_week?: number;
@@ -16,9 +23,11 @@ interface TrainingSchedule {
   strength_hours: number;
   include_mobility: boolean;
   mobility_hours: number;
-  include_cross_training: boolean;
-  cross_training_type: string | null;
-  cross_training_hours: number;
+  cross_training_disciplines?: CrossTrainingDiscipline[];
+  // Legacy fields for backward compatibility
+  include_cross_training?: boolean;
+  cross_training_type?: string | null;
+  cross_training_hours?: number;
 }
 
 interface TrainingScheduleConfigProps {
@@ -31,6 +40,15 @@ interface TrainingScheduleConfigProps {
 // ============================================================================
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const AVAILABLE_DISCIPLINES = [
+  { key: 'cycling', label: 'Cycling' },
+  { key: 'swimming', label: 'Swimming' },
+  { key: 'rowing', label: 'Rowing' },
+  { key: 'backcountry_skiing', label: 'Backcountry Skiing' },
+  { key: 'hiking', label: 'Hiking' },
+  { key: 'other', label: 'Other' }
+];
 
 // ============================================================================
 // COMPONENT
@@ -53,9 +71,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   const [strengthHours, setStrengthHours] = useState<number>(2);
   const [includeMobility, setIncludeMobility] = useState<boolean>(false);
   const [mobilityHours, setMobilityHours] = useState<number>(1);
-  const [includeCrossTraining, setIncludeCrossTraining] = useState<boolean>(false);
-  const [crossTrainingType, setCrossTrainingType] = useState<string>('Cycling');
-  const [crossTrainingHours, setCrossTrainingHours] = useState<number>(2);
+  const [crossTrainingDisciplines, setCrossTrainingDisciplines] = useState<CrossTrainingDiscipline[]>([]);
 
   // ============================================================================
   // LOAD EXISTING SCHEDULE
@@ -85,9 +101,21 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       setStrengthHours(schedule.strength_hours);
       setIncludeMobility(schedule.include_mobility);
       setMobilityHours(schedule.mobility_hours);
-      setIncludeCrossTraining(schedule.include_cross_training);
-      setCrossTrainingType(schedule.cross_training_type || 'Cycling');
-      setCrossTrainingHours(schedule.cross_training_hours);
+
+      // Load multi-discipline cross-training
+      if (schedule.cross_training_disciplines && schedule.cross_training_disciplines.length > 0) {
+        setCrossTrainingDisciplines(schedule.cross_training_disciplines);
+      } else if (schedule.include_cross_training && schedule.cross_training_type) {
+        // Migrate legacy single discipline
+        setCrossTrainingDisciplines([{
+          discipline: schedule.cross_training_type.toLowerCase().replace(' ', '_'),
+          enabled: true,
+          allocation_type: 'hours',
+          allocation_value: schedule.cross_training_hours || 2
+        }]);
+      } else {
+        setCrossTrainingDisciplines([]);
+      }
     }
   }, [schedule]);
 
@@ -128,9 +156,21 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       setStrengthHours(schedule.strength_hours);
       setIncludeMobility(schedule.include_mobility);
       setMobilityHours(schedule.mobility_hours);
-      setIncludeCrossTraining(schedule.include_cross_training);
-      setCrossTrainingType(schedule.cross_training_type || 'Cycling');
-      setCrossTrainingHours(schedule.cross_training_hours);
+
+      // Reset cross-training disciplines
+      if (schedule.cross_training_disciplines && schedule.cross_training_disciplines.length > 0) {
+        setCrossTrainingDisciplines(schedule.cross_training_disciplines);
+      } else if (schedule.include_cross_training && schedule.cross_training_type) {
+        // Migrate legacy single discipline
+        setCrossTrainingDisciplines([{
+          discipline: schedule.cross_training_type.toLowerCase().replace(' ', '_'),
+          enabled: true,
+          allocation_type: 'hours',
+          allocation_value: schedule.cross_training_hours || 2
+        }]);
+      } else {
+        setCrossTrainingDisciplines([]);
+      }
     }
   };
 
@@ -152,6 +192,34 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
     }
   };
 
+  const handleDisciplineToggle = (disciplineKey: string) => {
+    setCrossTrainingDisciplines(prev => {
+      const existing = prev.find(d => d.discipline === disciplineKey);
+      if (existing) {
+        // Toggle off - remove from list
+        return prev.filter(d => d.discipline !== disciplineKey);
+      } else {
+        // Toggle on - add with defaults
+        return [...prev, {
+          discipline: disciplineKey,
+          enabled: true,
+          allocation_type: 'hours',
+          allocation_value: 2
+        }];
+      }
+    });
+  };
+
+  const handleDisciplineUpdate = (disciplineKey: string, field: 'allocation_type' | 'allocation_value', value: any) => {
+    setCrossTrainingDisciplines(prev =>
+      prev.map(d =>
+        d.discipline === disciplineKey
+          ? { ...d, [field]: value }
+          : d
+      )
+    );
+  };
+
   const handleSubmit = async () => {
     setIsSaving(true);
     setError(null);
@@ -170,10 +238,23 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       return;
     }
 
-    const totalSupplementalHours = 
+    // Calculate total supplemental hours including cross-training
+    let crossTrainingHoursTotal = 0;
+    crossTrainingDisciplines.forEach(d => {
+      if (d.enabled) {
+        if (d.allocation_type === 'hours') {
+          crossTrainingHoursTotal += d.allocation_value;
+        } else {
+          // Convert percentage to hours
+          crossTrainingHoursTotal += (d.allocation_value / 100) * totalHours;
+        }
+      }
+    });
+
+    const totalSupplementalHours =
       (includeStrength ? strengthHours : 0) +
       (includeMobility ? mobilityHours : 0) +
-      (includeCrossTraining ? crossTrainingHours : 0);
+      crossTrainingHoursTotal;
 
     if (totalSupplementalHours > totalHours) {
       setError('Supplemental training hours cannot exceed total weekly hours');
@@ -183,7 +264,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
 
     try {
       // Convert constraints text to array of constraint objects
-      const constraintsList = constraints.trim() 
+      const constraintsList = constraints.trim()
         ? constraints.trim().split('\n').filter(line => line.trim()).map(line => ({
             description: line.trim()
           }))
@@ -200,9 +281,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
         strength_hours_per_week: includeStrength ? strengthHours : 0,
         include_mobility: includeMobility,
         mobility_hours_per_week: includeMobility ? mobilityHours : 0,
-        include_cross_training: includeCrossTraining,
-        cross_training_type: includeCrossTraining ? crossTrainingType : null,
-        cross_training_hours_per_week: includeCrossTraining ? crossTrainingHours : 0
+        cross_training_disciplines: crossTrainingDisciplines.filter(d => d.enabled)
       };
 
       const response = await fetch('/api/coach/training-schedule', {
@@ -234,11 +313,23 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   // ============================================================================
 
   const calculateRunningHours = () => {
-    const supplementalHours = 
+    let crossTrainingHoursTotal = 0;
+    crossTrainingDisciplines.forEach(d => {
+      if (d.enabled) {
+        if (d.allocation_type === 'hours') {
+          crossTrainingHoursTotal += d.allocation_value;
+        } else {
+          // Convert percentage to hours
+          crossTrainingHoursTotal += (d.allocation_value / 100) * totalHours;
+        }
+      }
+    });
+
+    const supplementalHours =
       (includeStrength ? strengthHours : 0) +
       (includeMobility ? mobilityHours : 0) +
-      (includeCrossTraining ? crossTrainingHours : 0);
-    
+      crossTrainingHoursTotal;
+
     return Math.max(0, totalHours - supplementalHours);
   };
 
@@ -402,7 +493,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
           </div>
 
           {/* Supplemental Training */}
-          {(includeStrength || includeMobility || includeCrossTraining) && (
+          {(includeStrength || includeMobility || crossTrainingDisciplines.length > 0) && (
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', marginBottom: '10px', color: '#2c3e50' }}>Supplemental Training:</h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
@@ -426,16 +517,22 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
                     <strong>🧘 Mobility:</strong> {mobilityHours}h/week
                   </div>
                 )}
-                {includeCrossTraining && (
-                  <div style={{
-                    padding: '10px 15px',
-                    backgroundColor: '#e8f4f8',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}>
-                    <strong>🚴 {crossTrainingType}:</strong> {crossTrainingHours}h/week
-                  </div>
-                )}
+                {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
+                  const disciplineInfo = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
+                  const displayValue = d.allocation_type === 'hours'
+                    ? `${d.allocation_value}h/week`
+                    : `${d.allocation_value}% (${((d.allocation_value / 100) * (schedule?.schedule?.total_hours_per_week || 0)).toFixed(1)}h/week)`;
+                  return (
+                    <div key={d.discipline} style={{
+                      padding: '10px 15px',
+                      backgroundColor: '#e8f4f8',
+                      borderRadius: '6px',
+                      fontSize: '14px'
+                    }}>
+                      <strong>{disciplineInfo?.label}:</strong> {displayValue}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -673,61 +770,91 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
               )}
             </div>
 
-            {/* Cross-Training */}
-            <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: 'white', borderRadius: '6px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={includeCrossTraining}
-                  onChange={(e) => setIncludeCrossTraining(e.target.checked)}
-                  style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-                <span style={{ fontWeight: '600', fontSize: '14px' }}>🚴 Cross-Training</span>
-              </label>
-              {includeCrossTraining && (
-                <div style={{ paddingLeft: '28px' }}>
-                  <label style={{ fontSize: '13px', color: '#555', display: 'block', marginBottom: '5px' }}>
-                    Type:
-                  </label>
-                  <select
-                    value={crossTrainingType}
-                    onChange={(e) => setCrossTrainingType(e.target.value)}
-                    style={{
-                      width: '200px',
-                      padding: '6px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      marginBottom: '10px'
-                    }}
-                  >
-                    <option value="Cycling">Cycling</option>
-                    <option value="Swimming">Swimming</option>
-                    <option value="Rowing">Rowing</option>
-                    <option value="Hiking">Hiking</option>
-                    <option value="Skiing">Skiing</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <label style={{ fontSize: '13px', color: '#555', display: 'block', marginBottom: '5px' }}>
-                    Hours per week:
-                  </label>
-                  <input
-                    type="number"
-                    min="0.5"
-                    max="20"
-                    step="0.5"
-                    value={crossTrainingHours}
-                    onChange={(e) => setCrossTrainingHours(parseFloat(e.target.value))}
-                    style={{
-                      width: '100px',
-                      padding: '6px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '14px'
-                    }}
-                  />
-                </div>
-              )}
+            {/* Cross-Training Activities */}
+            <div style={{ marginBottom: '25px' }}>
+              <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#2c3e50' }}>
+                Cross-Training Activities
+              </h3>
+              <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '15px' }}>
+                Select multiple cross-training activities and specify hours per week OR percentage of total training time for each.
+              </p>
+
+              {AVAILABLE_DISCIPLINES.map(discipline => {
+                const isEnabled = crossTrainingDisciplines.some(d => d.discipline === discipline.key && d.enabled);
+                const config = crossTrainingDisciplines.find(d => d.discipline === discipline.key);
+
+                return (
+                  <div key={discipline.key} style={{
+                    marginBottom: '15px',
+                    padding: '15px',
+                    backgroundColor: isEnabled ? '#e8f5e9' : 'white',
+                    border: isEnabled ? '2px solid #4caf50' : '1px solid #ddd',
+                    borderRadius: '6px'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={isEnabled}
+                        onChange={() => handleDisciplineToggle(discipline.key)}
+                        style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontWeight: '600', fontSize: '14px' }}>
+                        {discipline.label}
+                      </span>
+                    </label>
+
+                    {isEnabled && config && (
+                      <div style={{ paddingLeft: '28px' }}>
+                        {/* Allocation Type Toggle */}
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ marginRight: '15px', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`allocation-${discipline.key}`}
+                              checked={config.allocation_type === 'hours'}
+                              onChange={() => handleDisciplineUpdate(discipline.key, 'allocation_type', 'hours')}
+                              style={{ marginRight: '5px' }}
+                            />
+                            Hours per week
+                          </label>
+                          <label style={{ cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`allocation-${discipline.key}`}
+                              checked={config.allocation_type === 'percentage'}
+                              onChange={() => handleDisciplineUpdate(discipline.key, 'allocation_type', 'percentage')}
+                              style={{ marginRight: '5px' }}
+                            />
+                            % of total training
+                          </label>
+                        </div>
+
+                        {/* Allocation Value Input */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max={config.allocation_type === 'percentage' ? 100 : 40}
+                            step={config.allocation_type === 'percentage' ? 5 : 0.5}
+                            value={config.allocation_value}
+                            onChange={(e) => handleDisciplineUpdate(discipline.key, 'allocation_value', parseFloat(e.target.value) || 0)}
+                            style={{
+                              width: '80px',
+                              padding: '6px',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px',
+                              fontSize: '14px'
+                            }}
+                          />
+                          <span style={{ fontSize: '14px', color: '#555' }}>
+                            {config.allocation_type === 'hours' ? 'hours/week' : '%'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -744,7 +871,15 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
               <div>Running/Walking: <strong>{calculateRunningHours()}h</strong></div>
               {includeStrength && <div>Strength: <strong>{strengthHours}h</strong></div>}
               {includeMobility && <div>Mobility: <strong>{mobilityHours}h</strong></div>}
-              {includeCrossTraining && <div>{crossTrainingType}: <strong>{crossTrainingHours}h</strong></div>}
+              {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
+                const disciplineInfo = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
+                const displayValue = d.allocation_type === 'hours'
+                  ? `${d.allocation_value}h`
+                  : `${d.allocation_value}% (${((d.allocation_value / 100) * totalHours).toFixed(1)}h)`;
+                return (
+                  <div key={d.discipline}>{disciplineInfo?.label}: <strong>{displayValue}</strong></div>
+                );
+              })}
               <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #ccc', paddingTop: '8px', marginTop: '8px' }}>
                 <strong>Total: {totalHours}h/week</strong>
               </div>

@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Training Monkey - Visual Style Examples</title>
+    <style>
+        /* ========== CSS VARIABLES ========== */
+        :root {
+            /* Brand Colors - Blues/Grays */
+            --ytm-trail-sky: #E6F0FF;
+            --ytm-mountain-ridge: #7D9CB8;
+            --ytm-night-summit: #1B2E4B;
+
+            /* Brand Colors - Functional */
+            --ytm-action-orange: #FF5722;
+            --ytm-action-orange-hover: #E64A19;
+            --ytm-success-green: #16A34A;
+            --ytm-success-green-dark: #15803D;
+            --ytm-success-green-light: #DCFCE7;
+            --ytm-success-green-bg: #F0FDF4;
+
+            /* Interactive Purple Gradient */
+            --ytm-purple-start: #667EEA;
+            --ytm-purple-end: #764BA2;
+
+            /* Alert/Warning */
+            --ytm-alert-bg: #FEF3C7;
+            --ytm-alert-border: #F59E0B;
+            --ytm-alert-text: #92400E;
+
+            /* Grays */
+            --ytm-text-primary: #1F2937;
+            --ytm-text-heading: #1E293B;
+            --ytm-text-secondary: #64748B;
+            --ytm-bg-light: #F8FAFC;
+            --ytm-border-light: #E5E7EB;
+            --ytm-border-medium: #E2E8F0;
+
+            /* Sage Green (for Y, T, M emphasis) */
+            --ytm-sage-green: #6B8F7F;
+
+            /* Strava */
+            --strava-orange: #FC5200;
+
+            /* Typography Scale */
+            --ytm-font-display: 2.5rem;
+            --ytm-font-h1: 2rem;
+            --ytm-font-h2: 1.5rem;
+            --ytm-font-h3: 1.25rem;
+            --ytm-font-body-lg: 1.1rem;
+            --ytm-font-body: 1rem;
+            --ytm-font-small: 0.95rem;
+            --ytm-font-caption: 0.85rem;
+
+            /* Spacing */
+            --ytm-space-xs: 0.25rem;
+            --ytm-space-sm: 0.5rem;
+            --ytm-space-md: 1rem;
+            --ytm-space-lg: 1.5rem;
+            --ytm-space-xl: 2rem;
+            --ytm-space-2xl: 3rem;
+
+            /* Border Radius */
+            --ytm-radius-sm: 8px;
+            --ytm-radius-md: 12px;
+            --ytm-radius-lg: 20px;
+            --ytm-radius-full: 9999px;
+
+            /* Shadows */
+            --ytm-shadow-sm: 0 4px 8px rgba(0, 0, 0, 0.05);
+            --ytm-shadow-md: 0 4px 15px rgba(0, 0, 0, 0.05);
+            --ytm-shadow-lg: 0 6px 14px rgba(2, 6, 23, 0.06);
+        }
+
+        /* ========== BASE STYLES ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                        Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: var(--ytm-font-body);
+            line-height: 1.6;
+            color: var(--ytm-text-primary);
+            background: #ffffff;
+            padding: 2rem;
+            text-align: left;
+        }
+
+        p, li {
+            max-width: 75ch;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid var(--ytm-border-light);
+        }
+
+        .section-title {
+            font-size: var(--ytm-font-h1);
+            font-weight: 600;
+            color: var(--ytm-text-heading);
+            margin-bottom: 1.5rem;
+        }
+
+        .subsection {
+            margin-bottom: 2rem;
+        }
+
+        .subsection-title {
+            font-size: var(--ytm-font-h3);
+            font-weight: 600;
+            color: var(--ytm-text-heading);
+            margin-bottom: 1rem;
+        }
+
+        .example-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .example-item {
+            padding: 1rem;
+            background: white;
+            border: 1px solid var(--ytm-border-medium);
+            border-radius: var(--ytm-radius-sm);
+        }
+
+        .example-label {
+            font-size: var(--ytm-font-small);
+            color: var(--ytm-text-secondary);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .color-swatch {
+            width: 100%;
+            height: 80px;
+            border-radius: var(--ytm-radius-sm);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #666;
+            background: #f5f5f5;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        /* ========== TYPOGRAPHY ========== */
+        .ytm-display {
+            font-size: var(--ytm-font-display);
+            font-weight: 700;
+            line-height: 1.2;
+            color: var(--ytm-text-heading);
+        }
+
+        .ytm-h1 {
+            font-size: var(--ytm-font-h1);
+            font-weight: 600;
+            line-height: 1.3;
+            color: var(--ytm-text-heading);
+        }
+
+        .ytm-h2 {
+            font-size: var(--ytm-font-h2);
+            font-weight: 600;
+            line-height: 1.4;
+            color: var(--ytm-text-heading);
+        }
+
+        .ytm-h3 {
+            font-size: var(--ytm-font-h3);
+            font-weight: 600;
+            line-height: 1.4;
+            color: var(--ytm-text-heading);
+        }
+
+        .ytm-brand-name {
+            font-weight: 900;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            font-family: "Arial Black", "Arial Bold", sans-serif;
+        }
+
+        .ytm-brand-name .emphasis {
+            font-size: 1.17em;
+            color: #6B8F7F;
+            font-variant: normal;
+            font-weight: 900;
+            text-shadow: 1px 1px 2px rgba(107, 143, 127, 0.3);
+        }
+
+        /* ========== BUTTONS ========== */
+        .ytm-btn-primary {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--ytm-purple-start), var(--ytm-purple-end));
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: var(--ytm-radius-md);
+            font-size: var(--ytm-font-body-lg);
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .ytm-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .ytm-btn-success {
+            background: linear-gradient(135deg, var(--ytm-success-green), var(--ytm-success-green-dark));
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: var(--ytm-radius-md);
+            font-size: var(--ytm-font-body-lg);
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .ytm-btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(22, 163, 74, 0.4);
+        }
+
+        .ytm-btn-cta {
+            background: var(--ytm-action-orange);
+            color: white;
+            padding: 1rem 2.5rem;
+            border-radius: var(--ytm-radius-full);
+            font-size: var(--ytm-font-body-lg);
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 87, 34, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .ytm-btn-cta:hover {
+            background: var(--ytm-action-orange-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 87, 34, 0.6);
+        }
+
+        .ytm-btn-secondary {
+            background: transparent;
+            color: var(--ytm-purple-start);
+            padding: 1rem 2rem;
+            border: 2px solid var(--ytm-purple-start);
+            border-radius: var(--ytm-radius-md);
+            font-size: var(--ytm-font-body);
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .ytm-btn-secondary:hover {
+            background: var(--ytm-purple-start);
+            color: white;
+        }
+
+        /* ========== CARDS ========== */
+        .ytm-card {
+            background: white;
+            border-radius: var(--ytm-radius-md);
+            padding: var(--ytm-space-lg);
+            box-shadow: var(--ytm-shadow-md);
+            border: 1px solid var(--ytm-border-medium);
+        }
+
+        .ytm-card-highlight {
+            background: var(--ytm-bg-light);
+            border-left: 4px solid #3b82f6;
+            border-radius: var(--ytm-radius-md);
+            padding: 1rem 1.25rem;
+        }
+
+        .ytm-card-alert {
+            background: var(--ytm-alert-bg);
+            border: 2px solid var(--ytm-alert-border);
+            border-radius: var(--ytm-radius-md);
+            padding: var(--ytm-space-lg);
+        }
+
+        .ytm-card-alert h3 {
+            color: var(--ytm-alert-text);
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        .ytm-card-alert p {
+            color: var(--ytm-alert-text);
+            margin: 0;
+        }
+
+        .ytm-card-success {
+            background: rgba(22, 163, 74, 0.1);
+            border: 1px solid var(--ytm-success-green);
+            border-radius: var(--ytm-radius-md);
+            padding: var(--ytm-space-md);
+            text-align: center;
+        }
+
+        .ytm-card-success h3 {
+            color: var(--ytm-success-green);
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ========== BADGES ========== */
+        .ytm-badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: var(--ytm-radius-full);
+            font-size: var(--ytm-font-caption);
+            font-weight: 600;
+        }
+
+        .ytm-badge-success {
+            background: var(--ytm-success-green-light);
+            color: var(--ytm-success-green-dark);
+        }
+
+        .ytm-badge-warning {
+            background: var(--ytm-alert-bg);
+            color: var(--ytm-alert-text);
+        }
+
+        .ytm-badge-info {
+            background: #DBEAFE;
+            color: #1e40af;
+        }
+
+        /* ========== FORMS ========== */
+        .ytm-form-group {
+            margin-bottom: var(--ytm-space-lg);
+        }
+
+        .ytm-form-group label {
+            display: block;
+            color: #374151;
+            font-weight: 600;
+            margin-bottom: var(--ytm-space-sm);
+            font-size: var(--ytm-font-small);
+        }
+
+        .ytm-input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 2px solid var(--ytm-border-light);
+            border-radius: 10px;
+            font-size: var(--ytm-font-body);
+            background: white;
+            transition: all 0.2s ease;
+        }
+
+        .ytm-input:focus {
+            outline: none;
+            border-color: var(--ytm-purple-start);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .ytm-input.invalid {
+            border-color: #ef4444;
+        }
+
+        .ytm-help-text {
+            display: block;
+            font-size: var(--ytm-font-caption);
+            color: var(--ytm-text-secondary);
+            margin-top: var(--ytm-space-xs);
+        }
+
+        .ytm-error-text {
+            display: block;
+            font-size: var(--ytm-font-caption);
+            color: #ef4444;
+            margin-top: var(--ytm-space-xs);
+        }
+
+        /* ========== HERO ========== */
+        .ytm-hero {
+            background: linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: left;
+            border-radius: var(--ytm-radius-md);
+            margin-bottom: 2rem;
+        }
+
+        .ytm-subtitle {
+            font-size: var(--ytm-font-body-lg);
+            margin-bottom: var(--ytm-space-md);
+            opacity: 0.95;
+            max-width: 60ch;
+        }
+
+        .ytm-description {
+            font-size: var(--ytm-font-body);
+            max-width: 60ch;
+            opacity: 0.9;
+        }
+
+        /* ========== STEPS ========== */
+        .ytm-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--ytm-space-lg);
+            margin: var(--ytm-space-xl) 0;
+        }
+
+        .ytm-step-card {
+            background: var(--ytm-bg-light);
+            padding: var(--ytm-space-lg);
+            border-radius: var(--ytm-radius-md);
+            border-left: 4px solid #3b82f6;
+        }
+
+        .ytm-step-number {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 600;
+            margin-bottom: var(--ytm-space-md);
+        }
+
+        .ytm-step-title {
+            font-size: var(--ytm-font-body-lg);
+            font-weight: 600;
+            margin-bottom: var(--ytm-space-sm);
+            color: var(--ytm-text-heading);
+        }
+
+        .ytm-step-description {
+            color: var(--ytm-text-secondary);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        /* ========== COMPARISON BOXES ========== */
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .do-box, .dont-box {
+            padding: 1rem;
+            border-radius: var(--ytm-radius-sm);
+        }
+
+        .do-box {
+            background: rgba(22, 163, 74, 0.05);
+            border: 2px solid var(--ytm-success-green);
+        }
+
+        .dont-box {
+            background: rgba(239, 68, 68, 0.05);
+            border: 2px solid #ef4444;
+        }
+
+        .do-box::before {
+            content: '✅ DO';
+            display: block;
+            font-weight: 700;
+            color: var(--ytm-success-green);
+            margin-bottom: 0.5rem;
+        }
+
+        .dont-box::before {
+            content: '❌ DON\'T';
+            display: block;
+            font-weight: 700;
+            color: #ef4444;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="text-align: center; margin-bottom: 3rem;">
+            <h1 style="font-size: 2.5rem; color: var(--ytm-text-heading); margin-bottom: 0.5rem;">
+                Your Training Monkey
+            </h1>
+            <p style="font-size: 1.25rem; color: var(--ytm-text-secondary);">
+                Visual Style Examples & Brand Guidelines
+            </p>
+        </header>
+
+        <!-- ========== COLORS ========== -->
+        <section class="section">
+            <h2 class="section-title">🎨 Color Palette</h2>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Primary Colors (Navigation Blues)</h3>
+                <div class="example-grid">
+                    <div class="example-item">
+                        <div class="example-label">Trail Sky</div>
+                        <div class="color-swatch" style="background: #E6F0FF; color: #1B2E4B;">#E6F0FF</div>
+                        <div class="code">--ytm-trail-sky</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Mountain Ridge</div>
+                        <div class="color-swatch" style="background: #7D9CB8;">#7D9CB8</div>
+                        <div class="code">--ytm-mountain-ridge</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Night Summit</div>
+                        <div class="color-swatch" style="background: #1B2E4B;">#1B2E4B</div>
+                        <div class="code">--ytm-night-summit</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Functional Colors</h3>
+                <div class="example-grid">
+                    <div class="example-item">
+                        <div class="example-label">Action Orange (CTAs ONLY!)</div>
+                        <div class="color-swatch" style="background: #FF5722;">#FF5722</div>
+                        <div class="code">--ytm-action-orange</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Success Green</div>
+                        <div class="color-swatch" style="background: #16A34A;">#16A34A</div>
+                        <div class="code">--ytm-success-green</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Purple Gradient Start</div>
+                        <div class="color-swatch" style="background: #667EEA;">#667EEA</div>
+                        <div class="code">--ytm-purple-start</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Purple Gradient End</div>
+                        <div class="color-swatch" style="background: #764BA2;">#764BA2</div>
+                        <div class="code">--ytm-purple-end</div>
+                    </div>
+                    <div class="example-item">
+                        <div class="example-label">Sage Green (Y, T, M)</div>
+                        <div class="color-swatch" style="background: #6B8F7F;">#6B8F7F</div>
+                        <div class="code">--ytm-sage-green</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Standard Banner Gradient</h3>
+                <div style="height: 100px; background: linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 1.25rem;">
+                    Standard Banner Gradient (Coach/Guide/Settings)
+                </div>
+                <div class="code" style="margin-top: 0.5rem;">
+                    linear-gradient(90deg, rgba(230, 240, 255, 0.92) 0%, rgba(125, 156, 184, 0.92) 50%, rgba(27, 46, 75, 0.92) 100%)
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Purple Gradient (Buttons)</h3>
+                <div style="height: 100px; background: linear-gradient(135deg, #667EEA, #764BA2); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 1.25rem;">
+                    Interactive Purple Gradient
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== TYPOGRAPHY ========== -->
+        <section class="section">
+            <h2 class="section-title">✏️ Typography Hierarchy</h2>
+
+            <div class="subsection">
+                <div style="margin-bottom: 2rem;">
+                    <div class="example-label">Display (40px, Bold)</div>
+                    <div class="ytm-display">Your Training Monkey</div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <div class="example-label">H1 (32px, Semi-bold)</div>
+                    <div class="ytm-h1">Training Dashboard</div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <div class="example-label">H2 (24px, Semi-bold)</div>
+                    <div class="ytm-h2">Today's Recommendation</div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <div class="example-label">H3 (20px, Semi-bold)</div>
+                    <div class="ytm-h3">Recent Activities</div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <div class="example-label">Body Text (16px, Regular)</div>
+                    <p>Your divergence analysis shows a balanced relationship between external work and internal load. Continue with your planned training schedule.</p>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Brand Name Styling</h3>
+
+                <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f0fdf4; border-left: 4px solid var(--ytm-sage-green); border-radius: 8px;">
+                    <p style="margin: 0; font-weight: 600;">Full Name with Y, T, M Emphasis:</p>
+                    <div style="font-size: 1.5rem; margin-top: 0.5rem;">
+                        <span class="ytm-brand-name">
+                            <span class="emphasis">Y</span>our
+                            <span class="emphasis">T</span>raining
+                            <span class="emphasis">M</span>onkey
+                        </span>
+                    </div>
+                    <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;">
+                        Y, T, M are slightly larger with stronger sage green (#6B8F7F), bold weight, and subtle shadow
+                    </p>
+                </div>
+
+                <div class="comparison">
+                    <div class="do-box">
+                        <p>Welcome to <span class="ytm-brand-name"><span class="emphasis">Y</span>our <span class="emphasis">T</span>raining <span class="emphasis">M</span>onkey</span>!</p>
+                        <small style="color: #666;">Full name with Y, T, M emphasis</small>
+                    </div>
+                    <div class="do-box">
+                        <p>Welcome to YTM!</p>
+                        <small style="color: #666;">YTM abbreviation is acceptable</small>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== BUTTONS ========== -->
+        <section class="section">
+            <h2 class="section-title">🔘 Button Styles</h2>
+
+            <div class="subsection">
+                <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">
+                    <button class="ytm-btn-primary">Primary Button</button>
+                    <button class="ytm-btn-success">Success Button</button>
+                    <button class="ytm-btn-cta">CTA Button (Orange)</button>
+                    <button class="ytm-btn-secondary">Secondary Button</button>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">⚠️ Button Hierarchy Rule</h3>
+                <div class="ytm-card-alert">
+                    <h3>Maximum ONE Orange CTA Per Page!</h3>
+                    <p>Use the orange CTA button ONLY for the most important action on the page (e.g., "Connect with Strava"). All other buttons should be purple (primary) or outline (secondary).</p>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Button Hierarchy Example</h3>
+                <div style="text-align: center; padding: 2rem; background: var(--ytm-bg-light); border-radius: 12px;">
+                    <button class="ytm-btn-cta" style="margin-bottom: 1rem;">Connect with Strava</button>
+                    <div style="display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem;">
+                        <button class="ytm-btn-secondary">Learn More</button>
+                        <button class="ytm-btn-secondary">Settings</button>
+                    </div>
+                    <div>
+                        <a href="#" style="color: #3b82f6; margin-right: 1rem;">View Tutorial</a>
+                        <a href="#" style="color: #3b82f6;">Privacy Policy</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== CARDS ========== -->
+        <section class="section">
+            <h2 class="section-title">📦 Card Styles</h2>
+
+            <div class="example-grid">
+                <div>
+                    <div class="example-label">Standard Card</div>
+                    <div class="ytm-card">
+                        <h3 style="margin-top: 0;">Your Training Status</h3>
+                        <p style="margin: 0;">Current divergence analysis shows balanced training load.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="example-label">Highlighted Card</div>
+                    <div class="ytm-card-highlight">
+                        <h3 style="margin-top: 0;">Step 1: Connect Strava</h3>
+                        <p style="margin: 0;">Link your account to import training data.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <div class="example-label">Alert Card</div>
+                <div class="ytm-card-alert">
+                    <h3>Important Notice</h3>
+                    <p>This app is optimized specifically for trail
+                    runners. Road running metrics may be less
+                    accurate.</p>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <div class="example-label">Success Card</div>
+                <div class="ytm-card-success">
+                    <h3>Strava Connected Successfully</h3>
+                    <p style="margin: 0;">Your training data is now syncing.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== BADGES ========== -->
+        <section class="section">
+            <h2 class="section-title">🎭 Status Badges</h2>
+
+            <div class="subsection">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <span class="ytm-badge ytm-badge-success">Sweet Spot</span>
+                    <span class="ytm-badge ytm-badge-warning">Caution</span>
+                    <span class="ytm-badge ytm-badge-info">Analyzing</span>
+                    <span class="ytm-badge ytm-badge-success">Complete</span>
+                    <span class="ytm-badge ytm-badge-warning">High Risk</span>
+                </div>
+                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
+                    Note: Avoid using emoji icons. Use text labels only.
+                </p>
+            </div>
+        </section>
+
+        <!-- ========== FORMS ========== -->
+        <section class="section">
+            <h2 class="section-title">📝 Form Elements</h2>
+
+            <div class="subsection">
+                <div style="max-width: 500px;">
+                    <div class="ytm-form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" class="ytm-input" placeholder="your.email@example.com">
+                        <small class="ytm-help-text">We'll never share your email.</small>
+                    </div>
+
+                    <div class="ytm-form-group">
+                        <label for="focused">Focused State (Click to see)</label>
+                        <input type="text" id="focused" class="ytm-input" placeholder="Click here to see focus state">
+                        <small class="ytm-help-text">Notice the purple border and glow on focus.</small>
+                    </div>
+
+                    <div class="ytm-form-group">
+                        <label for="invalid">Invalid State</label>
+                        <input type="text" id="invalid" class="ytm-input invalid" value="invalid input">
+                        <span class="ytm-error-text">Please enter a valid value.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== HERO ========== -->
+        <section class="section">
+            <h2 class="section-title">🏔️ Hero Section</h2>
+
+            <div class="ytm-hero">
+                <h1 class="ytm-display" style="color: white; margin-bottom: 1rem;">
+                    <span class="ytm-brand-name" style="color: white;">
+                        <span class="emphasis">Y</span>our
+                        <span class="emphasis">T</span>raining
+                        <span class="emphasis">M</span>onkey
+                    </span>
+                </h1>
+                <p class="ytm-subtitle">Prevent Injuries — Train Smarter</p>
+                <p class="ytm-description">
+                    The only platform with patent-pending
+                    normalized divergence analysis that reveals
+                    when your body and training are out of sync.
+                </p>
+            </div>
+        </section>
+
+        <!-- ========== STEPS ========== -->
+        <section class="section">
+            <h2 class="section-title">📋 Step-by-Step Pattern</h2>
+
+            <div class="ytm-steps">
+                <div class="ytm-step-card">
+                    <div class="ytm-step-number">1</div>
+                    <h3 class="ytm-step-title">Connect Strava</h3>
+                    <p class="ytm-step-description">
+                        Securely link your Strava account to import training history.
+                    </p>
+                </div>
+
+                <div class="ytm-step-card">
+                    <div class="ytm-step-number">2</div>
+                    <h3 class="ytm-step-title">Analyze Patterns</h3>
+                    <p class="ytm-step-description">
+                        Our algorithm calculates divergence between external work and internal load.
+                    </p>
+                </div>
+
+                <div class="ytm-step-card">
+                    <div class="ytm-step-number">3</div>
+                    <h3 class="ytm-step-title">Train Smarter</h3>
+                    <p class="ytm-step-description">
+                        Get daily AI recommendations to optimize training and prevent injuries.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== MESSAGING ========== -->
+        <section class="section">
+            <h2 class="section-title">💬 Voice & Messaging Examples</h2>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Headlines</h3>
+                <div class="comparison">
+                    <div class="do-box">
+                        <p style="font-weight: 600; font-size: 1.1rem;">"The Training Status Your Garmin Can't Show You"</p>
+                        <small style="color: #666;">Specific, benefit-focused</small>
+                    </div>
+                    <div class="dont-box">
+                        <p style="font-weight: 600; font-size: 1.1rem;">"Revolutionary AI-Powered Training Optimization"</p>
+                        <small style="color: #666;">Too buzzwordy, vague</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Call-to-Action Copy</h3>
+                <div class="comparison">
+                    <div class="do-box">
+                        <button class="ytm-btn-primary" style="margin-bottom: 0.5rem;">Connect with Strava</button>
+                        <button class="ytm-btn-success">Start Training Smarter</button>
+                    </div>
+                    <div class="dont-box">
+                        <button class="ytm-btn-primary" style="margin-bottom: 0.5rem; opacity: 0.6;">Sign Up Now!</button>
+                        <button class="ytm-btn-success" style="opacity: 0.6;">Click Here</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Error Message Examples</h3>
+                <div class="comparison">
+                    <div class="do-box">
+                        <div style="padding: 1rem; background: white; border-radius: 8px; border: 1px solid #ddd;">
+                            <h4 style="margin-top: 0;">Not Enough Training Data</h4>
+                            <p>Your Training Monkey requires at least 28 days of consistent training data to calculate reliable divergence analysis.</p>
+                            <p style="margin: 0.5rem 0;"><strong>Current data:</strong> 12 days<br><strong>Required:</strong> 28 days</p>
+                            <p style="margin-bottom: 0;">Keep training and sync with Strava. We'll notify you when analysis is ready!</p>
+                        </div>
+                    </div>
+                    <div class="dont-box">
+                        <div style="padding: 1rem; background: white; border-radius: 8px; border: 1px solid #ddd;">
+                            <h4 style="margin-top: 0;">Error: Insufficient data</h4>
+                            <p>You need more data.</p>
+                            <button style="padding: 0.5rem 1rem; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== SPACING ========== -->
+        <section class="section">
+            <h2 class="section-title">📏 Spacing Scale</h2>
+
+            <div class="subsection">
+                <div style="display: grid; gap: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">Extra Small (4px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-xs);"></div>
+                        <code>--ytm-space-xs</code>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">Small (8px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-sm);"></div>
+                        <code>--ytm-space-sm</code>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">Medium (16px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-md);"></div>
+                        <code>--ytm-space-md</code>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">Large (24px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-lg);"></div>
+                        <code>--ytm-space-lg</code>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">Extra Large (32px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-xl);"></div>
+                        <code>--ytm-space-xl</code>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 150px; font-weight: 600;">2X Large (48px)</div>
+                        <div style="background: var(--ytm-purple-start); height: 30px; width: var(--ytm-space-2xl);"></div>
+                        <code>--ytm-space-2xl</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer style="text-align: center; padding: 2rem; background: var(--ytm-bg-light); border-radius: 12px; margin-top: 3rem;">
+            <p style="margin: 0; color: var(--ytm-text-secondary);">
+                <strong>Your Training Monkey</strong> Brand Guidelines<br>
+                Last Updated: December 8, 2025
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

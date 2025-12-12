@@ -3,22 +3,22 @@
   "name": "Your Training Monkey - AI Training Analytics",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "/YTM_Logo_byandfor_110.webp",
+      "sizes": "110x110",
+      "type": "image/webp"
     },
     {
-      "src": "logo192.png",
-      "type": "image/png",
+      "src": "/YTM_Logo_byandfor_110.webp",
+      "type": "image/webp",
       "sizes": "192x192"
     },
     {
-      "src": "logo512.png",
-      "type": "image/png",
+      "src": "/YTM_Logo_byandfor_110.webp",
+      "type": "image/webp",
       "sizes": "512x512"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#ffffff"

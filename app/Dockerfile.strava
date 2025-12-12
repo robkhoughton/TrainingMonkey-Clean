@@ -39,6 +39,12 @@ COPY templates/ /app/templates/
 # Copy utils directory (refactored utility functions)
 COPY utils/ /app/utils/
 
+# Copy chat module (streaming chatbot for Coach page)
+COPY chat/ /app/chat/
+
+# Copy email_verification module (email verification for new users)
+COPY email_verification/ /app/email_verification/
+
 # Copy Training Metrics Reference Guide (used by LLM)
 COPY Training_Metrics_Reference_Guide.md .
 

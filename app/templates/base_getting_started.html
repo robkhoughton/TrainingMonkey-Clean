@@ -18,9 +18,9 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="https://yourtrainingmonkey.com{% block canonical_path %}/getting-started{% endblock %}">
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('serve_landing_static', filename='images/monkey_700.jpg') }}">
+    <!-- Favicon - YTM Logo -->
+    <link rel="icon" type="image/webp" sizes="110x110" href="{{ url_for('static', filename='images/YTM_Logo_byandfor_110.webp') }}">
+    <link rel="apple-touch-icon" sizes="110x110" href="{{ url_for('static', filename='images/YTM_Logo_byandfor_110.webp') }}">
 
     <!-- Prevent scroll restoration flash -->
     <script>
@@ -100,7 +100,7 @@
             flex-shrink: 0;
             width: 200px;
             height: 200px;
-            margin-left: 1.6rem;
+            margin-left: calc(25% - 350px);
             filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
             position: relative;
             z-index: 2;
@@ -118,7 +118,7 @@
             z-index: 2;
             max-width: 500px;
             margin: 0;
-            margin-right: calc(50% - 700px);
+            margin-right: calc(25% - 350px);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -164,40 +164,41 @@
                 flex-direction: column;
                 text-align: center;
             }
-            
+
             .monkey-mascot {
                 width: 150px;
                 height: 150px;
-                margin-left: 1rem;
+                margin-left: 0;
             }
-            
+
             .header-content {
                 margin-right: 0;
+                margin-left: 0;
                 text-align: center;
             }
-            
+
             .header-content h1 {
                 font-size: 2rem;
                 white-space: nowrap;
             }
-            
+
             .header-content .subtitle {
                 font-size: 1.1rem;
             }
         }
-        
+
         @media (max-width: 480px) {
             .header {
                 padding: 1.2rem 0.8rem;
                 min-height: 140px;
             }
-            
+
             .monkey-mascot {
                 width: 120px;
                 height: 120px;
-                margin-left: 0.4rem;
+                margin-left: 0;
             }
-            
+
             .header-content h1 {
                 font-size: 1.8rem;
                 white-space: nowrap;

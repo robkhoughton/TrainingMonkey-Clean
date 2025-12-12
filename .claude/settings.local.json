@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(psql:*)",
+      "Bash(ls:*)",
+      "Bash(python check_birthdate_schema.py:*)",
+      "Bash(python send_test_embedded_logo.py)",
+      "Bash(python:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(mv:*)",
+      "Bash(git mv:*)",
+      "Bash(done)",
+      "Bash(cat:*)",
+      "Bash(dir \"C:\\Users\\robho\\Documents\\TrainingMonkey-Clean\\app\" /B)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(set USE_MOCK_DB=true:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

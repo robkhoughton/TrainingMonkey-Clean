@@ -23,7 +23,7 @@ interface SyncResponse {
   date_range?: string;
 }
 
-// Dual Needle Strain Gauge Component
+// High-Precision Dual ACWR Gauge Component
 interface DualNeedleStrainGaugeProps {
   externalValue: number;
   internalValue: number;
@@ -35,240 +35,177 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   externalValue,
   internalValue,
   max = 2.0,
-  size = 120 // Restored to proper size
+  size = 140
 }) => {
-  // Calculate angles (gauge spans 180 degrees)
+  // Calculate angles (gauge spans 180 degrees, horizontal orientation)
   const clampedExternalValue = Math.max(0, Math.min(max, externalValue));
   const clampedInternalValue = Math.max(0, Math.min(max, internalValue));
   const externalAngle = (clampedExternalValue / max) * 180;
   const internalAngle = (clampedInternalValue / max) * 180;
-  
-  const radius = (size - 15) / 2; // Adjusted radius for smaller gauge
-  const strokeWidth = 6; // Reduced stroke width for tighter look
+
+  const radius = 45; // Optimized radius
+  const strokeWidth = 3; // Thin, precise arc segments (3px)
   const centerX = size / 2;
-  const centerY = size / 2;
-  
-  // Needle positions - adjusted for horizontal gauge (9 o'clock to 3 o'clock)
+  const centerY = size / 2 + 5; // Slight vertical adjustment
+
+  // Needle positions (9 o'clock to 3 o'clock orientation)
   const externalNeedleAngle = (externalAngle + 180) * (Math.PI / 180);
   const internalNeedleAngle = (internalAngle + 180) * (Math.PI / 180);
-  const needleLength = radius - 5;
-  
+  const needleLength = radius - 2;
+
   const externalNeedleX = centerX + needleLength * Math.cos(externalNeedleAngle);
   const externalNeedleY = centerY + needleLength * Math.sin(externalNeedleAngle);
   const internalNeedleX = centerX + needleLength * Math.cos(internalNeedleAngle);
   const internalNeedleY = centerY + needleLength * Math.sin(internalNeedleAngle);
-  
+
+  // Create arc path helper
+  const createArc = (startAngle: number, endAngle: number, r: number = radius) => {
+    if (isNaN(startAngle) || isNaN(endAngle)) return 'M 0 0';
+    const startRad = (startAngle + 180) * (Math.PI / 180);
+    const endRad = (endAngle + 180) * (Math.PI / 180);
+    const x1 = centerX + r * Math.cos(startRad);
+    const y1 = centerY + r * Math.sin(startRad);
+    const x2 = centerX + r * Math.cos(endRad);
+    const y2 = centerY + r * Math.sin(endRad);
+    if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return 'M 0 0';
+    const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  };
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       minWidth: size,
-      height: '100%',
-      justifyContent: 'flex-start', // Changed to eliminate gap
-      position: 'relative'
+      position: 'relative',
+      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace'
     }}>
-      {/* Gauge SVG - positioned lower with overflow protection */}
-      <div style={{ position: 'relative', overflow: 'visible', marginTop: '15px' }}>
-        <svg width={size} height={size * 0.6} viewBox={`-15 -10 ${size + 30} ${size * 0.6 + 25}`}>
-          {/* Horizontal 180-degree gauge: 9 o'clock to 3 o'clock */}
-          {(() => {
-            const createHorizontalPath = (startAngle: number, endAngle: number) => {
-              // CRITICAL: Validate inputs to prevent NaN in SVG path
-              if (startAngle == null || endAngle == null || isNaN(startAngle) || isNaN(endAngle)) {
-                console.warn('Invalid angles for SVG path:', { startAngle, endAngle });
-                return `M 0 0 L 0 0`; // Return empty path
-              }
-              
-              // Convert to horizontal orientation: 0° = 9 o'clock (left), 180° = 3 o'clock (right)
-              const startRad = (startAngle + 180) * (Math.PI / 180);
-              const endRad = (endAngle + 180) * (Math.PI / 180);
-              
-              const x1 = centerX + radius * Math.cos(startRad);
-              const y1 = centerY + radius * Math.sin(startRad);
-              const x2 = centerX + radius * Math.cos(endRad);
-              const y2 = centerY + radius * Math.sin(endRad);
-              
-              // Additional safety check for calculated values
-              if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
-                console.warn('NaN in calculated SVG coordinates:', { x1, y1, x2, y2 });
-                return `M 0 0 L 0 0`;
-              }
-              
-              const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
-              
-              return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
-            };
-            
+      <div style={{
+        position: 'relative',
+        width: size,
+        height: size * 0.6,
+        marginTop: '8px',
+        marginBottom: '2px'
+      }}>
+        <svg width={size} height={size * 0.6} viewBox={`0 0 ${size} ${size * 0.6}`}>
+          <defs>
+            {/* Sharp gradients for depth */}
+            <linearGradient id="trackGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#e8e8e8" />
+              <stop offset="100%" stopColor="#d0d0d0" />
+            </linearGradient>
+            <linearGradient id="blueZone" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#5dade2" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#2874a6" stopOpacity="0.4" />
+            </linearGradient>
+            <linearGradient id="greenZone" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#58d68d" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#229954" stopOpacity="0.5" />
+            </linearGradient>
+            <linearGradient id="orangeZone" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#f5b041" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#d68910" stopOpacity="0.5" />
+            </linearGradient>
+            <linearGradient id="redZone" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ec7063" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.5" />
+            </linearGradient>
+          </defs>
+
+          {/* Clean base track */}
+          <path d={createArc(0, 180)} fill="none" stroke="url(#trackGradient)" strokeWidth={strokeWidth + 1} opacity={0.3} />
+
+          {/* Color-coded risk zones */}
+          <path d={createArc(0, 72)} fill="none" stroke="url(#blueZone)" strokeWidth={strokeWidth} />
+          <path d={createArc(72, 117)} fill="none" stroke="url(#greenZone)" strokeWidth={strokeWidth} />
+          <path d={createArc(117, 135)} fill="none" stroke="url(#orangeZone)" strokeWidth={strokeWidth} />
+          <path d={createArc(135, 180)} fill="none" stroke="url(#redZone)" strokeWidth={strokeWidth} />
+
+          {/* Ultra-precise tick marks - every 0.1 units */}
+          {Array.from({ length: 21 }, (_, i) => {
+            const value = i * 0.1;
+            const angle = (value / max) * 180;
+            const tickAngle = (angle + 180) * (Math.PI / 180);
+            const isMajor = i % 2 === 0; // Major every 0.2
+            const isKey = [0, 8, 10, 13, 15, 20].includes(i); // Key thresholds
+
+            const tickOuterRadius = radius + (isKey ? 10 : isMajor ? 7 : 5);
+            const tickInnerRadius = radius + 1;
+
+            const outerX = centerX + tickOuterRadius * Math.cos(tickAngle);
+            const outerY = centerY + tickOuterRadius * Math.sin(tickAngle);
+            const innerX = centerX + tickInnerRadius * Math.cos(tickAngle);
+            const innerY = centerY + tickInnerRadius * Math.sin(tickAngle);
+
             return (
-              <>
-                {/* Blue: 0-0.8 ACWR (9 o'clock to ~10:30) */}
-                <path
-                  d={createHorizontalPath(0, 72)}
-                  fill="none"
-                  stroke="#3498db"
-                  strokeWidth={strokeWidth}
-                  opacity={0.9}
+              <g key={i}>
+                <line
+                  x1={innerX} y1={innerY} x2={outerX} y2={outerY}
+                  stroke="#2c3e50"
+                  strokeWidth={isKey ? 1.5 : isMajor ? 1 : 0.5}
+                  opacity={isKey ? 1 : isMajor ? 0.7 : 0.4}
+                  strokeLinecap="round"
                 />
-                
-                {/* Green: 0.8-1.3 ACWR (~10:30 to ~1:30) */}
-                <path
-                  d={createHorizontalPath(72, 117)}
-                  fill="none"
-                  stroke="#2ecc71"
-                  strokeWidth={strokeWidth}
-                  opacity={0.9}
-                />
-                
-                {/* Orange: 1.3-1.5 ACWR (~1:30 to ~2:15) */}
-                <path
-                  d={createHorizontalPath(117, 135)}
-                  fill="none"
-                  stroke="#e67e22"
-                  strokeWidth={strokeWidth}
-                  opacity={0.9}
-                />
-                
-                {/* Red: 1.5-2.0 ACWR (~2:15 to 3 o'clock) */}
-                <path
-                  d={createHorizontalPath(135, 180)}
-                  fill="none"
-                  stroke="#e74c3c"
-                  strokeWidth={strokeWidth}
-                  opacity={0.9}
-                />
-              </>
+                {isKey && (
+                  <text
+                    x={centerX + (radius + 18) * Math.cos(tickAngle)}
+                    y={centerY + (radius + 18) * Math.sin(tickAngle) + 3}
+                    fill="#2c3e50"
+                    fontSize="8"
+                    fontWeight="700"
+                    textAnchor="middle"
+                    fontFamily='"Roboto Mono", monospace'
+                  >
+                    {value.toFixed(1)}
+                  </text>
+                )}
+              </g>
             );
-          })()}
-          
-          {/* External Needle (Green) - lighter weight */}
+          })}
+
+          {/* Bold needles with glow effect */}
           <line
-            x1={centerX}
-            y1={centerY}
-            x2={externalNeedleX}
-            y2={externalNeedleY}
-            stroke="#2ecc71" // Green for external
-            strokeWidth={2.5}
-            strokeLinecap="round"
+            x1={centerX} y1={centerY} x2={externalNeedleX} y2={externalNeedleY}
+            stroke="#27ae60" strokeWidth={3.5} strokeLinecap="round"
+            style={{ filter: 'drop-shadow(0 0 3px rgba(39, 174, 96, 0.8))' }}
           />
-          
-          {/* Internal Needle (Blue) - lighter weight */}
           <line
-            x1={centerX}
-            y1={centerY}
-            x2={internalNeedleX}
-            y2={internalNeedleY}
-            stroke="#3498db" // Blue for internal
-            strokeWidth={2.5}
-            strokeLinecap="round"
+            x1={centerX} y1={centerY} x2={internalNeedleX} y2={internalNeedleY}
+            stroke="#2980b9" strokeWidth={3.5} strokeLinecap="round"
+            style={{ filter: 'drop-shadow(0 0 3px rgba(41, 128, 185, 0.8))' }}
           />
-          
-          {/* Center dot - bigger */}
-          <circle
-            cx={centerX}
-            cy={centerY}
-            r={5}
-            fill="#2c3e50"
-          />
-          
-          {/* Scientific tick marks and labels - more detailed */}
-          {(() => {
-            const ticks = [];
-            // Major ticks every 0.2 units, minor ticks every 0.1 units
-            for (let i = 0; i <= 20; i++) { // 0, 0.1, 0.2, ..., 2.0
-              const value = i * 0.1;
-              const angle = (value / 2.0) * 180; // Convert to angle (0-180°)
-              const tickAngle = (angle + 180) * (Math.PI / 180); // Horizontal orientation
-              
-              const isMajorTick = i % 2 === 0; // Every 0.2 units
-              const tickOuterRadius = radius + (isMajorTick ? 12 : 8);
-              const tickInnerRadius = radius + (isMajorTick ? 4 : 6);
-              
-              const outerX = centerX + tickOuterRadius * Math.cos(tickAngle);
-              const outerY = centerY + tickOuterRadius * Math.sin(tickAngle);
-              const innerX = centerX + tickInnerRadius * Math.cos(tickAngle);
-              const innerY = centerY + tickInnerRadius * Math.sin(tickAngle);
-              
-              ticks.push(
-                <g key={value}>
-                  {/* Tick mark */}
-                  <line
-                    x1={innerX}
-                    y1={innerY}
-                    x2={outerX}
-                    y2={outerY}
-                    stroke="#666"
-                    strokeWidth={isMajorTick ? 2 : 1}
-                    opacity={isMajorTick ? 0.8 : 0.5}
-                  />
-                  {/* Label for major ticks */}
-                  {isMajorTick && (
-                    <text
-                      x={centerX + (radius + 20) * Math.cos(tickAngle)}
-                      y={centerY + (radius + 20) * Math.sin(tickAngle) + 4}
-                      fill="#666"
-                      fontSize="10"
-                      textAnchor="middle"
-                      fontWeight="500"
-                    >
-                      {value === 0 ? "0" : value === 1.0 ? "1.0" : value === 2.0 ? "2.0" : (typeof value === 'number' && !isNaN(value) ? value.toFixed(1) : "N/A")}
-                    </text>
-                  )}
-                </g>
-              );
-            }
-            return ticks;
-          })()}
+
+          {/* Center pivot */}
+          <circle cx={centerX} cy={centerY} r={4} fill="#2c3e50" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }} />
+          <circle cx={centerX} cy={centerY} r={1.5} fill="#ecf0f1" />
         </svg>
       </div>
-      
-      {/* External values positioned outside gauge - eliminate gap */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        width: '100%', 
-        marginTop: '-5px', // Negative margin to pull values closer to gauge
-        padding: '0 2px'
-      }}>
-        {/* External value (Green) */}
+
+      {/* High-precision value displays */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingLeft: '10px', paddingRight: '10px' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: '1.1rem',
-            fontWeight: 'bold',
-            color: '#2ecc71', // Green for external
-            fontFamily: 'Arial, sans-serif'
+            fontSize: '20px', fontWeight: '800', color: '#1a1a1a',
+            fontFamily: '"Roboto Mono", monospace', letterSpacing: '-0.5px',
+            textShadow: '0 2px 4px rgba(0,0,0,0.15)', fontVariantNumeric: 'tabular-nums'
           }}>
             {typeof externalValue === 'number' && !isNaN(externalValue) ? externalValue.toFixed(2) : 'N/A'}
           </div>
-          <div style={{
-            fontSize: '0.7rem',
-            color: '#6b7280',
-            fontWeight: '600',
-            textTransform: 'capitalize',
-            letterSpacing: '0.3px'
-          }}>
-            External
+          <div style={{ fontSize: '9px', color: '#27ae60', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+            EXTERNAL
           </div>
         </div>
-        
-        {/* Internal value (Blue) */}
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: '1.1rem',
-            fontWeight: 'bold',
-            color: '#3498db', // Blue for internal
-            fontFamily: 'Arial, sans-serif'
+            fontSize: '20px', fontWeight: '800', color: '#1a1a1a',
+            fontFamily: '"Roboto Mono", monospace', letterSpacing: '-0.5px',
+            textShadow: '0 2px 4px rgba(0,0,0,0.15)', fontVariantNumeric: 'tabular-nums'
           }}>
             {typeof internalValue === 'number' && !isNaN(internalValue) ? internalValue.toFixed(2) : 'N/A'}
           </div>
-          <div style={{
-            fontSize: '0.7rem',
-            color: '#6b7280',
-            fontWeight: '600',
-            textTransform: 'capitalize',
-            letterSpacing: '0.3px'
-          }}>
-            Internal
+          <div style={{ fontSize: '9px', color: '#2980b9', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+            INTERNAL
           </div>
         </div>
       </div>
@@ -276,149 +213,132 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   );
 };
 
-// Enhanced Balance Bar with Training Load Integration
+// High-Precision Balance Bar with Ultra-Tight Tick Marks
 const BalanceIndicator: React.FC<{
   divergence: number;
   trainingLoad: number;
   avgTrainingLoad: number;
   width?: number;
-}> = ({ divergence, trainingLoad, avgTrainingLoad, width = 180 }) => {
-  
-  // Calculate balance position (-1 to +1 range)
-  const normalizedDivergence = Math.max(-0.5, Math.min(0.5, divergence)) / 0.5; // Clamp to -1 to +1
-  
+}> = ({ divergence, trainingLoad, avgTrainingLoad, width = 200 }) => {
+
+  // Calculate balance position (-0.5 to +0.5 range)
+  const clampedDivergence = Math.max(-0.5, Math.min(0.5, divergence));
+  const normalizedPosition = (clampedDivergence + 0.5) / 1.0; // 0 to 1
+
+  const barHeight = 4; // Thin precision bar
+  const trackY = 30;
+  const padding = 15;
+  const trackWidth = width - (padding * 2);
+
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       minWidth: width,
-      height: '100%',
-      justifyContent: 'flex-start', // Changed to eliminate gap
-      position: 'relative'
+      position: 'relative',
+      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace'
     }}>
-      {/* Scientific instrument-style balance bar - aligned with gauge axis */}
-      <div style={{ width: '100%', height: '50px', position: 'relative', marginTop: '25px' }}>
-        <svg width="100%" height="100%" viewBox={`0 0 ${width} 50`}>
-          {/* Scientific instrument background track - dynamic width */}
-          <rect x="10" y="20" width={width - 20} height="8" rx="4" fill="#f8f9fa" stroke="#e9ecef" strokeWidth="1" />
-          
-          {/* Color segments - extended to both ends for full scale coverage */}
-          <rect x="10" y="20" width={(width - 20) * 0.2} height="8" rx="4" fill="#3498db" opacity="0.7" />
-          <rect x={10 + (width - 20) * 0.2} y="20" width={(width - 20) * 0.6} height="8" rx="0" fill="#2ecc71" opacity="0.7" />
-          <rect x={10 + (width - 20) * 0.8} y="20" width={(width - 20) * 0.2} height="8" rx="4" fill="#e74c3c" opacity="0.7" />
-          
-          {/* Scientific instrument indicator - reversed for risk assessment */}
-          <circle
-            cx={width/2 - (normalizedDivergence * (width - 20) * 0.4)} // Dynamic positioning for full scale
-            cy="24"
-            r="4" // Restored indicator size
-            fill="#2c3e50"
-            stroke="white"
-            strokeWidth="1.5"
-          />
-          
-          {/* Precision crosshair indicator */}
-          <line
-            x1={width/2 - (normalizedDivergence * (width - 20) * 0.4) - 6}
-            y1="24"
-            x2={width/2 - (normalizedDivergence * (width - 20) * 0.4) + 6}
-            y2="24"
-            stroke="#2c3e50"
-            strokeWidth="1"
-            opacity="0.8"
-          />
-          <line
-            x1={width/2 - (normalizedDivergence * (width - 20) * 0.4)}
-            y1="18"
-            x2={width/2 - (normalizedDivergence * (width - 20) * 0.4)}
-            y2="30"
-            stroke="#2c3e50"
-            strokeWidth="1"
-            opacity="0.8"
-          />
-          
-          {/* Enhanced scale labels - extended to both ends */}
-          {(() => {
-            const ticks = [];
-            const values = [-0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]; // Full scale to both ends
-            
-            for (let i = 0; i < values.length; i++) {
-              const value = values[i];
-              const position = width/2 - (value / 0.6) * (width - 20) * 0.4; // Dynamic positioning for full scale
-              const isMajorTick = value % 0.1 === 0 && (value === 0 || value % 0.2 === 0); // Major ticks at 0, ±0.2, ±0.4, ±0.6
-              
-              ticks.push(
-                <g key={value}>
-                  {/* Scientific instrument tick marks - restored */}
-                  <line
-                    x1={position}
-                    y1={isMajorTick ? "32" : "35"}
-                    x2={position}
-                    y2={isMajorTick ? "40" : "37"}
-                    stroke="#666"
-                    strokeWidth={isMajorTick ? "1.5" : "0.8"}
-                    opacity={isMajorTick ? "0.9" : "0.6"}
-                  />
-                  {/* Scientific instrument labels - restored */}
-                  {isMajorTick && (
-                    <text
-                      x={position}
-                      y="46"
-                      fill="#666"
-                      fontSize="8"
-                      textAnchor="middle"
-                      fontWeight="500"
-                      fontFamily="monospace"
-                    >
-                      {value === 0 ? "0" : (typeof value === 'number' && !isNaN(value) ? value.toFixed(1) : "N/A")}
-                    </text>
-                  )}
-                </g>
-              );
-            }
-            return ticks;
-          })()}
-        </svg>
-        
-        {/* Scientific instrument numeric display - restored */}
-        <div style={{
-          position: 'absolute',
-          top: '15%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center'
-        }}>
-          <div style={{
-            fontSize: '1.2rem', // Restored size
-            fontWeight: 'bold',
-            color: '#2c3e50',
-            fontFamily: 'monospace', // Scientific instrument font
-            letterSpacing: '0.5px'
-          }}>
-            {typeof divergence === 'number' && !isNaN(divergence) ? divergence.toFixed(2) : 'N/A'}
-          </div>
-        </div>
+      {/* Precision value display at top */}
+      <div style={{
+        fontSize: '20px',
+        fontWeight: '800',
+        color: '#1a1a1a',
+        fontFamily: '"Roboto Mono", monospace',
+        letterSpacing: '-0.5px',
+        textShadow: '0 2px 4px rgba(0,0,0,0.15)',
+        fontVariantNumeric: 'tabular-nums',
+        marginTop: '8px',
+        marginBottom: '8px'
+      }}>
+        {typeof divergence === 'number' && !isNaN(divergence) ? divergence.toFixed(2) : 'N/A'}
       </div>
-      
-      {/* Labels below balance bar - add space from tick labels */}
-      <div style={{ textAlign: 'center', marginTop: '5px' }}>
+
+      <div style={{ width: '100%', height: '60px', position: 'relative' }}>
+        <svg width={width} height="60" viewBox={`0 0 ${width} 60`}>
+          <defs>
+            <linearGradient id="barTrackGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#e0e0e0" />
+              <stop offset="100%" stopColor="#c8c8c8" />
+            </linearGradient>
+            <linearGradient id="barBlueZone" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#2874a6" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#5dade2" stopOpacity="0.5" />
+            </linearGradient>
+            <linearGradient id="barGreenZone" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#229954" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#58d68d" stopOpacity="0.6" />
+            </linearGradient>
+            <linearGradient id="barRedZone" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ec7063" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.5" />
+            </linearGradient>
+          </defs>
+
+          {/* Base track */}
+          <rect x={padding} y={trackY} width={trackWidth} height={barHeight} rx={2} fill="url(#barTrackGradient)" opacity={0.3} />
+
+          {/* Color zones: Red (left 20%), Green (middle 60%), Red (right 20%) */}
+          <rect x={padding} y={trackY} width={trackWidth * 0.2} height={barHeight} rx={2} fill="url(#barRedZone)" />
+          <rect x={padding + trackWidth * 0.2} y={trackY} width={trackWidth * 0.6} height={barHeight} fill="url(#barGreenZone)" />
+          <rect x={padding + trackWidth * 0.8} y={trackY} width={trackWidth * 0.2} height={barHeight} rx={2} fill="url(#barRedZone)" />
+
+          {/* Ultra-precise tick marks - every 0.05 units from -0.5 to +0.5 */}
+          {Array.from({ length: 21 }, (_, i) => {
+            const value = -0.5 + (i * 0.05);
+            const position = padding + (i / 20) * trackWidth;
+            const isMajor = i % 2 === 0; // Major every 0.1
+            const isKey = [0, 5, 10, 15, 20].includes(i); // -0.5, -0.25, 0, 0.25, 0.5
+
+            return (
+              <g key={i}>
+                <line
+                  x1={position} y1={trackY + barHeight}
+                  x2={position} y2={trackY + barHeight + (isKey ? 10 : isMajor ? 7 : 4)}
+                  stroke="#2c3e50"
+                  strokeWidth={isKey ? 1.5 : isMajor ? 1 : 0.5}
+                  opacity={isKey ? 1 : isMajor ? 0.7 : 0.4}
+                  strokeLinecap="round"
+                />
+                {isKey && (
+                  <text
+                    x={position}
+                    y={trackY + barHeight + 20}
+                    fill="#2c3e50"
+                    fontSize="8"
+                    fontWeight="700"
+                    textAnchor="middle"
+                    fontFamily='"Roboto Mono", monospace'
+                  >
+                    {value.toFixed(2)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Precision indicator - inverted arrowhead above bar */}
+          <g>
+            {/* Inverted arrowhead pointing down toward bar */}
+            <polygon
+              points={`${padding + normalizedPosition * trackWidth},${trackY - 2} ${padding + normalizedPosition * trackWidth - 5},${trackY - 10} ${padding + normalizedPosition * trackWidth + 5},${trackY - 10}`}
+              fill="#2c3e50"
+              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
+            />
+          </g>
+        </svg>
+      </div>
+
+      {/* Labels */}
+      <div style={{ textAlign: 'center', marginTop: '2px' }}>
         <div style={{
-          fontSize: '0.75rem', // Match gauge label size
+          fontSize: '9px',
           color: '#6b7280',
-          fontWeight: '600',
+          fontWeight: '800',
           textTransform: 'uppercase',
-          letterSpacing: '0.3px',
-          lineHeight: '1'
+          letterSpacing: '0.8px'
         }}>
-          Economy
-        </div>
-        <div style={{
-          fontSize: '0.7rem', // Match gauge sublabel size
-          color: '#9ca3af',
-          lineHeight: '1'
-        }}>
-          Divergence
+          DIVERGENCE
         </div>
       </div>
     </div>
@@ -641,15 +561,13 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             src="/static/images/YTM_Logo_cropped.webp"
             alt="Your Training Monkey Logo"
             style={{
-              width: '100%',
-              height: '180px',
-              objectFit: 'cover'
+              height: '100%'
             }}
           />
         </div>
 
         {/* Card 2: Training Balance (with Gauges) */}
-        <div style={{
+        <div id="at-a-glance-meters" style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
           padding: '0.5rem',
@@ -693,11 +611,11 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           })()}
 
           {/* Consolidated gauges container - centralized */}
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
             alignItems: 'stretch',
-            gap: '0.5rem', // Add space between gauge and bar
+            gap: '1.5rem', // Increased space between gauge and bar for better horizontal use
             flex: 1,
             minHeight: '40px',
             marginLeft: '20px' // Add left margin to centralize
@@ -715,7 +633,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                 externalValue={metrics?.externalAcwr || 0}
                 internalValue={metrics?.internalAcwr || 0}
                 max={2.0}
-                size={100}
+                size={120}
               />
             </MetricTooltip>
             
@@ -739,7 +657,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         </div>
 
         {/* Card 3: Recovery Status */}
-        <div style={{
+        <div id="recovery-metrics" style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
           padding: '0.5rem',
@@ -923,6 +841,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           </select>
 
           <button
+            id="sync-data-button"
             onClick={handleManualSync}
             disabled={isSyncing}
             className="sync-button"

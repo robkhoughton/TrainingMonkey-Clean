@@ -265,6 +265,78 @@ class UnifiedMetricsService:
             return False
 
     @staticmethod
+    def has_rowing_data(user_id, start_date=None, end_date=None):
+        """
+        Check if user has any rowing activities in the specified date range
+        Used for progressive enhancement - only show rowing features if relevant
+        """
+        if user_id is None:
+            raise ValueError("user_id is required for multi-user support")
+
+        try:
+            date_filter = ""
+            params = [user_id]
+
+            if start_date and end_date:
+                date_filter = "AND date BETWEEN %s AND %s"
+                params.extend([start_date, end_date])
+
+            result = execute_query(
+                f"""
+                SELECT COUNT(*) as rowing_count
+                FROM activities
+                WHERE user_id = %s
+                AND sport_type = 'rowing'
+                {date_filter}
+                """,
+                params,
+                fetch=True
+            )
+
+            rowing_count = result[0]['rowing_count'] if result else 0
+            return rowing_count > 0
+
+        except Exception as e:
+            logger.error(f"Error checking rowing data for user {user_id}: {str(e)}")
+            return False
+
+    @staticmethod
+    def has_backcountry_skiing_data(user_id, start_date=None, end_date=None):
+        """
+        Check if user has any backcountry skiing activities in the specified date range
+        Used for progressive enhancement - only show backcountry skiing features if relevant
+        """
+        if user_id is None:
+            raise ValueError("user_id is required for multi-user support")
+
+        try:
+            date_filter = ""
+            params = [user_id]
+
+            if start_date and end_date:
+                date_filter = "AND date BETWEEN %s AND %s"
+                params.extend([start_date, end_date])
+
+            result = execute_query(
+                f"""
+                SELECT COUNT(*) as backcountry_skiing_count
+                FROM activities
+                WHERE user_id = %s
+                AND sport_type = 'backcountry_skiing'
+                {date_filter}
+                """,
+                params,
+                fetch=True
+            )
+
+            backcountry_skiing_count = result[0]['backcountry_skiing_count'] if result else 0
+            return backcountry_skiing_count > 0
+
+        except Exception as e:
+            logger.error(f"Error checking backcountry skiing data for user {user_id}: {str(e)}")
+            return False
+
+    @staticmethod
     def get_latest_complete_metrics(user_id):
         """
         Get the most recent complete set of training metrics for a specific user.

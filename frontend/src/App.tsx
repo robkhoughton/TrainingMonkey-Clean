@@ -18,6 +18,7 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState(getInitialTab());
+  const [showJournalBadge, setShowJournalBadge] = useState(false);
 
   // Update tab when URL parameters change
   useEffect(() => {
@@ -27,6 +28,27 @@ function App() {
       setActiveTab(tabParam);
     }
   }, [activeTab]);
+
+  // Check if Journal badge should be shown
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const visitedJournalToday = localStorage.getItem('journal_visited_' + today);
+    setShowJournalBadge(!visitedJournalToday);
+  }, []);
+
+  // Handle tab change and clear Journal badge
+  const handleTabChange = (tabKey: string) => {
+    if (tabKey === 'journal') {
+      localStorage.setItem('journal_visited_' + new Date().toDateString(), 'true');
+      setShowJournalBadge(false);
+    }
+    setActiveTab(tabKey);
+    // Update URL to reflect active tab
+    const newUrl = tabKey === 'dashboard'
+      ? '/dashboard'
+      : `/dashboard?tab=${tabKey}`;
+    window.history.pushState({}, '', newUrl);
+  };
 
   const renderTabContent = () => {
     switch(activeTab) {
@@ -78,19 +100,11 @@ function App() {
               { key: 'journal', label: 'Journal' },
               { key: 'coach', label: 'Coach' },
               { key: 'guide', label: 'Guide' },
-              { key: 'settings', label: 'Settings' },
-              { key: 'spinner', label: 'Spinner' }
+              { key: 'settings', label: 'Settings' }
             ].map((tab, index) => (
             <button
               key={tab.key}
-              onClick={() => {
-                setActiveTab(tab.key);
-                // Update URL to reflect active tab
-                const newUrl = tab.key === 'dashboard' 
-                  ? '/dashboard' 
-                  : `/dashboard?tab=${tab.key}`;
-                window.history.pushState({}, '', newUrl);
-              }}
+              onClick={() => handleTabChange(tab.key)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -117,6 +131,18 @@ function App() {
               }}
             >
               <span>{tab.label}</span>
+              {tab.key === 'journal' && showJournalBadge && (
+                <span style={{
+                  display: 'inline-block',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  marginLeft: '4px',
+                  animation: 'pulse 2s infinite'
+                }}>
+                </span>
+              )}
             </button>
             ))}
           </nav>

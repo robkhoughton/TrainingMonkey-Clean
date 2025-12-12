@@ -63,11 +63,6 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
     }
   };
 
-  const formatDateShort = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -85,7 +80,6 @@ const TimelineVisualization: React.FC<TimelineVisualizationProps> = ({ trainingS
   }
 
   const timeline = trainingStage.timeline;
-  const currentWeekIndex = timeline.findIndex(w => w.is_current);
   const totalWeeks = timeline.length;
 
   // Calculate reverse week numbers (weeks until race)

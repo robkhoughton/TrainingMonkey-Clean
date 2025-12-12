@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
+import ChatWidget from './ChatWidget';
 
 // ============================================================================
 // INTERFACES
@@ -75,7 +76,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
 
         // Extract autopsy scores by date
         const scores: Record<string, number> = {};
-        result.data.forEach((entry: any) => {
+        result.data.forEach((entry: { date: string; ai_autopsy?: AutopsyData }) => {
           if (entry.ai_autopsy?.alignment_score) {
             scores[entry.date] = entry.ai_autopsy.alignment_score;
           }
@@ -347,7 +348,6 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             
             const isToday = workoutDate.getTime() === today.getTime();
             const isPast = workoutDate < today;
-            const isFuture = workoutDate > today;
             
             // Get autopsy score for past days
             const autopsyScore = autopsyScores[workout.date];
@@ -536,14 +536,17 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         </div>
 
         {/* RIGHT COLUMN: Weekly Notes (Sticky) */}
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
           gap: '0.75rem',
           position: 'sticky',
           top: '20px',
           alignSelf: 'start'
         }}>
+          {/* Chat Widget */}
+          <ChatWidget />
+
           {/* Nutrition Reminder */}
           {program.nutrition_reminder && (
             <div style={{

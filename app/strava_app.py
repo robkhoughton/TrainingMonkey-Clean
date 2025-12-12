@@ -25,8 +25,19 @@ from llm_recommendations_module import generate_recommendations, update_recommen
 from flask import Flask, request, jsonify, redirect, url_for, render_template, send_from_directory, session, flash, Response
 from csrf_protection import csrf_protected, require_csrf_token, CSRFTokenType
 from enhanced_token_management import SimpleTokenManager, check_token_status
-from flask_login import LoginManager, login_required, current_user, login_user, logout_user
+from flask_login import LoginManager, login_required as _login_required, current_user, login_user, logout_user
+import os
+
+# MOCK MODE: Bypass login_required if USE_MOCK_DB is set
+if os.environ.get('USE_MOCK_DB', '').lower() == 'true':
+    def login_required(func):
+        """No-op decorator for mock mode."""
+        return func
+    print("[MOCK MODE] login_required bypassed in strava_app")
+else:
+    login_required = _login_required
 from auth import User
+from email_verification.service import EmailVerificationService
 from settings_utils import handle_settings_change, track_settings_changes
 from werkzeug.security import generate_password_hash
 import secrets
@@ -197,6 +208,11 @@ login_manager.login_message = 'Please log in to access your training dashboard.'
 @login_manager.unauthorized_handler
 def unauthorized():
     """Handle unauthorized access - return JSON for API calls, redirect for pages"""
+    # MOCK MODE: This shouldn't be called, but if it is, redirect to dashboard
+    if os.environ.get('USE_MOCK_DB', '').lower() == 'true':
+        logger.warning("[MOCK MODE] unauthorized_handler called - redirecting to dashboard")
+        return redirect('/dashboard')
+
     if request.path.startswith('/api/'):
         return jsonify({
             'success': False,
@@ -255,12 +271,17 @@ def needs_onboarding(user_id):
 # Register blueprints
 from acwr_feature_flag_admin import acwr_feature_flag_admin
 from acwr_configuration_admin import acwr_configuration_admin
-from acwr_migration_admin import acwr_migration_admin
+# Migration admin disabled - one-time migration complete (Dec 2025)
+# from acwr_migration_admin import acwr_migration_admin
 from acwr_visualization_routes import acwr_visualization_routes
+from chat import chat_blueprint
+from email_verification import email_verification_blueprint
 app.register_blueprint(acwr_feature_flag_admin)
 app.register_blueprint(acwr_configuration_admin)
-app.register_blueprint(acwr_migration_admin)
+# app.register_blueprint(acwr_migration_admin)
 app.register_blueprint(acwr_visualization_routes)
+app.register_blueprint(chat_blueprint, url_prefix='/api/chat')
+app.register_blueprint(email_verification_blueprint)
 
 
 # =============================================================================
@@ -367,6 +388,14 @@ def sync_strava_data():
             logger.info(f"Updating averages for {date_str}")
             update_moving_averages(date_str, user_id=user_id)
             current_date += timedelta(days=1)
+
+        # Update last_sync_date to track when user last synced
+        sync_date = datetime.now().strftime('%Y-%m-%d')
+        db_utils.execute_query(
+            "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
+            (sync_date, user_id)
+        )
+        logger.info(f"Updated last_sync_date to {sync_date} for user {user_id}")
 
         # Success response
         result = {
@@ -499,8 +528,13 @@ def oauth_callback():
         password_hash = generate_password_hash(temp_password)
         
         # Try to get real email from Strava profile (requires profile:read_all scope)
+        # Debug: Log all athlete attributes to see what Strava provides
+        logger.info(f"Athlete object attributes: {dir(athlete)}")
+        logger.info(f"Athlete dict (if available): {athlete.to_dict() if hasattr(athlete, 'to_dict') else 'N/A'}")
+
         real_email = getattr(athlete, 'email', None)
-        
+        logger.info(f"Email from athlete.email: {real_email}")
+
         if real_email and '@' in real_email:
             email = real_email
             logger.info(f"Using real email from Strava: {email}")
@@ -508,6 +542,7 @@ def oauth_callback():
             # Fallback to synthetic email if Strava doesn't provide one
             email = f"strava_{athlete_id}@training-monkey.com"
             logger.warning(f"No email provided by Strava, using synthetic: {email}")
+            logger.warning(f"Athlete firstname: {getattr(athlete, 'firstname', 'N/A')}, lastname: {getattr(athlete, 'lastname', 'N/A')}")
         
         first_name = getattr(athlete, 'firstname', '')
         last_name = getattr(athlete, 'lastname', '')
@@ -702,8 +737,23 @@ def oauth_callback():
         except Exception as sync_error:
             logger.error(f"Error starting Strava sync for user {new_user.id}: {str(sync_error)}")
             flash('✅ Strava Connection Successful! You can sync your data from the dashboard.', 'success')
-        
-        return redirect('/welcome-post-strava')
+
+        # Email verification check - require verification for real emails
+        if '@training-monkey.com' not in email:
+            # Real email → send verification and block
+            service = EmailVerificationService()
+            base_url = os.environ.get('APP_BASE_URL', 'https://yourtrainingmonkey.com')
+            success, error = service.send_verification(new_user.id, email, base_url)
+
+            if not success:
+                logger.error(f"Failed to send verification email: {error}")
+                flash('Trouble sending verification email. Use resend button.', 'warning')
+
+            # Always redirect to pending (even if send failed - user can resend)
+            return redirect('/email-verification-pending')
+        else:
+            # Synthetic email → skip verification
+            return redirect('/welcome-post-strava')
 
     except Exception as e:
         error_msg = f"OAuth callback error: {str(e)}"
@@ -1269,6 +1319,14 @@ def process_user_sync(user_id, days):
         # Get final token status
         final_token_status = token_manager.get_simple_token_status()
 
+        # Update last_sync_date to track when user last synced
+        sync_date = datetime.now().strftime('%Y-%m-%d')
+        db_utils.execute_query(
+            "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
+            (sync_date, user_id)
+        )
+        logger.info(f"Updated last_sync_date to {sync_date} for user {user_id}")
+
         return {
             'success': True,
             'message': f'Successfully processed {activities_count} activities',
@@ -1597,7 +1655,7 @@ def strava_setup():
         if client_id and client_secret:
             # Generate OAuth URL with user's credentials
             redirect_uri = "https://yourtrainingmonkey.com/oauth-callback"
-            auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all"
+            auth_url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope=read,activity:read_all,profile:read_all"
 
             # Store credentials temporarily in session for OAuth callback
             session['temp_strava_client_id'] = client_id
@@ -1687,6 +1745,8 @@ def get_training_data():
                 response_data.update({
                     'has_cycling_data': False,
                     'has_swimming_data': False,
+                    'has_rowing_data': False,
+                    'has_backcountry_skiing_data': False,
                     'sport_summary': []
                 })
 
@@ -1722,14 +1782,22 @@ def get_training_data():
             has_swimming_data = UnifiedMetricsService.has_swimming_data(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
             )
+            has_rowing_data = UnifiedMetricsService.has_rowing_data(
+                current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
+            )
+            has_backcountry_skiing_data = UnifiedMetricsService.has_backcountry_skiing_data(
+                current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
+            )
             sport_summary = UnifiedMetricsService.get_sport_summary(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
-            ) if (has_cycling_data or has_swimming_data) else []
+            ) if (has_cycling_data or has_swimming_data or has_rowing_data or has_backcountry_skiing_data) else []
         else:
             # Use existing aggregation for backward compatibility
             aggregated_data = aggregate_daily_activities_with_rest(activity_list)
             has_cycling_data = False
             has_swimming_data = False
+            has_rowing_data = False
+            has_backcountry_skiing_data = False
             sport_summary = []
 
         # CRITICAL FIX: Apply date serialization AFTER aggregation too
@@ -1773,10 +1841,13 @@ def get_training_data():
             response_data.update({
                 'has_cycling_data': has_cycling_data,
                 'has_swimming_data': has_swimming_data,
+                'has_rowing_data': has_rowing_data,
+                'has_backcountry_skiing_data': has_backcountry_skiing_data,
                 'sport_summary': sport_summary
             })
 
             logger.info(f"Sport breakdown enabled: cycling data={has_cycling_data}, swimming data={has_swimming_data}, "
+                        f"rowing data={has_rowing_data}, backcountry skiing data={has_backcountry_skiing_data}, "
                         f"sport summary entries={len(sport_summary)}")
 
         return jsonify(response_data)
@@ -1984,6 +2055,14 @@ def sitemap():
         logger.error(f"Error serving sitemap.xml: {str(e)}")
         return '', 404
 
+@app.route('/YTM_Logo_byandfor_110.webp')
+def favicon_webp():
+    """Serve webp favicon"""
+    try:
+        return send_from_directory('build', 'YTM_Logo_byandfor_110.webp')
+    except:
+        return '', 404
+
 @app.route('/logo192.png')
 def logo192():
     """Serve logo192.png"""
@@ -2067,39 +2146,25 @@ def get_training_data_raw():
             'data': []
         }), 500
 
+# COMMENTED OUT: Dead code - these endpoints were only called by TrainingLoadDashboard
+# which never displayed the data. Journal page gets recommendations via /api/journal.
+# Delete after verifying Journal page still works.
+'''
 @login_required
 @app.route('/api/llm-recommendations', methods=['GET'])
 def get_llm_recommendations():
     """Get existing LLM recommendations for the current user"""
     try:
         logger.info(f"Fetching LLM recommendations for user {current_user.id}...")
-
-        # Import here to avoid circular imports
         from db_utils import get_latest_recommendation
-
         recommendation = get_latest_recommendation(current_user.id)
-
         if recommendation:
-            logger.info(f"Found recommendation for user {current_user.id} from {recommendation['generation_date']}")
-            return jsonify({
-                'success': True,
-                'recommendation': recommendation
-            })
+            return jsonify({'success': True, 'recommendation': recommendation})
         else:
-            logger.info(f"No recommendations found for user {current_user.id}")
-            return jsonify({
-                'success': False,
-                'message': 'No recommendations available',
-                'recommendation': None
-            })
-
+            return jsonify({'success': False, 'message': 'No recommendations available', 'recommendation': None})
     except Exception as e:
-        logger.error(f"Error fetching LLM recommendations for user {get_user_id_for_logging()}: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'recommendation': None
-        }), 500
+        logger.error(f"Error fetching LLM recommendations: {str(e)}")
+        return jsonify({'success': False, 'error': str(e), 'recommendation': None}), 500
 
 
 @login_required
@@ -2107,78 +2172,67 @@ def get_llm_recommendations():
 def generate_llm_recommendations():
     """Generate new comprehensive LLM recommendations for the current user"""
     try:
-        logger.info(f"Generating new comprehensive LLM recommendations for user {current_user.id}...")
-
-        # Generate comprehensive recommendation with force=True to override cache
+        logger.info(f"Generating new LLM recommendations for user {current_user.id}...")
         recommendation = generate_recommendations(force=True, user_id=current_user.id)
-
         if recommendation:
-            logger.info(f"Successfully generated comprehensive recommendation for user {current_user.id}")
-            return jsonify({
-                'success': True,
-                'message': 'New comprehensive recommendation generated successfully',
-                'recommendation': recommendation
-            })
+            return jsonify({'success': True, 'message': 'Generated successfully', 'recommendation': recommendation})
         else:
-            logger.error(f"Failed to generate comprehensive recommendation for user {current_user.id}")
-            return jsonify({
-                'success': False,
-                'error': 'Failed to generate comprehensive recommendation',
-                'recommendation': None
-            }), 500
-
+            return jsonify({'success': False, 'error': 'Failed to generate', 'recommendation': None}), 500
     except Exception as e:
-        logger.error(f"Error generating comprehensive recommendations for user {current_user.id}: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'recommendation': None
-        }), 500
+        logger.error(f"Error generating recommendations: {str(e)}")
+        return jsonify({'success': False, 'error': str(e), 'recommendation': None}), 500
 
 
 @login_required
 @app.route('/api/journal-status', methods=['GET'])
 def get_journal_status_endpoint():
-    """
-    Get journal status for last activity - used by Dashboard to enforce workflow.
-    Simple check: Does last activity have journal entry?
-    """
+    """Get journal status for last activity - used by Dashboard to enforce workflow."""
     try:
-        logger.info(f"Fetching journal status for user {current_user.id}")
-        
-        # Get journal status for last activity
         status = get_last_activity_journal_status(current_user.id)
-        
-        # Get latest recommendation to check if autopsy-informed
         from db_utils import get_latest_recommendation
         latest_rec = get_latest_recommendation(current_user.id)
-        
-        response = {
+        return jsonify({
             'success': True,
             'status': status,
             'has_recommendation': bool(latest_rec),
             'recommendation_is_autopsy_informed': latest_rec.get('is_autopsy_informed', False) if latest_rec else False,
             'recommendation_target_date': latest_rec.get('target_date') if latest_rec else None
-        }
-        
-        logger.info(f"Journal status for user {current_user.id}: {status['reason']}, has_recommendation: {response['has_recommendation']}, autopsy_informed: {response['recommendation_is_autopsy_informed']}")
-        
-        return jsonify(response)
-        
+        })
     except Exception as e:
-        logger.error(f"Error getting journal status for user {get_user_id_for_logging()}: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'status': {
-                'has_activity': False,
-                'activity_date': None,
-                'has_journal': False,
-                'allow_manual_generation': True,
-                'reason': 'error'
-            }
-        }), 500
+        logger.error(f"Error getting journal status: {str(e)}")
+        return jsonify({'success': False, 'error': str(e), 'status': {'allow_manual_generation': True, 'reason': 'error'}}), 500
+'''
 
+@app.route('/api/journal-entries-count', methods=['GET'])
+@login_required
+def get_journal_entries_count():
+    """Get count of journal entries in last 7 days for teaser card expiration logic."""
+    try:
+        user_id = current_user.id
+        from datetime import datetime, timedelta
+        from db_utils import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Count journal entries (logs or rest days) in last 7 days
+                seven_days_ago = datetime.now() - timedelta(days=7)
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM journal_entries
+                    WHERE user_id = %s
+                    AND created_at >= %s
+                """, (user_id, seven_days_ago))
+
+                result = cursor.fetchone()
+                count = result['count'] if result else 0
+
+                return jsonify({
+                    'success': True,
+                    'count_last_week': count
+                })
+    except Exception as e:
+        logger.error(f"Error getting journal entries count: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # =============================================================================
 # SECTION 3: AUTHENTICATION & USER MANAGEMENT ROUTES
@@ -3049,11 +3103,13 @@ def guide():
         
         # Track analytics
         try:
-            from analytics_tracker import track_page_view
-            track_page_view(
-                page='guide',
-                source=source,
-                user_id=user_context.get('user_id') if user_context else None
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.PAGE_VIEW,
+                event_data={'page': 'guide', 'source': source},
+                user_id=user_context.get('user_id') if user_context else None,
+                source_page='guide',
+                request=request
             )
         except Exception as e:
             logger.error(f"Error tracking guide analytics: {str(e)}")
@@ -3094,11 +3150,13 @@ def faq():
         
         # Track analytics
         try:
-            from analytics_tracker import track_page_view
-            track_page_view(
-                page='faq',
-                source=source,
-                user_id=user_context.get('user_id') if user_context else None
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.PAGE_VIEW,
+                event_data={'page': 'faq', 'source': source},
+                user_id=user_context.get('user_id') if user_context else None,
+                source_page='faq',
+                request=request
             )
         except Exception as e:
             logger.error(f"Error tracking FAQ analytics: {str(e)}")
@@ -3139,11 +3197,13 @@ def tutorials():
         
         # Track analytics
         try:
-            from analytics_tracker import track_page_view
-            track_page_view(
-                page='tutorials',
-                source=source,
-                user_id=user_context.get('user_id') if user_context else None
+            from analytics_tracker import track_analytics_event, EventType
+            track_analytics_event(
+                event_type=EventType.PAGE_VIEW,
+                event_data={'page': 'tutorials', 'source': source},
+                user_id=user_context.get('user_id') if user_context else None,
+                source_page='tutorials',
+                request=request
             )
         except Exception as e:
             logger.error(f"Error tracking tutorials analytics: {str(e)}")
@@ -3163,8 +3223,7 @@ def tutorials():
 
 @app.route('/api/start-tutorial', methods=['POST'])
 @login_required
-@csrf_protected
-def start_tutorial():
+def api_start_tutorial():
     """API endpoint to start a tutorial for the current user"""
     try:
         data = request.get_json()
@@ -3478,7 +3537,7 @@ def get_activities_for_management():
 
         activities = db_utils.execute_query(
             """
-            SELECT 
+            SELECT
                 activity_id,
                 date,
                 start_time,
@@ -3490,9 +3549,11 @@ def get_activities_for_management():
                 elevation_gain_feet,
                 total_load_miles,
                 trimp,
-                duration_minutes
-            FROM activities 
-            WHERE user_id = %s 
+                duration_minutes,
+                strength_rpe,
+                strength_equivalent_miles
+            FROM activities
+            WHERE user_id = %s
             AND date BETWEEN %s AND %s
             AND activity_id > 0
             ORDER BY date DESC, activity_id DESC
@@ -3810,18 +3871,17 @@ def update_activity_elevation():
         elevation_load_miles = elevation_feet / elevation_factor if elevation_factor > 0 else 0.0
         total_load_miles = current_distance + elevation_load_miles
 
-        # Update with correct parameters
+        # Update with correct parameters (elevation_factor_used column may not exist in all deployments)
         db_utils.execute_query(
             """
-            UPDATE activities 
-            SET 
+            UPDATE activities
+            SET
                 elevation_gain_feet = %s,
                 elevation_load_miles = %s,
-                total_load_miles = %s,
-                elevation_factor_used = %s
+                total_load_miles = %s
             WHERE activity_id = %s AND user_id = %s
             """,
-            (elevation_feet, elevation_load_miles, total_load_miles, elevation_factor, activity_id, current_user.id)
+            (elevation_feet, elevation_load_miles, total_load_miles, activity_id, current_user.id)
         )
 
         logger.info(f"Updated elevation for activity {activity_id} to {elevation_feet}ft by user {current_user.id}")
@@ -3833,9 +3893,7 @@ def update_activity_elevation():
             'updated_values': {
                 'elevation_gain_feet': elevation_feet,
                 'elevation_load_miles': round(elevation_load_miles, 2),
-                'total_load_miles': round(total_load_miles, 2),
-                'elevation_factor_used': elevation_factor,
-                'data_source': 'user_input'
+                'total_load_miles': round(total_load_miles, 2)
             }
         })
 
@@ -5002,16 +5060,17 @@ def save_journal_entry():
             logger.info(f"🛌 Rest day for {date_str} - generating recommendation for {tomorrow_date_str}")
             try:
                 from llm_recommendations_module import generate_autopsy_informed_daily_decision
-                recommendation_text = generate_autopsy_informed_daily_decision(
+                decision = generate_autopsy_informed_daily_decision(
                     user_id=current_user.id,
                     target_date=tomorrow_date
                 )
-                
-                if recommendation_text:
+
+                if decision:
                     # Save recommendation to database with explicit target_date
+                    # (decision is pre-parsed dict with daily/weekly/pattern/raw fields)
                     from unified_metrics_service import UnifiedMetricsService
                     current_metrics = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
-                    
+
                     from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
                     recommendation_data = {
                         'generation_date': date_str,
@@ -5020,10 +5079,10 @@ def save_journal_entry():
                         'data_start_date': date_str,
                         'data_end_date': date_str,
                         'metrics_snapshot': current_metrics,
-                        'daily_recommendation': recommendation_text,
-                        'weekly_recommendation': 'See previous weekly guidance',
-                        'pattern_insights': f'Generated after rest day on {date_str}',
-                        'raw_response': recommendation_text,
+                        'daily_recommendation': decision['daily_recommendation'],
+                        'weekly_recommendation': decision['weekly_recommendation'] or 'See previous weekly guidance',
+                        'pattern_insights': decision['pattern_insights'] or f'Generated after rest day on {date_str}',
+                        'raw_response': decision['raw_response'],
                         'user_id': current_user.id,
                         'is_autopsy_informed': False,
                         'autopsy_count': 0,
@@ -5031,7 +5090,7 @@ def save_journal_entry():
                     }
                     recommendation_data = fix_dates_for_json(recommendation_data)
                     save_llm_recommendation(recommendation_data)
-                    
+
                     recommendation_generated = True
                     logger.info(f"✅ Generated recommendation for {tomorrow_date_str} after rest day")
                 else:
@@ -5072,7 +5131,7 @@ def save_journal_entry():
             # STEP 2: Generate/update recommendation for TOMORROW using THIS autopsy
             try:
                 logger.info(f"🤖 Step 2: Generating recommendation for {tomorrow_date_str} using autopsy from {date_str}")
-                
+
                 # Create autopsy insights dict with the JUST-generated autopsy
                 if autopsy_analysis and alignment_score:
                     logger.info(f"✅ Using fresh autopsy from {date_str} (alignment: {alignment_score}/10)")
@@ -5084,44 +5143,17 @@ def save_journal_entry():
                     }
                 else:
                     logger.warning(f"⚠️ No autopsy available for {date_str}, using recent autopsy data")
-                    from llm_recommendations_module import get_recent_autopsy_insights
-                    autopsy_insights = get_recent_autopsy_insights(current_user.id, days=3)
-                
-                # Generate recommendation with explicit autopsy insights
-                from llm_recommendations_module import create_autopsy_informed_decision_prompt, call_anthropic_api, get_current_metrics
-                current_metrics = get_current_metrics(current_user.id)
-                
-                if not current_metrics:
-                    logger.error(f"❌ No current metrics for user {current_user.id}")
-                    recommendation_text = None
-                else:
-                    prompt = create_autopsy_informed_decision_prompt(
-                        current_user.id,
-                        tomorrow_date_str,
-                        current_metrics,
-                        autopsy_insights
-                    )
-                    recommendation_text = call_anthropic_api(prompt)
+                    autopsy_insights = None  # Let the function fetch recent insights
 
-                if recommendation_text:
-                    recommendation_text = recommendation_text.strip()
+                # Generate recommendation (returns pre-parsed dict)
+                from llm_recommendations_module import generate_autopsy_informed_daily_decision
+                decision = generate_autopsy_informed_daily_decision(
+                    user_id=current_user.id,
+                    target_date=tomorrow_date,
+                    autopsy_insights=autopsy_insights
+                )
 
-                    # CRITICAL FIX: Parse LLM response into separate sections
-                    # This ensures Journal displays ONLY daily recommendation, not weekly planning and pattern insights
-                    from llm_recommendations_module import parse_llm_response
-                    sections = parse_llm_response(recommendation_text)
-
-                    daily_rec = sections.get('daily_recommendation', '')
-                    weekly_rec = sections.get('weekly_recommendation', '')
-                    pattern_insights_text = sections.get('pattern_insights', '')
-
-                    # Fallback: if parsing failed, use full text as daily recommendation
-                    if not daily_rec and recommendation_text:
-                        daily_rec = recommendation_text
-                        logger.warning("Parser returned empty daily_recommendation, using full text")
-
-                    logger.info(f"✅ Parsed LLM sections - Daily: {len(daily_rec)} chars, Weekly: {len(weekly_rec)} chars, Insights: {len(pattern_insights_text)} chars")
-
+                if decision:
                     # Check if recommendation already exists for tomorrow
                     existing_rec = db_utils.execute_query(
                         "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
@@ -5130,7 +5162,7 @@ def save_journal_entry():
                     )
 
                     if existing_rec:
-                        # UPDATE existing recommendation with parsed sections
+                        # UPDATE existing recommendation with pre-parsed sections
                         logger.info(f"📝 Updating existing recommendation for {tomorrow_date_str}")
                         db_utils.execute_query(
                             """
@@ -5146,17 +5178,17 @@ def save_journal_entry():
                             WHERE user_id = %s AND target_date = %s
                             """,
                             (
-                                daily_rec,
-                                weekly_rec if weekly_rec else f"Updated with autopsy from {date_str}",
-                                pattern_insights_text if pattern_insights_text else (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
-                                recommendation_text,
+                                decision['daily_recommendation'],
+                                decision['weekly_recommendation'] or f"Updated with autopsy from {date_str}",
+                                decision['pattern_insights'] or (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
+                                decision['raw_response'],
                                 alignment_score,
                                 current_user.id,
                                 tomorrow_date_str
                             )
                         )
                     else:
-                        # INSERT new recommendation with parsed sections
+                        # INSERT new recommendation with pre-parsed sections
                         logger.info(f"📝 Creating new recommendation for {tomorrow_date_str}")
                         from unified_metrics_service import UnifiedMetricsService
                         current_metrics_for_save = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
@@ -5169,10 +5201,10 @@ def save_journal_entry():
                             'data_start_date': date_str,
                             'data_end_date': date_str,
                             'metrics_snapshot': current_metrics_for_save,
-                            'daily_recommendation': daily_rec,
-                            'weekly_recommendation': weekly_rec if weekly_rec else 'See weekly program on Coach page',
-                            'pattern_insights': pattern_insights_text if pattern_insights_text else (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
-                            'raw_response': recommendation_text,
+                            'daily_recommendation': decision['daily_recommendation'],
+                            'weekly_recommendation': decision['weekly_recommendation'] or 'See weekly program on Coach page',
+                            'pattern_insights': decision['pattern_insights'] or (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
+                            'raw_response': decision['raw_response'],
                             'user_id': current_user.id,
                             'is_autopsy_informed': True,
                             'autopsy_count': 1,
@@ -5180,7 +5212,7 @@ def save_journal_entry():
                         }
                         recommendation_data = fix_dates_for_json(recommendation_data)
                         save_llm_recommendation(recommendation_data)
-                    
+
                     recommendation_generated = True
                     logger.info(f"✅ Recommendation for {tomorrow_date_str} is autopsy-informed")
                 else:
@@ -5460,6 +5492,153 @@ def generate_daily_recommendation_only(user_id, target_date=None):
         return None
 
 
+def auto_mark_rest_day_and_generate_recommendation(user_id, rest_date):
+    """
+    Auto-mark a date as rest day and generate recommendation for the next day.
+    Used by cron job when user has synced but no activity exists for a past date.
+
+    Args:
+        user_id: The user ID
+        rest_date: Date object for the rest day
+
+    Returns:
+        dict with success status and details
+    """
+    try:
+        rest_date_str = rest_date.strftime('%Y-%m-%d')
+        next_date = rest_date + timedelta(days=1)
+        next_date_str = next_date.strftime('%Y-%m-%d')
+
+        logger.info(f"Auto-marking {rest_date_str} as rest day for user {user_id}")
+
+        # Check if rest day activity already exists
+        existing_rest_day = db_utils.execute_query(
+            """
+            SELECT activity_id FROM activities
+            WHERE user_id = %s AND date = %s AND type = 'rest'
+            """,
+            (user_id, rest_date_str),
+            fetch=True
+        )
+
+        if not existing_rest_day or not existing_rest_day[0]:
+            # Generate unique negative activity_id for rest day
+            rest_day_activity_id = -(rest_date.toordinal() * 1000 + user_id)
+
+            # Create rest day activity record
+            rest_day_record = {
+                'activity_id': rest_day_activity_id,
+                'date': rest_date_str,
+                'user_id': user_id,
+                'name': 'Rest Day',
+                'type': 'rest',
+                'distance_miles': 0,
+                'elevation_gain_feet': 0,
+                'elevation_load_miles': 0,
+                'total_load_miles': 0,
+                'avg_heart_rate': 0,
+                'max_heart_rate': 0,
+                'duration_minutes': 0,
+                'trimp': 0,
+                'time_in_zone1': 0,
+                'time_in_zone2': 0,
+                'time_in_zone3': 0,
+                'time_in_zone4': 0,
+                'time_in_zone5': 0,
+                'weight_lbs': None,
+                'perceived_effort': None,
+                'feeling_score': None,
+                'notes': 'Auto-generated rest day (incomplete workout after sync)'
+            }
+
+            columns = ', '.join(rest_day_record.keys())
+            placeholders = ', '.join(['%s'] * len(rest_day_record))
+
+            db_utils.execute_query(
+                f"INSERT INTO activities ({columns}) VALUES ({placeholders})",
+                tuple(rest_day_record.values())
+            )
+
+            logger.info(f"✅ Created auto rest day activity for {rest_date_str}")
+
+            # Update moving averages for the rest day
+            try:
+                from strava_training_load import update_moving_averages
+                update_moving_averages(rest_date_str, user_id=user_id)
+                logger.info(f"Updated moving averages after auto rest day for {rest_date_str}")
+            except Exception as avg_error:
+                logger.warning(f"Failed to update moving averages: {avg_error}")
+        else:
+            logger.info(f"Rest day already exists for {rest_date_str}")
+
+        # Generate autopsy-informed recommendation for next day
+        logger.info(f"Generating recommendation for {next_date_str} after auto rest day")
+        try:
+            from llm_recommendations_module import generate_autopsy_informed_daily_decision
+            decision = generate_autopsy_informed_daily_decision(
+                user_id=user_id,
+                target_date=next_date
+            )
+
+            if decision:
+                # Save recommendation (decision is pre-parsed dict)
+                from unified_metrics_service import UnifiedMetricsService
+                current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id) or {}
+
+                from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
+                recommendation_data = {
+                    'generation_date': rest_date_str,
+                    'target_date': next_date_str,
+                    'valid_until': None,
+                    'data_start_date': rest_date_str,
+                    'data_end_date': rest_date_str,
+                    'metrics_snapshot': current_metrics,
+                    'daily_recommendation': decision['daily_recommendation'],
+                    'weekly_recommendation': decision['weekly_recommendation'] or 'See previous weekly guidance',
+                    'pattern_insights': decision['pattern_insights'] or f'Generated after auto rest day on {rest_date_str}',
+                    'raw_response': decision['raw_response'],
+                    'user_id': user_id,
+                    'is_autopsy_informed': False,
+                    'autopsy_count': 0,
+                    'avg_alignment_score': None
+                }
+                recommendation_data = fix_dates_for_json(recommendation_data)
+                save_llm_recommendation(recommendation_data)
+
+                logger.info(f"✅ Generated recommendation for {next_date_str} after auto rest day")
+                return {
+                    'success': True,
+                    'rest_day_created': True,
+                    'recommendation_generated': True,
+                    'rest_date': rest_date_str,
+                    'next_date': next_date_str
+                }
+            else:
+                logger.warning(f"Failed to generate recommendation for {next_date_str}")
+                return {
+                    'success': True,
+                    'rest_day_created': True,
+                    'recommendation_generated': False,
+                    'rest_date': rest_date_str,
+                    'next_date': next_date_str
+                }
+        except Exception as rec_error:
+            logger.error(f"Error generating recommendation: {rec_error}", exc_info=True)
+            return {
+                'success': True,
+                'rest_day_created': True,
+                'recommendation_generated': False,
+                'error': str(rec_error)
+            }
+
+    except Exception as e:
+        logger.error(f"Error in auto_mark_rest_day_and_generate_recommendation: {str(e)}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
 @app.route('/cron/daily-recommendations', methods=['POST'])
 def daily_recommendations_cron():
     """
@@ -5496,13 +5675,68 @@ def daily_recommendations_cron():
 
         successful_generations = 0
         failed_generations = 0
+        auto_rest_days_created = 0
+
+        # Calculate yesterday's date for checking incomplete workouts
+        yesterday = (datetime.now() - timedelta(days=1)).date()
+        yesterday_str = yesterday.strftime('%Y-%m-%d')
+        today_str = datetime.now().strftime('%Y-%m-%d')
 
         for user_row in active_users:
             user_data = dict(user_row)
             user_id = user_data['user_id']
 
             try:
-                # Generate recommendation for tomorrow
+                # STEP 1: Check if user synced recently and has incomplete workouts from yesterday
+                # Only auto-mark rest day if user synced today (ensures data is complete)
+                user_sync_check = db_utils.execute_query(
+                    """
+                    SELECT last_sync_date FROM user_settings WHERE id = %s
+                    """,
+                    (user_id,),
+                    fetch=True
+                )
+
+                if user_sync_check and user_sync_check[0]:
+                    last_sync = user_sync_check[0].get('last_sync_date')
+
+                    # If user synced today, check for yesterday's incomplete workout
+                    if last_sync and last_sync >= today_str:
+                        logger.info(f"User {user_id} synced today ({last_sync}), checking for incomplete workouts")
+
+                        # Check if yesterday has a recommendation but no activity
+                        has_recommendation = db_utils.execute_query(
+                            """
+                            SELECT id FROM llm_recommendations
+                            WHERE user_id = %s AND target_date = %s
+                            """,
+                            (user_id, yesterday_str),
+                            fetch=True
+                        )
+
+                        has_activity = db_utils.execute_query(
+                            """
+                            SELECT activity_id FROM activities
+                            WHERE user_id = %s AND date = %s
+                            """,
+                            (user_id, yesterday_str),
+                            fetch=True
+                        )
+
+                        # If has recommendation but no activity, auto-mark as rest day
+                        if has_recommendation and has_recommendation[0] and (not has_activity or not has_activity[0]):
+                            logger.info(f"User {user_id}: yesterday ({yesterday_str}) has recommendation but no activity - auto-marking as rest day")
+                            result = auto_mark_rest_day_and_generate_recommendation(user_id, yesterday)
+
+                            if result.get('success'):
+                                auto_rest_days_created += 1
+                                logger.info(f"✅ Auto-marked {yesterday_str} as rest day and generated recommendation for today for user {user_id}")
+                            else:
+                                logger.warning(f"Failed to auto-mark rest day for user {user_id}: {result.get('error')}")
+                    else:
+                        logger.info(f"User {user_id} last synced on {last_sync}, not today - skipping auto rest day check")
+
+                # STEP 2: Generate recommendation for tomorrow (original logic)
                 recommendation = generate_daily_recommendation_only(user_id, tomorrow)
 
                 if recommendation:
@@ -5516,13 +5750,15 @@ def daily_recommendations_cron():
                 failed_generations += 1
                 logger.error(f"Error generating recommendation for user {user_id}: {str(user_error)}")
 
-        logger.info(f"Daily recommendations complete: {successful_generations} successful, {failed_generations} failed")
+        logger.info(f"Daily recommendations complete: {successful_generations} successful, {failed_generations} failed, {auto_rest_days_created} auto rest days created")
 
         return jsonify({
-            'message': f'Generated {successful_generations} daily recommendations for {tomorrow}',
+            'message': f'Generated {successful_generations} daily recommendations for {tomorrow}, auto-marked {auto_rest_days_created} rest days',
             'successful': successful_generations,
             'failed': failed_generations,
-            'target_date': tomorrow
+            'auto_rest_days_created': auto_rest_days_created,
+            'target_date': tomorrow,
+            'yesterday_checked': yesterday_str
         }), 200
 
     except Exception as e:
@@ -5844,8 +6080,12 @@ def get_training_data_with_sport_breakdown():
                 'sport_summary': {
                     'has_cycling_data': False,
                     'has_running_data': False,
+                    'has_rowing_data': False,
+                    'has_backcountry_skiing_data': False,
                     'total_cycling_activities': 0,
-                    'total_running_activities': 0
+                    'total_running_activities': 0,
+                    'total_rowing_activities': 0,
+                    'total_backcountry_skiing_activities': 0
                 }
             })
 
@@ -6763,12 +7003,23 @@ def update_profile_settings():
         from settings_utils import calculate_age_from_birthdate
         age = calculate_age_from_birthdate(birthdate)
 
-        # Update user profile with birthdate and calculated age
-        db_utils.execute_query("""
-            UPDATE user_settings
-            SET birthdate = %s, age = %s, updated_at = NOW()
-            WHERE id = %s
-        """, (birthdate, age, current_user.id))
+        # Get gender if provided (optional field - already set from Strava during OAuth)
+        gender = data.get('gender')
+
+        # Update user profile with birthdate, age, and gender (if provided)
+        if gender and gender in ['male', 'female', 'other']:
+            db_utils.execute_query("""
+                UPDATE user_settings
+                SET birthdate = %s, age = %s, gender = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (birthdate, age, gender, current_user.id))
+        else:
+            # Update without gender if not provided or invalid
+            db_utils.execute_query("""
+                UPDATE user_settings
+                SET birthdate = %s, age = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (birthdate, age, current_user.id))
 
         return jsonify({'success': True, 'message': 'Profile settings updated successfully'})
 
@@ -9844,34 +10095,44 @@ def welcome_post_strava():
     # First check if onboarding is already completed
     from db_utils import execute_query
     onboarding_data = execute_query("""
-        SELECT onboarding_completed, onboarding_step 
-        FROM user_settings 
+        SELECT onboarding_completed, onboarding_step, email, strava_athlete_id
+        FROM user_settings
         WHERE id = %s
     """, (user_id,), fetch=True)
-    
+
     onboarding_completed = False
+    user_email = ""
+    athlete_id = ""
+    has_synthetic_email = False
+
     if onboarding_data and len(onboarding_data) > 0:
         onboarding_completed = onboarding_data[0].get('onboarding_completed', False) or onboarding_data[0].get('onboarding_step') == 'completed'
-    
+        user_email = onboarding_data[0].get('email', '')
+        athlete_id = onboarding_data[0].get('strava_athlete_id', '')
+        has_synthetic_email = '@training-monkey.com' in user_email
+
     logger.info(f"Welcome page check for user {user_id}: needs_onboarding={needs_onboarding(user_id)}, onboarding_completed={onboarding_completed}, force_show={force_show}, sync_wait={sync_wait}")
-    
+
     if (needs_onboarding(user_id) and not onboarding_completed) or force_show or (sync_wait and not onboarding_completed):
         # Get current legal versions for the template
         from legal_document_versioning import get_current_legal_versions
         current_versions = get_current_legal_versions()
-        
+
         # Check sync status
         sync_status = {
             'in_progress': session.get('strava_sync_in_progress', False),
             'complete': session.get('strava_sync_complete', False),
             'failed': session.get('strava_sync_failed', False)
         }
-        
-        return render_template('welcome_post_strava.html', 
-                             show_onboarding=True, 
+
+        return render_template('welcome_post_strava.html',
+                             show_onboarding=True,
                              user_id=user_id,
                              legal_versions=current_versions,
-                             sync_status=sync_status)
+                             sync_status=sync_status,
+                             athlete_id=athlete_id,
+                             user_email=user_email,
+                             has_synthetic_email=has_synthetic_email)
     else:
         # User is already set up, redirect to dashboard
         return redirect(url_for('dashboard'))
@@ -9886,26 +10147,20 @@ def welcome_stage1():
     try:
         birth_month = request.form.get('birth_month')
         birth_year = request.form.get('birth_year')
-        gender = request.form.get('gender')
         training_experience = request.form.get('training_experience')
         primary_sport = request.form.get('primary_sport')
-        resting_hr = request.form.get('resting_hr')
-        max_hr = request.form.get('max_hr')
-        coaching_tone = request.form.get('coaching_tone')
 
-        # Get legal acceptance status
-        terms_accepted = request.form.get('terms_accepted') == 'on'
-        privacy_accepted = request.form.get('privacy_accepted') == 'on'
-        disclaimer_accepted = request.form.get('disclaimer_accepted') == 'on'
+        # Default coaching tone (can be changed later in settings)
+        coaching_tone = 'supportive'  # Default to supportive coaching style
 
-        # Validate required fields
-        if not all([birth_month, birth_year, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone]):
+        # Implicit legal acceptance (by submitting the form)
+        terms_accepted = True
+        privacy_accepted = True
+        disclaimer_accepted = True
+
+        # Validate required fields (gender, resting_hr, max_hr already set from Strava during OAuth)
+        if not all([birth_month, birth_year, training_experience, primary_sport]):
             flash('Please fill in all required fields.', 'error')
-            return redirect(url_for('welcome_post_strava'))
-
-        # Validate legal acceptance
-        if not all([terms_accepted, privacy_accepted, disclaimer_accepted]):
-            flash('Please accept all legal agreements to continue.', 'error')
             return redirect(url_for('welcome_post_strava'))
 
         # Create birthdate from month and year (set day to 1 for privacy)
@@ -9919,7 +10174,33 @@ def welcome_stage1():
         # Calculate age from birthdate
         from settings_utils import calculate_age_from_birthdate
         age = calculate_age_from_birthdate(birthdate)
-        
+
+        # Calculate max_hr using Tanaka method if not already set from Strava
+        # Tanaka formula: 208 - (0.7 × age)
+        # Only calculate if max_hr is the default (178) or not set
+        from db_utils import get_db_connection
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Get current max_hr and resting_hr from database (set during OAuth)
+                cursor.execute("SELECT max_hr, resting_hr FROM user_settings WHERE id = %s", (user_id,))
+                current_data = cursor.fetchone()
+                current_max_hr = current_data['max_hr'] if current_data else None
+                current_resting_hr = current_data['resting_hr'] if current_data else None
+
+                # Calculate max_hr using Tanaka if not provided by Strava (default is 178)
+                if current_max_hr is None or current_max_hr == 178:
+                    calculated_max_hr = int(208 - (0.7 * age))
+                    max_hr_is_calculated = True
+                    logger.info(f"Calculated max_hr for user {user_id} using Tanaka method: {calculated_max_hr} (age: {age})")
+                else:
+                    calculated_max_hr = current_max_hr
+                    max_hr_is_calculated = False
+                    logger.info(f"Using Strava-provided max_hr for user {user_id}: {calculated_max_hr}")
+
+                # Use resting_hr from Strava if available, otherwise default to 44
+                if current_resting_hr is None:
+                    current_resting_hr = 44
+
         # Map coaching tone to spectrum value
         tone_map = {
             'casual': 12,
@@ -9928,18 +10209,18 @@ def welcome_stage1():
             'analytical': 87
         }
         coaching_style_spectrum = tone_map.get(coaching_tone, 50)
-        
-        # Update user settings with all required data
-        from db_utils import get_db_connection
+
+        # Update user settings with form data and calculated max_hr
+        # Note: gender and resting_hr already set from Strava during OAuth
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                # Update profile data including birthdate and calculated age
+                # Update profile data including birthdate, age, and Tanaka-calculated max_hr
                 cursor.execute("""
                     UPDATE user_settings
-                    SET birthdate = %s, age = %s, gender = %s, training_experience = %s, primary_sport = %s,
-                        resting_hr = %s, max_hr = %s, coaching_tone = %s, coaching_style_spectrum = %s
+                    SET birthdate = %s, age = %s, training_experience = %s, primary_sport = %s,
+                        max_hr = %s, max_hr_is_calculated = %s, coaching_tone = %s, coaching_style_spectrum = %s
                     WHERE id = %s
-                """, (birthdate, age, gender, training_experience, primary_sport, resting_hr, max_hr, coaching_tone, coaching_style_spectrum, user_id))
+                """, (birthdate, age, training_experience, primary_sport, calculated_max_hr, max_hr_is_calculated, coaching_tone, coaching_style_spectrum, user_id))
                 
                 # Update legal acceptance timestamps
                 from datetime import datetime
@@ -9993,12 +10274,59 @@ def welcome_stage1():
         success = user_account_manager.complete_onboarding(user_id)
         
         if success:
-            # Onboarding completed successfully - always redirect to dashboard
+            # Check if user updated email from synthetic → real
+            user_provided_email = request.form.get('email', '').strip().lower()
+
+            if user_provided_email and '@' in user_provided_email:
+                service = EmailVerificationService()
+                current_email = service.get_user_email(user_id)
+
+                # Email update: synthetic → real
+                if current_email and current_email != user_provided_email and '@training-monkey.com' in current_email:
+                    # Validate format
+                    if '@' not in user_provided_email or '.' not in user_provided_email:
+                        flash('Invalid email format', 'error')
+                        return redirect(url_for('welcome_post_strava'))
+
+                    # Check duplicate
+                    from db_utils import execute_query
+                    existing = execute_query(
+                        "SELECT id FROM user_settings WHERE email = %s AND id != %s",
+                        (user_provided_email, user_id), fetch=True
+                    )
+
+                    if existing:
+                        flash('Email already in use', 'error')
+                        return redirect(url_for('welcome_post_strava'))
+
+                    # Update email
+                    execute_query(
+                        "UPDATE user_settings SET email = %s WHERE id = %s",
+                        (user_provided_email, user_id), fetch=False
+                    )
+
+                    # Send verification
+                    base_url = os.environ.get('APP_BASE_URL', 'https://yourtrainingmonkey.com')
+                    success, error = service.send_verification(user_id, user_provided_email, base_url)
+
+                    if not success:
+                        logger.error(f"Failed to send verification: {error}")
+                        flash('Trouble sending verification. Use resend button.', 'warning')
+
+                    session.pop('strava_sync_in_progress', None)
+                    session.pop('strava_sync_complete', None)
+                    session.pop('strava_sync_failed', None)
+
+                    # Redirect to verification
+                    return redirect('/email-verification-pending')
+
+            # No email update → normal flow
+            # Onboarding completed successfully - redirect to dashboard
             # Clear any sync status from session since onboarding is complete
             session.pop('strava_sync_in_progress', None)
             session.pop('strava_sync_complete', None)
             session.pop('strava_sync_failed', None)
-            
+
             flash('Welcome! Your profile is set up. Let\'s explore your training dashboard!', 'success')
             return redirect(url_for('dashboard'))
         else:
@@ -10097,11 +10425,18 @@ def goals_setup():
 def track_analytics_event(event_name, data):
     """Track real analytics events"""
     try:
-        # Log to database for real analytics
-        db_utils.execute_query("""
-            INSERT INTO onboarding_analytics (user_id, event_name, event_data, timestamp)
-            VALUES (%s, %s, %s, NOW())
-        """, (data.get('user_id'), event_name, json.dumps(data)))
+        user_id = data.get('user_id')
+
+        # Only insert into database if user_id is present (authenticated users only)
+        # For non-authenticated users, just log the event
+        if user_id is not None:
+            db_utils.execute_query("""
+                INSERT INTO onboarding_analytics (user_id, event_name, event_data, timestamp)
+                VALUES (%s, %s, %s, NOW())
+            """, (user_id, event_name, json.dumps(data)))
+        else:
+            # Log event for non-authenticated users (for monitoring purposes)
+            logger.info(f"Analytics event (non-authenticated): {event_name} - {json.dumps(data)}")
     except Exception as e:
         # Fallback to logging
         logger.error(f"Analytics tracking error: {e}")
@@ -11103,7 +11438,28 @@ def get_training_schedule():
         schedule_last_updated = settings_dict.get('schedule_last_updated')
         if isinstance(schedule_last_updated, datetime):
             schedule_last_updated = schedule_last_updated.isoformat()
-        
+
+        # Fetch multi-discipline cross-training data
+        disciplines_result = db_utils.execute_query(
+            """
+            SELECT discipline, allocation_type, allocation_value
+            FROM user_cross_training_disciplines
+            WHERE user_id = %s AND enabled = TRUE
+            ORDER BY discipline
+            """,
+            (user_id,),
+            fetch=True
+        )
+
+        cross_training_disciplines = []
+        if disciplines_result:
+            for row in disciplines_result:
+                cross_training_disciplines.append({
+                    'discipline': row['discipline'] if hasattr(row, '__getitem__') else row[0],
+                    'allocation_type': row['allocation_type'] if hasattr(row, '__getitem__') else row[1],
+                    'allocation_value': float(row['allocation_value'] if hasattr(row, '__getitem__') else row[2])
+                })
+
         return jsonify({
             'success': True,
             'schedule': {
@@ -11112,6 +11468,8 @@ def get_training_schedule():
                 'strength_hours': float(settings_dict.get('strength_hours_per_week', 0)) if settings_dict.get('strength_hours_per_week') else 0,
                 'include_mobility': settings_dict.get('include_mobility', False),
                 'mobility_hours': float(settings_dict.get('mobility_hours_per_week', 0)) if settings_dict.get('mobility_hours_per_week') else 0,
+                'cross_training_disciplines': cross_training_disciplines,
+                # Legacy fields for backward compatibility
                 'include_cross_training': settings_dict.get('include_cross_training', False),
                 'cross_training_type': settings_dict.get('cross_training_type'),
                 'cross_training_hours': float(settings_dict.get('cross_training_hours_per_week', 0)) if settings_dict.get('cross_training_hours_per_week') else 0,
@@ -11198,8 +11556,32 @@ def save_training_schedule():
             fetch=False
         )
         
+        # Save cross-training disciplines to new table
+        cross_training_disciplines = data.get('cross_training_disciplines', [])
+
+        # Always delete existing disciplines first
+        db_utils.execute_query(
+            "DELETE FROM user_cross_training_disciplines WHERE user_id = %s",
+            (user_id,),
+            fetch=False
+        )
+
+        # Insert new disciplines
+        for d in cross_training_disciplines:
+            if d.get('enabled'):
+                db_utils.execute_query(
+                    """
+                    INSERT INTO user_cross_training_disciplines
+                    (user_id, discipline, enabled, allocation_type, allocation_value)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (user_id, d['discipline'].lower(), d['enabled'],
+                     d['allocation_type'].lower(), float(d['allocation_value'])),
+                    fetch=False
+                )
+
         logger.info(f"Successfully saved training schedule for user {user_id}")
-        
+
         # Mark schedule as reviewed for upcoming week if this is a Sunday update
         from datetime import datetime, timedelta
         today = datetime.now().date()
@@ -11224,9 +11606,162 @@ def save_training_schedule():
             'success': True,
             'message': 'Training schedule saved successfully'
         })
-        
+
     except Exception as e:
         logger.error(f"Error saving training schedule for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/cross-training-disciplines', methods=['GET'])
+@login_required
+def get_cross_training_disciplines():
+    """
+    Get user's cross-training discipline configurations.
+    Returns list of all enabled disciplines with their allocations.
+    """
+    try:
+        user_id = current_user.id
+        logger.info(f"Fetching cross-training disciplines for user {user_id}")
+
+        disciplines_result = db_utils.execute_query(
+            """
+            SELECT discipline, enabled, allocation_type, allocation_value
+            FROM user_cross_training_disciplines
+            WHERE user_id = %s
+            ORDER BY discipline
+            """,
+            (user_id,),
+            fetch=True
+        )
+
+        # Transform to dict format for frontend
+        result = []
+        if disciplines_result:
+            for row in disciplines_result:
+                result.append({
+                    'discipline': row['discipline'] if hasattr(row, '__getitem__') else row[0],
+                    'enabled': row['enabled'] if hasattr(row, '__getitem__') else row[1],
+                    'allocation_type': row['allocation_type'] if hasattr(row, '__getitem__') else row[2],
+                    'allocation_value': float(row['allocation_value'] if hasattr(row, '__getitem__') else row[3])
+                })
+
+        return jsonify({
+            'success': True,
+            'disciplines': result
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching cross-training disciplines for user {current_user.id}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/coach/cross-training-disciplines', methods=['POST'])
+@login_required
+def save_cross_training_disciplines():
+    """
+    Save user's cross-training discipline configurations.
+    Expects: { disciplines: [{ discipline, enabled, allocation_type, allocation_value }] }
+    """
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+        disciplines = data.get('disciplines', [])
+
+        logger.info(f"Saving {len(disciplines)} cross-training disciplines for user {user_id}")
+
+        # Validate disciplines
+        valid_disciplines = {'cycling', 'swimming', 'rowing', 'backcountry_skiing', 'hiking', 'other'}
+        valid_allocation_types = {'hours', 'percentage'}
+
+        total_percentage = 0
+        for d in disciplines:
+            discipline_name = d.get('discipline', '').lower()
+            if discipline_name not in valid_disciplines:
+                return jsonify({
+                    'success': False,
+                    'error': f"Invalid discipline: {d.get('discipline')}"
+                }), 400
+
+            allocation_type = d.get('allocation_type', '').lower()
+            if allocation_type not in valid_allocation_types:
+                return jsonify({
+                    'success': False,
+                    'error': f"Invalid allocation_type: {d.get('allocation_type')}"
+                }), 400
+
+            # Validate allocation value
+            try:
+                allocation_value = float(d.get('allocation_value', 0))
+                if allocation_value < 0:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Allocation value must be non-negative'
+                    }), 400
+
+                if allocation_type == 'percentage' and allocation_value > 100:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Percentage allocation cannot exceed 100%'
+                    }), 400
+
+                if allocation_type == 'hours' and allocation_value > 40:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Hours per week must be reasonable (<40)'
+                    }), 400
+
+                if d.get('enabled') and allocation_type == 'percentage':
+                    total_percentage += allocation_value
+
+            except (ValueError, TypeError):
+                return jsonify({
+                    'success': False,
+                    'error': 'Allocation value must be a valid number'
+                }), 400
+
+        # Validate total percentage doesn't exceed 100%
+        if total_percentage > 100:
+            return jsonify({
+                'success': False,
+                'error': f'Total percentage allocation ({total_percentage}%) cannot exceed 100%'
+            }), 400
+
+        # Delete existing and insert new (transactional upsert)
+        db_utils.execute_query(
+            "DELETE FROM user_cross_training_disciplines WHERE user_id = %s",
+            (user_id,),
+            fetch=False
+        )
+
+        # Insert enabled disciplines
+        for d in disciplines:
+            if d.get('enabled'):
+                db_utils.execute_query(
+                    """
+                    INSERT INTO user_cross_training_disciplines
+                    (user_id, discipline, enabled, allocation_type, allocation_value)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (user_id, d['discipline'].lower(), d['enabled'],
+                     d['allocation_type'].lower(), float(d['allocation_value'])),
+                    fetch=False
+                )
+
+        logger.info(f"Successfully saved cross-training disciplines for user {user_id}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Cross-training disciplines saved successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving cross-training disciplines for user {current_user.id}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

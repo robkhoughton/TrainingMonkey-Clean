@@ -1,26 +1,48 @@
-node_modules/ 
-__pycache__/ 
-*.pyc 
-.env 
+node_modules/
+__pycache__/
+*.pyc
+.env
 config.json
 app/config.json
 
 # Utility scripts and docs with database credentials
-generate_user_report.py
-traffic_source_report.py
-create_rum_tables.py
-delete_test_account.py
+scripts/utils/generate_user_report.py
+scripts/utils/traffic_source_report.py
+scripts/utils/create_rum_tables.py
+scripts/utils/delete_test_account.py
 app/setup_database_environment.py
-app/check_tables.py
-app/check_users.py
+scripts/dev/check_tables.py
+scripts/dev/check_users.py
 app/deploy_strava_force.bat
 ADD_GOOGLE_ANALYTICS_GUIDE.md
-*.log
 
+# Log files and archives
+*.log
+archive/
+logs/
+
+# Temporary and build files
 build/
-logs/ 
-docs/
-tasks/
-tests/
-sql/
-scripts
+*.db
+~$*.pptx
+~$*.xlsx
+~$*.docx
+*.tmp
+
+# Query results and reports
+*_RESULTS*.txt
+TrainingMonkey_*.txt
+QUERY_*.txt
+
+# Design source files (keep in archive only)
+*.xcf
+
+# Frontend build artifacts
+frontend/build/
+frontend/node_modules/
+
+# Windows reserved names
+NUL
+nul
+**/NUL
+**/nul

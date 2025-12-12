@@ -2,17 +2,19 @@
 
 ## 🗄️ Database Standards (CRITICAL)
 - **PostgreSQL ONLY**: Use `%s` placeholders (NOT `?`), `SERIAL PRIMARY KEY` (NOT `AUTOINCREMENT`), `NOW()` (NOT `CURRENT_TIMESTAMP`)
-- **Schema Changes**: Assistant can run migrations using `app/run_migration.py` or direct SQL via `db_utils`. Never modify schema in application code.
+- **Schema Changes**: Assistant can run migrations using `app/run_migration.py`, direct SQL via `db_utils`, or SQL Editor with direct connection. Never modify schema in application code.
 - **Date Operations**: Use `datetime.now().date()` for date-only operations, `'YYYY-MM-DD'` format for APIs
 - **Connection**: DATABASE_URL loaded from `.env` file via `app/db_credentials_loader.py` (secure, not in version control)
-- **Direct Database Access**: Assistant can execute database operations using existing `db_utils` module or migration scripts
+- **Direct Database Access**: Assistant can execute database operations using existing `db_utils` module, migration scripts, or direct SQL execution via Python scripts with credentials from `.env` file
+- **SQL Editor Execution**: Assistant has permission to execute SQL files directly using database connection. For SQL files with connection strings, use credentials from `.env` file via `db_credentials_loader` for secure execution
 
 ## 🔐 Database Access Methods (for AI Assistant)
-1. **Schema Migrations**: Create migration script in `app/` using `db_credentials_loader` and `db_utils`
+1. **Schema Migrations**: Create migration script in `app/` using `db_credentials_loader` and `db_utils`, or execute SQL files directly via Python scripts
 2. **Query Execution**: Use `db_utils.execute_query()` with parameterized queries
 3. **Data Inspection**: Use `db_utils` for read operations to verify state
-4. **Credential Loading**: Always use `from db_credentials_loader import set_database_url` for secure access
-5. **Never Hardcode**: Never put DATABASE_URL or credentials in code files
+4. **Credential Loading**: Always use `from db_credentials_loader import set_database_url` for secure access from `.env` file
+5. **Direct SQL Execution**: Can execute SQL files using Python scripts that connect directly to database using credentials from `.env` file
+6. **Never Hardcode**: Never put DATABASE_URL or credentials in code files - always load from `.env` via `db_credentials_loader`
 
 ## 🔧 Code Quality Standards
 - **Public APIs**: Use intended public methods, avoid private method calls
@@ -108,7 +110,7 @@ copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runne
 
 ## 📊 Database Operation Examples
 
-### ✅ Correct: Schema Migration
+### ✅ Correct: Schema Migration (Method 1 - Using db_utils)
 ```python
 # In app/my_migration.py
 from db_credentials_loader import set_database_url
@@ -116,6 +118,22 @@ import db_utils
 
 set_database_url()  # Load from .env
 db_utils.execute_query("ALTER TABLE activities ADD COLUMN new_field TEXT")
+```
+
+### ✅ Correct: Schema Migration (Method 2 - Direct SQL Execution)
+```python
+# In app/my_migration.py
+from db_credentials_loader import set_database_url
+import psycopg2
+import os
+
+set_database_url()  # Load from .env
+DATABASE_URL = os.environ.get('DATABASE_URL')
+# Parse and connect directly to execute SQL from files
+conn = psycopg2.connect(DATABASE_URL)
+cursor = conn.cursor()
+cursor.execute("ALTER TABLE activities ADD COLUMN new_field TEXT")
+conn.commit()
 ```
 
 ### ✅ Correct: Data Query

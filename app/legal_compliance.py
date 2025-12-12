@@ -352,9 +352,10 @@ class LegalComplianceTracker:
                 cursor = conn.cursor()
                 
                 # Get total user count - PostgreSQL syntax
-                total_sql = "SELECT COUNT(*) FROM user_settings"
+                total_sql = "SELECT COUNT(*) as count FROM user_settings"
                 cursor.execute(total_sql)
-                total_users = cursor.fetchone()[0]
+                result = cursor.fetchone()
+                total_users = result['count'] if result else 0
                 
                 # Get compliance counts - PostgreSQL syntax
                 compliance_sql = """

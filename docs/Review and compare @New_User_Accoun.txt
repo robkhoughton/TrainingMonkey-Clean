@@ -1,0 +1,19 @@
+Review and compare @New_User_Account_Creation_Process_Original.md and @Strava_OAuth_Account_Creation_Technical_Guide.md in the context of the project files.  Identify differences.  Articulate a strategy for reconciling the differences and delivering the most positive new user experience.  Share your thinking.  Ask me for any information that you need to successfully complete your task.  Do not proceed with any file modifications without my prior approval. 
+1) Oauth should be primary path for committed users. Alternate path for skeptical visitors 2) simplicity, reliability and maintainability  are good objectives for frictionless new user experience.  Make no changes until we agree on a strategy.  Preliminary modified user flow:
+Landing Page
+    ↓
+"Connect with Strava" (single CTA)
+    ↓
+Strava OAuth
+    ↓
+Automatic account creation (strava_{id}@training-monkey.com)
+    ↓
+Welcome page with onboarding progress (use getting-started-resources page with revised steps since Strava has been connected and account has been created.  Add banner for Strava Connection Successful!  Your Training Monkey Account Created!
+    ↓
+Step 1 - Disclosures and statement acknowledgements
+    ↓
+Redirects to onboarding progress page
+    ↓
+Step 2 - Profile setup (welcome-post-strava)
+    ↓
+Step 3 - Dashboard

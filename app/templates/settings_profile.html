@@ -47,6 +47,17 @@
             </select>
             <small style="color: #6b7280; font-size: 0.875rem;">Used to calculate age for heart rate zone calculations and training recommendations (month/year only for privacy)</small>
         </div>
+
+        <div class="form-group">
+            <label for="gender">Gender</label>
+            <select id="gender" name="gender" required>
+                <option value="">Select Gender</option>
+                <option value="male" {% if user and user.gender == 'male' %}selected{% endif %}>Male</option>
+                <option value="female" {% if user and user.gender == 'female' %}selected{% endif %}>Female</option>
+                <option value="other" {% if user and user.gender == 'other' %}selected{% endif %}>Other</option>
+            </select>
+            <small style="color: #6b7280; font-size: 0.875rem;">Automatically populated from Strava if available (can be modified here)</small>
+        </div>
         </div>
 
         <div class="button-container">

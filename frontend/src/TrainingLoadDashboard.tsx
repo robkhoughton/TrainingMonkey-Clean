@@ -8,6 +8,9 @@ import defaultTheme from './chartTheme';
 import { useChartDimensions } from './useChartDimensions';
 import CompactDashboardBanner from './CompactDashboardBanner';
 import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
+import DailyStatusPopup from './DailyStatusPopup';
+import JournalTeaserCard from './JournalTeaserCard';
+import DashboardTour from './DashboardTour';
 
 // Define interfaces for your data (keeping your original structure)
 interface TrainingDataRow {
@@ -59,20 +62,6 @@ interface Metrics {
   };
 }
 
-// LLMRecommendation interface from recommendations_component.ts
-interface LLMRecommendation {
-  id: number;
-  generation_date: string;
-  target_date: string;
-  valid_until: string;
-  daily_recommendation: string;
-  weekly_recommendation: string;
-  pattern_insights: string;
-  is_autopsy_informed?: boolean;  // NEW: indicates if generated with autopsy insights
-  autopsy_count?: number;  // NEW: number of recent autopsies used
-  avg_alignment_score?: number;  // NEW: average alignment score from autopsies
-}
-
 const coerceNumber = (value: any, fallback: number = NaN): number => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : fallback;
@@ -95,26 +84,6 @@ const coerceNumber = (value: any, fallback: number = NaN): number => {
   }
 
   return fallback;
-};
-
-const formatNumber = (value: any, digits: number, fallback = 'N/A'): string => {
-  const num = coerceNumber(value);
-  if (!Number.isFinite(num)) {
-    return fallback;
-  }
-  return num.toFixed(digits);
-};
-
-const formatScaledNumber = (value: any, scale: number, digits: number, fallback = 'N/A'): string => {
-  const num = coerceNumber(value);
-  if (!Number.isFinite(num)) {
-    return fallback;
-  }
-  const scaled = num * scale;
-  if (!Number.isFinite(scaled)) {
-    return fallback;
-  }
-  return scaled.toFixed(digits);
 };
 
 interface TrainingLoadDashboardProps {
@@ -142,22 +111,13 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renderKey, setRenderKey] = useState(0);
-  const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming']);
+  const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming', 'rowing', 'backcountry_skiing']);
   const [hasCyclingData, setHasCyclingData] = useState(false);
   const [hasSwimmingData, setHasSwimmingData] = useState(false);
-
-  // Recommendation state variables from recommendations_component.ts
-  const [recommendation, setRecommendation] = useState<LLMRecommendation | null>(null);
-  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
-
-  // NEW: Journal status for workflow enforcement
-  const [journalStatus, setJournalStatus] = useState<{
-    has_activity: boolean;
-    activity_date: string | null;
-    has_journal: boolean;
-    allow_manual_generation: boolean;
-    reason: string;
-  } | null>(null);
+  const [hasRowingData, setHasRowingData] = useState(false);
+  const [hasBackcountrySkiingData, setHasBackcountrySkiingData] = useState(false);
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
 
   // FIXED: Proper frozen tooltip state management
   const [frozenTooltipData, setFrozenTooltipData] = useState<{
@@ -165,88 +125,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     label: string;
     coordinate: { x: number; y: number };
   } | null>(null);
-
-const getRecommendationDateContext = (recommendation) => {
-  if (!recommendation) {
-    return {
-      targetDate: '',
-      displayTitle: 'Training Decision',
-      isForToday: false,
-      isForTomorrow: false
-    };
-  }
-
-  // Use Pacific timezone for consistent date comparison with backend
-  const today = new Date();
-  
-  // FIXED: Properly extract Pacific date components without converting back to UTC
-  const pacificFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: "America/Los_Angeles",
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  
-  const parts = pacificFormatter.formatToParts(today);
-  const year = parts.find(p => p.type === 'year')?.value || '';
-  const month = parts.find(p => p.type === 'month')?.value || '';
-  const day = parts.find(p => p.type === 'day')?.value || '';
-  const todayStr = `${year}-${month}-${day}`;
-  
-  // Calculate tomorrow's date string
-  const tomorrowDate = new Date(todayStr + 'T12:00:00');
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
-
-  // FIXED: Handle both date and timestamp formats for target_date
-  let targetDateStr;
-  let targetDate;
-
-  if (recommendation.target_date) {
-    // Extract just the date part from "2025-08-10T00:00:00Z" or "2025-08-10"
-    targetDateStr = recommendation.target_date.split('T')[0];
-    targetDate = new Date(targetDateStr + 'T12:00:00');
-  } else if (recommendation.generation_date) {
-    targetDateStr = recommendation.generation_date.split('T')[0];
-    targetDate = new Date(targetDateStr + 'T12:00:00');
-  } else {
-    return {
-      targetDate: '',
-      displayTitle: 'Training Decision',
-      isForToday: false,
-      isForTomorrow: false
-    };
-  }
-
-  const targetDateFormatted = targetDate.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric'
-  });
-
-  let displayTitle = '';
-  let isForToday = false;
-  let isForTomorrow = false;
-
-  if (targetDateStr === todayStr) {
-    displayTitle = `Today's Training Decision (${targetDateFormatted})`;
-    isForToday = true;
-  } else if (targetDateStr === tomorrowStr) {
-    displayTitle = `Tomorrow's Training Decision (${targetDateFormatted})`;
-    isForTomorrow = true;
-  } else if (targetDate > tomorrowDate) {
-    displayTitle = `Next Training Decision (${targetDateFormatted})`;
-  } else {
-    displayTitle = `Training Decision (${targetDateFormatted})`;
-  }
-
-  return {
-    targetDate: targetDateStr,
-    displayTitle,
-    isForToday,
-    isForTomorrow
-  };
-};
 
   const handleSyncComplete = () => {
     console.log("Sync completed, refreshing dashboard data...");
@@ -550,99 +428,60 @@ const getRecommendationDateContext = (recommendation) => {
     });
   };
 
-  // Function to fetch LLM recommendations from recommendations_component.ts
+  // COMMENTED OUT: Dead code - LLM recommendations are fetched via /api/journal instead
+  // These functions were never wired to UI. Delete after verifying Journal page works.
+  /*
   const fetchRecommendations = async () => {
     console.log("fetchRecommendations called");
     try {
       setIsLoadingRecommendation(true);
-      console.log("Fetching recommendations from /api/llm-recommendations");
       const response = await fetch('/api/llm-recommendations');
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
-        console.error(`API response not OK: ${response.status}`);
         throw new Error(`API responded with status ${response.status}`);
       }
-
       const result = await response.json();
-      console.log("Recommendation API result:", result);
-
       if (result.recommendation) {
-        console.log("Setting recommendation state with:", result.recommendation);
         setRecommendation(result.recommendation);
       } else {
-        console.log("No recommendation in result:", result);
-        setRecommendation(null); // Explicitly set to null if no recommendation
+        setRecommendation(null);
       }
     } catch (e) {
       console.error("Failed to fetch recommendations:", e);
-      setError("Failed to load AI recommendations."); // Set error in main dashboard error state
       setRecommendation(null);
     } finally {
       setIsLoadingRecommendation(false);
     }
   };
 
-  // NEW: Function to fetch journal status for workflow enforcement
   const fetchJournalStatus = async () => {
     try {
-      console.log("Fetching journal status...");
       const response = await fetch('/api/journal-status');
-      
-      if (!response.ok) {
-        console.error(`Journal status API response not OK: ${response.status}`);
-        return;
-      }
-
+      if (!response.ok) return;
       const result = await response.json();
-      console.log("Journal status result:", result);
-
       if (result.success && result.status) {
         setJournalStatus(result.status);
       }
     } catch (e) {
       console.error("Failed to fetch journal status:", e);
-      // Don't fail the dashboard - just allow manual generation
-      setJournalStatus({
-        has_activity: false,
-        activity_date: null,
-        has_journal: false,
-        allow_manual_generation: true,
-        reason: 'error'
-      });
     }
   };
 
-  // Function to generate new LLM recommendations from recommendations_component.ts
   const generateNewRecommendation = async () => {
-      try {
-        setIsLoadingRecommendation(true);
-
-        // Step 1: Generate new recommendation
-        const response = await fetch('/api/llm-recommendations/generate', {
-          method: 'POST'
-        });
-
-        if (!response.ok) {
-          throw new Error(`Generation failed: ${response.status}`);
-        }
-
-        const result = await response.json();
-        console.log("Generated successfully:", result);
-
-        // Step 2: Fetch the latest recommendation (same as page refresh)
-        await fetchRecommendations(); // This ensures consistent data format
-        
-        // Step 3: Refresh journal status
-        await fetchJournalStatus();
-
-      } catch (e) {
-        console.error("Failed to generate recommendation:", e);
-        setError("Failed to generate new AI recommendations.");
-      } finally {
-        setIsLoadingRecommendation(false);
+    try {
+      setIsLoadingRecommendation(true);
+      const response = await fetch('/api/llm-recommendations/generate', { method: 'POST' });
+      if (!response.ok) {
+        throw new Error(`Generation failed: ${response.status}`);
       }
-    };
+      await fetchRecommendations();
+      await fetchJournalStatus();
+    } catch (e) {
+      console.error("Failed to generate recommendation:", e);
+    } finally {
+      setIsLoadingRecommendation(false);
+    }
+  };
+  */
 
   // Main data loading effect (using your working API endpoints)
   useEffect(() => {
@@ -725,6 +564,12 @@ const getRecommendationDateContext = (recommendation) => {
           if (result.has_swimming_data !== undefined) {
             setHasSwimmingData(result.has_swimming_data);
           }
+          if (result.has_rowing_data !== undefined) {
+            setHasRowingData(result.has_rowing_data);
+          }
+          if (result.has_backcountry_skiing_data !== undefined) {
+            setHasBackcountrySkiingData(result.has_backcountry_skiing_data);
+          }
 
           // Get stats from the API
           try {
@@ -766,8 +611,9 @@ const getRecommendationDateContext = (recommendation) => {
       };
 
       loadData();
-      fetchRecommendations(); // Fetch recommendations on initial load
-      fetchJournalStatus(); // Fetch journal status for workflow enforcement
+      // COMMENTED OUT: Dead code - see comment above
+      // fetchRecommendations();
+      // fetchJournalStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -793,6 +639,68 @@ const getRecommendationDateContext = (recommendation) => {
   useEffect(() => {
     setRenderKey(prevKey => prevKey + 1);
   }, [dateRange]);
+
+  // Check if should show tour or pop-up (after metrics are loaded, with delay)
+  useEffect(() => {
+    const checkShowTourOrPopup = () => {
+      const today = new Date().toDateString();
+      const tourCompleted = localStorage.getItem('dashboardTour_completed');
+      const lastShown = localStorage.getItem('statusPopup_lastShown');
+      const visitedJournalToday = localStorage.getItem('journal_visited_' + today);
+
+      console.log('Tour check:', {
+        tourCompleted,
+        externalAcwr: metrics.externalAcwr,
+        lastShown,
+        visitedJournalToday
+      });
+
+      // If tour not completed, start tour after 3 seconds
+      if (!tourCompleted && metrics.externalAcwr > 0) {
+        console.log('Starting tour in 3 seconds...');
+        setTimeout(() => {
+          console.log('Setting tour step to 1');
+          setTourStep(1);
+        }, 3000);
+      }
+      // Otherwise, show popup if appropriate
+      else if (lastShown !== today && !visitedJournalToday && metrics.externalAcwr > 0) {
+        console.log('Starting popup in 5 seconds...');
+        setTimeout(() => {
+          setShowStatusPopup(true);
+        }, 5000);
+      }
+    };
+
+    // Only check after data is loaded
+    if (!isLoading && metrics.externalAcwr > 0) {
+      checkShowTourOrPopup();
+    }
+  }, [isLoading, metrics.externalAcwr]);
+
+  // Handle navigation to Journal
+  const handleNavigateToJournal = () => {
+    localStorage.setItem('statusPopup_lastShown', new Date().toDateString());
+    setShowStatusPopup(false);
+    onNavigateToTab?.('journal');
+  };
+
+  // Handle dismiss popup
+  const handleDismissPopup = () => {
+    localStorage.setItem('statusPopup_lastShown', new Date().toDateString());
+    setShowStatusPopup(false);
+    // Badge will show on Journal tab (handled by App.tsx)
+  };
+
+  // Handle tour navigation
+  const handleTourNext = () => {
+    setTourStep(tourStep + 1);
+  };
+
+  const handleTourSkip = () => {
+    localStorage.setItem('dashboardTour_completed', 'true');
+    setTourStep(0);
+  };
 
   // Loading state
   if (isLoading) {
@@ -890,6 +798,30 @@ const getRecommendationDateContext = (recommendation) => {
   // Main dashboard render
   return (
     <div className={styles.container}>
+      {/* Dashboard Tour (for new users) */}
+      <DashboardTour
+        step={tourStep}
+        onNext={handleTourNext}
+        onSkip={handleTourSkip}
+        metrics={metrics}
+        onNavigateToJournal={() => onNavigateToTab?.('journal')}
+      />
+
+      {/* Daily Status Pop-up (conditional) */}
+      {showStatusPopup && (
+        <DailyStatusPopup
+          metrics={metrics}
+          onNavigateToJournal={handleNavigateToJournal}
+          onDismiss={handleDismissPopup}
+        />
+      )}
+
+      {/* Journal Teaser Card (always visible at top) */}
+      <JournalTeaserCard
+        metrics={metrics}
+        onNavigateToJournal={() => onNavigateToTab?.('journal')}
+      />
+
       {/* COMPACT DASHBOARD BANNER */}
       <CompactDashboardBanner
         onSyncComplete={handleSyncComplete}
@@ -942,7 +874,7 @@ const getRecommendationDateContext = (recommendation) => {
           </div>
 
           {/* Right side: Show Sports (only if multi-sport data exists) */}
-          {(hasCyclingData || hasSwimmingData) && (
+          {(hasCyclingData || hasSwimmingData || hasRowingData || hasBackcountrySkiingData) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ fontWeight: '500', color: '#374151' }}>Show Sports:</span>
               <div style={{ display: 'flex', gap: '1rem' }}>
@@ -980,13 +912,37 @@ const getRecommendationDateContext = (recommendation) => {
                     <span style={{ color: '#e67e22' }}>Swimming</span>
                   </label>
                 )}
+                {hasRowingData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSports.includes('rowing')}
+                      onChange={() => setSelectedSports(prev =>
+                        prev.includes('rowing') ? prev.filter(s => s !== 'rowing') : [...prev, 'rowing']
+                      )}
+                    />
+                    <span style={{ color: '#9b59b6' }}>Rowing</span>
+                  </label>
+                )}
+                {hasBackcountrySkiingData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSports.includes('backcountry_skiing')}
+                      onChange={() => setSelectedSports(prev =>
+                        prev.includes('backcountry_skiing') ? prev.filter(s => s !== 'backcountry_skiing') : [...prev, 'backcountry_skiing']
+                      )}
+                    />
+                    <span style={{ color: '#16a085' }}>Backcountry Skiing</span>
+                  </label>
+                )}
               </div>
             </div>
           )}
         </div>
 
       {/* Overtraining Risk Over Time Chart */}
-      <div className={styles.chartContainer}>
+      <div id="overtraining-risk-chart" className={styles.chartContainer}>
         <h2 className={styles.chartTitle}>Overtraining Risk</h2>
         <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
           <ResponsiveContainer width="100%" height="100%" key={`overtraining-risk-${renderKey}`}>
@@ -1018,8 +974,10 @@ const getRecommendationDateContext = (recommendation) => {
               <YAxis
                 yAxisId="divergence"
                 orientation="right"
-                domain={[-0.5, 0.2]}
-                reversed={true}
+                domain={[0.3, -0.45]}
+                reversed={false}
+                allowDataOverflow={true}
+                ticks={[-0.45, -0.3, -0.15, 0, 0.15, 0.3]}
                 label={{
                   value: 'Normalized Divergence',
                   angle: 90,
@@ -1028,9 +986,35 @@ const getRecommendationDateContext = (recommendation) => {
                 }}
                 tickFormatter={(value) => {
                   const num = coerceNumber(value, NaN);
-                  return Number.isFinite(num) ? num.toFixed(2) : '0';
+                  if (!Number.isFinite(num)) return '0';
+                  // Special case for zero - just show "0"
+                  if (num === 0) return '0';
+                  // Add + sign for positive values to emphasize direction
+                  // Make extreme values bold to show direction
+                  const formatted = num > 0 ? `+${num.toFixed(2)}` : num.toFixed(2);
+                  return formatted;
                 }}
-                width={60}
+                tick={(props) => {
+                  const { x, y, payload } = props;
+                  const isExtreme = Math.abs(payload.value) === 0.3 || Math.abs(payload.value) === 0.45;
+                  const isZero = payload.value === 0;
+                  return (
+                    <text
+                      x={x}
+                      y={y}
+                      textAnchor="start"
+                      fill="#666"
+                      fontSize={isZero ? 12 : 11}
+                      fontWeight={isExtreme || isZero ? 'bold' : 'normal'}
+                      dx={5}
+                    >
+                      {payload.value === 0 ? '0' :
+                       payload.value > 0 ? `+${payload.value.toFixed(2)}` :
+                       payload.value.toFixed(2)}
+                    </text>
+                  );
+                }}
+                width={65}
               />
               <Tooltip
                 content={<CustomTooltip />}
@@ -1141,6 +1125,34 @@ const getRecommendationDateContext = (recommendation) => {
 
               {/* Zero reference line for divergence */}
               <ReferenceLine yAxisId="divergence" y={0} stroke="#666" strokeWidth={1} strokeDasharray="3 3" />
+
+              {/* Prominent direction indicators for secondary axis */}
+              <ReferenceLine
+                yAxisId="divergence"
+                y={-0.45}
+                stroke="transparent"
+                label={{
+                  value: "−",
+                  position: "insideTopRight",
+                  fill: "#dc3545",
+                  fontSize: 28,
+                  fontWeight: "bold",
+                  offset: 10
+                }}
+              />
+              <ReferenceLine
+                yAxisId="divergence"
+                y={0.3}
+                stroke="transparent"
+                label={{
+                  value: "+",
+                  position: "insideBottomRight",
+                  fill: "#28a745",
+                  fontSize: 28,
+                  fontWeight: "bold",
+                  offset: 10
+                }}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -1291,6 +1303,32 @@ const getRecommendationDateContext = (recommendation) => {
                 />
               )}
 
+              {/* Rowing load bars - separate from running stack */}
+              {hasRowingData && (
+                <Bar
+                  yAxisId="miles"
+                  dataKey="rowing_load"
+                  name="Rowing Load (running equiv)"
+                  fill="#9b59b6"
+                  barSize={chartDimensions.barSize}
+                  opacity={selectedSports.includes('rowing') ? 0.7 : 0.3}
+                  isAnimationActive={false}
+                />
+              )}
+
+              {/* Backcountry skiing load bars - separate from running stack */}
+              {hasBackcountrySkiingData && (
+                <Bar
+                  yAxisId="miles"
+                  dataKey="backcountry_skiing_load"
+                  name="Backcountry Skiing Load (running equiv)"
+                  fill="#16a085"
+                  barSize={chartDimensions.barSize}
+                  opacity={selectedSports.includes('backcountry_skiing') ? 0.7 : 0.3}
+                  isAnimationActive={false}
+                />
+              )}
+
               {/* 7-Day Average Total Load - existing logic preserved */}
               <Line
                 yAxisId="miles"
@@ -1323,154 +1361,6 @@ const getRecommendationDateContext = (recommendation) => {
         <p className={styles.chartNote}>
           External training load: distance + elevation converted to mile equivalent, with 7-day moving average.
         </p>
-      </div>
-
-      {/* Coaching Link Section */}
-      <div className={styles.chartContainer} style={{ marginBottom: 0, borderBottom: '2px solid #0f172a' }}>
-        <div style={{
-          padding: '2rem',
-          background: 'linear-gradient(90deg, rgba(125, 156, 184, 0.92) 0%, rgba(27, 46, 75, 0.92) 100%)',
-          borderRadius: '0.75rem',
-          color: 'white',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '2rem',
-          justifyContent: 'space-between',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          {/* Background texture overlay - matching guide/settings */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `
-              radial-gradient(circle at 20% 30%, rgba(125, 156, 184, 0.3) 0%, transparent 50%),
-              radial-gradient(circle at 80% 70%, rgba(27, 46, 75, 0.25) 0%, transparent 50%),
-              radial-gradient(circle at 50% 50%, rgba(80, 100, 120, 0.2) 0%, transparent 60%)
-            `,
-            pointerEvents: 'none',
-            mixBlendMode: 'multiply'
-          }}></div>
-
-          {/* Left: YTM Logo */}
-          <div style={{
-            flexShrink: 0,
-            width: '210px',
-            height: '210px',
-            position: 'relative',
-            zIndex: 2
-          }}>
-            <img
-              src="/static/images/YTM_Logo_byandfor.webp"
-              alt="Your Training Monkey Logo"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.3))'
-              }}
-            />
-          </div>
-
-          {/* Center: Text Content */}
-          <div style={{
-            flex: 1,
-            textAlign: 'center',
-            padding: '0 2.5rem',
-            position: 'relative',
-            zIndex: 2
-          }}>
-            <div style={{
-              display: 'inline-block',
-              backgroundColor: 'rgba(255, 215, 0, 0.9)',
-              color: '#1e293b',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              padding: '0.25rem 0.75rem',
-              borderRadius: '1rem',
-              marginBottom: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-            }}>
-              ✨ AI-Powered Insights
-            </div>
-            <h2 style={{
-              fontSize: '1.75rem',
-              fontWeight: '700',
-              marginBottom: '0.5rem',
-              color: 'white',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
-              lineHeight: '1.2'
-            }}>
-              Ready for Your Personal AI Coach?
-            </h2>
-            <p style={{
-              fontSize: '1rem',
-              opacity: 0.95,
-              lineHeight: '1.6',
-              marginBottom: '0.5rem',
-              textShadow: '1px 1px 2px rgba(0,0,0,0.2)'
-            }}>
-              Get weekly training strategy, race preparation guidance, and personalized recommendations
-              that adapt to YOUR patterns. Stop guessing—start training smarter.
-            </p>
-            <p style={{
-              fontSize: '0.9rem',
-              opacity: 0.9,
-              fontStyle: 'italic',
-              textShadow: '1px 1px 2px rgba(0,0,0,0.2)'
-            }}>
-              Analyzes your complete training history to deliver insights you won't find anywhere else.
-            </p>
-          </div>
-
-          {/* Right: Button */}
-          <div style={{
-            flexShrink: 0,
-            position: 'relative',
-            zIndex: 2
-          }}>
-            <button
-              onClick={() => onNavigateToTab?.('coach')}
-              style={{
-                padding: '1rem 2.5rem',
-                fontSize: '1.1rem',
-                fontWeight: '700',
-                backgroundColor: '#FF5722',
-                color: 'white',
-                border: '2px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '2rem',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(255, 87, 34, 0.4)',
-                transition: 'all 0.2s ease',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                whiteSpace: 'nowrap',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'translateY(-3px) scale(1.05)';
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 87, 34, 0.6)';
-                e.currentTarget.style.backgroundColor = '#E64A19';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 87, 34, 0.4)';
-                e.currentTarget.style.backgroundColor = '#FF5722';
-              }}
-            >
-              <span>Get My Coach</span>
-              <span style={{ fontSize: '1.3rem' }}>→</span>
-            </button>
-          </div>
-        </div>
       </div>
 
     </div>

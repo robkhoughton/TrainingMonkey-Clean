@@ -183,6 +183,7 @@ interface RaceGoal {
   elevation_gain_feet: number | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface RaceHistory {
   id: number;
   race_date: string;
@@ -191,6 +192,7 @@ interface RaceHistory {
   finish_time_minutes: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface TrainingSchedule {
   schedule: {
     total_hours_per_week?: number;
@@ -260,6 +262,7 @@ interface TimelineWeek {
   }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface RaceAnalysis {
   prs: Array<{
     distance_miles: number;
@@ -665,7 +668,7 @@ const CoachPage: React.FC = () => {
           flex-shrink: 0;
           width: 200px;
           height: 200px;
-          margin-left: 1.6rem; /* 80% of 2rem */
+          margin-left: calc(25% - 350px);
           filter: drop-shadow(2px 4px 8px rgba(0,0,0,0.3));
         }
         .coach-header-logo img {
@@ -679,7 +682,7 @@ const CoachPage: React.FC = () => {
           z-index: 2;
           max-width: 500px;
           margin: 0;
-          margin-right: calc(50% - 700px);
+          margin-right: calc(25% - 350px);
           display: flex;
           flex-direction: column;
           justify-content: center;
@@ -705,17 +708,18 @@ const CoachPage: React.FC = () => {
         @media (max-width: 768px) {
           .coach-header {
             min-height: 160px;
-            padding: 0.8rem; /* 80% of 1rem */
+            padding: 0.8rem;
             flex-direction: column;
             text-align: center;
           }
           .coach-header-logo {
             width: 150px;
             height: 150px;
-            margin-left: 1rem;
+            margin-left: 0;
           }
           .coach-header-content {
             margin-right: 0;
+            margin-left: 0;
             text-align: center;
           }
           .coach-header-content h1 {
@@ -728,13 +732,13 @@ const CoachPage: React.FC = () => {
         }
         @media (max-width: 480px) {
           .coach-header {
-            padding: 1.2rem 0.8rem; /* 80% of 1.5rem and 1rem */
+            padding: 1.2rem 0.8rem;
             min-height: 140px;
           }
           .coach-header-logo {
             width: 120px;
             height: 120px;
-            margin-left: 0.4rem; /* 80% of 0.5rem */
+            margin-left: 0;
           }
           .coach-header-content h1 {
             font-size: 1.8rem;
@@ -790,9 +794,9 @@ const CoachPage: React.FC = () => {
                   { key: 'schedule', label: 'Training Schedule' }
                 ].map((tab) => (
                   <li key={tab.key} style={{ flexShrink: 0 }}>
-                    <a
-                      onClick={(e) => {
-                        e.preventDefault();
+                    <button
+                      type="button"
+                      onClick={() => {
                         setActiveSubTab(tab.key as 'workout' | 'goals' | 'history' | 'schedule');
                       }}
                       style={{
@@ -881,7 +885,7 @@ const CoachPage: React.FC = () => {
                           zIndex: 10
                         }}></div>
                       )}
-                    </a>
+                    </button>
                   </li>
                 ))}
               </ul>

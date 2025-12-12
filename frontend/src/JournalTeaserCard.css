@@ -1,0 +1,90 @@
+/* Journal Teaser Card */
+.teaser-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  padding: 12px 20px;
+  margin-bottom: 16px;
+  margin-left: auto;
+  max-width: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.teaser-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Content */
+.teaser-content {
+  flex: 1;
+  color: white;
+}
+
+.teaser-message {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: white;
+  line-height: 1.3;
+}
+
+.teaser-submessage {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* CTA Button */
+.teaser-cta {
+  background: white;
+  color: #667eea;
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+
+.teaser-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 1);
+}
+
+.teaser-cta:active {
+  transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .teaser-card {
+    max-width: 100%;
+    margin-left: 0;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .teaser-message {
+    font-size: 15px;
+  }
+
+  .teaser-submessage {
+    font-size: 12px;
+  }
+
+  .teaser-cta {
+    width: 100%;
+    text-align: center;
+  }
+}

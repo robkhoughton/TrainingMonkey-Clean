@@ -83,7 +83,8 @@ const ActivitiesPage: React.FC = () => {
           has_missing_elevation: (
             item.elevation_gain_feet === null ||
             item.elevation_gain_feet === 0
-          ) && item.activity_id > 0, // Only flag missing elevation for real activities
+          ) && item.activity_id > 0 &&
+          (item.type?.toLowerCase().includes('treadmill')), // Only prompt for treadmill runs (outdoor runs get GPS elevation)
           user_edited_elevation: false, // Initialize as false, will be updated after edits
           strength_rpe: item.strength_rpe,
           strength_equivalent_miles: item.strength_equivalent_miles
@@ -102,7 +103,7 @@ const ActivitiesPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [days]); // perfMonitor uses refs internally and doesn't need to be a dependency
+  }, [days, perfMonitor]);
 
   const handleSort = (field: keyof Activity) => {
     const newDirection = sortField === field && sortDirection === 'desc' ? 'asc' : 'desc';

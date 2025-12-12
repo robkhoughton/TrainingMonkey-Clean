@@ -1,0 +1,2 @@
+localStorage.removeItem('dashboardTour_completed');
+window.dispatchEvent(new Event('storage'));

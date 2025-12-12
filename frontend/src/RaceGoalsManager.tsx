@@ -174,15 +174,6 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
     }
   };
 
-  const getPriorityLabel = (priority: string): string => {
-    switch (priority) {
-      case 'A': return 'A - Primary Focus';
-      case 'B': return 'B - Fitness Check';
-      case 'C': return 'C - Training Volume';
-      default: return priority;
-    }
-  };
-
   // Sort goals by date
   const sortedGoals = [...goals].sort((a, b) => 
     new Date(a.race_date).getTime() - new Date(b.race_date).getTime()

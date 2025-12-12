@@ -672,8 +672,13 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
-    # Get athlete profile and pattern flags
-    athlete_profile = classify_athlete_profile(user_id)
+    # Get athlete experience level from user profile (not calculated from volume)
+    athlete_experience = execute_query(
+        "SELECT training_experience FROM users WHERE id = %s",
+        (user_id,),
+        fetch=True
+    )
+    athlete_profile = athlete_experience[0]['training_experience'].capitalize() if (athlete_experience and athlete_experience[0].get('training_experience')) else "Intermediate"
     
     # Get user's recommendation style and adjusted thresholds
     recommendation_style = get_user_recommendation_style(user_id)
@@ -763,7 +768,7 @@ ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description
 - Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
 ### ATHLETE PROFILE
-Athlete Type: {athlete_profile}
+Experience Level: {athlete_profile}
 Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
 Assessment Category: {assessment_category}
 
@@ -809,7 +814,7 @@ Using the Training Reference Framework above and applying the specified coaching
 - Adjust recommendations to match the athlete's {recommendation_style} risk tolerance
 - Address any red flags or leverage positive patterns identified
 - Include specific ACWR management strategies based on athlete's thresholds
-- Reference athlete profile considerations
+- Tailor complexity and terminology to athlete's experience level
 
 **PATTERN INSIGHTS:**
 - Identify 2-3 specific observations using the pattern recognition framework
@@ -898,49 +903,6 @@ def get_current_metrics(user_id=None):
     except Exception as e:
         logger.error(f"Error getting current metrics for LLM user {user_id}: {str(e)}")
         return None
-
-
-def classify_athlete_profile(user_id=None):
-    """Classify the athlete based on recent training patterns."""
-    if user_id is None:
-        raise ValueError("user_id is required for multi-user support")
-
-    try:
-        # Get recent training data to classify athlete type
-        recent_activities = execute_query(
-            """
-            SELECT AVG(total_load_miles) as avg_daily_miles,
-                   AVG(elevation_gain_feet) as avg_elevation,
-                   COUNT(*) as activity_days,
-                   AVG(trimp) as avg_trimp
-            FROM activities 
-            WHERE date >= %s AND activity_id != 0 AND user_id = %s
-            """,
-            ((get_app_current_date() - timedelta(days=28)).strftime(DEFAULT_DATE_FORMAT), user_id),
-            fetch=True
-        )
-
-        if not recent_activities or not recent_activities[0]['avg_daily_miles']:
-            return "recreational_runner"
-
-        stats = recent_activities[0]
-        avg_daily_miles = stats['avg_daily_miles']
-        avg_elevation = stats['avg_elevation'] or 0
-        avg_trimp = stats['avg_trimp'] or 0
-
-        # Classification logic based on training patterns
-        if avg_daily_miles >= 8 and avg_elevation >= 500:
-            return "masters_trail_runner"
-        elif avg_daily_miles >= 6 and avg_trimp >= 50:
-            return "competitive_runner"
-        elif avg_daily_miles >= 4:
-            return "recreational_runner"
-        else:
-            return "beginner_runner"
-
-    except Exception as e:
-        logger.error(f"Error classifying athlete profile for user {user_id}: {str(e)}")
-        return "recreational_runner"
 
 
 def analyze_training_patterns(activities):
@@ -1077,18 +1039,41 @@ def parse_llm_response(response_text):
     logger.info(f"Parsing response of length {len(cleaned_response)}")
     logger.info(f"Response preview: {cleaned_response[:200]}...")
 
-    # Try multiple formats in order of preference (most specific to most general)
-    # Format 1: Plain text headers (content may be on same line OR next line)
-    # CRITICAL FIX: LLM sometimes puts content on same line: "DAILY RECOMMENDATION Your notes..."
-    # Changed \n+ (requires newline) to \s+ (matches space OR newline)
-    daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
-                            cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    # Initialize match variables
+    daily_match = None
+    weekly_match = None
+    insights_match = None
 
-    weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
-                             cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    # PRIMARY FORMAT: Flexible inline parsing (most reliable - handles headers anywhere in text)
+    # This is the primary parsing approach and handles most LLM response formats
+    # Key: Does NOT require headers to be at line starts, properly separates sections
+    # by looking for the NEXT header keyword (not just end of string)
 
-    insights_match = re.search(r'^PATTERN\s+INSIGHTS\s+(.*?)$',
-                               cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    # Check if response contains all three section markers
+    has_all_sections = (
+        re.search(r'DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE) and
+        re.search(r'WEEKLY\s+(PLANNING|RECOMMENDATION)', cleaned_response, re.IGNORECASE) and
+        re.search(r'PATTERN\s+INSIGHTS', cleaned_response, re.IGNORECASE)
+    )
+
+    if has_all_sections:
+        # Use strict patterns that require finding the next section (no $ fallback for DAILY/WEEKLY)
+        daily_match = re.search(
+            r'DAILY\s+RECOMMENDATION:?\s+(.*?)(?=WEEKLY\s+(?:PLANNING|RECOMMENDATION))',
+            cleaned_response, re.DOTALL | re.IGNORECASE)
+
+        weekly_match = re.search(
+            r'WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\s+(.*?)(?=PATTERN\s+INSIGHTS)',
+            cleaned_response, re.DOTALL | re.IGNORECASE)
+
+        insights_match = re.search(
+            r'PATTERN\s+INSIGHTS:?\s+(.*?)$',
+            cleaned_response, re.DOTALL | re.IGNORECASE)
+
+        if daily_match and weekly_match and insights_match:
+            logger.info("✅ Successfully parsed all 3 sections using primary inline format")
+
+    # FALLBACK FORMATS: Try specific markdown/formatting patterns if primary didn't match
 
     # Format 2: Bold headers with colons (**DAILY RECOMMENDATION:**)
     if not daily_match:
@@ -1116,7 +1101,7 @@ def parse_llm_response(response_text):
         insights_match = re.search(r'##\s*PATTERN\s+INSIGHTS:?\s*(.*?)$',
                                    cleaned_response, re.DOTALL | re.IGNORECASE)
 
-    # Format 4: Markdown headers with # (# DAILY RECOMMENDATION) - what Claude actually returned
+    # Format 4: Markdown headers with # (# DAILY RECOMMENDATION)
     if not daily_match:
         daily_match = re.search(r'#\s+DAILY\s+RECOMMENDATION\s*\n+(.*?)(?=#\s+WEEKLY|#\s+PATTERN|$)',
                                 cleaned_response, re.DOTALL | re.IGNORECASE)
@@ -1127,6 +1112,34 @@ def parse_llm_response(response_text):
 
     if not insights_match:
         insights_match = re.search(r'#\s+PATTERN\s+INSIGHTS\s*\n+(.*?)$',
+                                   cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    # Format 5: Line-start headers (legacy format, kept for backwards compatibility)
+    if not daily_match:
+        daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
+                                cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+
+    if not weekly_match:
+        weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
+                                 cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+
+    if not insights_match:
+        insights_match = re.search(r'^PATTERN\s+INSIGHTS\s+(.*?)$',
+                                   cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+
+    # LAST RESORT: Flexible inline with $ fallback (captures remaining content)
+    if not daily_match:
+        daily_match = re.search(r'DAILY\s+RECOMMENDATION:?\s+(.*?)(?=WEEKLY\s+(?:PLANNING|RECOMMENDATION)|PATTERN\s+INSIGHTS|$)',
+                                cleaned_response, re.DOTALL | re.IGNORECASE)
+        if daily_match:
+            logger.info("⚠️ Matched daily section using last-resort inline format")
+
+    if not weekly_match:
+        weekly_match = re.search(r'WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\s+(.*?)(?=PATTERN\s+INSIGHTS|$)',
+                                 cleaned_response, re.DOTALL | re.IGNORECASE)
+
+    if not insights_match:
+        insights_match = re.search(r'PATTERN\s+INSIGHTS:?\s+(.*?)$',
                                    cleaned_response, re.DOTALL | re.IGNORECASE)
 
     # Extract matched sections and log which format was used
@@ -1701,10 +1714,25 @@ def get_recent_journal_notes(user_id, days=3):
         return None
 
 
-def generate_autopsy_informed_daily_decision(user_id, target_date=None):
+def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_insights=None):
     """
     Generate daily training decision that incorporates recent autopsy learning.
     This is the CORE INNOVATION - autopsy influences next decision.
+
+    Args:
+        user_id: The user ID
+        target_date: Target date for recommendation (defaults to tomorrow)
+        autopsy_insights: Optional pre-computed autopsy insights dict. If not provided,
+                         will fetch recent autopsy insights automatically.
+
+    Returns:
+        dict with parsed sections: {
+            'daily_recommendation': str,
+            'weekly_recommendation': str,
+            'pattern_insights': str,
+            'raw_response': str
+        }
+        or None if generation fails
     """
     try:
         if target_date is None:
@@ -1722,8 +1750,9 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None):
             logger.warning(f"No current metrics for autopsy-informed decision user {user_id}")
             return None
 
-        # Get recent autopsy insights (this is the learning component)
-        autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
+        # Use provided autopsy insights or fetch recent ones
+        if autopsy_insights is None:
+            autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
 
         # Create enhanced prompt that includes autopsy learning
         prompt = create_autopsy_informed_decision_prompt(
@@ -1740,7 +1769,27 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None):
             logger.info(f"Generated autopsy-informed decision for user {user_id}")
             # Clean markdown formatting for better display
             cleaned_response = process_markdown(response.strip())
-            return cleaned_response
+
+            # Parse into separate sections - do this ONCE at the source
+            sections = parse_llm_response(cleaned_response)
+
+            daily_rec = sections.get('daily_recommendation', '')
+            weekly_rec = sections.get('weekly_recommendation', '')
+            pattern_insights = sections.get('pattern_insights', '')
+
+            # Fallback: if parsing failed, use full text as daily recommendation
+            if not daily_rec and cleaned_response:
+                daily_rec = cleaned_response
+                logger.warning("Parser returned empty daily_recommendation, using full text as fallback")
+
+            logger.info(f"✅ Parsed LLM sections - Daily: {len(daily_rec)} chars, Weekly: {len(weekly_rec)} chars, Insights: {len(pattern_insights)} chars")
+
+            return {
+                'daily_recommendation': daily_rec,
+                'weekly_recommendation': weekly_rec,
+                'pattern_insights': pattern_insights,
+                'raw_response': cleaned_response
+            }
         else:
             logger.warning("No response from autopsy-informed decision generation")
             return None
@@ -2140,10 +2189,10 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     next_date_str = next_date.strftime('%Y-%m-%d')
                     tomorrow_str = next_date_str  # For backward compatibility with existing code
                     
-                    # Generate new autopsy-informed decision
-                    new_decision = generate_autopsy_informed_daily_decision(user_id, next_date)
+                    # Generate new autopsy-informed decision (returns pre-parsed dict)
+                    decision = generate_autopsy_informed_daily_decision(user_id, next_date)
 
-                    if new_decision:
+                    if decision:
                         # Get current metrics for snapshot
                         from unified_metrics_service import UnifiedMetricsService
                         current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id) or {}
@@ -2159,12 +2208,13 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         )
 
                         if existing_rec:
-                            # UPDATE existing recommendation with autopsy-informed decision
+                            # UPDATE existing recommendation with pre-parsed sections
                             logger.info(f"Updating existing recommendation for {tomorrow_str} with autopsy learning")
                             execute_query(
                                 """
                                 UPDATE llm_recommendations
                                 SET daily_recommendation = %s,
+                                    weekly_recommendation = %s,
                                     pattern_insights = %s,
                                     raw_response = %s,
                                     generated_at = NOW(),
@@ -2174,9 +2224,10 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 WHERE user_id = %s AND target_date = %s
                                 """,
                                 (
-                                    new_decision,
-                                    f"Updated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
-                                    new_decision,
+                                    decision['daily_recommendation'],
+                                    decision['weekly_recommendation'] or "Updated with autopsy learning",
+                                    decision['pattern_insights'] or f"Alignment: {autopsy_result['alignment_score']}/10",
+                                    decision['raw_response'],
                                     1,  # autopsy_count
                                     autopsy_result['alignment_score'],
                                     user_id,
@@ -2185,7 +2236,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                             )
                             logger.info(f"Updated recommendation for {tomorrow_str} with autopsy-informed decision")
                         else:
-                            # INSERT new recommendation
+                            # INSERT new recommendation with pre-parsed sections
                             recommendation_data = {
                                 'generation_date': app_current_date.strftime('%Y-%m-%d'),
                                 'target_date': next_date_str,
@@ -2193,10 +2244,10 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 'data_start_date': app_current_date.strftime('%Y-%m-%d'),
                                 'data_end_date': app_current_date.strftime('%Y-%m-%d'),
                                 'metrics_snapshot': current_metrics,
-                                'daily_recommendation': new_decision,
-                                'weekly_recommendation': 'See previous weekly guidance',
-                                'pattern_insights': f"Generated with autopsy learning (alignment: {autopsy_result['alignment_score']}/10)",
-                                'raw_response': new_decision,
+                                'daily_recommendation': decision['daily_recommendation'],
+                                'weekly_recommendation': decision['weekly_recommendation'] or 'See previous weekly guidance',
+                                'pattern_insights': decision['pattern_insights'] or f"Alignment: {autopsy_result['alignment_score']}/10",
+                                'raw_response': decision['raw_response'],
                                 'user_id': user_id,
                                 'is_autopsy_informed': True,
                                 'autopsy_count': 1,

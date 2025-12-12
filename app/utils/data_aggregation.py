@@ -27,9 +27,13 @@ def aggregate_daily_activities_with_rest(activities):
                 daily_aggregates[date]['running_load'] = 0
                 daily_aggregates[date]['cycling_load'] = 0
                 daily_aggregates[date]['swimming_load'] = 0
+                daily_aggregates[date]['rowing_load'] = 0
+                daily_aggregates[date]['backcountry_skiing_load'] = 0
                 daily_aggregates[date]['running_distance'] = 0
                 daily_aggregates[date]['cycling_distance'] = 0
                 daily_aggregates[date]['swimming_distance'] = 0
+                daily_aggregates[date]['rowing_distance'] = 0
+                daily_aggregates[date]['backcountry_skiing_distance'] = 0
                 daily_aggregates[date]['sport_types'] = []
                 daily_aggregates[date]['activities'] = []
                 daily_aggregates[date]['day_type'] = 'rest'
@@ -44,9 +48,13 @@ def aggregate_daily_activities_with_rest(activities):
                 daily_aggregates[date]['running_load'] = 0
                 daily_aggregates[date]['cycling_load'] = 0
                 daily_aggregates[date]['swimming_load'] = 0
+                daily_aggregates[date]['rowing_load'] = 0
+                daily_aggregates[date]['backcountry_skiing_load'] = 0
                 daily_aggregates[date]['running_distance'] = 0
                 daily_aggregates[date]['cycling_distance'] = 0
                 daily_aggregates[date]['swimming_distance'] = 0
+                daily_aggregates[date]['rowing_distance'] = 0
+                daily_aggregates[date]['backcountry_skiing_distance'] = 0
                 daily_aggregates[date]['sport_types'] = []
                 daily_aggregates[date]['activities'] = []
                 daily_aggregates[date]['day_type'] = 'rest'
@@ -76,25 +84,57 @@ def aggregate_daily_activities_with_rest(activities):
                     daily_aggregates[date]['cycling_load'] = activity.get('total_load_miles', 0)
                     daily_aggregates[date]['running_load'] = 0
                     daily_aggregates[date]['swimming_load'] = 0
+                    daily_aggregates[date]['rowing_load'] = 0
                     daily_aggregates[date]['cycling_distance'] = activity.get('distance_miles', 0)
                     daily_aggregates[date]['running_distance'] = 0
                     daily_aggregates[date]['swimming_distance'] = 0
+                    daily_aggregates[date]['rowing_distance'] = 0
                     daily_aggregates[date]['day_type'] = 'cycling'
                 elif sport_type == 'swimming':
                     daily_aggregates[date]['swimming_load'] = activity.get('total_load_miles', 0)
                     daily_aggregates[date]['running_load'] = 0
                     daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['rowing_load'] = 0
                     daily_aggregates[date]['swimming_distance'] = activity.get('distance_miles', 0)
                     daily_aggregates[date]['running_distance'] = 0
                     daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['rowing_distance'] = 0
                     daily_aggregates[date]['day_type'] = 'swimming'
+                elif sport_type == 'rowing':
+                    daily_aggregates[date]['rowing_load'] = activity.get('total_load_miles', 0)
+                    daily_aggregates[date]['running_load'] = 0
+                    daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['swimming_load'] = 0
+                    daily_aggregates[date]['backcountry_skiing_load'] = 0
+                    daily_aggregates[date]['rowing_distance'] = activity.get('distance_miles', 0)
+                    daily_aggregates[date]['running_distance'] = 0
+                    daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['swimming_distance'] = 0
+                    daily_aggregates[date]['backcountry_skiing_distance'] = 0
+                    daily_aggregates[date]['day_type'] = 'rowing'
+                elif sport_type == 'backcountry_skiing':
+                    daily_aggregates[date]['backcountry_skiing_load'] = activity.get('total_load_miles', 0)
+                    daily_aggregates[date]['running_load'] = 0
+                    daily_aggregates[date]['cycling_load'] = 0
+                    daily_aggregates[date]['swimming_load'] = 0
+                    daily_aggregates[date]['rowing_load'] = 0
+                    daily_aggregates[date]['backcountry_skiing_distance'] = activity.get('distance_miles', 0)
+                    daily_aggregates[date]['running_distance'] = 0
+                    daily_aggregates[date]['cycling_distance'] = 0
+                    daily_aggregates[date]['swimming_distance'] = 0
+                    daily_aggregates[date]['rowing_distance'] = 0
+                    daily_aggregates[date]['day_type'] = 'backcountry_skiing'
                 else:  # running or other
                     daily_aggregates[date]['running_load'] = activity.get('total_load_miles', 0)
                     daily_aggregates[date]['cycling_load'] = 0
                     daily_aggregates[date]['swimming_load'] = 0
+                    daily_aggregates[date]['rowing_load'] = 0
+                    daily_aggregates[date]['backcountry_skiing_load'] = 0
                     daily_aggregates[date]['running_distance'] = activity.get('distance_miles', 0)
                     daily_aggregates[date]['cycling_distance'] = 0
                     daily_aggregates[date]['swimming_distance'] = 0
+                    daily_aggregates[date]['rowing_distance'] = 0
+                    daily_aggregates[date]['backcountry_skiing_distance'] = 0
                     daily_aggregates[date]['day_type'] = 'running'
 
             else:
@@ -162,6 +202,12 @@ def aggregate_daily_activities_with_rest(activities):
                 elif sport_type == 'swimming':
                     existing['swimming_load'] = existing.get('swimming_load', 0) + activity.get('total_load_miles', 0)
                     existing['swimming_distance'] = existing.get('swimming_distance', 0) + activity.get('distance_miles', 0)
+                elif sport_type == 'rowing':
+                    existing['rowing_load'] = existing.get('rowing_load', 0) + activity.get('total_load_miles', 0)
+                    existing['rowing_distance'] = existing.get('rowing_distance', 0) + activity.get('distance_miles', 0)
+                elif sport_type == 'backcountry_skiing':
+                    existing['backcountry_skiing_load'] = existing.get('backcountry_skiing_load', 0) + activity.get('total_load_miles', 0)
+                    existing['backcountry_skiing_distance'] = existing.get('backcountry_skiing_distance', 0) + activity.get('distance_miles', 0)
                 else:  # running or other
                     existing['running_load'] = existing.get('running_load', 0) + activity.get('total_load_miles', 0)
                     existing['running_distance'] = existing.get('running_distance', 0) + activity.get('distance_miles', 0)

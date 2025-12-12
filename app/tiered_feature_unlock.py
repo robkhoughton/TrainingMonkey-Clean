@@ -577,11 +577,9 @@ class TieredFeatureUnlockManager:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                # PostgreSQL syntax
-                    cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = %s", (user_id,))
-                else:
-                    cursor.execute("SELECT COUNT(*) FROM activities WHERE user_id = %s", (user_id,))
-                return cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) as count FROM activities WHERE user_id = %s", (user_id,))
+                result = cursor.fetchone()
+                return result['count'] if result else 0
         except Exception as e:
             logger.error(f"Error getting activity count for user {user_id}: {str(e)}")
             return 0
@@ -591,19 +589,13 @@ class TieredFeatureUnlockManager:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                # PostgreSQL syntax
-                    cursor.execute("""
-                        SELECT COUNT(DISTINCT date) 
-                        FROM activities 
-                        WHERE user_id = %s
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        SELECT COUNT(DISTINCT date) 
-                        FROM activities 
-                        WHERE user_id = %s
-                    """, (user_id,))
-                return cursor.fetchone()[0]
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT date) as count
+                    FROM activities
+                    WHERE user_id = %s
+                """, (user_id,))
+                result = cursor.fetchone()
+                return result['count'] if result else 0
         except Exception as e:
             logger.error(f"Error getting days active for user {user_id}: {str(e)}")
             return 0

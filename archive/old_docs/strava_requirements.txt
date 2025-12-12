@@ -1,0 +1,44 @@
+# Training Monkey Flask App Requirements
+
+# Core Flask dependencies
+flask>=2.3.0
+Flask-Cors>=3.0.0
+Flask-Login>=0.6.0
+werkzeug>=2.3.0
+
+# Environment and configuration
+python-dotenv>=1.0.0
+
+# Data processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# API integrations
+stravalib>=1.5.0
+requests>=2.31.0
+anthropic>=0.21.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# Security and utilities
+cryptography>=3.4.8
+pytz>=2023.3
+
+# Cloud services
+google-cloud-secret-manager>=2.0.0,<3.0.0
+
+# Production deployment
+gunicorn>=21.0.0
+
+# Additional dependencies for Phase 1 implementation
+# These are already included above but listed for clarity:
+# - cryptography>=3.4.8 (for secure token storage)
+# - Flask-Login>=0.6.0 (for user authentication)
+# - psycopg2-binary>=2.9.0 (for database operations)
+# - python-dotenv>=1.0.0 (for environment variable management)
+
+# ACWR Migration System Dependencies
+psutil>=5.8.0                   # Performance monitoring and system resource tracking
+flask-socketio>=5.0.0           # Real-time updates and WebSocket communication
+plotly>=5.0.0                   # Data visualizations and interactive charts

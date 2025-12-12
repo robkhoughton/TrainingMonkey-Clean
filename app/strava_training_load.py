@@ -63,6 +63,14 @@ def is_supported_activity(activity_type):
         'Swim', 'Swimming', 'swim', 'Pool Swim', 'Open Water Swim',
         'Lap Swimming', 'OpenWaterSwim', 'PoolSwim', 'OpenWater',
 
+        # Rowing activities
+        'Rowing', 'Row', 'rowing', 'row', 'Indoor Rowing', 'Ergometer',
+        'On-Water Rowing', 'Sculling', 'Sweep Rowing',
+
+        # Backcountry skiing activities
+        'Backcountry Ski', 'BackcountrySki', 'backcountryski', 'Alpine Touring',
+        'Ski Touring', 'Skimo', 'Ski Mountaineering', 'AT Skiing', 'Touring',
+
         # Walking and hiking activities (relevant for trail runners)
         'Walk', 'walk', 'Hike', 'hike',
 
@@ -458,7 +466,20 @@ def determine_specific_activity_type(activity):
             'Hike': 'Hike',
             'WeightTraining': 'Weight Training',
             'Yoga': 'Yoga',
-            'Swimming': 'Swimming'
+            'Swimming': 'Swimming',
+
+            # Rowing activities
+            'Rowing': 'Rowing',
+            'VirtualRow': 'Indoor Rowing',
+            'IndoorRowing': 'Indoor Rowing',
+            'RowingMachine': 'Indoor Rowing',
+            'OnWaterRowing': 'On-Water Rowing',
+
+            # Backcountry skiing activities
+            'BackcountrySki': 'Backcountry Ski',
+            'AlpineSki': 'Alpine Touring',
+            'NordicSki': 'Ski Touring',
+            'Snowshoe': 'Backcountry Ski'
         }
 
         # Use specific_type if available, otherwise basic_type
@@ -490,13 +511,13 @@ def determine_specific_activity_type(activity):
 
 def determine_sport_type(activity):
     """
-    Classify activity as 'running', 'cycling', 'swimming', or 'strength' based on Strava activity type
+    Classify activity as 'running', 'cycling', 'swimming', 'rowing', 'backcountry_skiing', or 'strength' based on Strava activity type
 
     Args:
         activity: Strava activity object
 
     Returns:
-        str: 'running' | 'cycling' | 'swimming' | 'strength'
+        str: 'running' | 'cycling' | 'swimming' | 'rowing' | 'backcountry_skiing' | 'strength'
     """
     try:
         # Use existing function to get the specific activity type
@@ -521,6 +542,18 @@ def determine_sport_type(activity):
             'lap swimming', 'pool swim', 'open water swim'
         ]
 
+        # Define rowing keywords (from Strava activity types)
+        rowing_keywords = [
+            'row', 'rowing', 'ergometer', 'erg', 'scull', 'sculling',
+            'sweep', 'indoor rowing', 'on-water rowing'
+        ]
+
+        # Define backcountry skiing keywords (from Strava activity types)
+        backcountry_skiing_keywords = [
+            'backcountry', 'ski touring', 'alpine touring', 'skimo',
+            'ski mountaineering', 'touring', 'at skiing', 'uphill'
+        ]
+
         # Define strength keywords (from Strava activity types)
         strength_keywords = [
             'weight', 'strength', 'crossfit', 'workout', 'yoga',
@@ -541,6 +574,14 @@ def determine_sport_type(activity):
         elif any(keyword in activity_lower for keyword in swimming_keywords):
             logger.info(f"Activity classified as 'swimming': {activity_type}")
             return 'swimming'
+        # Check for rowing keywords
+        elif any(keyword in activity_lower for keyword in rowing_keywords):
+            logger.info(f"Activity classified as 'rowing': {activity_type}")
+            return 'rowing'
+        # Check for backcountry skiing keywords
+        elif any(keyword in activity_lower for keyword in backcountry_skiing_keywords):
+            logger.info(f"Activity classified as 'backcountry_skiing': {activity_type}")
+            return 'backcountry_skiing'
         # Check for running keywords
         elif any(keyword in activity_lower for keyword in running_keywords):
             logger.info(f"Activity classified as 'running': {activity_type}")
@@ -678,6 +719,119 @@ def calculate_swimming_external_load(distance_miles, activity_type=None):
         return 0.0, 0.0, 0.0
 
 
+def calculate_rowing_external_load(distance_miles, activity_type=None):
+    """
+    Convert rowing activity to running-equivalent external load
+
+    Based on caloric expenditure and full-body recruitment research:
+    - Rowing uses ~86% of body's muscle groups (vs ~70% for running)
+    - Caloric expenditure: ~130-150 cal/mile rowing vs 100-110 cal/mile running
+    - Industry heuristic: 1000m rowing ≈ 1 mile running (CrossFit/rowing consensus)
+    - Conversion factor: 1 mile rowing ≈ 1.5 miles running
+
+    Args:
+        distance_miles (float): Rowing distance in miles
+        activity_type (str, optional): Type of rowing (indoor/ergometer vs on-water)
+
+    Returns:
+        tuple: (running_equivalent_distance, elevation_load_miles, total_external_load)
+    """
+    try:
+        logger.info(f"Calculating rowing external load: {distance_miles} miles, type={activity_type}")
+
+        # Base conversion: 1 mile rowing = 1.5 miles running
+        # Based on:
+        # - METs: Rowing 7.0-8.5 vs Running 9.8-11.0 (moderate intensity)
+        # - Caloric expenditure: Rowing ~30-40% higher per mile than running
+        # - Full-body recruitment creates higher systemic training load
+        base_conversion_factor = 1.5
+
+        # Adjust for on-water rowing (wind, current, boat stability)
+        if activity_type and ('on-water' in activity_type.lower() or
+                             'onwater' in activity_type.lower() or
+                             'outdoor' in activity_type.lower()):
+            conversion_factor = 1.7  # 13% increase for on-water conditions
+            logger.info("On-water rowing detected - using 1.7:1 conversion ratio")
+        else:
+            # Indoor rowing / ergometer (controlled conditions)
+            conversion_factor = base_conversion_factor
+            logger.info("Indoor rowing/ergometer - using 1.5:1 conversion ratio")
+
+        # Convert rowing distance to running equivalent
+        running_equivalent_distance = distance_miles * conversion_factor
+
+        # Rowing has no elevation component (horizontal movement)
+        elevation_load_miles = 0.0
+
+        # Total external load (running equivalent)
+        total_external_load = running_equivalent_distance + elevation_load_miles
+
+        logger.info(f"Rowing conversion results: running_equiv={running_equivalent_distance:.2f}, "
+                    f"total={total_external_load:.2f}")
+
+        return running_equivalent_distance, elevation_load_miles, total_external_load
+
+    except Exception as e:
+        logger.error(f"Error calculating rowing external load: {e}")
+        # Return safe defaults
+        return 0.0, 0.0, 0.0
+
+
+def calculate_backcountry_skiing_external_load(distance_miles, ascent_feet=0, activity_type=None):
+    """
+    Convert backcountry skiing activity to running-equivalent external load
+
+    Uses a simplified approach similar to running's elevation surcharge:
+    - Base distance conversion accounts for skiing with equipment
+    - Ascent surcharge accounts for skinning uphill (harder than running uphill)
+    - Descent is already included in base distance (no separate surcharge)
+
+    Conversion factors:
+    - Base: distance × 1.2 (equipment and snow resistance)
+    - Ascent: ascent_feet / 500 (skinning is harder than running, vs running's 750 ft/mile)
+
+    Research basis:
+    - Backcountry skiing with skins: 8-12 METs (high intensity)
+    - Skinning uphill more demanding than running due to equipment weight and snow
+    - Alpine touring typically 1000-1500 ft/mile ascent ratio
+    - Descent is momentum-assisted (already in base distance)
+
+    Args:
+        distance_miles (float): Total skiing distance in miles (includes ascent and descent)
+        ascent_feet (float): Total elevation gain in feet
+        activity_type (str, optional): Type of backcountry skiing activity
+
+    Returns:
+        tuple: (running_equivalent_distance, elevation_load_miles, total_external_load)
+    """
+    try:
+        logger.info(f"Calculating backcountry skiing external load: {distance_miles} miles, {ascent_feet} ft ascent")
+
+        # Base distance conversion (account for equipment/snow resistance)
+        # Factor 1.2 means skiing with equipment is ~20% harder than running on flat
+        BASE_DISTANCE_FACTOR = 1.2
+        running_equivalent_distance = distance_miles * BASE_DISTANCE_FACTOR
+
+        # Ascent surcharge (skinning uphill harder than running uphill)
+        # Factor 500 vs running's 750 means skinning gets 50% more credit per foot of ascent
+        BACKCOUNTRY_ASCENT_FACTOR = 500.0
+        elevation_load_miles = ascent_feet / BACKCOUNTRY_ASCENT_FACTOR
+
+        # Total external load
+        # Note: Descent is already included in base distance, no separate descent surcharge
+        total_external_load = running_equivalent_distance + elevation_load_miles
+
+        logger.info(f"Backcountry skiing conversion: base={running_equivalent_distance:.2f}, "
+                    f"ascent_load={elevation_load_miles:.2f}, total={total_external_load:.2f}")
+
+        return running_equivalent_distance, elevation_load_miles, total_external_load
+
+    except Exception as e:
+        logger.error(f"Error calculating backcountry skiing external load: {e}")
+        # Return safe defaults
+        return 0.0, 0.0, 0.0
+
+
 def calculate_strength_external_load(duration_minutes, rpe_score=None):
     """
     Convert strength activity to running-equivalent external load
@@ -791,6 +945,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     # Calculate external load based on sport type
     cycling_equivalent_miles = None
     swimming_equivalent_miles = None
+    rowing_equivalent_miles = None
+    backcountry_skiing_equivalent_miles = None
     strength_equivalent_miles = None
     cycling_elevation_factor = None
 
@@ -810,6 +966,22 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             distance_miles, specific_activity_type
         )
         swimming_equivalent_miles = running_equiv_distance
+
+    elif sport_type == 'rowing':
+        # Rowing-specific calculation
+        logger.info("Using rowing-specific external load calculation")
+        running_equiv_distance, elevation_load_miles, total_load_miles = calculate_rowing_external_load(
+            distance_miles, specific_activity_type
+        )
+        rowing_equivalent_miles = running_equiv_distance
+
+    elif sport_type == 'backcountry_skiing':
+        # Backcountry skiing-specific calculation
+        logger.info("Using backcountry skiing-specific external load calculation")
+        running_equiv_distance, elevation_load_miles, total_load_miles = calculate_backcountry_skiing_external_load(
+            distance_miles, elevation_gain_feet, specific_activity_type
+        )
+        backcountry_skiing_equivalent_miles = running_equiv_distance
 
     elif sport_type == 'strength':
         # Strength-specific calculation
@@ -950,6 +1122,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'average_speed_mph': float(round(average_speed_mph, 2)) if average_speed_mph else None,
         'cycling_equivalent_miles': float(round(cycling_equivalent_miles, 2)) if cycling_equivalent_miles else None,
         'swimming_equivalent_miles': float(round(swimming_equivalent_miles, 2)) if swimming_equivalent_miles else None,
+        'rowing_equivalent_miles': float(round(rowing_equivalent_miles, 2)) if rowing_equivalent_miles else None,
+        'backcountry_skiing_equivalent_miles': float(round(backcountry_skiing_equivalent_miles, 2)) if backcountry_skiing_equivalent_miles else None,
         'strength_equivalent_miles': float(round(strength_equivalent_miles, 2)) if strength_equivalent_miles else None,
         'cycling_elevation_factor': float(cycling_elevation_factor) if cycling_elevation_factor else None,
         'avg_heart_rate': float(avg_hr),
