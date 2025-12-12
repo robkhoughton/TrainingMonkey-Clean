@@ -21,9 +21,10 @@
 - **Error Handling**: Provide meaningful error messages, fail gracefully
 - **SQL Injection**: Always use parameterized queries with `%s` placeholders
 - **Transactions**: Use explicit commits and context managers for database connections
+- **Root Cause Solutions**: Always address root causes of issues, not just symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds, patches, or band-aid solutions that mask the real issue.
 
 ## 🚀 Development Workflow
-- **Root Cause Analysis**: Check database state before making assumptions
+- **Root Cause Analysis**: Check database state before making assumptions. When fixing issues, identify and address the underlying root cause rather than patching symptoms. Ask "why" multiple times to get to the real problem.
 - **End-to-End Testing**: Test complete user flows, not just components
 - **Validation**: Run `validate_sql_syntax.py` before commits
 - **Clean Code**: Remove debugging artifacts, use proper validation
@@ -99,6 +100,7 @@ copy frontend\build\training-monkey-runner.webp app\static\training-monkey-runne
 - **Forgetting `perfMonitor` in hook dependency arrays** (causes stale closures)
 - **Using only page hook when component metrics needed** (can't call `reportMetrics()`)
 - **Creating new `.py` files without adding them to `Dockerfile.strava`** (causes ModuleNotFoundError in production)
+- **Patching symptoms instead of fixing root causes** - Avoid workarounds, try-catch blocks that hide errors, or conditional logic that masks underlying issues. Always investigate and fix the fundamental problem.
 
 ## 🎯 Success Criteria
 - All SQL queries use PostgreSQL syntax

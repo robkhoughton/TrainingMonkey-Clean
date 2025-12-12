@@ -17,12 +17,23 @@ def test_database_connection():
     print("=" * 50)
     
     # Database connection details from project rules
+    # Load database config from .env file (never hardcode credentials)
+    from db_credentials_loader import load_database_url
+    from urllib.parse import urlparse
+    
+    database_url = load_database_url()
+    if not database_url:
+        print("ERROR: Could not load DATABASE_URL from .env file")
+        return
+    
+    # Parse connection string
+    parsed = urlparse(database_url)
     db_config = {
-        'host': '35.223.144.85',
-        'port': 5432,
-        'database': 'train-d',
-        'user': 'appuser',
-        'password': 'trainmonk25'
+        'host': parsed.hostname,
+        'port': parsed.port or 5432,
+        'database': parsed.path.lstrip('/'),
+        'user': parsed.username,
+        'password': parsed.password
     }
     
     # Construct connection string
@@ -126,8 +137,8 @@ def test_environment_setup():
     else:
         print("❌ DATABASE_URL is not set")
         print("\n🔧 To set DATABASE_URL:")
-        print("Windows: set DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d")
-        print("Linux/Mac: export DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d")
+        print("Windows: Create .env file with: DATABASE_URL=postgresql://user:password@host:port/database")
+        print("Linux/Mac: Create .env file with: DATABASE_URL=postgresql://user:password@host:port/database")
     
     # Check required packages
     try:

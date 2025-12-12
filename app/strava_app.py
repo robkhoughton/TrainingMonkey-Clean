@@ -1747,6 +1747,7 @@ def get_training_data():
                     'has_swimming_data': False,
                     'has_rowing_data': False,
                     'has_backcountry_skiing_data': False,
+                    'has_strength_data': False,
                     'sport_summary': []
                 })
 
@@ -1788,9 +1789,12 @@ def get_training_data():
             has_backcountry_skiing_data = UnifiedMetricsService.has_backcountry_skiing_data(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
             )
+            has_strength_data = UnifiedMetricsService.has_strength_data(
+                current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
+            )
             sport_summary = UnifiedMetricsService.get_sport_summary(
                 current_user.id, start_date_str, end_date.strftime('%Y-%m-%d')
-            ) if (has_cycling_data or has_swimming_data or has_rowing_data or has_backcountry_skiing_data) else []
+            ) if (has_cycling_data or has_swimming_data or has_rowing_data or has_backcountry_skiing_data or has_strength_data) else []
         else:
             # Use existing aggregation for backward compatibility
             aggregated_data = aggregate_daily_activities_with_rest(activity_list)
@@ -1798,6 +1802,7 @@ def get_training_data():
             has_swimming_data = False
             has_rowing_data = False
             has_backcountry_skiing_data = False
+            has_strength_data = False
             sport_summary = []
 
         # CRITICAL FIX: Apply date serialization AFTER aggregation too
@@ -1843,12 +1848,13 @@ def get_training_data():
                 'has_swimming_data': has_swimming_data,
                 'has_rowing_data': has_rowing_data,
                 'has_backcountry_skiing_data': has_backcountry_skiing_data,
+                'has_strength_data': has_strength_data,
                 'sport_summary': sport_summary
             })
 
             logger.info(f"Sport breakdown enabled: cycling data={has_cycling_data}, swimming data={has_swimming_data}, "
                         f"rowing data={has_rowing_data}, backcountry skiing data={has_backcountry_skiing_data}, "
-                        f"sport summary entries={len(sport_summary)}")
+                        f"strength data={has_strength_data}, sport summary entries={len(sport_summary)}")
 
         return jsonify(response_data)
 

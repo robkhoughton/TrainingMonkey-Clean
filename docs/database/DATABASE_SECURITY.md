@@ -83,6 +83,6 @@ conn = psycopg2.connect(DATABASE_URL)
 
 ✅ Utility scripts removed from version control
 ✅ `.gitignore` updated to exclude credential-containing files
-⚠️ **ACTION REQUIRED:** Change database password `trainmonk25` immediately
+⚠️ **ACTION REQUIRED:** Rotate all exposed database passwords immediately
 ⚠️ **ACTION REQUIRED:** Update local `.env` file with new credentials
 

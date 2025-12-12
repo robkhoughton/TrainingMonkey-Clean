@@ -385,7 +385,7 @@ def main():
         print("❌ DATABASE_URL environment variable not found")
         print("Please set DATABASE_URL before running tests")
         print("\nOptions:")
-        print("1. Set environment variable: set DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d")
+        print("1. Create .env file with: DATABASE_URL=postgresql://user:password@host:port/database")
         print("2. Create .env file with DATABASE_URL")
         print("3. Use production environment with proper configuration")
         return False

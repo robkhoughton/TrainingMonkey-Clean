@@ -39,7 +39,7 @@
 ### **Quick Connection Commands:**
 ```bash
 # PowerShell (Windows) - Set environment variable
-$env:DATABASE_URL="postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@35.223.144.85:5432/train-d"
 
 # Then run any Python script or Flask app
 python run_flask.py
@@ -50,7 +50,7 @@ python run_flask.py
 - **Public IP**: `35.223.144.85`
 - **Database**: `train-d`
 - **User**: `appuser`
-- **Password**: `LwTIf_Yr1AZUGtfalrcQtxyC`
+- **Password**: `[Load from .env file - never hardcode]`
 - **Status**: RUNNABLE (verified working)
 
 ### **Connection Requirements:**
@@ -63,7 +63,7 @@ python run_flask.py
 ### **1. Quick Database Connection Test:**
 ```bash
 # Set environment and test connection
-$env:DATABASE_URL="postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@35.223.144.85:5432/train-d"
 python -c "
 import psycopg2, os
 conn = psycopg2.connect(os.environ['DATABASE_URL'])
@@ -169,7 +169,7 @@ conn = psycopg2.connect(os.environ['DATABASE_URL'])
 ```bash
 # Error: "DATABASE_URL environment variable is required"
 # Solution: Set environment variable first
-$env:DATABASE_URL="postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@35.223.144.85:5432/train-d"
 ```
 
 #### **3. SQL Syntax Errors:**
@@ -316,7 +316,7 @@ CREATE TABLE user_settings (
 ### **Essential Commands:**
 ```bash
 # Set environment variable (PowerShell)
-$env:DATABASE_URL="postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@35.223.144.85:5432/train-d"
 
 # Test connection
 python -c "import psycopg2, os; conn = psycopg2.connect(os.environ['DATABASE_URL']); print('✅ Connected'); conn.close()"
@@ -350,7 +350,7 @@ ORDER BY ordinal_position;
 
 ### **Connection String:**
 ```
-postgresql://appuser:LwTIf_Yr1AZUGtfalrcQtxyC@35.223.144.85:5432/train-d
+postgresql://appuser:YOUR_PASSWORD@35.223.144.85:5432/train-d
 ```
 
 ---

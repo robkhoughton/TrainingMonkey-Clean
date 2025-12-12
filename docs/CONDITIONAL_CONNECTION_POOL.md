@@ -123,7 +123,7 @@ The connection pool manager tracks:
 ### Environment Variables
 
 ```bash
-DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d
+DATABASE_URL=postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d
 ```
 
 ### Pool Settings

@@ -57,7 +57,7 @@ Create `app/.env` with these contents:
 
 ```bash
 # Database Configuration
-DATABASE_URL=postgresql://appuser:trainmonk25@10.109.208.9:5432/train-d
+DATABASE_URL=postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d
 
 # Google Cloud Configuration
 GOOGLE_CLOUD_PROJECT=dev-ruler-460822-e8
@@ -95,7 +95,7 @@ Based on your deployment scripts, your database connection details are:
 | **Port** | `5432` |
 | **Database** | `train-d` |
 | **Username** | `appuser` |
-| **Password** | `trainmonk25` |
+| **Password** | `[Load from .env file - never hardcode]` |
 | **Project** | `dev-ruler-460822-e8` |
 | **Region** | `us-central1` |
 

@@ -337,6 +337,42 @@ class UnifiedMetricsService:
             return False
 
     @staticmethod
+    def has_strength_data(user_id, start_date=None, end_date=None):
+        """
+        Check if user has any strength/yoga activities in the specified date range
+        Used for progressive enhancement - only show strength features if relevant
+        """
+        if user_id is None:
+            raise ValueError("user_id is required for multi-user support")
+
+        try:
+            date_filter = ""
+            params = [user_id]
+
+            if start_date and end_date:
+                date_filter = "AND date BETWEEN %s AND %s"
+                params.extend([start_date, end_date])
+
+            result = execute_query(
+                f"""
+                SELECT COUNT(*) as strength_count
+                FROM activities
+                WHERE user_id = %s
+                AND sport_type = 'strength'
+                {date_filter}
+                """,
+                params,
+                fetch=True
+            )
+
+            strength_count = result[0]['strength_count'] if result else 0
+            return strength_count > 0
+
+        except Exception as e:
+            logger.error(f"Error checking strength data for user {user_id}: {str(e)}")
+            return False
+
+    @staticmethod
     def get_latest_complete_metrics(user_id):
         """
         Get the most recent complete set of training metrics for a specific user.

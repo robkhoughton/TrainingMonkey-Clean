@@ -49,6 +49,7 @@ TrainingMonkey/
 3. **Dockerfile Updates** - New Python files MUST be added to `app/Dockerfile.strava`
 4. **Frontend Deployment** - After React changes, rebuild and copy to `app/static/`
 5. **No Deployment Commands** - Assistant prepares code; user handles all deployment
+6. **Root Cause Solutions** - Always address root causes, not symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds or patches that mask the real issue.
 
 ## Quick Reference
 
@@ -58,6 +59,19 @@ TrainingMonkey/
 | Load credentials | `from db_credentials_loader import set_database_url; set_database_url()` |
 | Run migration | Create script in `scripts/migrations/`, use `db_credentials_loader` |
 | Frontend build | `cd frontend && npm run build` then copy to `app/static/` |
+
+## Problem-Solving Philosophy
+
+**Address Root Causes, Not Symptoms**
+- When fixing bugs or issues, always investigate the underlying root cause
+- Use the "5 Whys" technique: ask "why" multiple times to get to the fundamental problem
+- Avoid workarounds, try-catch blocks that hide errors, or conditional logic that masks issues
+- Examples of patches to avoid:
+  - Adding null checks without fixing why nulls occur
+  - Catching exceptions without addressing why they're thrown
+  - Adding conditional logic to work around incorrect data flow
+  - Implementing client-side fixes for server-side problems
+- Instead, fix the source: correct data flow, fix validation, address architectural issues
 
 ## Modular Rules
 

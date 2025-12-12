@@ -4,13 +4,19 @@ Test database connection with explicit environment variable
 """
 
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Explicitly set the correct DATABASE_URL
-os.environ['DATABASE_URL'] = 'postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d'
+# Load DATABASE_URL from .env file (never hardcode credentials)
+from db_credentials_loader import set_database_url
+set_database_url()
+
+if not os.environ.get('DATABASE_URL'):
+    print("ERROR: DATABASE_URL not found. Please ensure .env file exists with DATABASE_URL set.")
+    sys.exit(1)
 
 print("Testing database connection...")
 print(f"DATABASE_URL: {os.environ.get('DATABASE_URL', 'NOT SET')[:50]}...")

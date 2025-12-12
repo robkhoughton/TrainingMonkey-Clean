@@ -11,14 +11,23 @@ This is an independent script, not part of the application codebase.
 
 import psycopg2
 import sys
+import os
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Database connection string (from project rules)
-DATABASE_URL = "postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"
+# Database connection string - load from .env file (never hardcode credentials)
+from db_credentials_loader import set_database_url
+import os
+
+set_database_url()
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if not DATABASE_URL:
+    logger.error("ERROR: DATABASE_URL not found. Please ensure .env file exists with DATABASE_URL set.")
+    sys.exit(1)
 
 def add_timezone_column():
     """Add timezone column to user_settings table"""

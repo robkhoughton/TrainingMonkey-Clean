@@ -35,7 +35,7 @@ gcloud run deploy training-monkey-strava ^
     --timeout 300 ^
     --concurrency 1000 ^
     --max-instances 10 ^
-    --set-env-vars "DATABASE_URL=postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d" ^
+    --update-secrets DATABASE_URL=DATABASE_URL:latest ^
     --set-env-vars "GOOGLE_CLOUD_PROJECT=dev-ruler-460822-e8"
 
 if %ERRORLEVEL% neq 0 (

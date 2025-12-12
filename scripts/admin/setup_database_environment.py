@@ -13,8 +13,14 @@ def setup_environment():
     print("🔧 Setting up Database Environment")
     print("=" * 50)
     
-    # Database connection details from project rules
-    database_url = "postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"
+    # Database connection - load from .env file (never hardcode credentials)
+    from db_credentials_loader import load_database_url
+    database_url = load_database_url()
+    
+    if not database_url:
+        print("❌ ERROR: Could not load DATABASE_URL from .env file")
+        print("Please ensure .env file exists in project root with DATABASE_URL set")
+        return False
     
     # Set environment variable
     os.environ['DATABASE_URL'] = database_url

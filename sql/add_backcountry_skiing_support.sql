@@ -3,7 +3,7 @@
 -- ============================================================================
 -- PROJECT RULE: Schema changes via SQL Editor ONLY (never in code)
 -- DATABASE: PostgreSQL (use %s placeholders, SERIAL PRIMARY KEY, NOW())
--- CONNECTION: postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d
+-- CONNECTION: Load from .env file via db_credentials_loader (never hardcode credentials)
 -- ============================================================================
 
 -- Step 1: Add backcountry_skiing_equivalent_miles column
@@ -83,7 +83,7 @@ DELETE FROM activities WHERE activity_id = -999999;
 -- DEPLOYMENT CHECKLIST
 -- ============================================================================
 -- [ ] 1. Review this SQL file
--- [ ] 2. Connect to PostgreSQL: postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d
+-- [ ] 2. Connect to PostgreSQL using credentials from .env file (via db_credentials_loader)
 -- [ ] 3. Run the ALTER TABLE command
 -- [ ] 4. Verify column exists (Step 3 query)
 -- [ ] 5. Check sport_type distribution (Step 4 query)

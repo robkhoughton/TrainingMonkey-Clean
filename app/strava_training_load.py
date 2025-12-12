@@ -900,7 +900,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
 
     # Extract base metrics from Strava activity
     activity_id = activity.id
-    activity_date = activity.start_date.strftime('%Y-%m-%d')
+    activity_date = activity.start_date_local.strftime('%Y-%m-%d')
     activity_start_time = activity.start_date_local.strftime('%H:%M:%S') if hasattr(activity, 'start_date_local') and activity.start_date_local else None
     activity_name = activity.name
     

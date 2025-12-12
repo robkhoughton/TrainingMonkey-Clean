@@ -4,7 +4,7 @@
 
 ```bash
 # Set environment variable and test connection
-$env:DATABASE_URL="postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d"
 python scripts/quick_db_connect.py test
 ```
 
@@ -35,7 +35,9 @@ import psycopg2
 import os
 
 # Set environment variable
-os.environ['DATABASE_URL'] = "postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"
+# Load from .env file via db_credentials_loader (never hardcode)
+from db_credentials_loader import set_database_url
+set_database_url()
 
 # Connect and query
 conn = psycopg2.connect(os.environ['DATABASE_URL'])
@@ -72,7 +74,7 @@ SELECT id, email, age, gender FROM user_settings LIMIT 5;
 ### **Quick Fixes:**
 ```bash
 # Always set environment variable first
-$env:DATABASE_URL="postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"
+$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d"
 
 # Test connection
 python -c "import psycopg2, os; conn = psycopg2.connect(os.environ['DATABASE_URL']); print('✅ Connected'); conn.close()"
@@ -84,12 +86,12 @@ python -c "import psycopg2, os; conn = psycopg2.connect(os.environ['DATABASE_URL
 - **Host**: `35.223.144.85`
 - **Database**: `train-d`
 - **User**: `appuser`
-- **Password**: `trainmonk25`
-- **Connection String**: `postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d`
+- **Password**: `[Load from .env file - never hardcode]`
+- **Connection String**: `postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d`
 
 ## ✅ **Verification Checklist**
 
-- [ ] Environment variable set: `$env:DATABASE_URL="postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d"`
+- [ ] Environment variable set: `$env:DATABASE_URL="postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d"`
 - [ ] Connection test passes: `python scripts/quick_db_connect.py test`
 - [ ] Can query data: `python scripts/quick_db_connect.py sample user_settings 3`
 - [ ] PostgreSQL syntax used: `%s` placeholders, `NOW()` timestamps

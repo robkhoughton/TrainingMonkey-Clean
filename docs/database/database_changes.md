@@ -393,7 +393,7 @@ python scripts/quick_db_connect.py sample user_settings 3
 
 ### **Database Connection String:**
 ```
-postgresql://appuser:trainmonk25@35.223.144.85:5432/train-d
+postgresql://appuser:YOUR_PASSWORD@HOST:5432/train-d
 ```
 
 ---

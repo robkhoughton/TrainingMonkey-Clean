@@ -111,11 +111,12 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renderKey, setRenderKey] = useState(0);
-  const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming', 'rowing', 'backcountry_skiing']);
+  const [selectedSports, setSelectedSports] = useState(['running', 'cycling', 'swimming', 'rowing', 'backcountry_skiing', 'strength']);
   const [hasCyclingData, setHasCyclingData] = useState(false);
   const [hasSwimmingData, setHasSwimmingData] = useState(false);
   const [hasRowingData, setHasRowingData] = useState(false);
   const [hasBackcountrySkiingData, setHasBackcountrySkiingData] = useState(false);
+  const [hasStrengthData, setHasStrengthData] = useState(false);
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [tourStep, setTourStep] = useState(0);
 
@@ -283,6 +284,10 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               displayName = 'Total Load (mile equiv)';
             } else if (entry.dataKey === 'elevation_load_miles') {
               displayName = 'Elevation Load (mile equiv)';
+            } else if (entry.dataKey === 'running_distance') {
+              displayName = 'Running Distance';
+            } else if (entry.dataKey === 'running_elevation') {
+              displayName = 'Running Elevation (mile equiv)';
             } else if (entry.dataKey === 'seven_day_avg_load') {
               displayName = '7-Day Avg (mile equiv)';
             } else if (entry.dataKey === 'seven_day_avg_trimp') {
@@ -570,30 +575,56 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           if (result.has_backcountry_skiing_data !== undefined) {
             setHasBackcountrySkiingData(result.has_backcountry_skiing_data);
           }
+          if (result.has_strength_data !== undefined) {
+            setHasStrengthData(result.has_strength_data);
+          }
 
-          // Get stats from the API
-          try {
-            const statsResponse = await fetch(`/api/stats?t=${new Date().getTime()}`);
+          // FIXED: Calculate metrics from the latest entry in processedData
+          // This ensures consistency - we use the same recalculated ACWR values shown in charts
+          if (processedData.length > 0) {
+            const latestEntry = processedData[processedData.length - 1];
 
-            if (statsResponse.ok) {
-              const statsData = await statsResponse.json();
-
-              const latestNormalized = processedData.length > 0
-                ? coerceNumber(processedData[processedData.length - 1].normalized_divergence, NaN)
-                : NaN;
-
-              setMetrics({
-                externalAcwr: coerceNumber(statsData.latestMetrics?.externalAcwr, 0),
-                internalAcwr: coerceNumber(statsData.latestMetrics?.internalAcwr, 0),
-                sevenDayAvgLoad: coerceNumber(statsData.latestMetrics?.sevenDayAvgLoad, 0),
-                sevenDayAvgTrimp: coerceNumber(statsData.latestMetrics?.sevenDayAvgTrimp, 0),
-                daysSinceRest: coerceNumber(statsData.daysSinceRest, 0),
-                normalizedDivergence: Number.isFinite(latestNormalized) ? latestNormalized : 0,
-                dashboardConfig: result.dashboard_config || undefined
-              });
+            // Calculate days since rest by finding the last rest day in processedData
+            let daysSinceRest = 0;
+            for (let i = processedData.length - 1; i >= 0; i--) {
+              if (processedData[i].activity_id === 0 || processedData[i].type === 'rest') {
+                // Found a rest day
+                daysSinceRest = processedData.length - 1 - i;
+                break;
+              }
             }
-          } catch (statsError) {
-            console.warn("Failed to fetch stats, using data from main endpoint");
+            // If no rest day found in the data, count all days
+            if (daysSinceRest === 0 && processedData.length > 0) {
+              daysSinceRest = processedData.length - 1;
+            }
+
+            setMetrics({
+              externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
+              internalAcwr: coerceNumber(latestEntry.trimp_acute_chronic_ratio, 0),
+              sevenDayAvgLoad: coerceNumber(latestEntry.seven_day_avg_load, 0),
+              sevenDayAvgTrimp: coerceNumber(latestEntry.seven_day_avg_trimp, 0),
+              daysSinceRest: daysSinceRest,
+              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0),
+              dashboardConfig: result.dashboard_config || undefined
+            });
+
+            console.log('Metrics calculated from training data:', {
+              externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
+              internalAcwr: coerceNumber(latestEntry.trimp_acute_chronic_ratio, 0),
+              daysSinceRest: daysSinceRest,
+              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0)
+            });
+          } else {
+            // No data - set zeros
+            setMetrics({
+              externalAcwr: 0,
+              internalAcwr: 0,
+              sevenDayAvgLoad: 0,
+              sevenDayAvgTrimp: 0,
+              daysSinceRest: 0,
+              normalizedDivergence: 0,
+              dashboardConfig: result.dashboard_config || undefined
+            });
           }
 
         } catch (error) {
@@ -874,7 +905,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           </div>
 
           {/* Right side: Show Sports (only if multi-sport data exists) */}
-          {(hasCyclingData || hasSwimmingData || hasRowingData || hasBackcountrySkiingData) && (
+          {(hasCyclingData || hasSwimmingData || hasRowingData || hasBackcountrySkiingData || hasStrengthData) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ fontWeight: '500', color: '#374151' }}>Show Sports:</span>
               <div style={{ display: 'flex', gap: '1rem' }}>
@@ -934,6 +965,18 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                       )}
                     />
                     <span style={{ color: '#16a085' }}>Backcountry Skiing</span>
+                  </label>
+                )}
+                {hasStrengthData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSports.includes('strength')}
+                      onChange={() => setSelectedSports(prev =>
+                        prev.includes('strength') ? prev.filter(s => s !== 'strength') : [...prev, 'strength']
+                      )}
+                    />
+                    <span style={{ color: '#e91e63' }}>Strength/Yoga</span>
                   </label>
                 )}
               </div>
@@ -1167,7 +1210,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
       {/* FIXED: Internal Load Chart with proper 7-day average display */}
       <div className={styles.chartContainer}>
-        <h2 className={styles.chartTitle}>Internal Load Trend</h2>
+        <h2 className={styles.chartTitle}>Internal Load</h2>
         <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
           <ResponsiveContainer width="100%" height="100%" key={`internal-load-${renderKey}`}>
             <ComposedChart
@@ -1223,7 +1266,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
       {/* FIXED: External Load Chart with proper 7-day average display */}
       <div className={styles.chartContainer}>
-        <h2 className={styles.chartTitle}>External Work Trend</h2>
+        <h2 className={styles.chartTitle}>External Work</h2>
         <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
           <ResponsiveContainer width="100%" height="100%" key={`external-load-${renderKey}`}>
             <ComposedChart
@@ -1253,11 +1296,11 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               />
               <Legend />
 
-              {/* Distance component - existing logic preserved */}
+              {/* Running Distance - stacked with all other sports */}
               <Bar
                 yAxisId="miles"
-                dataKey="distance_miles"
-                name="Distance (miles)"
+                dataKey="running_distance"
+                name="Running"
                 fill={colors.primary}
                 barSize={chartDimensions.barSize}
                 opacity={selectedSports.includes('running') ? 0.7 : 0.3}
@@ -1265,11 +1308,11 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 isAnimationActive={false}
               />
 
-              {/* Elevation Load component - existing logic preserved */}
+              {/* Running Elevation - stacked with all other sports */}
               <Bar
                 yAxisId="miles"
-                dataKey="elevation_load_miles"
-                name="Elevation Load (mile equiv)"
+                dataKey="running_elevation"
+                name="Elevation"
                 fill={colors.secondary}
                 barSize={chartDimensions.barSize}
                 opacity={selectedSports.includes('running') ? 0.7 : 0.3}
@@ -1277,20 +1320,21 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 isAnimationActive={false}
               />
 
-              {/* Cycling load bars - separate from running stack */}
+              {/* Cycling load bars - stacked with all other sports */}
               {hasCyclingData && (
                 <Bar
                   yAxisId="miles"
                   dataKey="cycling_load"
-                  name="Cycling Load (running equiv)"
+                  name="Cycling"
                   fill="#3498db"
                   barSize={chartDimensions.barSize}
                   opacity={selectedSports.includes('cycling') ? 0.7 : 0.3}
+                  stackId="external"
                   isAnimationActive={false}
                 />
               )}
 
-              {/* Swimming load bars - separate from running stack */}
+              {/* Swimming load bars - stacked with all other sports */}
               {hasSwimmingData && (
                 <Bar
                   yAxisId="miles"
@@ -1299,24 +1343,26 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   fill="#e67e22"
                   barSize={chartDimensions.barSize}
                   opacity={selectedSports.includes('swimming') ? 0.7 : 0.3}
+                  stackId="external"
                   isAnimationActive={false}
                 />
               )}
 
-              {/* Rowing load bars - separate from running stack */}
+              {/* Rowing load bars - stacked with all other sports */}
               {hasRowingData && (
                 <Bar
                   yAxisId="miles"
                   dataKey="rowing_load"
-                  name="Rowing Load (running equiv)"
+                  name="Rowing"
                   fill="#9b59b6"
                   barSize={chartDimensions.barSize}
                   opacity={selectedSports.includes('rowing') ? 0.7 : 0.3}
+                  stackId="external"
                   isAnimationActive={false}
                 />
               )}
 
-              {/* Backcountry skiing load bars - separate from running stack */}
+              {/* Backcountry skiing load bars - stacked with all other sports */}
               {hasBackcountrySkiingData && (
                 <Bar
                   yAxisId="miles"
@@ -1325,6 +1371,21 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   fill="#16a085"
                   barSize={chartDimensions.barSize}
                   opacity={selectedSports.includes('backcountry_skiing') ? 0.7 : 0.3}
+                  stackId="external"
+                  isAnimationActive={false}
+                />
+              )}
+
+              {/* Strength load bars (yoga, weight training, etc.) - stacked with all other sports */}
+              {hasStrengthData && (
+                <Bar
+                  yAxisId="miles"
+                  dataKey="strength_load"
+                  name="Strength/Yoga"
+                  fill="#e91e63"
+                  barSize={chartDimensions.barSize}
+                  opacity={selectedSports.includes('strength') ? 0.7 : 0.3}
+                  stackId="external"
                   isAnimationActive={false}
                 />
               )}
@@ -1359,7 +1420,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           </ResponsiveContainer>
         </div>
         <p className={styles.chartNote}>
-          External training load: distance + elevation converted to mile equivalent, with 7-day moving average.
+          External Work: stacked bar shows total daily load from all sports (running-mile equivalents), with 7-day moving average. Each color represents a different sport.
         </p>
       </div>
 
