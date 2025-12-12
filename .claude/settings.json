@@ -1,15 +1,3 @@
 {
-  "hooks": {
-    "PreCompact": [
-      {
-        "matcher": "auto",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exit 2"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }
