@@ -190,9 +190,15 @@ class ExponentialDecayEngine:
             trimp_acute_chronic_ratio = 0.0
             if chronic_result.weighted_trimp_avg > 0:
                 trimp_acute_chronic_ratio = acute_trimp_avg / chronic_result.weighted_trimp_avg
-            
-            # Calculate normalized divergence
-            normalized_divergence = abs(acute_chronic_ratio - trimp_acute_chronic_ratio)
+
+            # Calculate normalized divergence (FIXED: Now properly normalized with preserved valence)
+            # Uses canonical formula from UnifiedMetricsService
+            avg_acwr = (acute_chronic_ratio + trimp_acute_chronic_ratio) / 2
+            if avg_acwr > 0:
+                normalized_divergence = (acute_chronic_ratio - trimp_acute_chronic_ratio) / avg_acwr
+            else:
+                normalized_divergence = 0.0
+            normalized_divergence = round(normalized_divergence, 3)
             
             result = {
                 'acute_load_avg': round(acute_load_avg, 3),

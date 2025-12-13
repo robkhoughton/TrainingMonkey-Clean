@@ -1808,28 +1808,8 @@ def get_training_data():
         # CRITICAL FIX: Apply date serialization AFTER aggregation too
         aggregated_data = [ensure_date_serialization(activity) for activity in aggregated_data]
 
-        # Check if user has custom dashboard configuration
-        dashboard_config = None
-        try:
-            config_result = db_utils.execute_query("""
-                SELECT chronic_period_days, decay_rate, is_active
-                FROM user_dashboard_configs 
-                WHERE user_id = %s AND is_active = TRUE
-                ORDER BY updated_at DESC
-                LIMIT 1
-            """, (current_user.id,), fetch=True)
-            
-            if config_result:
-                dashboard_config = config_result[0]
-                logger.info(f"User {current_user.id} has custom dashboard config: {dashboard_config}")
-        except Exception as e:
-            logger.warning(f"Could not check dashboard config for user {current_user.id}: {str(e)}")
-
-        # If user has custom configuration, recalculate ACWR values
-        if dashboard_config:
-            logger.info(f"Recalculating ACWR with custom config: chronic={dashboard_config['chronic_period_days']}d, decay={dashboard_config['decay_rate']}")
-            aggregated_data = recalculate_acwr_with_config(aggregated_data, dashboard_config, current_user.id)
-
+        # FIXED: Database now stores ACWR calculated with user's active config
+        # No on-the-fly recalculation needed - all features read from single source of truth
         logger.info(f"Processed to {len(aggregated_data)} daily records for dashboard")
 
         # Build response maintaining existing structure
@@ -1837,8 +1817,7 @@ def get_training_data():
             'success': True,
             'data': aggregated_data,  # Now with properly serialized dates
             'count': len(aggregated_data),
-            'raw_count': len(activity_list),
-            'dashboard_config': dashboard_config  # Include config info for frontend
+            'raw_count': len(activity_list)
         }
 
         # Add sport breakdown fields if requested
@@ -1865,105 +1844,6 @@ def get_training_data():
             'error': str(e),
             'data': []
         }), 500
-
-
-@login_required
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """Get training statistics for the dashboard - FIXED for DATE standardization"""
-    try:
-        from unified_metrics_service import UnifiedMetricsService
-
-        logger.info(f"Calculating training statistics for user {current_user.id} using unified metrics...")
-
-        # UPDATED: Pass current_user.id to unified metrics service
-        unified_metrics = UnifiedMetricsService.get_latest_complete_metrics(current_user.id)
-
-        if not unified_metrics:
-            logger.warning(f"No unified metrics available for user {current_user.id}")
-            return jsonify({
-                'totalActivities': 0,
-                'lastActivity': None,
-                'daysSinceRest': 0,
-                'latestMetrics': {
-                    'externalAcwr': 0,
-                    'internalAcwr': 0,
-                    'sevenDayAvgLoad': 0,
-                    'sevenDayAvgTrimp': 0,
-                    'normalizedDivergence': 0
-                },
-                'dashboard_config': None
-            })
-
-        # Count total real activities for the current user
-        activity_count_result = db_utils.execute_query(
-            "SELECT COUNT(*) FROM activities WHERE user_id = %s AND activity_id > 0",
-            (current_user.id,),
-            fetch=True
-        )
-
-        # Handle PostgreSQL (dict) response format
-        if activity_count_result and activity_count_result[0]:
-            result_row = activity_count_result[0]
-            # PostgreSQL returns dict-like object
-            total_activities = result_row.get('count', 0) or result_row.get('COUNT(*)', 0)
-        else:
-            total_activities = 0
-
-        # Get user's dashboard configuration
-        dashboard_config = None
-        try:
-            config_result = db_utils.execute_query("""
-                SELECT chronic_period_days, decay_rate, is_active
-                FROM user_dashboard_configs 
-                WHERE user_id = %s AND is_active = TRUE
-                ORDER BY updated_at DESC
-                LIMIT 1
-            """, (current_user.id,), fetch=True)
-            
-            if config_result:
-                dashboard_config = config_result[0]
-                logger.info(f"User {current_user.id} has custom dashboard config: {dashboard_config}")
-        except Exception as e:
-            logger.warning(f"Could not check dashboard config for user {current_user.id}: {str(e)}")
-
-        # Build response using unified metrics
-        stats = {
-            'totalActivities': total_activities,
-            'lastActivity': unified_metrics.get('latest_activity_date'),  # This will be fixed by serialization
-            'daysSinceRest': unified_metrics.get('days_since_rest', 0),
-            'latestMetrics': {
-                'externalAcwr': round(unified_metrics.get('external_acwr', 0), 3),
-                'internalAcwr': round(unified_metrics.get('internal_acwr', 0), 3),
-                'sevenDayAvgLoad': round(unified_metrics.get('seven_day_avg_load', 0), 2),
-                'sevenDayAvgTrimp': round(unified_metrics.get('seven_day_avg_trimp', 0), 1),
-                'normalizedDivergence': round(unified_metrics.get('normalized_divergence', 0), 3)
-            },
-            'dashboard_config': dashboard_config  # Include config info for frontend
-        }
-
-        # CRITICAL FIX: Apply date serialization BEFORE returning JSON
-        stats = ensure_date_serialization(stats)
-
-        logger.info(f"Unified stats for user {current_user.id}: {stats}")
-        return jsonify(stats)
-
-    except Exception as e:
-        logger.error(f"Error calculating stats for user {current_user.id}: {str(e)}", exc_info=True)
-        return jsonify({
-            'totalActivities': 0,
-            'lastActivity': None,
-            'daysSinceRest': 0,
-            'latestMetrics': {
-                'externalAcwr': 0,
-                'internalAcwr': 0,
-                'sevenDayAvgLoad': 0,
-                'sevenDayAvgTrimp': 0,
-                'normalizedDivergence': 0
-            },
-            'dashboard_config': None
-        }), 500
-
 
 # =============================================================================
 # SECTION 6: MAIN APPLICATION ROUTES
@@ -4142,15 +4022,23 @@ def get_journal_entries():
             journal_entries.append(journal_entry)
             current_date += timedelta(days=1)
 
-        # Identify the next incomplete workout (earliest date with recommendation but no observations)
+        # Identify the next incomplete workout (earliest date with recommendation but no completed activity)
         # Sort chronologically first (oldest to newest) to find the earliest incomplete
         journal_entries_chrono = sorted(journal_entries, key=lambda x: x['date'])
 
         for entry in journal_entries_chrono:
-            # Next incomplete = has a recommendation, no observations, and has a workout (not a future date without activity)
+            # Next incomplete = has a recommendation but no activity has been recorded yet
+            # Once activity is recorded (from Strava or manual rest day), user can journal
             has_recommendation = entry['todays_decision'] and 'No recommendation available' not in entry['todays_decision']
 
-            if has_recommendation and not entry['has_observations']:
+            # Activity is considered "completed" if activity_id exists (positive for real activity, negative for rest day)
+            # activity_id is None only when no activity has been recorded at all
+            has_completed_activity = (
+                entry['activity_summary'] and
+                entry['activity_summary'].get('activity_id') is not None
+            )
+
+            if has_recommendation and not has_completed_activity and not entry['is_future']:
                 entry['is_next_incomplete'] = True
                 logger.info(f"Marked {entry['date']} as next incomplete workout for user {current_user.id}")
                 break  # Only mark the first (earliest) incomplete entry
@@ -7636,148 +7524,113 @@ def get_user_dashboard_config():
 @app.route('/api/user/dashboard-config', methods=['POST'])
 @login_required
 def set_user_dashboard_config():
-    """Set user's dashboard ACWR configuration"""
+    """Set user's dashboard ACWR configuration and recalculate database values"""
     try:
         data = request.get_json()
         user_id = data.get('user_id')
         if not user_id:
             user_id = current_user.id
-        
+
         chronic_period_days = data.get('chronic_period_days')
         decay_rate = data.get('decay_rate')
         is_active = data.get('is_active', True)
-        
+
         if not chronic_period_days or not decay_rate:
             return jsonify({'success': False, 'error': 'chronic_period_days and decay_rate are required'}), 400
-        
+
         # Validate parameters
         if not (28 <= chronic_period_days <= 90):
             return jsonify({'success': False, 'error': 'chronic_period_days must be between 28 and 90'}), 400
-        
+
         if not (0.01 <= decay_rate <= 0.20):
             return jsonify({'success': False, 'error': 'decay_rate must be between 0.01 and 0.20'}), 400
-        
+
         # Deactivate any existing configurations for this user
         db_utils.execute_query("""
-            UPDATE user_dashboard_configs 
+            UPDATE user_dashboard_configs
             SET is_active = FALSE, updated_at = NOW()
             WHERE user_id = %s
         """, (user_id,))
-        
+
         # Insert new configuration
         db_utils.execute_query("""
             INSERT INTO user_dashboard_configs (user_id, chronic_period_days, decay_rate, is_active, created_at, updated_at)
             VALUES (%s, %s, %s, %s, NOW(), NOW())
         """, (user_id, chronic_period_days, decay_rate, is_active))
-        
-        return jsonify({
-            'success': True,
-            'message': 'Dashboard configuration updated successfully'
-        })
-        
+
+        logger.info(f"User {user_id} saved custom ACWR config: chronic={chronic_period_days}d, decay={decay_rate}")
+
+        # CRITICAL FIX: Recalculate ALL ACWR values in database with new config
+        # This ensures Dashboard, LLM, Autopsy, and all features see consistent metrics
+        try:
+            # Get user's activity date range
+            date_range = db_utils.execute_query("""
+                SELECT MIN(date) as start_date, MAX(date) as end_date
+                FROM activities
+                WHERE user_id = %s AND activity_id > 0
+            """, (user_id,), fetch=True)
+
+            if date_range and date_range[0]['start_date']:
+                start_date = date_range[0]['start_date']
+                end_date = date_range[0]['end_date']
+
+                # Format dates
+                if hasattr(start_date, 'strftime'):
+                    start_date_str = start_date.strftime('%Y-%m-%d')
+                else:
+                    start_date_str = str(start_date)
+                if hasattr(end_date, 'strftime'):
+                    end_date_str = end_date.strftime('%Y-%m-%d')
+                else:
+                    end_date_str = str(end_date)
+
+                logger.info(f"Recalculating ACWR for user {user_id} from {start_date_str} to {end_date_str}")
+
+                # Use optimized ACWR service for batch recalculation
+                from optimized_acwr_service import OptimizedACWRService
+                acwr_service = OptimizedACWRService()
+
+                result = acwr_service.recalculate_user_acwr_range(
+                    user_id=user_id,
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    chronic_period_days=chronic_period_days,
+                    decay_rate=decay_rate
+                )
+
+                logger.info(f"ACWR recalculation complete for user {user_id}: {result.get('updated_count', 0)} activities updated")
+
+                return jsonify({
+                    'success': True,
+                    'message': 'Dashboard configuration updated and ACWR values recalculated',
+                    'recalculated_count': result.get('updated_count', 0)
+                })
+            else:
+                logger.info(f"No activities found for user {user_id} - skipping ACWR recalculation")
+                return jsonify({
+                    'success': True,
+                    'message': 'Dashboard configuration updated (no activities to recalculate)'
+                })
+
+        except Exception as recalc_error:
+            logger.error(f"Error recalculating ACWR for user {user_id}: {str(recalc_error)}", exc_info=True)
+            # Config still saved, but recalculation failed
+            return jsonify({
+                'success': True,
+                'message': 'Dashboard configuration updated, but ACWR recalculation encountered an error',
+                'warning': str(recalc_error)
+            })
+
     except Exception as e:
         logger.error(f"Error setting user dashboard config: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def recalculate_acwr_with_config(aggregated_data, config, user_id):
-    """Recalculate ACWR values using custom configuration"""
-    try:
-        from datetime import datetime, timedelta
-        import math
-        
-        chronic_period_days = config['chronic_period_days']
-        decay_rate = config['decay_rate']
-        
-        # Get all activities for the user to calculate proper chronic averages
-        # We need more data than what's in aggregated_data to calculate chronic properly
-        from timezone_utils import get_user_current_date
-        end_date = get_user_current_date(user_id)
-        start_date = end_date - timedelta(days=chronic_period_days + 30)  # Extra buffer
-        
-        activities = db_utils.execute_query("""
-            SELECT date, total_load_miles, trimp
-            FROM activities 
-            WHERE user_id = %s 
-            AND date >= %s
-            ORDER BY date ASC
-        """, (user_id, start_date.strftime('%Y-%m-%d')), fetch=True)
-        
-        if not activities:
-            logger.warning(f"No activities found for ACWR recalculation for user {user_id}")
-            return aggregated_data
-        
-        # Create activities lookup by date
-        activities_by_date = {}
-        for activity in activities:
-            date_str = activity['date'].strftime('%Y-%m-%d') if hasattr(activity['date'], 'strftime') else str(activity['date'])
-            activities_by_date[date_str] = {
-                'total_load_miles': activity['total_load_miles'] or 0,
-                'trimp': activity['trimp'] or 0
-            }
-        
-        # Recalculate ACWR for each day in aggregated_data
-        for day_data in aggregated_data:
-            date_str = day_data['date']
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            
-            # Calculate acute averages (7 days)
-            acute_load_sum = 0
-            acute_trimp_sum = 0
-            acute_count = 0
-            
-            for i in range(7):
-                acute_date = date_obj - timedelta(days=i)
-                acute_date_str = acute_date.strftime('%Y-%m-%d')
-                if acute_date_str in activities_by_date:
-                    acute_load_sum += activities_by_date[acute_date_str]['total_load_miles']
-                    acute_trimp_sum += activities_by_date[acute_date_str]['trimp']
-                    acute_count += 1
-            
-            acute_load_avg = acute_load_sum / 7.0 if acute_count > 0 else 0
-            acute_trimp_avg = acute_trimp_sum / 7.0 if acute_count > 0 else 0
-            
-            # Calculate chronic averages with exponential decay
-            chronic_load_sum = 0
-            chronic_trimp_sum = 0
-            total_weight = 0
-            
-            for i in range(chronic_period_days):
-                chronic_date = date_obj - timedelta(days=i)
-                chronic_date_str = chronic_date.strftime('%Y-%m-%d')
-                if chronic_date_str in activities_by_date:
-                    days_ago = i
-                    weight = math.exp(-decay_rate * days_ago)
-                    total_weight += weight
-                    
-                    chronic_load_sum += activities_by_date[chronic_date_str]['total_load_miles'] * weight
-                    chronic_trimp_sum += activities_by_date[chronic_date_str]['trimp'] * weight
-            
-            chronic_load_avg = chronic_load_sum / total_weight if total_weight > 0 else 0
-            chronic_trimp_avg = chronic_trimp_sum / total_weight if total_weight > 0 else 0
-            
-            # Calculate new ACWR values
-            new_external_acwr = acute_load_avg / chronic_load_avg if chronic_load_avg > 0 else 0
-            new_internal_acwr = acute_trimp_avg / chronic_trimp_avg if chronic_trimp_avg > 0 else 0
-            
-            # Calculate normalized divergence
-            if new_external_acwr > 0 and new_internal_acwr > 0:
-                avg_acwr = (new_external_acwr + new_internal_acwr) / 2
-                new_normalized_divergence = (new_external_acwr - new_internal_acwr) / avg_acwr if avg_acwr > 0 else 0
-            else:
-                new_normalized_divergence = 0
-            
-            # Update the day data with new values
-            day_data['acute_chronic_ratio'] = round(new_external_acwr, 3)
-            day_data['trimp_acute_chronic_ratio'] = round(new_internal_acwr, 3)
-            day_data['normalized_divergence'] = round(new_normalized_divergence, 3)
-        
-        logger.info(f"Recalculated ACWR for {len(aggregated_data)} days with config: chronic={chronic_period_days}d, decay={decay_rate}")
-        return aggregated_data
-        
-    except Exception as e:
-        logger.error(f"Error recalculating ACWR with config: {str(e)}")
-        return aggregated_data  # Return original data if recalculation fails
+# REMOVED: recalculate_acwr_with_config() function
+# This function is no longer needed because ACWR values are now calculated and stored
+# in the database when user saves custom dashboard config. All features (Dashboard, LLM,
+# Autopsy, Coach) now read from single source of truth (database).
+# See set_user_dashboard_config() for the new approach.
 
 
 @app.route('/api/user/activate-account', methods=['POST'])

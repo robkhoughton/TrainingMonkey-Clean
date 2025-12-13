@@ -357,15 +357,14 @@ class ACWRConfigurationService:
             }
     
     def calculate_normalized_divergence(self, external_acwr: float, internal_acwr: float) -> float:
-        """Calculate normalized divergence between external and internal ACWR"""
-        if external_acwr == 0 and internal_acwr == 0:
-            return 0.0
-        
-        mean_acwr = (external_acwr + internal_acwr) / 2
-        if mean_acwr == 0:
-            return 0.0
-        
-        return (external_acwr - internal_acwr) / mean_acwr
+        """
+        Calculate normalized divergence between external and internal ACWR.
+
+        CONSOLIDATED: This now delegates to the canonical implementation in UnifiedMetricsService
+        to ensure consistency across all features (Dashboard, LLM, Autopsy, Coach, Visualizations).
+        """
+        from unified_metrics_service import UnifiedMetricsService
+        return UnifiedMetricsService._calculate_normalized_divergence(external_acwr, internal_acwr)
     
     def store_enhanced_calculation(self, calculation_result: Dict) -> bool:
         """Store enhanced ACWR calculation result"""

@@ -128,15 +128,14 @@ class ACWRCalculationService:
             }
     
     def _calculate_normalized_divergence(self, external_acwr, internal_acwr):
-        """Calculate normalized divergence between external and internal ACWR"""
-        if external_acwr == 0 and internal_acwr == 0:
-            return 0.0
-        
-        avg_acwr = (external_acwr + internal_acwr) / 2
-        if avg_acwr == 0:
-            return 0.0
-        
-        return round((external_acwr - internal_acwr) / avg_acwr, 3)
+        """
+        Calculate normalized divergence between external and internal ACWR.
+
+        CONSOLIDATED: Delegates to canonical implementation in UnifiedMetricsService
+        to ensure consistency across all features.
+        """
+        from unified_metrics_service import UnifiedMetricsService
+        return UnifiedMetricsService._calculate_normalized_divergence(external_acwr, internal_acwr)
     
     def calculate_acwr_for_user(self, user_id: int, activity_date: str) -> Dict:
         """

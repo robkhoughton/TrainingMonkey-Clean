@@ -151,12 +151,15 @@ def calculate_acwr_from_memory(activities_dict, target_date, chronic_period_days
         # Calculate ACWR ratios
         external_acwr = acute_load_avg / chronic_load_avg if chronic_load_avg > 0 else 0.0
         internal_acwr = acute_trimp_avg / chronic_trimp_avg if chronic_trimp_avg > 0 else 0.0
-        
-        # Calculate normalized divergence
-        if external_acwr > 0 and internal_acwr > 0:
-            normalized_divergence = abs(external_acwr - internal_acwr) / max(external_acwr, internal_acwr)
+
+        # Calculate normalized divergence using CANONICAL formula (mean-normalized, preserves valence)
+        # FIXED: Changed from max-normalized abs() to mean-normalized signed for consistency
+        avg_acwr = (external_acwr + internal_acwr) / 2
+        if avg_acwr > 0:
+            normalized_divergence = (external_acwr - internal_acwr) / avg_acwr
         else:
             normalized_divergence = 0.0
+        normalized_divergence = round(normalized_divergence, 3)
         
         # Debug final results
         logger.info(f"Final ACWR: external={external_acwr:.3f}, internal={internal_acwr:.3f}, acute_load={acute_load_avg:.3f}, chronic_load={chronic_load_avg:.3f}")

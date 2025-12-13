@@ -1779,17 +1779,19 @@ def ensure_daily_records(start_date_str, end_date_str, user_id=None):
 
 
 def calculate_normalized_divergence(external_acwr, internal_acwr):
-    """Calculate the normalized divergence between external and internal ACWR"""
+    """
+    Calculate the normalized divergence between external and internal ACWR.
+
+    CONSOLIDATED: Delegates to canonical implementation in UnifiedMetricsService
+    to ensure consistency across all features (Dashboard, LLM, Autopsy, Coach).
+
+    This is the legacy entry point - new code should use UnifiedMetricsService directly.
+    """
     if external_acwr is None or internal_acwr is None:
         return None
-    if external_acwr == 0 and internal_acwr == 0:
-        return 0
 
-    avg_acwr = (external_acwr + internal_acwr) / 2
-    if avg_acwr == 0:
-        return 0
-
-    return round((external_acwr - internal_acwr) / avg_acwr, 3)
+    from unified_metrics_service import UnifiedMetricsService
+    return UnifiedMetricsService._calculate_normalized_divergence(external_acwr, internal_acwr)
 
 
 def update_moving_averages(date, user_id):
