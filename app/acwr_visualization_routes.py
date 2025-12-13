@@ -270,18 +270,36 @@ def get_activities_data():
     try:
         user_id = request.args.get('user_id', type=int)
         days_back = request.args.get('days_back', 90, type=int)
-        chronic_period_days = request.args.get('chronic_period_days', 42, type=int)
-        decay_rate = request.args.get('decay_rate', 0.05, type=float)
-        
-        
+
         if not user_id:
             return jsonify({
                 'success': False,
                 'error': 'user_id parameter is required'
             }), 400
-        
-        # Fetch real activities data from database
+
+        # Load user's saved config from database (if exists)
         import db_utils
+        user_config = db_utils.execute_query("""
+            SELECT chronic_period_days, decay_rate
+            FROM user_dashboard_configs
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """, (user_id,), fetch=True)
+
+        # Use saved config as defaults, allow override via query params
+        if user_config and len(user_config) > 0:
+            default_chronic = user_config[0]['chronic_period_days']
+            default_decay = float(user_config[0]['decay_rate'])
+        else:
+            # Fallback to hardcoded defaults if no config exists
+            default_chronic = 42
+            default_decay = 0.05
+
+        chronic_period_days = request.args.get('chronic_period_days', default_chronic, type=int)
+        decay_rate = request.args.get('decay_rate', default_decay, type=float)
+
+        # Fetch real activities data from database
         from datetime import datetime, timedelta
         
         end_date = datetime.now().date()
@@ -435,11 +453,34 @@ def get_multi_config_data():
     try:
         user_id = request.args.get('user_id', type=int)
         days_back = request.args.get('days_back', 90, type=int)
-        
+
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'user_id parameter is required'
+            }), 400
+
+        # Load user's saved config as defaults
+        import db_utils
+        user_config = db_utils.execute_query("""
+            SELECT chronic_period_days, decay_rate
+            FROM user_dashboard_configs
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """, (user_id,), fetch=True)
+
+        if user_config and len(user_config) > 0:
+            default_chronic = user_config[0]['chronic_period_days']
+            default_decay = float(user_config[0]['decay_rate'])
+        else:
+            default_chronic = 42
+            default_decay = 0.05
+
         # Get configurable parameters for the comparison
         base_acute_period = request.args.get('acute_period', 7, type=int)
-        base_chronic_period = request.args.get('chronic_period', 42, type=int)
-        base_decay_rate = request.args.get('decay_rate', 0.05, type=float)
+        base_chronic_period = request.args.get('chronic_period', default_chronic, type=int)
+        base_decay_rate = request.args.get('decay_rate', default_decay, type=float)
         
         # Get variation ranges
         chronic_variations = request.args.get('chronic_variations', '28,42,56,70').split(',')
@@ -447,14 +488,7 @@ def get_multi_config_data():
         
         chronic_variations = [int(x.strip()) for x in chronic_variations]
         decay_variations = [float(x.strip()) for x in decay_variations]
-        
-        
-        if not user_id:
-            return jsonify({
-                'success': False,
-                'error': 'user_id parameter is required'
-            }), 400
-        
+
         # Generate configurations based on parameters
         preset_configs = []
         colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#6f42c1', '#fd7e14', '#20c997', '#e83e8c']
