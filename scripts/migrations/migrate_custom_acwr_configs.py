@@ -34,6 +34,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'app'))
 from db_credentials_loader import set_database_url
 set_database_url()
 
+# Initialize connection pool for batch operations
+from db_connection_manager import initialize_database_pool
+initialize_database_pool()
+
 import db_utils
 from optimized_acwr_service import OptimizedACWRService
 import logging
@@ -132,7 +136,7 @@ def migrate_custom_acwr_configs():
                     decay_rate=decay_rate
                 )
 
-                updated_count = result.get('updated_count', 0)
+                updated_count = result.get('database_updates', 0)
                 logger.info(f"✅ User {user_id}: Successfully updated {updated_count} activities")
 
                 results.append({
