@@ -373,25 +373,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     );
   };
 
-  // Calculate normalized divergence
-  const calculateNormalizedDivergence = (externalAcwr: number, internalAcwr: number) => {
-    // Check for null, undefined, or NaN
-    if (externalAcwr == null || internalAcwr == null || isNaN(externalAcwr) || isNaN(internalAcwr)) {
-      return null;
-    }
-    if (externalAcwr === 0 && internalAcwr === 0) return 0;
-
-    const avgAcwr = (externalAcwr + internalAcwr) / 2;
-    if (avgAcwr === 0) return 0;
-
-    const result = (externalAcwr - internalAcwr) / avgAcwr;
-    if (isNaN(result)) {
-      return null;
-    }
-
-    return parseFloat(result.toFixed(3));
-  };
-
   // FIXED: Dynamic domain calculation for normalized divergence with inverted axis
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getDivergenceDomain = (data: ProcessedDataRow[]) => {
@@ -541,13 +522,9 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             const sevenDayAvgLoad = coerceNumber(row.seven_day_avg_load, 0);
             const sevenDayAvgTrimp = coerceNumber(row.seven_day_avg_trimp, 0);
 
-            let normalizedDivergence = row.normalized_divergence !== undefined
-              ? coerceNumber(row.normalized_divergence, NaN)
-              : NaN;
-
-            if (!Number.isFinite(normalizedDivergence)) {
-              normalizedDivergence = calculateNormalizedDivergence(externalAcwr, internalAcwr) ?? NaN;
-            }
+            // FIXED: Always use backend-calculated divergence, never recalculate on frontend
+            // This ensures consistency with backend's canonical UnifiedMetricsService calculation
+            const normalizedDivergence = coerceNumber(row.normalized_divergence, 0);
 
             return {
               ...row,
@@ -647,6 +624,32 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
       // fetchJournalStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+  // Fetch dashboard configuration separately for display purposes only
+  // This shows users what calculation method is being used (custom vs default)
+  // Note: ACWR values come from database (pre-calculated), this is just for explanatory text
+  useEffect(() => {
+    const fetchDashboardConfig = async () => {
+      try {
+        const response = await fetch('/api/user/dashboard-config');
+        if (!response.ok) return; // Gracefully handle if endpoint unavailable
+
+        const result = await response.json();
+        if (result.success && result.config) {
+          setMetrics(prev => ({
+            ...prev,
+            dashboardConfig: result.config
+          }));
+          console.log('Dashboard config loaded:', result.config);
+        }
+      } catch (e) {
+        console.error("Failed to fetch dashboard config:", e);
+        // Fail silently - will show default explanation text
+      }
+    };
+
+    fetchDashboardConfig();
+  }, []);
 
   // FIXED: Click outside handler for frozen tooltips
   useEffect(() => {
@@ -1240,7 +1243,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 name="Daily TRIMP"
                 fill={colors.trimp}
                 barSize={chartDimensions.barSize}
-                opacity={0.8}
+                opacity={1.0}
                 isAnimationActive={false}
               />
 
@@ -1294,7 +1297,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 cursor={{ strokeDasharray: '3 3' }}
                 wrapperStyle={{ pointerEvents: 'auto' }}
               />
-              <Legend />
 
               {/* Running Distance - stacked with all other sports */}
               <Bar
@@ -1303,7 +1305,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 name="Running"
                 fill={colors.primary}
                 barSize={chartDimensions.barSize}
-                opacity={selectedSports.includes('running') ? 0.7 : 0.3}
+                opacity={selectedSports.includes('running') ? 1.0 : 0.5}
                 stackId="external"
                 isAnimationActive={false}
               />
@@ -1315,7 +1317,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 name="Elevation"
                 fill={colors.secondary}
                 barSize={chartDimensions.barSize}
-                opacity={selectedSports.includes('running') ? 0.7 : 0.3}
+                opacity={selectedSports.includes('running') ? 1.0 : 0.5}
                 stackId="external"
                 isAnimationActive={false}
               />
@@ -1328,7 +1330,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   name="Cycling"
                   fill="#3498db"
                   barSize={chartDimensions.barSize}
-                  opacity={selectedSports.includes('cycling') ? 0.7 : 0.3}
+                  opacity={selectedSports.includes('cycling') ? 1.0 : 0.5}
                   stackId="external"
                   isAnimationActive={false}
                 />
@@ -1342,7 +1344,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   name="Swimming Load (running equiv)"
                   fill="#e67e22"
                   barSize={chartDimensions.barSize}
-                  opacity={selectedSports.includes('swimming') ? 0.7 : 0.3}
+                  opacity={selectedSports.includes('swimming') ? 1.0 : 0.5}
                   stackId="external"
                   isAnimationActive={false}
                 />
@@ -1356,7 +1358,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   name="Rowing"
                   fill="#9b59b6"
                   barSize={chartDimensions.barSize}
-                  opacity={selectedSports.includes('rowing') ? 0.7 : 0.3}
+                  opacity={selectedSports.includes('rowing') ? 1.0 : 0.5}
                   stackId="external"
                   isAnimationActive={false}
                 />
@@ -1370,7 +1372,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   name="Backcountry Skiing Load (running equiv)"
                   fill="#16a085"
                   barSize={chartDimensions.barSize}
-                  opacity={selectedSports.includes('backcountry_skiing') ? 0.7 : 0.3}
+                  opacity={selectedSports.includes('backcountry_skiing') ? 1.0 : 0.5}
                   stackId="external"
                   isAnimationActive={false}
                 />
@@ -1384,7 +1386,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   name="Strength/Yoga"
                   fill="#e91e63"
                   barSize={chartDimensions.barSize}
-                  opacity={selectedSports.includes('strength') ? 0.7 : 0.3}
+                  opacity={selectedSports.includes('strength') ? 1.0 : 0.5}
                   stackId="external"
                   isAnimationActive={false}
                 />
@@ -1418,6 +1420,66 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               />
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
+        {/* Custom Legend: Bars on first line, Lines on second line */}
+        <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+          {/* Bar legend items - first line */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '12px', backgroundColor: colors.primary, opacity: selectedSports.includes('running') ? 1.0 : 0.5 }}></div>
+              <span style={{ fontSize: '12px' }}>Running</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '16px', height: '12px', backgroundColor: colors.secondary, opacity: selectedSports.includes('running') ? 1.0 : 0.5 }}></div>
+              <span style={{ fontSize: '12px' }}>Elevation</span>
+            </div>
+            {hasCyclingData && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '16px', height: '12px', backgroundColor: '#3498db', opacity: selectedSports.includes('cycling') ? 1.0 : 0.5 }}></div>
+                <span style={{ fontSize: '12px' }}>Cycling</span>
+              </div>
+            )}
+            {hasSwimmingData && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '16px', height: '12px', backgroundColor: '#e67e22', opacity: selectedSports.includes('swimming') ? 1.0 : 0.5 }}></div>
+                <span style={{ fontSize: '12px' }}>Swimming</span>
+              </div>
+            )}
+            {hasRowingData && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '16px', height: '12px', backgroundColor: '#9b59b6', opacity: selectedSports.includes('rowing') ? 1.0 : 0.5 }}></div>
+                <span style={{ fontSize: '12px' }}>Rowing</span>
+              </div>
+            )}
+            {hasBackcountrySkiingData && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '16px', height: '12px', backgroundColor: '#16a085', opacity: selectedSports.includes('backcountry_skiing') ? 1.0 : 0.5 }}></div>
+                <span style={{ fontSize: '12px' }}>Backcountry Skiing</span>
+              </div>
+            )}
+            {hasStrengthData && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '16px', height: '12px', backgroundColor: '#e91e63', opacity: selectedSports.includes('strength') ? 1.0 : 0.5 }}></div>
+                <span style={{ fontSize: '12px' }}>Strength/Yoga</span>
+              </div>
+            )}
+          </div>
+          {/* Line legend items - second line */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="24" height="4" style={{ overflow: 'visible' }}>
+                <line x1="0" y1="2" x2="24" y2="2" stroke={colors.dark} strokeWidth="4" strokeDasharray="8 4" />
+              </svg>
+              <span style={{ fontSize: '12px' }}>7-Day Avg (mile equiv)</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="24" height="4" style={{ overflow: 'visible' }}>
+                <line x1="0" y1="2" x2="24" y2="2" stroke={colors.warning} strokeWidth="2" />
+                <circle cx="12" cy="2" r="3" fill={colors.warning} />
+              </svg>
+              <span style={{ fontSize: '12px' }}>Elevation Gain (ft)</span>
+            </div>
+          </div>
         </div>
         <p className={styles.chartNote}>
           External Work: stacked bar shows total daily load from all sports (running-mile equivalents), with 7-day moving average. Each color represents a different sport.
