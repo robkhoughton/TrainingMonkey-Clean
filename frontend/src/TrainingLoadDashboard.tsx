@@ -575,15 +575,15 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               daysSinceRest = processedData.length - 1;
             }
 
-            setMetrics({
+            setMetrics(prev => ({
+              ...prev,
               externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
               internalAcwr: coerceNumber(latestEntry.trimp_acute_chronic_ratio, 0),
               sevenDayAvgLoad: coerceNumber(latestEntry.seven_day_avg_load, 0),
               sevenDayAvgTrimp: coerceNumber(latestEntry.seven_day_avg_trimp, 0),
               daysSinceRest: daysSinceRest,
-              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0),
-              dashboardConfig: result.dashboard_config || undefined
-            });
+              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0)
+            }));
 
             console.log('Metrics calculated from training data:', {
               externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
@@ -593,15 +593,15 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             });
           } else {
             // No data - set zeros
-            setMetrics({
+            setMetrics(prev => ({
+              ...prev,
               externalAcwr: 0,
               internalAcwr: 0,
               sevenDayAvgLoad: 0,
               sevenDayAvgTrimp: 0,
               daysSinceRest: 0,
-              normalizedDivergence: 0,
-              dashboardConfig: result.dashboard_config || undefined
-            });
+              normalizedDivergence: 0
+            }));
           }
 
         } catch (error) {
@@ -676,11 +676,28 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
   // Check if should show tour or pop-up (after metrics are loaded, with delay)
   useEffect(() => {
-    const checkShowTourOrPopup = () => {
+    const checkShowTourOrPopup = async () => {
       const today = new Date().toDateString();
-      const tourCompleted = localStorage.getItem('dashboardTour_completed');
+      let tourCompleted = localStorage.getItem('dashboardTour_completed');
       const lastShown = localStorage.getItem('statusPopup_lastShown');
       const visitedJournalToday = localStorage.getItem('journal_visited_' + today);
+
+      // For local deployment: Check journal count - if >= 3, disable tour
+      try {
+        const journalResponse = await fetch('/api/journal-entries-count');
+        if (journalResponse.ok) {
+          const journalData = await journalResponse.json();
+          if (journalData.success && journalData.count_last_week >= 3) {
+            // Journal count above threshold - disable tour for local deployment
+            localStorage.setItem('dashboardTour_completed', 'true');
+            tourCompleted = 'true';
+            console.log('Tour disabled: Journal count >= 3 (local deployment mode)');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking journal count:', error);
+        // Continue with normal tour logic if check fails
+      }
 
       console.log('Tour check:', {
         tourCompleted,

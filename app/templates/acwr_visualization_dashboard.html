@@ -610,58 +610,7 @@
                             </select>
                         </div>
                     </div>
-                    
-                    <!-- TRIMP Settings -->
-                    <div class="trimp-settings">
-                        <label><strong>5. TRIMP Settings:</strong></label>
-                        
-                        <!-- Heart Rate Method -->
-                        <div class="parameter-control">
-                            <label for="hrMethodSelect">Heart Rate Method:</label>
-                            <select id="hrMethodSelect" class="form-select" onchange="onTrimpSettingsChange()">
-                                <option value="percentage">Percentage of Max HR</option>
-                                <option value="karvonen" selected>Karvonen (HR Reserve)</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Resting Heart Rate -->
-                        <div class="parameter-control">
-                            <label for="restingHrInput">Resting HR: <span id="restingHrValue">65</span> bpm</label>
-                            <input type="range" class="form-range" id="restingHrInput" 
-                                   min="40" max="100" value="65" step="1" oninput="onTrimpSettingsChange()">
-                            <div class="range-labels">
-                                <small>40</small>
-                                <small>100</small>
-                            </div>
-                        </div>
-                        
-                        <!-- Max Heart Rate -->
-                        <div class="parameter-control">
-                            <label for="maxHrInput">Max HR: <span id="maxHrValue">180</span> bpm</label>
-                            <input type="range" class="form-range" id="maxHrInput" 
-                                   min="120" max="220" value="180" step="1" oninput="onTrimpSettingsChange()">
-                            <div class="range-labels">
-                                <small>120</small>
-                                <small>220</small>
-                            </div>
-                        </div>
-                        
-                        <!-- TRIMP Actions -->
-                        <div class="d-flex gap-2 mt-3">
-                            <button class="btn btn-outline-primary btn-sm" onclick="saveTrimpSettings()">
-                                <i class="bi bi-save"></i> Save
-                            </button>
-                            <button class="btn btn-outline-warning btn-sm" onclick="recalculateTrimp()">
-                                <i class="bi bi-arrow-clockwise"></i> Recalculate
-                            </button>
-                        </div>
-                        
-                        <!-- TRIMP Status -->
-                        <div id="trimpStatus" class="mt-2" style="display: none;">
-                            <small class="text-muted"></small>
-                        </div>
-                    </div>
-                    
+
                     <!-- Dashboard Configuration -->
                     <div class="mt-4">
                         <h6 class="mb-3">Dashboard Configuration</h6>

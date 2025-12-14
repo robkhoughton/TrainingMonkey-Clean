@@ -35,7 +35,7 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   externalValue,
   internalValue,
   max = 2.0,
-  size = 140
+  size = 150
 }) => {
   // Calculate angles (gauge spans 180 degrees, horizontal orientation)
   const clampedExternalValue = Math.max(0, Math.min(max, externalValue));
@@ -43,8 +43,8 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   const externalAngle = (clampedExternalValue / max) * 180;
   const internalAngle = (clampedInternalValue / max) * 180;
 
-  const radius = 45; // Optimized radius
-  const strokeWidth = 3; // Thin, precise arc segments (3px)
+  const radius = 50; // Widened radius to match divergence gauge
+  const strokeWidth = 8; // Match divergence gauge thickness
   const centerX = size / 2;
   const centerY = size / 2 + 5; // Slight vertical adjustment
 
@@ -79,14 +79,15 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
       alignItems: 'center',
       minWidth: size,
       position: 'relative',
-      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace'
+      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace',
+      height: '100%'
     }}>
       <div style={{
         position: 'relative',
         width: size,
         height: size * 0.6,
-        marginTop: '8px',
-        marginBottom: '2px'
+        marginTop: '0px',
+        marginBottom: '4px'
       }}>
         <svg width={size} height={size * 0.6} viewBox={`0 0 ${size} ${size * 0.6}`}>
           <defs>
@@ -96,20 +97,20 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
               <stop offset="100%" stopColor="#d0d0d0" />
             </linearGradient>
             <linearGradient id="blueZone" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#5dade2" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#2874a6" stopOpacity="0.4" />
+              <stop offset="0%" stopColor="#5dade2" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#2874a6" stopOpacity="0.8" />
             </linearGradient>
             <linearGradient id="greenZone" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#58d68d" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#229954" stopOpacity="0.5" />
+              <stop offset="0%" stopColor="#2ecc71" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#27ae60" stopOpacity="0.9" />
             </linearGradient>
             <linearGradient id="orangeZone" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#f5b041" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#d68910" stopOpacity="0.5" />
+              <stop offset="0%" stopColor="#f1c40f" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#f39c12" stopOpacity="0.9" />
             </linearGradient>
             <linearGradient id="redZone" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#ec7063" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.5" />
+              <stop offset="0%" stopColor="#e74c3c" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.9" />
             </linearGradient>
           </defs>
 
@@ -130,8 +131,8 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
             const isMajor = i % 2 === 0; // Major every 0.2
             const isKey = [0, 8, 10, 13, 15, 20].includes(i); // Key thresholds
 
-            const tickOuterRadius = radius + (isKey ? 10 : isMajor ? 7 : 5);
-            const tickInnerRadius = radius + 1;
+            const tickOuterRadius = radius + (isKey ? 8 : isMajor ? 6 : 4);
+            const tickInnerRadius = radius - 1;
 
             const outerX = centerX + tickOuterRadius * Math.cos(tickAngle);
             const outerY = centerY + tickOuterRadius * Math.sin(tickAngle);
@@ -142,18 +143,18 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
               <g key={i}>
                 <line
                   x1={innerX} y1={innerY} x2={outerX} y2={outerY}
-                  stroke="#2c3e50"
+                  stroke="#e0e0e0"
                   strokeWidth={isKey ? 1.5 : isMajor ? 1 : 0.5}
-                  opacity={isKey ? 1 : isMajor ? 0.7 : 0.4}
+                  opacity={isKey ? 0.9 : isMajor ? 0.7 : 0.5}
                   strokeLinecap="round"
                 />
                 {isKey && (
                   <text
-                    x={centerX + (radius + 18) * Math.cos(tickAngle)}
-                    y={centerY + (radius + 18) * Math.sin(tickAngle) + 3}
-                    fill="#2c3e50"
-                    fontSize="8"
-                    fontWeight="700"
+                    x={centerX + (radius + 16) * Math.cos(tickAngle)}
+                    y={centerY + (radius + 16) * Math.sin(tickAngle) + 4}
+                    fill="#f0f0f0"
+                    fontSize="10"
+                    fontWeight="800"
                     textAnchor="middle"
                     fontFamily='"Roboto Mono", monospace'
                   >
@@ -164,16 +165,14 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
             );
           })}
 
-          {/* Bold needles with glow effect */}
+          {/* Color-coded needles - crisp and sharp */}
           <line
             x1={centerX} y1={centerY} x2={externalNeedleX} y2={externalNeedleY}
-            stroke="#27ae60" strokeWidth={3.5} strokeLinecap="round"
-            style={{ filter: 'drop-shadow(0 0 3px rgba(39, 174, 96, 0.8))' }}
+            stroke="#2ecc71" strokeWidth={3.5} strokeLinecap="round"
           />
           <line
             x1={centerX} y1={centerY} x2={internalNeedleX} y2={internalNeedleY}
-            stroke="#2980b9" strokeWidth={3.5} strokeLinecap="round"
-            style={{ filter: 'drop-shadow(0 0 3px rgba(41, 128, 185, 0.8))' }}
+            stroke="#3498db" strokeWidth={3.5} strokeLinecap="round"
           />
 
           {/* Center pivot */}
@@ -183,28 +182,28 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
       </div>
 
       {/* High-precision value displays */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingLeft: '10px', paddingRight: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingLeft: '10px', paddingRight: '10px', marginTop: 'auto' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: '20px', fontWeight: '800', color: '#1a1a1a',
+            fontSize: '20px', fontWeight: '800', color: '#f0f0f0',
             fontFamily: '"Roboto Mono", monospace', letterSpacing: '-0.5px',
-            textShadow: '0 2px 4px rgba(0,0,0,0.15)', fontVariantNumeric: 'tabular-nums'
+            textShadow: '0 2px 4px rgba(0,0,0,0.5)', fontVariantNumeric: 'tabular-nums'
           }}>
             {typeof externalValue === 'number' && !isNaN(externalValue) ? externalValue.toFixed(2) : 'N/A'}
           </div>
-          <div style={{ fontSize: '9px', color: '#27ae60', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+          <div style={{ fontSize: '9px', color: '#2ecc71', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
             EXTERNAL
           </div>
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: '20px', fontWeight: '800', color: '#1a1a1a',
+            fontSize: '20px', fontWeight: '800', color: '#f0f0f0',
             fontFamily: '"Roboto Mono", monospace', letterSpacing: '-0.5px',
-            textShadow: '0 2px 4px rgba(0,0,0,0.15)', fontVariantNumeric: 'tabular-nums'
+            textShadow: '0 2px 4px rgba(0,0,0,0.5)', fontVariantNumeric: 'tabular-nums'
           }}>
             {typeof internalValue === 'number' && !isNaN(internalValue) ? internalValue.toFixed(2) : 'N/A'}
           </div>
-          <div style={{ fontSize: '9px', color: '#2980b9', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+          <div style={{ fontSize: '9px', color: '#3498db', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
             INTERNAL
           </div>
         </div>
@@ -213,133 +212,323 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
   );
 };
 
-// High-Precision Balance Bar with Ultra-Tight Tick Marks
-const BalanceIndicator: React.FC<{
+// Circular Gauge for Divergence (Car Dashboard Style)
+interface CircularDivergenceGaugeProps {
   divergence: number;
-  trainingLoad: number;
-  avgTrainingLoad: number;
-  width?: number;
-}> = ({ divergence, trainingLoad, avgTrainingLoad, width = 200 }) => {
+  size?: number;
+}
 
-  // Calculate balance position (-0.5 to +0.5 range)
+const CircularDivergenceGauge: React.FC<CircularDivergenceGaugeProps> = ({
+  divergence,
+  size = 150
+}) => {
+  // Map divergence (-0.5 to +0.5) to gauge angle (0° to 180°) - 9 o'clock to 3 o'clock
   const clampedDivergence = Math.max(-0.5, Math.min(0.5, divergence));
-  const normalizedPosition = (clampedDivergence + 0.5) / 1.0; // 0 to 1
+  const normalizedValue = (clampedDivergence + 0.5) / 1.0; // 0 to 1
+  const angle = normalizedValue * 180; // 0° to 180° (9-3 o'clock)
 
-  const barHeight = 4; // Thin precision bar
-  const trackY = 30;
-  const padding = 15;
-  const trackWidth = width - (padding * 2);
+  const radius = 50; // Match ACWR gauge
+  const strokeWidth = 8;
+  const centerX = size / 2;
+  const centerY = size / 2 + 5; // Match ACWR vertical position
+
+  // Needle position (starts at 180° / 9 o'clock position)
+  const needleAngle = (angle + 180) * (Math.PI / 180);
+  const needleLength = radius - 5;
+  const needleX = centerX + needleLength * Math.cos(needleAngle);
+  const needleY = centerY + needleLength * Math.sin(needleAngle);
+
+  // Create arc path (9 o'clock to 3 o'clock)
+  const createArc = (startAngle: number, endAngle: number, r: number = radius) => {
+    const startRad = (startAngle + 180) * (Math.PI / 180);
+    const endRad = (endAngle + 180) * (Math.PI / 180);
+    const x1 = centerX + r * Math.cos(startRad);
+    const y1 = centerY + r * Math.sin(startRad);
+    const x2 = centerX + r * Math.cos(endRad);
+    const y2 = centerY + r * Math.sin(endRad);
+    const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  };
 
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      minWidth: width,
+      minWidth: size,
       position: 'relative',
-      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace'
+      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace',
+      height: '100%'
     }}>
-      {/* Precision value display at top */}
       <div style={{
-        fontSize: '20px',
-        fontWeight: '800',
-        color: '#1a1a1a',
-        fontFamily: '"Roboto Mono", monospace',
-        letterSpacing: '-0.5px',
-        textShadow: '0 2px 4px rgba(0,0,0,0.15)',
-        fontVariantNumeric: 'tabular-nums',
-        marginTop: '8px',
-        marginBottom: '8px'
+        position: 'relative',
+        width: size,
+        height: size * 0.6,
+        marginTop: '0px',
+        marginBottom: '4px'
       }}>
-        {typeof divergence === 'number' && !isNaN(divergence) ? divergence.toFixed(2) : 'N/A'}
-      </div>
-
-      <div style={{ width: '100%', height: '60px', position: 'relative' }}>
-        <svg width={width} height="60" viewBox={`0 0 ${width} 60`}>
+        <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
           <defs>
-            <linearGradient id="barTrackGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#e0e0e0" />
-              <stop offset="100%" stopColor="#c8c8c8" />
+            <linearGradient id="divGaugeRed" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#e74c3c" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.9" />
             </linearGradient>
-            <linearGradient id="barBlueZone" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#2874a6" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#5dade2" stopOpacity="0.5" />
+            <linearGradient id="divGaugeGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#2ecc71" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#27ae60" stopOpacity="0.9" />
             </linearGradient>
-            <linearGradient id="barGreenZone" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#229954" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#58d68d" stopOpacity="0.6" />
-            </linearGradient>
-            <linearGradient id="barRedZone" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#ec7063" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.5" />
-            </linearGradient>
+            <radialGradient id="needleGradient">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#e0e0e0" />
+            </radialGradient>
           </defs>
 
-          {/* Base track */}
-          <rect x={padding} y={trackY} width={trackWidth} height={barHeight} rx={2} fill="url(#barTrackGradient)" opacity={0.3} />
+          {/* Background track */}
+          <path d={createArc(0, 180)} fill="none" stroke="#e0e0e0" strokeWidth={strokeWidth} opacity={0.3} />
 
-          {/* Color zones: Red (left 20%), Green (middle 60%), Red (right 20%) */}
-          <rect x={padding} y={trackY} width={trackWidth * 0.2} height={barHeight} rx={2} fill="url(#barRedZone)" />
-          <rect x={padding + trackWidth * 0.2} y={trackY} width={trackWidth * 0.6} height={barHeight} fill="url(#barGreenZone)" />
-          <rect x={padding + trackWidth * 0.8} y={trackY} width={trackWidth * 0.2} height={barHeight} rx={2} fill="url(#barRedZone)" />
+          {/* Red zone (0° to 54°): -0.5 to -0.2 */}
+          <path d={createArc(0, 54)} fill="none" stroke="url(#divGaugeRed)" strokeWidth={strokeWidth} opacity={0.9} />
 
-          {/* Ultra-precise tick marks - every 0.05 units from -0.5 to +0.5 */}
-          {Array.from({ length: 21 }, (_, i) => {
-            const value = -0.5 + (i * 0.05);
-            const position = padding + (i / 20) * trackWidth;
-            const isMajor = i % 2 === 0; // Major every 0.1
-            const isKey = [0, 5, 10, 15, 20].includes(i); // -0.5, -0.25, 0, 0.25, 0.5
+          {/* Green zone (54° to 144°): -0.2 to +0.3 */}
+          <path d={createArc(54, 144)} fill="none" stroke="url(#divGaugeGreen)" strokeWidth={strokeWidth} opacity={0.9} />
+
+          {/* Red zone (144° to 180°): +0.3 to +0.5 */}
+          <path d={createArc(144, 180)} fill="none" stroke="url(#divGaugeRed)" strokeWidth={strokeWidth} opacity={0.9} />
+
+          {/* Tick marks */}
+          {Array.from({ length: 11 }, (_, i) => {
+            const value = -0.5 + (i * 0.1);
+            const tickAngle = (i / 10) * 180;
+            const tickRad = (tickAngle + 180) * (Math.PI / 180);
+            const isKey = i % 2 === 0;
+
+            const tickOuterRadius = radius + (isKey ? 8 : 6);
+            const tickInnerRadius = radius - 1;
+
+            const outerX = centerX + tickOuterRadius * Math.cos(tickRad);
+            const outerY = centerY + tickOuterRadius * Math.sin(tickRad);
+            const innerX = centerX + tickInnerRadius * Math.cos(tickRad);
+            const innerY = centerY + tickInnerRadius * Math.sin(tickRad);
 
             return (
               <g key={i}>
                 <line
-                  x1={position} y1={trackY + barHeight}
-                  x2={position} y2={trackY + barHeight + (isKey ? 10 : isMajor ? 7 : 4)}
-                  stroke="#2c3e50"
-                  strokeWidth={isKey ? 1.5 : isMajor ? 1 : 0.5}
-                  opacity={isKey ? 1 : isMajor ? 0.7 : 0.4}
+                  x1={innerX} y1={innerY} x2={outerX} y2={outerY}
+                  stroke="#e0e0e0"
+                  strokeWidth={isKey ? 1.5 : 1}
+                  opacity={isKey ? 0.9 : 0.7}
                   strokeLinecap="round"
                 />
                 {isKey && (
                   <text
-                    x={position}
-                    y={trackY + barHeight + 20}
-                    fill="#2c3e50"
-                    fontSize="8"
-                    fontWeight="700"
+                    x={centerX + (radius + 16) * Math.cos(tickRad)}
+                    y={centerY + (radius + 16) * Math.sin(tickRad) + 4}
+                    fill="#f0f0f0"
+                    fontSize="10"
+                    fontWeight="800"
                     textAnchor="middle"
                     fontFamily='"Roboto Mono", monospace'
                   >
-                    {value.toFixed(2)}
+                    {value.toFixed(1)}
                   </text>
                 )}
               </g>
             );
           })}
 
-          {/* Precision indicator - inverted arrowhead above bar */}
-          <g>
-            {/* Inverted arrowhead pointing down toward bar */}
-            <polygon
-              points={`${padding + normalizedPosition * trackWidth},${trackY - 2} ${padding + normalizedPosition * trackWidth - 5},${trackY - 10} ${padding + normalizedPosition * trackWidth + 5},${trackY - 10}`}
-              fill="#2c3e50"
-              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
-            />
-          </g>
+          {/* White metallic needle - crisp and sharp */}
+          <line
+            x1={centerX} y1={centerY}
+            x2={needleX} y2={needleY}
+            stroke="#ffffff"
+            strokeWidth={4}
+            strokeLinecap="round"
+          />
+
+          {/* Center pivot with metallic look */}
+          <circle cx={centerX} cy={centerY} r={6} fill="#1a1a1a" style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.8))' }} />
+          <circle cx={centerX} cy={centerY} r={3.5} fill="url(#needleGradient)" />
+          <circle cx={centerX} cy={centerY} r={1.5} fill="#ffffff" opacity={0.8} />
         </svg>
       </div>
 
-      {/* Labels */}
-      <div style={{ textAlign: 'center', marginTop: '2px' }}>
+      {/* Value display - positioned at same height as ACWR */}
+      <div style={{ marginTop: 'auto', width: '100%' }}>
+        <div style={{
+          fontSize: '20px',
+          fontWeight: '800',
+          color: '#f0f0f0',
+          fontFamily: '"Roboto Mono", monospace',
+          letterSpacing: '-0.5px',
+          textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'center'
+        }}>
+          {typeof divergence === 'number' && !isNaN(divergence) ? divergence.toFixed(2) : 'N/A'}
+        </div>
         <div style={{
           fontSize: '9px',
-          color: '#6b7280',
+          color: '#f0f0f0',
           fontWeight: '800',
           textTransform: 'uppercase',
-          letterSpacing: '0.8px'
+          letterSpacing: '0.8px',
+          textAlign: 'center'
         }}>
           DIVERGENCE
         </div>
+      </div>
+    </div>
+  );
+};
+
+// Vertical Risk Bar with Color Zones and Arrowhead Indicator (Car Dashboard Style)
+interface VerticalRiskBarProps {
+  riskLevel: number; // 0 to 100
+  size?: number;
+}
+
+const VerticalRiskBar: React.FC<VerticalRiskBarProps> = ({
+  riskLevel,
+  size = 150
+}) => {
+  const clampedRisk = Math.max(0, Math.min(100, riskLevel));
+  const barWidth = 20; // Narrower to give gauges more room
+  const barHeight = size * 0.65;
+  const centerX = size / 2;
+
+  // Calculate arrowhead position (inverted: 0% at top, 100% at bottom)
+  const arrowY = 10 + ((100 - clampedRisk) / 100) * barHeight;
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      minWidth: size,
+      position: 'relative',
+      fontFamily: '"Roboto Mono", "JetBrains Mono", "Courier New", monospace',
+      height: '100%'
+    }}>
+      <div style={{
+        position: 'relative',
+        width: size,
+        height: barHeight + 20,
+        marginTop: '0px',
+        marginBottom: '4px'
+      }}>
+        <svg width={size} height={barHeight + 20} viewBox={`0 0 ${size} ${barHeight + 20}`}>
+          <defs>
+            <linearGradient id="greenZoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#27ae60" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#2ecc71" stopOpacity="0.9" />
+            </linearGradient>
+            <linearGradient id="yellowZoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#f1c40f" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#f39c12" stopOpacity="0.9" />
+            </linearGradient>
+            <linearGradient id="redZoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#e74c3c" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#c0392b" stopOpacity="0.9" />
+            </linearGradient>
+          </defs>
+
+          {/* Red zone (top 30%): 70-100% risk */}
+          <rect
+            x={centerX - barWidth / 2}
+            y={10}
+            width={barWidth}
+            height={barHeight * 0.3}
+            rx={2}
+            fill="url(#redZoneGrad)"
+            stroke="#8b0000"
+            strokeWidth={1}
+          />
+
+          {/* Yellow zone (middle 30%): 40-70% risk */}
+          <rect
+            x={centerX - barWidth / 2}
+            y={10 + barHeight * 0.3}
+            width={barWidth}
+            height={barHeight * 0.3}
+            fill="url(#yellowZoneGrad)"
+            stroke="#d68910"
+            strokeWidth={1}
+          />
+
+          {/* Green zone (bottom 40%): 0-40% risk */}
+          <rect
+            x={centerX - barWidth / 2}
+            y={10 + barHeight * 0.6}
+            width={barWidth}
+            height={barHeight * 0.4}
+            rx={2}
+            fill="url(#greenZoneGrad)"
+            stroke="#1e7e34"
+            strokeWidth={1}
+          />
+
+          {/* Arrowhead indicator pointing toward the bar */}
+          <g>
+            {/* Arrowhead pointing left toward the bar at the risk level */}
+            <polygon
+              points={`${centerX - barWidth / 2 - 2},${arrowY} ${centerX - barWidth / 2 - 12},${arrowY - 6} ${centerX - barWidth / 2 - 12},${arrowY + 6}`}
+              fill="#ffffff"
+              stroke="#000000"
+              strokeWidth={1.5}
+              style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.7))' }}
+            />
+            {/* Highlight on arrowhead for 3D effect */}
+            <polygon
+              points={`${centerX - barWidth / 2 - 3},${arrowY} ${centerX - barWidth / 2 - 11},${arrowY - 5} ${centerX - barWidth / 2 - 11},${arrowY + 5}`}
+              fill="#f0f0f0"
+              opacity={0.5}
+            />
+          </g>
+
+          {/* Tick marks on right side */}
+          {Array.from({ length: 6 }, (_, i) => {
+            const y = 10 + (i / 5) * barHeight;
+            const label = 100 - i * 20;
+
+            return (
+              <g key={i}>
+                <line
+                  x1={centerX + barWidth / 2}
+                  y1={y}
+                  x2={centerX + barWidth / 2 + 6}
+                  y2={y}
+                  stroke="#f0f0f0"
+                  strokeWidth={1.5}
+                  opacity={0.8}
+                />
+                <text
+                  x={centerX + barWidth / 2 + 10}
+                  y={y + 3}
+                  fill="#f0f0f0"
+                  fontSize="8"
+                  fontWeight="700"
+                  textAnchor="start"
+                  fontFamily='"Roboto Mono", monospace'
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Label */}
+      <div style={{
+        fontSize: '9px',
+        color: '#f0f0f0',
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: '0.8px',
+        marginTop: 'auto',
+        textAlign: 'center'
+      }}>
+        RISK LEVEL
       </div>
     </div>
   );
@@ -566,17 +755,35 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           />
         </div>
 
-        {/* Card 2: Training Balance (with Gauges) */}
+        {/* Card 2: Training Balance (with Gauges) - Carbon fiber sports car style */}
         <div id="at-a-glance-meters" style={{
-          backgroundColor: 'white',
+          background: `
+            repeating-linear-gradient(
+              45deg,
+              #080808 0px,
+              #2a2a2a 2px,
+              #080808 4px,
+              #080808 6px
+            ),
+            repeating-linear-gradient(
+              -45deg,
+              #080808 0px,
+              #2a2a2a 2px,
+              #080808 4px,
+              #080808 6px
+            ),
+            linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%)
+          `,
           borderRadius: '0.5rem',
-          padding: '0.5rem',
+          padding: '0',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
           minHeight: '155px',
-          maxHeight: '155px'
+          maxHeight: '155px',
+          border: '1px solid #2a2a2a',
+          position: 'relative' as const
         }}>
           {/* Dynamic Risk Assessment Title */}
           {(() => {
@@ -602,7 +809,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                 margin: '0 0 0.5rem 0',
                 fontSize: '0.95rem',
                 fontWeight: '600',
-                color: colors.dark,
+                color: '#f0f0f0',
                 textAlign: 'center'
               }}>
                 Injury Risk At-A-Glance - <span style={{ color: riskColor, fontWeight: '700' }}>{riskLevel}</span>
@@ -610,16 +817,16 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             );
           })()}
 
-          {/* Consolidated gauges container - centralized */}
+          {/* Consolidated gauges container - car dashboard style layout */}
           <div style={{
             display: 'flex',
             justifyContent: 'center',
-            alignItems: 'stretch',
-            gap: '1.5rem', // Increased space between gauge and bar for better horizontal use
+            alignItems: 'flex-start',
+            gap: '1rem',
             flex: 1,
-            minHeight: '40px',
-            marginLeft: '20px' // Add left margin to centralize
+            minHeight: '40px'
           }}>
+            {/* Left Gauge: Training Strain (Dual ACWR) */}
             <MetricTooltip
               data-metric-tooltip
               metric="Training Strain (Dual ACWR)"
@@ -633,24 +840,117 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                 externalValue={metrics?.externalAcwr || 0}
                 internalValue={metrics?.internalAcwr || 0}
                 max={2.0}
-                size={120}
+                size={150}
               />
             </MetricTooltip>
-            
+
+            {/* Center: Vertical Risk Bar */}
             <MetricTooltip
               data-metric-tooltip
-              metric="Training Balance"
+              metric="Injury Risk Level"
+              value={(() => {
+                const externalAcwr = metrics?.externalAcwr || 0;
+                const internalAcwr = metrics?.internalAcwr || 0;
+                const divergence = metrics?.normalizedDivergence || 0;
+                const daysSinceRest = metrics?.daysSinceRest || 0;
+
+                // Calculate risk level (0-100)
+                let riskScore = 0;
+
+                // ACWR contribution (40%)
+                const avgAcwr = (externalAcwr + internalAcwr) / 2;
+                if (avgAcwr > 1.5) riskScore += 40;
+                else if (avgAcwr > 1.3) riskScore += 30;
+                else if (avgAcwr > 1.1) riskScore += 20;
+                else if (avgAcwr > 0.8) riskScore += 10;
+
+                // Divergence contribution (40%)
+                if (divergence < -0.25) riskScore += 40;
+                else if (divergence < -0.15) riskScore += 30;
+                else if (divergence < -0.05) riskScore += 15;
+
+                // Days since rest contribution (20%)
+                if (daysSinceRest > 7) riskScore += 20;
+                else if (daysSinceRest > 6) riskScore += 15;
+                else if (daysSinceRest > 5) riskScore += 10;
+
+                return Math.min(100, riskScore);
+              })().toFixed(0) + '%'}
+              description="Overall injury risk assessment based on training strain, divergence, and recovery status. Combines ACWR, training balance, and days since rest into a single risk metric."
+              interpretation="Green (0-40%): Low risk, training well-balanced. Orange (40-70%): Moderate risk, monitor closely. Red (70-100%): High risk, consider rest or reduced load."
+              warning={(() => {
+                const riskLevel = (() => {
+                  const externalAcwr = metrics?.externalAcwr || 0;
+                  const internalAcwr = metrics?.internalAcwr || 0;
+                  const divergence = metrics?.normalizedDivergence || 0;
+                  const daysSinceRest = metrics?.daysSinceRest || 0;
+                  let riskScore = 0;
+                  const avgAcwr = (externalAcwr + internalAcwr) / 2;
+                  if (avgAcwr > 1.5) riskScore += 40;
+                  else if (avgAcwr > 1.3) riskScore += 30;
+                  else if (avgAcwr > 1.1) riskScore += 20;
+                  else if (avgAcwr > 0.8) riskScore += 10;
+                  if (divergence < -0.25) riskScore += 40;
+                  else if (divergence < -0.15) riskScore += 30;
+                  else if (divergence < -0.05) riskScore += 15;
+                  if (daysSinceRest > 7) riskScore += 20;
+                  else if (daysSinceRest > 6) riskScore += 15;
+                  else if (daysSinceRest > 5) riskScore += 10;
+                  return Math.min(100, riskScore);
+                })();
+
+                if (riskLevel > 70) return "High injury risk - rest strongly recommended";
+                if (riskLevel > 40) return "Moderate risk - monitor and consider reducing intensity";
+                return undefined;
+              })()}
+              position="top"
+            >
+              <VerticalRiskBar
+                riskLevel={(() => {
+                  const externalAcwr = metrics?.externalAcwr || 0;
+                  const internalAcwr = metrics?.internalAcwr || 0;
+                  const divergence = metrics?.normalizedDivergence || 0;
+                  const daysSinceRest = metrics?.daysSinceRest || 0;
+
+                  // Calculate risk level (0-100)
+                  let riskScore = 0;
+
+                  // ACWR contribution (40%)
+                  const avgAcwr = (externalAcwr + internalAcwr) / 2;
+                  if (avgAcwr > 1.5) riskScore += 40;
+                  else if (avgAcwr > 1.3) riskScore += 30;
+                  else if (avgAcwr > 1.1) riskScore += 20;
+                  else if (avgAcwr > 0.8) riskScore += 10;
+
+                  // Divergence contribution (40%)
+                  if (divergence < -0.25) riskScore += 40;
+                  else if (divergence < -0.15) riskScore += 30;
+                  else if (divergence < -0.05) riskScore += 15;
+
+                  // Days since rest contribution (20%)
+                  if (daysSinceRest > 7) riskScore += 20;
+                  else if (daysSinceRest > 6) riskScore += 15;
+                  else if (daysSinceRest > 5) riskScore += 10;
+
+                  return Math.min(100, riskScore);
+                })()}
+                size={150}
+              />
+            </MetricTooltip>
+
+            {/* Right Gauge: Divergence */}
+            <MetricTooltip
+              data-metric-tooltip
+              metric="Training Balance (Divergence)"
               value={typeof metrics?.normalizedDivergence === 'number' && !isNaN(metrics.normalizedDivergence) ? metrics.normalizedDivergence.toFixed(3) : '0.000'}
               description="Normalized divergence between external and internal training load. Shows if your heart rate stress matches your external training effort."
               interpretation="Negative values indicate your body is working harder than expected (fatigue/overtraining), positive values suggest good fitness/recovery."
               warning={(metrics?.normalizedDivergence || 0) < -0.15 ? "High overtraining risk - rest recommended" : (metrics?.normalizedDivergence || 0) < -0.05 ? "Moderate fatigue - consider easier training" : undefined}
               position="top"
             >
-              <BalanceIndicator
+              <CircularDivergenceGauge
                 divergence={metrics?.normalizedDivergence || 0}
-                trainingLoad={metrics?.sevenDayAvgLoad || 0}
-                avgTrainingLoad={avgTrainingLoad}
-                width={200}
+                size={150}
               />
             </MetricTooltip>
           </div>
@@ -660,7 +960,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div id="recovery-metrics" style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0.5rem',
+          padding: '0',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -799,7 +1099,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0.5rem',
+          padding: '0',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',

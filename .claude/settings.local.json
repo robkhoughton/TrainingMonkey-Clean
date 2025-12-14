@@ -19,7 +19,20 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(set USE_MOCK_DB=true:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(pytest:*)",
+      "Bash(git push:*)",
+      "Bash(mcp__playwright__navigate:*)",
+      "Bash(npx playwright:*)",
+      "Bash(node scripts\\screenshot_dashboard.js:*)",
+      "Bash(node:*)",
+      "Bash(npm run build:*)",
+      "Bash(xcopy:*)",
+      "Bash(copy frontendbuildtraining-monkey-runner.webp appstatictraining-monkey-runner.webp /Y)",
+      "Bash(npx -y playwright --version)",
+      "Bash(npx:*)",
+      "Bash(where:*)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []
