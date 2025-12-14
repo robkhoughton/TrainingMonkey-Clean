@@ -182,7 +182,7 @@ const DualNeedleStrainGauge: React.FC<DualNeedleStrainGaugeProps> = ({
       </div>
 
       {/* High-precision value displays */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingLeft: '10px', paddingRight: '10px', marginTop: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', paddingLeft: '10px', paddingRight: '10px', marginTop: 'auto', paddingBottom: '0px' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{
             fontSize: '20px', fontWeight: '800', color: '#f0f0f0',
@@ -265,7 +265,7 @@ const CircularDivergenceGauge: React.FC<CircularDivergenceGaugeProps> = ({
         width: size,
         height: size * 0.6,
         marginTop: '0px',
-        marginBottom: '4px'
+        marginBottom: '2px'
       }}>
         <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
           <defs>
@@ -353,7 +353,7 @@ const CircularDivergenceGauge: React.FC<CircularDivergenceGaugeProps> = ({
       </div>
 
       {/* Value display - positioned at same height as ACWR */}
-      <div style={{ marginTop: 'auto', width: '100%' }}>
+      <div style={{ marginTop: 'auto', width: '100%', paddingBottom: '0px' }}>
         <div style={{
           fontSize: '20px',
           fontWeight: '800',
@@ -393,7 +393,7 @@ const VerticalRiskBar: React.FC<VerticalRiskBarProps> = ({
 }) => {
   const clampedRisk = Math.max(0, Math.min(100, riskLevel));
   const barWidth = 20; // Narrower to give gauges more room
-  const barHeight = size * 0.65;
+  const barHeight = size * 0.55; // Reduced from 0.65 to fit better
   const centerX = size / 2;
 
   // Calculate arrowhead position (inverted: 0% at top, 100% at bottom)
@@ -414,7 +414,7 @@ const VerticalRiskBar: React.FC<VerticalRiskBarProps> = ({
         width: size,
         height: barHeight + 20,
         marginTop: '0px',
-        marginBottom: '4px'
+        marginBottom: '2px'
       }}>
         <svg width={size} height={barHeight + 20} viewBox={`0 0 ${size} ${barHeight + 20}`}>
           <defs>
@@ -526,7 +526,8 @@ const VerticalRiskBar: React.FC<VerticalRiskBarProps> = ({
         textTransform: 'uppercase',
         letterSpacing: '0.8px',
         marginTop: 'auto',
-        textAlign: 'center'
+        textAlign: 'center',
+        paddingBottom: '0px'
       }}>
         RISK LEVEL
       </div>
@@ -705,10 +706,10 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
   return (
     <div style={{
       background: `linear-gradient(135deg, #778899 0%, #C0C0C0 50%, #F5F5F5 100%)`, // Muted gradient closer to card background
-      padding: '0.5rem',
+      padding: '0.5rem 0.5rem 1.25rem 0.5rem',
       borderRadius: '0.5rem', // Match dashboard cards
       marginBottom: '1rem',
-      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)' // Match dashboard cards
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)' // Enhanced depth
     }}>
       <style>
         {`
@@ -738,19 +739,29 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           padding: '0',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: 'stretch',
+          justifyContent: 'stretch',
           textAlign: 'center',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+          border: '3px solid #7a7a7a',
           position: 'relative',
           overflow: 'hidden',
-          maxHeight: '180px'
+          height: '165px',
+          boxSizing: 'border-box' as const
         }}>
           <img
             src="/static/images/YTM_Logo_cropped.webp"
             alt="Your Training Monkey Logo"
             style={{
-              height: '100%'
+              height: '100%',
+              width: '100%',
+              objectFit: 'cover',
+              display: 'block',
+              margin: '0',
+              padding: '0',
+              flex: '1 1 auto',
+              alignSelf: 'stretch',
+              minHeight: '0'
             }}
           />
         </div>
@@ -775,38 +786,61 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%)
           `,
           borderRadius: '0.5rem',
-          padding: '0',
+          padding: '0.5rem 0.5rem 0.75rem 0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
-          minHeight: '155px',
-          maxHeight: '155px',
-          border: '1px solid #2a2a2a',
-          position: 'relative' as const
+          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+          border: '3px solid #7a7a7a',
+          height: '165px',
+          position: 'relative' as const,
+          boxSizing: 'border-box' as const
         }}>
           {/* Dynamic Risk Assessment Title */}
           {(() => {
-            // Determine risk level based on metrics
+            // Calculate risk score using the same weighted logic as the vertical bar
             const externalAcwr = metrics?.externalAcwr || 0;
             const internalAcwr = metrics?.internalAcwr || 0;
             const divergence = metrics?.normalizedDivergence || 0;
+            const daysSinceRest = metrics?.daysSinceRest || 0;
             
-            // Risk assessment logic
+            // Calculate risk score (0-100) - same logic as vertical bar
+            let riskScore = 0;
+            
+            // ACWR contribution (40%)
+            const avgAcwr = (externalAcwr + internalAcwr) / 2;
+            if (avgAcwr > 1.5) riskScore += 40;
+            else if (avgAcwr > 1.3) riskScore += 30;
+            else if (avgAcwr > 1.1) riskScore += 20;
+            else if (avgAcwr > 0.8) riskScore += 10;
+            
+            // Divergence contribution (40%)
+            if (divergence < -0.25) riskScore += 40;
+            else if (divergence < -0.15) riskScore += 30;
+            else if (divergence < -0.05) riskScore += 15;
+            
+            // Days since rest contribution (20%)
+            if (daysSinceRest > 7) riskScore += 20;
+            else if (daysSinceRest > 6) riskScore += 15;
+            else if (daysSinceRest > 5) riskScore += 10;
+            
+            const finalRiskScore = Math.min(100, riskScore);
+            
+            // Determine risk level based on score thresholds (matching bar interpretation)
             let riskLevel = 'LOW';
             let riskColor = '#2ecc71'; // Green
             
-            if (externalAcwr > 1.3 || internalAcwr > 1.3 || divergence < -0.15) {
+            if (finalRiskScore > 70) {
               riskLevel = 'HIGH';
               riskColor = '#e74c3c'; // Red
-            } else if (externalAcwr > 1.1 || internalAcwr > 1.1 || divergence < -0.05) {
+            } else if (finalRiskScore > 40) {
               riskLevel = 'MODERATE';
               riskColor = '#f39c12'; // Orange
             }
             
             return (
               <h3 style={{
-                margin: '0 0 0.5rem 0',
+                margin: '0 0 0.25rem 0',
                 fontSize: '0.95rem',
                 fontWeight: '600',
                 color: '#f0f0f0',
@@ -822,9 +856,10 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'flex-start',
-            gap: '1rem',
+            gap: '0.5rem',
             flex: 1,
-            minHeight: '40px'
+            minHeight: '40px',
+            marginTop: '0'
           }}>
             {/* Left Gauge: Training Strain (Dual ACWR) */}
             <MetricTooltip
@@ -960,13 +995,14 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div id="recovery-metrics" style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0',
+          padding: '0.5rem 0.5rem 0.75rem 0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          minHeight: '155px',
-          maxHeight: '155px'
+          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+          border: '3px solid #7a7a7a',
+          height: '165px',
+          boxSizing: 'border-box' as const
         }}>
           <ContextualTooltip
             content={
@@ -1099,15 +1135,16 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.5rem',
-          padding: '0',
+          padding: '0.5rem 0.5rem 0.75rem 0.5rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: '0.5rem',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          minHeight: '155px',
-          maxHeight: '155px'
+          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+          border: '3px solid #7a7a7a',
+          height: '165px',
+          boxSizing: 'border-box' as const
         }}>
           <h3 style={{
             margin: '0',
@@ -1122,14 +1159,14 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             value={selectedDays}
             onChange={(e) => setSelectedDays(parseInt(e.target.value))}
             style={{
-              padding: '0.25rem',
+              padding: '0.25rem 0.5rem',
               borderRadius: '0.25rem',
               border: '1px solid #d1d5db',
               backgroundColor: 'white',
               fontSize: '0.75rem',
               color: colors.dark,
               cursor: 'pointer',
-              width: '100%',
+              width: 'auto',
               textAlign: 'center'
             }}
           >
