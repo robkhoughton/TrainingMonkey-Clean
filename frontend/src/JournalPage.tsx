@@ -687,21 +687,43 @@ const JournalPage: React.FC = () => {
     }
   };
 
-  // Generate recommendation on demand
+  // Generate recommendation on demand (async — POST returns 202 + job_id, then poll)
   const handleGenerateRecommendation = async () => {
+    const POLL_INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 90000;
     try {
       setIsGenerating(true);
-      const response = await fetch('/api/llm-recommendations/generate', {
+
+      const startResponse = await fetch('/api/llm-recommendations/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        alert(`Could not generate recommendation: ${result.error || 'Unknown error'}`);
+      if (!startResponse.ok) {
+        const result = await startResponse.json();
+        alert(`Could not start recommendation generation: ${result.error || 'Unknown error'}`);
         return;
       }
-      await fetchJournalData(centerDate || undefined);
+      const { job_id } = await startResponse.json();
+
+      const deadline = Date.now() + TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+        const statusResponse = await fetch(`/api/llm-recommendations/status/${job_id}`, {
+          credentials: 'include'
+        });
+        const { status, error } = await statusResponse.json();
+        if (status === 'complete') {
+          await fetchJournalData(centerDate || undefined);
+          return;
+        }
+        if (status === 'error') {
+          alert(`Recommendation generation failed: ${error || 'Unknown error'}`);
+          return;
+        }
+        // status === 'pending' — continue polling
+      }
+      alert('Recommendation generation is taking longer than expected. It may complete in the background — refresh in a moment.');
     } catch (error) {
       alert(`Could not generate recommendation: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

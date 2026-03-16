@@ -25,14 +25,15 @@ from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
 from db_utils import execute_query
 from llm_recommendations_module import (
-    call_anthropic_api, 
-    load_training_guide, 
-    get_user_coaching_spectrum, 
+    call_anthropic_api,
+    load_training_guide,
+    get_user_coaching_spectrum,
     get_coaching_tone_instructions,
     get_user_recommendation_style,
     get_adjusted_thresholds,
     analyze_pattern_flags
 )
+from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
 
 # Setup logging
 logging.basicConfig(
@@ -505,9 +506,7 @@ ATHLETE RISK TOLERANCE: {risk_tolerance.upper()} ({thresholds['description']})
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
 - Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
-DIVERGENCE SIGN CONVENTION:
-  Divergence = External ACWR − Internal ACWR. POSITIVE = External > Internal = body handling load well (SAFE).
-  NEGATIVE = Internal > External = physiological overload (RISK). Risk threshold is negative — only triggers below it.
+DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
 Current Training Metrics (Last 28 Days):
 - External ACWR: {ext_acwr}

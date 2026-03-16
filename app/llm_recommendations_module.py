@@ -14,6 +14,7 @@ from datetime import datetime, date, timedelta
 import time
 from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
+from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
 
 # Import database utilities
 from db_utils import (
@@ -123,6 +124,102 @@ def load_training_guide():
     except Exception as e:
         logger.error(f"Error loading training guide: {str(e)}")
         return None
+
+
+def _select_guide_sections(guide_text, assessment_category):
+    """Return a filtered subset of the Training Guide relevant to assessment_category.
+
+    Injects all core sections plus 1-2 Response Scenarios matching the situation.
+    Always omits Weekly Strategic Analysis Examples — not relevant for daily recommendations.
+
+    assessment_category values (from create_enhanced_prompt_with_tone):
+        mandatory_rest, overtraining_risk, high_acwr_risk,
+        recovery_needed, undertraining_opportunity, normal_progression
+    """
+    # Scenario mapping: category → which scenario numbers to inject
+    SCENARIO_MAP = {
+        'mandatory_rest':            ['Scenario 2', 'Scenario 6'],
+        'overtraining_risk':         ['Scenario 2', 'Scenario 6'],
+        'high_acwr_risk':            ['Scenario 2', 'Scenario 6'],
+        'recovery_needed':           ['Scenario 6', 'Scenario 4'],
+        'undertraining_opportunity': ['Scenario 1', 'Scenario 4'],
+        'normal_progression':        ['Scenario 3', 'Scenario 5'],
+    }
+    target_scenarios = SCENARIO_MAP.get(assessment_category, ['Scenario 3', 'Scenario 5'])
+
+    # Core sections — always included regardless of category
+    CORE_SECTIONS = [
+        'Decision Framework for Daily Training',
+        'Advanced Pattern Recognition',
+        'Data Quality Indicators',
+        'Primary Metrics',
+        'Secondary Metrics',
+        'Wellness Metrics',
+        'Optimal Ranges for Health and Performance',
+        'Pattern Recognition',
+        'Quick Assessment Protocol',
+        'Masters Trail Runner Specifications (50+ years)',
+    ]
+
+    # Parse the guide into top-level sections by '## ' headers
+    sections = {}
+    current_key = None
+    current_lines = []
+    for line in guide_text.splitlines():
+        if line.startswith('## '):
+            if current_key is not None:
+                sections[current_key] = '\n'.join(current_lines)
+            current_key = line[3:].strip()
+            current_lines = [line]
+        else:
+            if current_key is not None:
+                current_lines.append(line)
+    if current_key is not None:
+        sections[current_key] = '\n'.join(current_lines)
+
+    # Assemble core sections
+    parts = []
+    for name in CORE_SECTIONS:
+        if name in sections:
+            parts.append(sections[name])
+
+    # Parse and inject only the matching Response Scenarios
+    scenarios_section = sections.get('Claude Response Scenarios', '')
+    selected_count = 0
+    if scenarios_section:
+        scenario_parts = {}
+        current_skey = None
+        current_slines = []
+        for line in scenarios_section.splitlines():
+            # Handle both '### Scenario N' and '###Scenario N' (guide has both)
+            stripped = line.lstrip('#').strip()
+            if (line.startswith('### Scenario') or line.startswith('###Scenario')):
+                if current_skey:
+                    scenario_parts[current_skey] = '\n'.join(current_slines)
+                current_skey = stripped.split(':')[0].strip()  # e.g. 'Scenario 1'
+                current_slines = [line]
+            elif current_skey:
+                current_slines.append(line)
+        if current_skey:
+            scenario_parts[current_skey] = '\n'.join(current_slines)
+
+        selected = [scenario_parts[s] for s in target_scenarios if s in scenario_parts]
+        if selected:
+            parts.append('## Claude Response Scenarios')
+            parts.extend(selected)
+            selected_count = len(selected)
+
+    # Weekly Strategic Analysis Examples intentionally omitted — not relevant for daily calls.
+
+    total_chars = sum(len(p) for p in parts)
+    logger.info(
+        f"_select_guide_sections: category={assessment_category}, "
+        f"scenarios={target_scenarios}, "
+        f"core_sections={len(CORE_SECTIONS)}, scenario_count={selected_count}, "
+        f"approx_chars={total_chars} (was ~28000)"
+    )
+
+    return '\n\n'.join(parts)
 
 
 # Load configuration from config.json
@@ -430,7 +527,7 @@ def create_autopsy_prompt(date_str, prescribed_action, actual_activities, observ
 **Athlete Metrics Context:**
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f}
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f}
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} [{NORMALIZED_DIVERGENCE_FORMULA}]
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 ### PRESCRIBED VS ACTUAL COMPARISON
@@ -577,10 +674,6 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
             update_moving_averages(date_str, user_id)
             logger.info(f"Updated moving averages for {date_str}")
 
-        # Small delay to ensure database updates are committed
-        import time
-        time.sleep(0.5)
-
         # Load the training guide
         training_guide = load_training_guide()
         if not training_guide:
@@ -648,8 +741,10 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         # spectrum_value = get_user_coaching_spectrum(user_id)
         # tone_instructions = get_coaching_tone_instructions(spectrum_value)
 
-        spectrum_value = get_user_coaching_spectrum(user_id)
-        logger.info(f"TONE DEBUG: User {user_id} spectrum={spectrum_value}")
+        user_prefs = get_user_preferences(user_id)
+        spectrum_value = user_prefs['spectrum_value']
+        recommendation_style = user_prefs['recommendation_style']
+        logger.info(f"TONE DEBUG: User {user_id} spectrum={spectrum_value}, style={recommendation_style}")
 
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
         logger.info(f"TONE DEBUG: Instructions preview: {tone_instructions[:100]}...")
@@ -657,7 +752,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         # CRITICAL FIX: Get autopsy insights BEFORE creating prompt so they can be incorporated
         autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
         is_autopsy_informed = bool(autopsy_insights and autopsy_insights.get('count', 0) > 0)
-        
+
         if is_autopsy_informed:
             logger.info(f"Generating autopsy-informed recommendation with {autopsy_insights['count']} recent autopsies, avg alignment: {autopsy_insights['avg_alignment']}")
         else:
@@ -665,7 +760,8 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
 
         prompt = create_enhanced_prompt_with_tone(
             current_metrics, activities, pattern_analysis, training_guide,
-            user_id, tone_instructions, autopsy_insights, target_date=target_date
+            user_id, tone_instructions, autopsy_insights, target_date=target_date,
+            recommendation_style=recommendation_style
         )
 
         # Call the API — use Sonnet for daily recommendations (Phase 2 routing)
@@ -719,7 +815,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         logger.error(f"Error generating enhanced recommendations for user {user_id}: {str(e)}")
         return None
 
-def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None):
+def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
     """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning."""
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
@@ -731,9 +827,10 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         fetch=True
     )
     athlete_profile = athlete_experience[0]['training_experience'].capitalize() if (athlete_experience and athlete_experience[0].get('training_experience')) else "Intermediate"
-    
-    # Get user's recommendation style and adjusted thresholds
-    recommendation_style = get_user_recommendation_style(user_id)
+
+    # Use pre-fetched recommendation_style if provided, otherwise query (fallback for other callers)
+    if recommendation_style is None:
+        recommendation_style = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(recommendation_style)
     
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
@@ -786,6 +883,9 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         assessment_category = "recovery_needed"
     elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         assessment_category = "undertraining_opportunity"
+
+    # Filter the training guide to sections relevant to this assessment category
+    filtered_guide = _select_guide_sections(training_guide, assessment_category) if training_guide else training_guide
 
     # Build athlete model context for prompt injection (Phase 3)
     # Only injected when confidence > 0.15 (get_athlete_model_context handles threshold)
@@ -852,7 +952,7 @@ Assessment Category: {assessment_category}
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
 - Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
-- Normalized Divergence: {formatted_metrics['normalized_divergence']} [= External ACWR − Internal ACWR. POSITIVE = External > Internal = body handling load well, recovery/detraining signal. NEGATIVE = Internal > External = physiological stress exceeding load = OVERTRAINING RISK. Balance zone: -0.05 to +0.05]
+- Normalized Divergence: {formatted_metrics['normalized_divergence']} [{NORMALIZED_DIVERGENCE_FORMULA}]
 - 7-day Average Load: {formatted_metrics['seven_day_avg_load']} miles/day
 - 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
 - Days Since Rest: {formatted_metrics['days_since_rest']}
@@ -874,7 +974,7 @@ Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags['warnings'] els
 {recent_activities_summary}
 
 ### TRAINING REFERENCE FRAMEWORK
-{training_guide}
+{filtered_guide}
 
 ### RESPONSE INSTRUCTIONS
 
@@ -908,27 +1008,10 @@ CRITICAL REQUIREMENTS:
 - Reference specific numbers from the metrics and use established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide
 - Maintain evidence-based analysis while adapting communication style and risk tolerance
 
-DIVERGENCE SIGN CONVENTION — READ BEFORE WRITING ANY PROSE:
-  Divergence = External ACWR − Internal ACWR (External minus Internal)
-  POSITIVE divergence (e.g. +0.130): External load > Internal physiological stress.
-    → Body is handling training load efficiently. SAFE. GREEN signal.
-    → Do NOT flag as overtraining. Do NOT recommend backing off due to divergence alone.
-  NEGATIVE divergence (e.g. -0.150): Internal stress > External load.
-    → Hidden physiological fatigue. This is the OVERTRAINING / INJURY RISK signal.
-    → Risk threshold is NEGATIVE (e.g. <-0.110 triggers risk, not >+0.110).
-  The athlete model injury threshold is stored as a negative value. Risk only triggers when
-  current divergence is MORE NEGATIVE than the threshold — never when it is positive.
-
 ### STRUCTURED OUTPUT (Phase 1)
 After your three prose sections, append a machine-readable JSON block inside XML tags.
 
-DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal.
-
-SIGN CONVENTION (critical — do not invert):
-  Divergence = External ACWR − Internal ACWR
-  POSITIVE divergence (External > Internal): athlete's cardiovascular/physiological system is handling external load well. External load is outpacing internal stress. This is a RECOVERY or DETRAINING signal — NOT overtraining. Low internal ACWR alone is NOT injury risk.
-  NEGATIVE divergence (Internal > External): physiological stress is exceeding what external load metrics show. Hidden fatigue accumulation. This IS the overtraining/injury risk signal.
-  Overtraining threshold: divergence < -0.10 (negative). The athlete model injury threshold is also a NEGATIVE value — risk triggers below it, not above it.
+DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal. {NORMALIZED_DIVERGENCE_FORMULA}
 
 Set assessment.primary_signal to "divergence" unless another signal clearly dominates.
 
@@ -1546,12 +1629,42 @@ TONE & APPROACH for ANALYTICAL COACHING:
         """
 
 
+def get_user_preferences(user_id):
+    """Fetch coaching spectrum and recommendation style in a single user_settings query.
+
+    Returns dict: {spectrum_value: int, recommendation_style: str}.
+    Replaces separate get_user_coaching_spectrum() + get_user_recommendation_style() calls
+    in the recommendation generation path.
+    """
+    try:
+        result = execute_query("""
+            SELECT coaching_style_spectrum, coaching_tone, recommendation_style
+            FROM user_settings
+            WHERE id = %s
+        """, (user_id,), fetch=True)
+
+        if result and len(result) > 0:
+            row = result[0]
+            spectrum_value = row.get('coaching_style_spectrum')
+            if spectrum_value is None:
+                spectrum_value = map_coaching_tone_to_spectrum(row.get('coaching_tone', 'supportive'))
+            recommendation_style = row.get('recommendation_style') or 'balanced'
+            logger.info(f"User {user_id} preferences: spectrum={spectrum_value}, style={recommendation_style}")
+            return {'spectrum_value': spectrum_value, 'recommendation_style': recommendation_style}
+        else:
+            return {'spectrum_value': 50, 'recommendation_style': 'balanced'}
+
+    except Exception as e:
+        logger.error(f"Error fetching preferences for user {user_id}: {str(e)}")
+        return {'spectrum_value': 50, 'recommendation_style': 'balanced'}
+
+
 def get_user_recommendation_style(user_id):
     """Get user's recommendation style preference (conservative/balanced/adaptive/aggressive)"""
     try:
         result = execute_query("""
-            SELECT recommendation_style 
-            FROM user_settings 
+            SELECT recommendation_style
+            FROM user_settings
             WHERE id = %s
         """, (user_id,), fetch=True)
 
@@ -1672,6 +1785,8 @@ def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, act
         if tone_instructions:
             tone_section = f"{tone_instructions}\n\n"
 
+        training_guide = load_training_guide()
+
         prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
 
 {tone_section}ANALYSIS DATE: {date_str}
@@ -1687,6 +1802,12 @@ USER OBSERVATIONS:
 - RPE (Rate of Perceived Exertion): {rpe_score}/10 (How hard did the workout feel? 10=Maximum effort, 1=Very easy)
 - Pain %: {pain_percentage}% (Percentage of time during the activity that the athlete was thinking about pain)
 - Additional Notes: {notes}
+
+DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
+  If the prescribed recommendation flagged a positive divergence as a concern, that was an error — do NOT echo it.
+
+### TRAINING REFERENCE FRAMEWORK
+{training_guide if training_guide else "Apply evidence-based training principles."}
 
 AUTOPSY ANALYSIS INSTRUCTIONS:
 
@@ -2182,6 +2303,8 @@ CURRENT TRAINING METRICS:
 ### TRAINING REFERENCE FRAMEWORK
 {training_guide}
 
+DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
+
 ### AUTOPSY ANALYSIS INSTRUCTIONS
 Using the Training Reference Framework above and the specified tone approach, provide analysis in exactly three sections:
 
@@ -2326,10 +2449,12 @@ ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
 - Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
+DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
+
 CURRENT METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
-- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)  
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} (Balance: -0.05 to +0.05)
+- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
+- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} [{NORMALIZED_DIVERGENCE_FORMULA}]
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 - 7-day Avg Load: {current_metrics.get('seven_day_avg_load') or 0:.2f} miles/day
 
@@ -2388,7 +2513,7 @@ CRITICAL REQUIREMENTS:
 ### STRUCTURED OUTPUT (required)
 After your three prose sections, append a machine-readable JSON block inside XML tags.
 
-SIGN CONVENTION: Divergence = External ACWR − Internal ACWR. POSITIVE = External > Internal = recovery/detraining signal. NEGATIVE = Internal > External = overtraining risk. Overtraining threshold: divergence < -0.10.
+SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
 <structured_output>
 {{

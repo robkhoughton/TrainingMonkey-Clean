@@ -18,6 +18,8 @@ except FileNotFoundError:
     print("[WARN] No .env file found. Run: python setup_environment.py")
 import time
 import json
+import threading
+import uuid
 import db_utils
 from datetime import datetime, timedelta, date
 from timezone_utils import get_app_current_date, log_timezone_debug
@@ -2141,24 +2143,81 @@ def get_journal_status_endpoint():
         return jsonify({'success': False, 'error': str(e), 'status': {'allow_manual_generation': True, 'reason': 'error'}}), 500
 '''
 
+# ---------------------------------------------------------------------------
+# Async recommendation generation — job store
+# ---------------------------------------------------------------------------
+# In-memory store: {job_id: {status, error, user_id, created_at}}
+# Entries older than 10 minutes are pruned on each new job creation.
+_rec_jobs: dict = {}
+_rec_jobs_lock = threading.Lock()
+
+
+def _cleanup_stale_rec_jobs():
+    """Remove job entries older than 10 minutes."""
+    cutoff = time.time() - 600
+    with _rec_jobs_lock:
+        stale = [jid for jid, j in _rec_jobs.items() if j['created_at'] < cutoff]
+        for jid in stale:
+            del _rec_jobs[jid]
+
+
+def _run_recommendation_job(job_id, user_id, use_agentic):
+    """Background thread: run generation and update job store on completion."""
+    try:
+        if use_agentic:
+            result = generate_recommendations_agentic(user_id=user_id)
+        else:
+            result = generate_recommendations(force=True, user_id=user_id)
+        with _rec_jobs_lock:
+            _rec_jobs[job_id]['status'] = 'complete' if result else 'error'
+            if not result:
+                _rec_jobs[job_id]['error'] = 'Generation returned no result'
+        logger.info(f"Async recommendation job {job_id} finished: {'complete' if result else 'error'}")
+    except Exception as e:
+        logger.error(f"Async recommendation job {job_id} failed: {e}")
+        with _rec_jobs_lock:
+            _rec_jobs[job_id]['status'] = 'error'
+            _rec_jobs[job_id]['error'] = str(e)
+
+
 @login_required
 @app.route('/api/llm-recommendations/generate', methods=['POST'])
 def generate_llm_recommendations():
-    """Generate new comprehensive LLM recommendations for the current user"""
-    try:
-        logger.info(f"Generating new LLM recommendations for user {current_user.id}...")
-        if _is_feature_enabled('agentic_context', current_user.id):
-            logger.info(f"Using agentic path for user {current_user.id}")
-            recommendation = generate_recommendations_agentic(user_id=current_user.id)
-        else:
-            recommendation = generate_recommendations(force=True, user_id=current_user.id)
-        if recommendation:
-            return jsonify({'success': True, 'message': 'Generated successfully'})
-        else:
-            return jsonify({'success': False, 'error': 'Failed to generate'}), 500
-    except Exception as e:
-        logger.error(f"Error generating recommendations: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Start async recommendation generation. Returns 202 with job_id immediately."""
+    _cleanup_stale_rec_jobs()
+    user_id = current_user.id
+    use_agentic = _is_feature_enabled('agentic_context', user_id)
+    job_id = str(uuid.uuid4())
+
+    with _rec_jobs_lock:
+        _rec_jobs[job_id] = {
+            'status': 'pending',
+            'error': None,
+            'user_id': user_id,
+            'created_at': time.time()
+        }
+
+    thread = threading.Thread(
+        target=_run_recommendation_job,
+        args=(job_id, user_id, use_agentic),
+        daemon=True
+    )
+    thread.start()
+    logger.info(f"Started async recommendation job {job_id} for user {user_id} (agentic={use_agentic})")
+    return jsonify({'job_id': job_id, 'status': 'pending'}), 202
+
+
+@app.route('/api/llm-recommendations/status/<job_id>', methods=['GET'])
+@login_required
+def get_recommendation_job_status(job_id):
+    """Poll for async recommendation generation status."""
+    with _rec_jobs_lock:
+        job = _rec_jobs.get(job_id)
+    if not job:
+        return jsonify({'status': 'not_found'}), 404
+    if job['user_id'] != current_user.id:
+        return jsonify({'status': 'not_found'}), 404
+    return jsonify({'status': job['status'], 'error': job.get('error')})
 
 
 @app.route('/api/journal-entries-count', methods=['GET'])
@@ -4034,6 +4093,58 @@ def get_journal_entries():
                     'generated_at': autopsy_dict.get('generated_at')
                 }
 
+        # Batch fetch recommendations for the entire date range (replaces per-date queries in loop)
+        recs_raw = db_utils.execute_query(
+            """
+            SELECT target_date, daily_recommendation, structured_output
+            FROM llm_recommendations
+            WHERE user_id = %s AND target_date >= %s AND target_date <= %s
+            ORDER BY target_date, id DESC
+            """,
+            (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+            fetch=True
+        )
+        recs_by_date = {}
+        if recs_raw:
+            for row in recs_raw:
+                r = dict(row)
+                td = r.get('target_date')
+                if hasattr(td, 'strftime'):
+                    td = td.strftime('%Y-%m-%d')
+                elif td and isinstance(td, str) and 'T' in td:
+                    td = td.split('T')[0]
+                else:
+                    td = str(td) if td else None
+                if td and td not in recs_by_date:  # first row per date = latest id
+                    recs_by_date[td] = r
+
+        if not recs_by_date:
+            logger.warning(f"No recommendations found in date range for user {current_user.id}")
+
+        # Batch fetch activities for the entire date range (real + rest days)
+        activities_raw = db_utils.execute_query(
+            """
+            SELECT activity_id, date, name, type, distance_miles, elevation_gain_feet,
+                   trimp, duration_minutes, avg_heart_rate, max_heart_rate,
+                   time_in_zone1, time_in_zone2, time_in_zone3, time_in_zone4, time_in_zone5
+            FROM activities
+            WHERE user_id = %s AND date >= %s AND date <= %s
+            ORDER BY date, activity_id DESC
+            """,
+            (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
+            fetch=True
+        )
+        activities_by_date = {}
+        if activities_raw:
+            for row in activities_raw:
+                r = dict(row)
+                d = r.get('date')
+                if hasattr(d, 'strftime'):
+                    d = d.strftime('%Y-%m-%d')
+                else:
+                    d = str(d)
+                activities_by_date.setdefault(d, []).append(r)
+
         # Generate 8-day journal structure (6 past days + today + tomorrow)
         journal_entries = []
         current_date = start_date
@@ -4045,14 +4156,41 @@ def get_journal_entries():
             is_future = current_date > user_current_date
             is_tomorrow = current_date == (user_current_date + timedelta(days=1))
 
-            # FIXED: Use unified function that matches Dashboard logic
-            todays_decision = get_unified_recommendation_for_date(current_date, current_user.id)
+            # Recommendation text — dict lookup, no DB query
+            rec_row = recs_by_date.get(date_str)
+            if rec_row and rec_row.get('daily_recommendation'):
+                todays_decision = rec_row['daily_recommendation']
+            else:
+                if is_future:
+                    todays_decision = "No recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
+                elif is_today:
+                    date_label = f"TODAY'S WORKOUT ({current_date.strftime('%A, %B %d')})"
+                    todays_decision = f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
+                else:
+                    date_label = f"WORKOUT for {current_date.strftime('%A, %B %d')}"
+                    todays_decision = f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
 
-            # Phase 6C: Fetch structured_output and target_date for the meta panel
-            rec_structured_output, rec_target_date = get_recommendation_meta_for_date(current_date, current_user.id)
+            # Structured output + target_date — dict lookup, no DB query
+            if rec_row:
+                raw_so = rec_row.get('structured_output')
+                if isinstance(raw_so, str):
+                    try:
+                        raw_so = json.loads(raw_so)
+                    except Exception:
+                        raw_so = None
+                td = rec_row.get('target_date')
+                if td and hasattr(td, 'strftime'):
+                    rec_target_date = td.strftime('%Y-%m-%d')
+                elif td and isinstance(td, str) and 'T' in td:
+                    rec_target_date = td.split('T')[0]
+                else:
+                    rec_target_date = str(td) if td else None
+                rec_structured_output = raw_so
+            else:
+                rec_structured_output, rec_target_date = None, None
 
-            # Get activity summary for this date (won't exist for future dates)
-            activity_summary = get_activity_summary_for_date(current_date, current_user.id) if not is_future else None
+            # Activity summary — build from pre-fetched rows, no DB query
+            activity_summary = _build_activity_summary(activities_by_date.get(date_str, [])) if not is_future else None
 
             # Build observations from lookup (won't exist for future dates)
             obs_data = obs_by_date.get(date_str, {})
@@ -4412,6 +4550,41 @@ def classify_workout_by_hr_zones(activity_list):
             return 'Tempo/Threshold'
         else:
             return 'Intervals/Hard'
+
+
+def _build_activity_summary(day_activities):
+    """Build activity summary dict from a pre-fetched list of activity rows for one date.
+
+    Accepts the same row dicts that get_activity_summary_for_date queries individually.
+    Used by the journal GET handler to avoid per-date DB queries.
+    """
+    real = [a for a in day_activities if (a.get('activity_id') or 0) > 0]
+    rest = [a for a in day_activities if (a.get('activity_id') or 0) < 0]
+
+    if not real:
+        rest_activity_id = rest[0]['activity_id'] if rest else None
+        return {
+            'type': 'rest',
+            'distance': 0,
+            'elevation': 0,
+            'workout_classification': 'Rest',
+            'total_trimp': 0,
+            'activity_id': rest_activity_id
+        }
+
+    total_distance = sum(float(a.get('distance_miles', 0) or 0) for a in real)
+    total_elevation = sum(float(a.get('elevation_gain_feet', 0) or 0) for a in real)
+    total_trimp = sum(float(a.get('trimp', 0) or 0) for a in real)
+    primary = max(real, key=lambda x: x.get('distance_miles', 0) or 0)
+
+    return {
+        'type': primary.get('type', 'Unknown'),
+        'distance': round(total_distance, 2),
+        'elevation': round(total_elevation, 0),
+        'workout_classification': classify_workout_by_hr_zones(real),
+        'total_trimp': round(total_trimp, 1),
+        'activity_id': primary.get('activity_id')
+    }
 
 
 def get_activity_summary_for_date(date_obj, user_id):
