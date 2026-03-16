@@ -55,6 +55,13 @@ interface Metrics {
   sevenDayAvgTrimp: number;
   daysSinceRest: number;
   normalizedDivergence: number;
+  // Backend-computed risk fields (user-specific thresholds from get_adjusted_thresholds())
+  injuryRiskScore?: number;
+  injuryRiskLabel?: string;
+  acwrHighThreshold?: number;
+  acwrUndertrainingThreshold?: number;
+  divergenceWarnThreshold?: number;
+  divergenceModerateThreshold?: number;
   dashboardConfig?: {
     chronic_period_days: number;
     decay_rate: number;
@@ -107,6 +114,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     daysSinceRest: 0,
     normalizedDivergence: 0
   });
+  const [userToday, setUserToday] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('30');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,9 +135,37 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     coordinate: { x: number; y: number };
   } | null>(null);
 
-  const handleSyncComplete = () => {
-    console.log("Sync completed, refreshing dashboard data...");
-    window.location.reload();
+  // Post-sync journal prompt state (Phase 6A)
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [syncedActivityName, setSyncedActivityName] = useState('your workout');
+  const [journalForm, setJournalForm] = useState<{
+    energy_level: number | null;
+    rpe_score: number | null;
+    notes: string;
+  }>({ energy_level: null, rpe_score: null, notes: '' });
+
+  const handleSyncComplete = async () => {
+    // Check if today's journal observations already exist before prompting
+    try {
+      const res = await fetch('/api/journal', { credentials: 'include' });
+      const data = await res.json();
+      if (data.success && data.data) {
+        const todayEntry = data.data.find((e: any) => e.is_today);
+        const hasActivity = todayEntry?.activity_summary?.activity_id != null;
+        if (!hasActivity || todayEntry?.has_observations) {
+          // No activity to journal, or already journaled — just reload
+          window.location.reload();
+          return;
+        }
+        if (todayEntry?.activity_summary?.name) {
+          setSyncedActivityName(todayEntry.activity_summary.name);
+        }
+      }
+    } catch {
+      // On error, fall through and show modal anyway
+    }
+    setJournalForm({ energy_level: null, rpe_score: null, notes: '' });
+    setShowJournalModal(true);
   };
 
   // Get chart dimensions from custom hook
@@ -395,22 +431,25 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     return [domainTop, domainBottom]; // Inverted order for chart
   };
 
-  // Filter data based on date range
+  // Filter data based on date range, anchored to user_today from the backend.
+  // Using the last activity date as the anchor would silently shift the window
+  // if the user hasn't synced recently.
   const filteredData = () => {
     if (data.length === 0) return [];
 
     const days = parseInt(dateRange, 10);
+    // Prefer server-authoritative today; fall back to last activity date only if unavailable
     const allDates = data.map(item => item.date).sort();
-    const maxDate = allDates[allDates.length - 1];
+    const anchorDate = userToday ?? allDates[allDates.length - 1];
 
-    const maxDateObj = new Date(`${maxDate}T12:00:00Z`);
-    const cutoffDateObj = new Date(maxDateObj);
+    const anchorDateObj = new Date(`${anchorDate}T12:00:00Z`);
+    const cutoffDateObj = new Date(anchorDateObj);
     cutoffDateObj.setDate(cutoffDateObj.getDate() - days + 1);
 
     const cutoffDate = cutoffDateObj.toISOString().split('T')[0];
 
     return data.filter(item => {
-      return item.date >= cutoffDate && item.date <= maxDate;
+      return item.date >= cutoffDate && item.date <= anchorDate;
     });
   };
 
@@ -556,53 +595,38 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             setHasStrengthData(result.has_strength_data);
           }
 
-          // FIXED: Calculate metrics from the latest entry in processedData
-          // This ensures consistency - we use the same recalculated ACWR values shown in charts
-          if (processedData.length > 0) {
-            const latestEntry = processedData[processedData.length - 1];
+          // Use backend current_metrics: decay-adjusted values as of today, not just the last
+          // array entry (which may be days stale if the user hasn't trained recently).
+          const cm = result.current_metrics;
+          setMetrics(prev => ({
+            ...prev,
+            externalAcwr: coerceNumber(cm?.external_acwr, 0),
+            internalAcwr: coerceNumber(cm?.internal_acwr, 0),
+            sevenDayAvgLoad: coerceNumber(cm?.seven_day_avg_load, 0),
+            sevenDayAvgTrimp: coerceNumber(cm?.seven_day_avg_trimp, 0),
+            daysSinceRest: typeof result.days_since_rest === 'number' ? result.days_since_rest : 0,
+            normalizedDivergence: coerceNumber(cm?.normalized_divergence, 0),
+            injuryRiskScore: typeof cm?.injury_risk_score === 'number' ? cm.injury_risk_score : undefined,
+            injuryRiskLabel: typeof cm?.injury_risk_label === 'string' ? cm.injury_risk_label : undefined,
+            acwrHighThreshold: typeof cm?.acwr_high_threshold === 'number' ? cm.acwr_high_threshold : undefined,
+            acwrUndertrainingThreshold: typeof cm?.acwr_undertraining_threshold === 'number' ? cm.acwr_undertraining_threshold : undefined,
+            divergenceWarnThreshold: typeof cm?.divergence_warn_threshold === 'number' ? cm.divergence_warn_threshold : undefined,
+            divergenceModerateThreshold: typeof cm?.divergence_moderate_threshold === 'number' ? cm.divergence_moderate_threshold : undefined,
+          }));
 
-            // Calculate days since rest by finding the last rest day in processedData
-            let daysSinceRest = 0;
-            for (let i = processedData.length - 1; i >= 0; i--) {
-              if (processedData[i].activity_id === 0 || processedData[i].type === 'rest') {
-                // Found a rest day
-                daysSinceRest = processedData.length - 1 - i;
-                break;
-              }
-            }
-            // If no rest day found in the data, count all days
-            if (daysSinceRest === 0 && processedData.length > 0) {
-              daysSinceRest = processedData.length - 1;
-            }
-
-            setMetrics(prev => ({
-              ...prev,
-              externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
-              internalAcwr: coerceNumber(latestEntry.trimp_acute_chronic_ratio, 0),
-              sevenDayAvgLoad: coerceNumber(latestEntry.seven_day_avg_load, 0),
-              sevenDayAvgTrimp: coerceNumber(latestEntry.seven_day_avg_trimp, 0),
-              daysSinceRest: daysSinceRest,
-              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0)
-            }));
-
-            console.log('Metrics calculated from training data:', {
-              externalAcwr: coerceNumber(latestEntry.acute_chronic_ratio, 0),
-              internalAcwr: coerceNumber(latestEntry.trimp_acute_chronic_ratio, 0),
-              daysSinceRest: daysSinceRest,
-              normalizedDivergence: coerceNumber(latestEntry.normalized_divergence, 0)
-            });
-          } else {
-            // No data - set zeros
-            setMetrics(prev => ({
-              ...prev,
-              externalAcwr: 0,
-              internalAcwr: 0,
-              sevenDayAvgLoad: 0,
-              sevenDayAvgTrimp: 0,
-              daysSinceRest: 0,
-              normalizedDivergence: 0
-            }));
+          // Store user_today so filteredData() anchors to the real current date, not the last activity date
+          if (typeof result.user_today === 'string') {
+            setUserToday(result.user_today);
           }
+
+          console.log('Metrics from current_metrics:', {
+            externalAcwr: cm?.external_acwr,
+            internalAcwr: cm?.internal_acwr,
+            daysSinceRest: result.days_since_rest,
+            normalizedDivergence: cm?.normalized_divergence,
+            injuryRiskScore: cm?.injury_risk_score,
+            injuryRiskLabel: cm?.injury_risk_label,
+          });
 
         } catch (error) {
           console.error("Error loading data:", error);
@@ -846,9 +870,172 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     );
   }
 
+  // Post-sync journal modal handlers
+  const handleJournalSkip = () => {
+    setShowJournalModal(false);
+    window.location.reload();
+  };
+
+  const handleJournalSave = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const response = await fetch('/api/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: today,
+          energy_level: journalForm.energy_level,
+          rpe_score: journalForm.rpe_score,
+          notes: journalForm.notes || null,
+        }),
+      });
+      if (!response.ok) {
+        console.error('Journal save failed:', await response.text());
+      }
+    } catch (err) {
+      console.error('Journal save error:', err);
+    }
+    setShowJournalModal(false);
+    window.location.reload();
+  };
+
   // Main dashboard render
   return (
     <div className={styles.container}>
+      {/* Post-Sync Journal Prompt Modal (Phase 6A) */}
+      {showJournalModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '0.5rem',
+            padding: '1.5rem',
+            width: '100%',
+            maxWidth: '420px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+          }}>
+            <h2 style={{ margin: '0 0 1.25rem', fontSize: '1.1rem', fontWeight: '600', color: '#1e293b' }}>
+              Log your workout — {syncedActivityName}
+            </h2>
+
+            {/* Energy level */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+                How did you feel going into this workout?
+              </label>
+              <select
+                value={journalForm.energy_level ?? ''}
+                onChange={(e) => setJournalForm(f => ({ ...f, energy_level: e.target.value ? Number(e.target.value) : null }))}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  backgroundColor: 'white',
+                }}
+              >
+                <option value="">Select...</option>
+                <option value="1">1 — Barely got out of bed</option>
+                <option value="2">2 — Low energy</option>
+                <option value="3">3 — Normal</option>
+                <option value="4">4 — High energy</option>
+                <option value="5">5 — Fired up</option>
+              </select>
+            </div>
+
+            {/* RPE */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+                How hard did it feel? (RPE 1–10)
+              </label>
+              <select
+                value={journalForm.rpe_score ?? ''}
+                onChange={(e) => setJournalForm(f => ({ ...f, rpe_score: e.target.value ? Number(e.target.value) : null }))}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  backgroundColor: 'white',
+                }}
+              >
+                <option value="">Select...</option>
+                {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+                Notes (optional)
+              </label>
+              <textarea
+                value={journalForm.notes}
+                onChange={(e) => setJournalForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Anything to add?"
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                onClick={handleJournalSkip}
+                style={{
+                  padding: '0.5rem 1rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  backgroundColor: 'white',
+                  color: '#6b7280',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleJournalSave}
+                style={{
+                  padding: '0.5rem 1rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  backgroundColor: '#6B8F7F',
+                  color: 'white',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                }}
+              >
+                Save &amp; Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dashboard Tour (for new users) */}
       <DashboardTour
         step={tourStep}
@@ -1086,46 +1273,51 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               />
               <Legend />
 
-              {/* Risk zones with improved color contrast */}
-              {/* Low Risk: < 0.8 */}
-              <ReferenceArea
-                y1={0}
-                y2={0.8}
-                fill="rgba(40, 167, 69, 0.15)"
-                stroke="rgba(40, 167, 69, 0.3)"
-                strokeWidth={1}
-                label={{ value: "Low Risk", position: "insideTopLeft", fontSize: 10, fill: "green" }}
-              />
-              
-              {/* Balanced: 0.8-1.3 */}
-              <ReferenceArea
-                y1={0.8}
-                y2={1.3}
-                fill="rgba(255, 193, 7, 0.2)"
-                stroke="rgba(255, 193, 7, 0.3)"
-                strokeWidth={1}
-                label={{ value: "Balanced", position: "insideTopLeft", fontSize: 10, fill: "#b8860b" }}
-              />
-              
-              {/* Moderate Risk: 1.3-1.5 */}
-              <ReferenceArea
-                y1={1.3}
-                y2={1.5}
-                fill="rgba(255, 87, 34, 0.25)"
-                stroke="rgba(255, 87, 34, 0.3)"
-                strokeWidth={1}
-                label={{ value: "Moderate Risk", position: "insideTopLeft", fontSize: 10, fill: "#ff5722" }}
-              />
-              
-              {/* High Risk: >1.5 */}
-              <ReferenceArea
-                y1={1.5}
-                y2={2.5}
-                fill="rgba(199, 21, 133, 0.25)"
-                stroke="rgba(199, 21, 133, 0.3)"
-                strokeWidth={1}
-                label={{ value: "High Risk", position: "insideTopLeft", fontSize: 10, fill: "#c71585" }}
-              />
+              {/* Risk zones — boundaries from user-specific thresholds (get_adjusted_thresholds()) */}
+              {(() => {
+                const high = metrics.acwrHighThreshold ?? 1.3;
+                const undertraining = metrics.acwrUndertrainingThreshold ?? 0.8;
+                return (
+                  <>
+                    {/* Low Risk: < undertraining */}
+                    <ReferenceArea
+                      y1={0}
+                      y2={undertraining}
+                      fill="rgba(40, 167, 69, 0.15)"
+                      stroke="rgba(40, 167, 69, 0.3)"
+                      strokeWidth={1}
+                      label={{ value: "Low Risk", position: "insideTopLeft", fontSize: 10, fill: "green" }}
+                    />
+                    {/* Balanced: undertraining–high */}
+                    <ReferenceArea
+                      y1={undertraining}
+                      y2={high}
+                      fill="rgba(255, 193, 7, 0.2)"
+                      stroke="rgba(255, 193, 7, 0.3)"
+                      strokeWidth={1}
+                      label={{ value: "Balanced", position: "insideTopLeft", fontSize: 10, fill: "#b8860b" }}
+                    />
+                    {/* Moderate Risk: high to high+0.2 */}
+                    <ReferenceArea
+                      y1={high}
+                      y2={high + 0.2}
+                      fill="rgba(255, 87, 34, 0.25)"
+                      stroke="rgba(255, 87, 34, 0.3)"
+                      strokeWidth={1}
+                      label={{ value: "Moderate Risk", position: "insideTopLeft", fontSize: 10, fill: "#ff5722" }}
+                    />
+                    {/* High Risk: > high+0.2 */}
+                    <ReferenceArea
+                      y1={high + 0.2}
+                      y2={2.5}
+                      fill="rgba(199, 21, 133, 0.25)"
+                      stroke="rgba(199, 21, 133, 0.3)"
+                      strokeWidth={1}
+                      label={{ value: "High Risk", position: "insideTopLeft", fontSize: 10, fill: "#c71585" }}
+                    />
+                  </>
+                );
+              })()}
 
               {/* Internal Load (TRIMP) Line */}
               <Line

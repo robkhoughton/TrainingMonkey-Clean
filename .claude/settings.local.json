@@ -32,13 +32,23 @@
       "Bash(npx -y playwright --version)",
       "Bash(npx:*)",
       "Bash(where:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(iconv:*)",
+      "Bash(gcloud logging:*)",
+      "Bash(gcloud run:*)",
+      "Bash(gcloud sql:*)",
+      "Bash(gcloud compute networks vpc-access connectors list:*)",
+      "Bash(gcloud artifacts:*)",
+      "mcp__open-brain__list_thoughts",
+      "mcp__open-brain__capture_thought",
+      "mcp__open-brain__search_thoughts",
+      "Bash(cd \"C:\\\\Users\\\\robho\\\\Documents\\\\VAULT\\\\TrainingMonkey-Clean\" && bash scripts/build_and_copy.sh 2>&1 | tail -5)"
     ],
     "deny": [],
     "ask": []
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "playwright"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

@@ -21,8 +21,11 @@ from db_utils import (
     save_llm_recommendation,
     get_latest_recommendation,
     recommendation_needs_update,
+    recommendation_is_stale,  # Phase 5: explicit date-based staleness check
     cleanup_old_recommendations,  # Updated from deprecated clear_old_recommendations
-    get_last_activity_date
+    get_last_activity_date,
+    get_athlete_model,
+    upsert_athlete_model,
 )
 
 # Setup logging - write to stdout for Cloud Logging visibility
@@ -40,6 +43,11 @@ DEFAULT_VALID_DAYS = 1
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 ACTIVITY_ANALYSIS_DAYS = 28
 RECOMMENDATION_TEMPERATURE = 0.7
+
+# Model constants (Phase 2) — overridden from config.json after load
+MODEL_SONNET = "claude-sonnet-4-6"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
+MODEL_OPUS = "claude-opus-4-6"
 
 def fix_dates_for_json(data):
     """Quick fix: Convert date objects to strings for JSON serialization"""
@@ -133,6 +141,11 @@ try:
         RECOMMENDATION_TEMPERATURE = LLM_SETTINGS.get('temperature', RECOMMENDATION_TEMPERATURE)
         DEFAULT_VALID_DAYS = LLM_SETTINGS.get('valid_days', DEFAULT_VALID_DAYS)
         ACTIVITY_ANALYSIS_DAYS = LLM_SETTINGS.get('analysis_days', ACTIVITY_ANALYSIS_DAYS)
+
+        # Override model constants from config
+        MODEL_SONNET = LLM_SETTINGS.get('model_sonnet', MODEL_SONNET)
+        MODEL_HAIKU = LLM_SETTINGS.get('model_haiku', MODEL_HAIKU)
+        MODEL_OPUS = LLM_SETTINGS.get('model_opus', MODEL_OPUS)
 
         logger.info(f"Loaded configuration from {CONFIG_PATH}")
         logger.info(f"Using model: {DEFAULT_MODEL}, temperature: {RECOMMENDATION_TEMPERATURE}")
@@ -291,9 +304,87 @@ def create_recent_activities_summary(activities):
     return "\n".join(summary_lines)
 
 
+def get_model_for_task(task):
+    """Route to the appropriate Claude model based on task type."""
+    task_routing = {
+        'daily': MODEL_SONNET,
+        'autopsy': MODEL_HAIKU,
+        'weekly': MODEL_SONNET,
+        'weekly_comprehensive': MODEL_OPUS,
+    }
+    return task_routing.get(task, MODEL_SONNET)
+
+
+def extract_structured_output(response_text):
+    """Extract and parse the structured JSON block from <structured_output> XML tags.
+
+    Returns parsed dict or None if the block is absent or unparseable.
+    """
+    import re
+    match = re.search(r'<structured_output>\s*(.*?)\s*</structured_output>', response_text, re.DOTALL)
+    if not match:
+        logger.info("No <structured_output> block found in LLM response")
+        return None
+    try:
+        json_str = match.group(1).strip()
+        parsed = json.loads(json_str)
+        logger.info("✅ Successfully extracted structured output JSON")
+        return parsed
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse structured output JSON: {e}")
+        return None
+
+
+def call_claude(prompt, model=None, temperature=None, max_tokens=2000, timeout=60, task='daily'):
+    """Call Claude API using the Anthropic SDK.
+
+    Drop-in replacement for call_anthropic_api() with identical return type (str).
+    Uses get_model_for_task() routing when model is not explicitly specified.
+
+    Args:
+        prompt: The prompt text
+        model: Claude model override (uses task routing if None)
+        temperature: Sampling temperature (uses RECOMMENDATION_TEMPERATURE if None)
+        max_tokens: Maximum tokens to generate
+        timeout: Unused (SDK handles timeouts internally — kept for signature compat)
+        task: Task type for model routing ('daily', 'autopsy', 'weekly', 'weekly_comprehensive')
+    """
+    if model is None:
+        model = get_model_for_task(task)
+    if temperature is None:
+        temperature = RECOMMENDATION_TEMPERATURE
+
+    try:
+        import anthropic as anthropic_sdk
+        api_key = get_api_key()
+        client = anthropic_sdk.Anthropic(api_key=api_key)
+
+        logger.info(f"Calling Claude (SDK) model={model}, max_tokens={max_tokens}, temperature={temperature}, task={task}")
+
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = message.content[0].text
+        logger.info(
+            f"SDK call successful: {message.usage.input_tokens} input, "
+            f"{message.usage.output_tokens} output tokens"
+        )
+        return response_text
+
+    except Exception as e:
+        logger.error(f"Error calling Claude API (SDK): {str(e)}", exc_info=True)
+        raise
+
+
 def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=2000, timeout=30):
-    """Call the Anthropic API with the enhanced prompt.
-    
+    """Legacy wrapper — delegates to call_claude(). Kept for backward compatibility.
+
+    All new code should call call_claude() directly with the appropriate task parameter.
+
     Args:
         prompt: The prompt text
         model: Claude model to use
@@ -301,51 +392,7 @@ def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_T
         max_tokens: Maximum tokens to generate
         timeout: API timeout in seconds (default 30, use 60-90 for complex generations)
     """
-    try:
-        api_key = get_api_key()
-
-        headers = {
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "anthropic-version": "2023-06-01"
-        }
-
-        data = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "max_tokens": max_tokens
-        }
-
-        logger.info(f"Calling Anthropic API with model {model}, max_tokens={max_tokens}, temperature={temperature}, timeout={timeout}s")
-        response = requests.post(ANTHROPIC_API_URL, headers=headers, json=data, timeout=timeout)
-
-        if response.status_code != 200:
-            error_msg = f"API call failed with status code {response.status_code}: {response.text}"
-            logger.error(error_msg)
-            # Log specific error details for debugging
-            if response.status_code == 401:
-                logger.error("Authentication failed - check API key")
-            elif response.status_code == 429:
-                logger.error("Rate limit exceeded or insufficient credits")
-            elif response.status_code == 400:
-                logger.error(f"Bad request - check prompt format: {response.text}")
-            raise Exception(error_msg)
-
-        response_json = response.json()
-        response_text = response_json.get('content', [{}])[0].get('text', '')
-        
-        logger.info(f"API call successful, response length: {len(response_text)} chars")
-        return response_text
-
-    except requests.exceptions.Timeout:
-        logger.error("API request timed out after 30 seconds")
-        raise
-    except Exception as e:
-        logger.error(f"Error calling Anthropic API: {str(e)}", exc_info=True)
-        raise
+    return call_claude(prompt, model=model, temperature=temperature, max_tokens=max_tokens, timeout=timeout, task='daily')
 
 
 def format_observations_for_prompt(observations):
@@ -547,14 +594,14 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         if target_tomorrow:
             target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
             logger.info(f"REST DAY: Explicitly targeting tomorrow: {target_date}")
-        elif has_activity_today:
-            # User has already worked out today → recommendation is for TOMORROW
+        elif has_activity_today and check_journal_for_date(user_id, current_date_str):
+            # User has worked out today AND completed journal → recommendation is for TOMORROW
             target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
-            logger.info(f"User {user_id} has activity for {current_date_str}, targeting tomorrow: {target_date}")
+            logger.info(f"User {user_id} has activity + journal for {current_date_str}, targeting tomorrow: {target_date}")
         else:
-            # User has NOT worked out today → recommendation is for TODAY
+            # No activity today, or activity exists but journal not yet complete → TODAY
             target_date = current_date_str
-            logger.info(f"User {user_id} has NO activity for {current_date_str}, targeting today: {target_date}")
+            logger.info(f"User {user_id} targeting today: {target_date} (has_activity={has_activity_today}, journal_complete={check_journal_for_date(user_id, current_date_str)})")
 
         # CRITICAL FIX: Check if recommendation already exists for this target_date
         # This prevents overwriting historical recommendations
@@ -616,10 +663,13 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         else:
             logger.info("Generating standard recommendation without recent autopsy data")
 
-        prompt = create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights)
+        prompt = create_enhanced_prompt_with_tone(
+            current_metrics, activities, pattern_analysis, training_guide,
+            user_id, tone_instructions, autopsy_insights, target_date=target_date
+        )
 
-        # Call the API
-        llm_response = call_anthropic_api(prompt)
+        # Call the API — use Sonnet for daily recommendations (Phase 2 routing)
+        llm_response = call_claude(prompt, task='daily')
 
         # Parse the response
         sections = parse_llm_response(llm_response)
@@ -645,7 +695,9 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
             # NEW: Autopsy tracking fields
             'is_autopsy_informed': is_autopsy_informed,
             'autopsy_count': autopsy_insights['count'] if autopsy_insights else 0,
-            'avg_alignment_score': autopsy_insights['avg_alignment'] if autopsy_insights else None
+            'avg_alignment_score': autopsy_insights['avg_alignment'] if autopsy_insights else None,
+            # Phase 1: Structured output (None if model didn't emit the block)
+            'structured_output': sections.get('structured_output')
         }
 
         # Save to database
@@ -667,7 +719,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
         logger.error(f"Error generating enhanced recommendations for user {user_id}: {str(e)}")
         return None
 
-def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None):
+def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None):
     """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning."""
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
@@ -735,6 +787,31 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         assessment_category = "undertraining_opportunity"
 
+    # Build athlete model context for prompt injection (Phase 3)
+    # Only injected when confidence > 0.15 (get_athlete_model_context handles threshold)
+    athlete_model_context = get_athlete_model_context(user_id)
+
+    # Get morning readiness for current date (Phase 6B)
+    readiness_data = execute_query(
+        "SELECT sleep_quality, morning_soreness FROM journal_entries WHERE user_id = %s AND date = %s",
+        (user_id, current_date),
+        fetch=True
+    )
+
+    readiness_context = ""
+    if readiness_data and readiness_data[0]:
+        row = dict(readiness_data[0])
+        sq = row.get('sleep_quality')
+        ms = row.get('morning_soreness')
+        if sq is not None or ms is not None:
+            parts = []
+            if sq is not None:
+                sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
+                parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
+            if ms is not None:
+                parts.append(f"Morning soreness: {ms}/100")
+            readiness_context = "\n### MORNING READINESS\n" + "\n".join(f"- {p}" for p in parts) + "\n"
+
     # Build autopsy context section if insights available
     autopsy_context = ""
     if autopsy_insights and autopsy_insights.get('count', 0) > 0:
@@ -774,11 +851,13 @@ Assessment Category: {assessment_category}
 
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
-- Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)  
-- Normalized Divergence: {formatted_metrics['normalized_divergence']} (Balance zone: -0.05 to +0.05)
+- Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
+- Normalized Divergence: {formatted_metrics['normalized_divergence']} [= External ACWR − Internal ACWR. POSITIVE = External > Internal = body handling load well, recovery/detraining signal. NEGATIVE = Internal > External = physiological stress exceeding load = OVERTRAINING RISK. Balance zone: -0.05 to +0.05]
 - 7-day Average Load: {formatted_metrics['seven_day_avg_load']} miles/day
 - 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
 - Days Since Rest: {formatted_metrics['days_since_rest']}
+{athlete_model_context}
+{readiness_context}
 {autopsy_context}
 ### PATTERN ANALYSIS
 Training Trends:
@@ -828,6 +907,89 @@ CRITICAL REQUIREMENTS:
 - Keep each section focused and actionable
 - Reference specific numbers from the metrics and use established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide
 - Maintain evidence-based analysis while adapting communication style and risk tolerance
+
+DIVERGENCE SIGN CONVENTION — READ BEFORE WRITING ANY PROSE:
+  Divergence = External ACWR − Internal ACWR (External minus Internal)
+  POSITIVE divergence (e.g. +0.130): External load > Internal physiological stress.
+    → Body is handling training load efficiently. SAFE. GREEN signal.
+    → Do NOT flag as overtraining. Do NOT recommend backing off due to divergence alone.
+  NEGATIVE divergence (e.g. -0.150): Internal stress > External load.
+    → Hidden physiological fatigue. This is the OVERTRAINING / INJURY RISK signal.
+    → Risk threshold is NEGATIVE (e.g. <-0.110 triggers risk, not >+0.110).
+  The athlete model injury threshold is stored as a negative value. Risk only triggers when
+  current divergence is MORE NEGATIVE than the threshold — never when it is positive.
+
+### STRUCTURED OUTPUT (Phase 1)
+After your three prose sections, append a machine-readable JSON block inside XML tags.
+
+DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal.
+
+SIGN CONVENTION (critical — do not invert):
+  Divergence = External ACWR − Internal ACWR
+  POSITIVE divergence (External > Internal): athlete's cardiovascular/physiological system is handling external load well. External load is outpacing internal stress. This is a RECOVERY or DETRAINING signal — NOT overtraining. Low internal ACWR alone is NOT injury risk.
+  NEGATIVE divergence (Internal > External): physiological stress is exceeding what external load metrics show. Hidden fatigue accumulation. This IS the overtraining/injury risk signal.
+  Overtraining threshold: divergence < -0.10 (negative). The athlete model injury threshold is also a NEGATIVE value — risk triggers below it, not above it.
+
+Set assessment.primary_signal to "divergence" unless another signal clearly dominates.
+
+Fill in ALL fields with actual computed values. Use only the allowed enum values for string fields. Set meta.tokens_used to {{"input": 0, "output": 0}} (post-processed).
+
+<structured_output>
+{{
+  "target_date": "{target_date or 'YYYY-MM-DD'}",
+  "assessment": {{
+    "primary_signal": "divergence",
+    "category": "normal_progression",
+    "confidence": 0.85,
+    "primary_driver": "One concise sentence explaining the deciding factor"
+  }},
+  "divergence": {{
+    "value": 0.0,
+    "direction": "balanced",
+    "severity": "none",
+    "interpretation": "balanced"
+  }},
+  "decision": {{
+    "action": "train",
+    "intensity_target": "moderate",
+    "volume_modifier": 0.0,
+    "specific_workout_type": null,
+    "duration_minutes_suggested": null
+  }},
+  "risk": {{
+    "injury_risk_level": "low",
+    "acwr_external": 0.0,
+    "acwr_internal": 0.0,
+    "divergence": 0.0,
+    "days_since_rest": 0,
+    "flags": []
+  }},
+  "context": {{
+    "autopsy_informed": false,
+    "alignment_trend": "insufficient_data",
+    "training_stage": null,
+    "weeks_to_a_race": null
+  }},
+  "meta": {{
+    "model_used": "claude-sonnet-4-6",
+    "generation_timestamp": "ISO8601",
+    "coaching_spectrum": 50,
+    "risk_tolerance": "{recommendation_style}",
+    "tokens_used": {{"input": 0, "output": 0}}
+  }}
+}}
+</structured_output>
+
+Allowed enum values:
+- assessment.primary_signal: divergence | acwr_external | acwr_internal | days_since_rest | pattern
+- assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity
+- divergence.direction: positive | negative | balanced
+- divergence.severity: none | mild | moderate | high | critical
+- divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data
+- decision.action: train | rest | cross_train | reduce
+- decision.intensity_target: easy | moderate | hard | race_effort | none
+- risk.injury_risk_level: low | moderate | high | critical
+- context.alignment_trend: improving | stable | declining | insufficient_data
 """
 
     return prompt
@@ -856,6 +1018,28 @@ def check_activity_for_date(user_id, date_str):
 
     except Exception as e:
         logger.error(f"Error checking activity for date {date_str}: {str(e)}")
+        return False
+
+
+def check_journal_for_date(user_id, date_str):
+    """Check if user has saved journal observations (energy or RPE) for the specified date."""
+    try:
+        from db_utils import execute_query
+        result = execute_query(
+            """
+            SELECT COUNT(*) as count
+            FROM journal_entries
+            WHERE user_id = %s AND date = %s
+              AND (energy_level IS NOT NULL OR rpe_score IS NOT NULL)
+            """,
+            (user_id, date_str),
+            fetch=True
+        )
+        if result and result[0]:
+            return dict(result[0])['count'] > 0
+        return False
+    except Exception as e:
+        logger.error(f"Error checking journal for date {date_str}: {str(e)}")
         return False
 
 
@@ -1019,18 +1203,26 @@ def analyze_training_patterns(activities):
 
 
 def parse_llm_response(response_text):
-    """Parse the LLM response to extract the different recommendation sections."""
+    """Parse the LLM response to extract the different recommendation sections.
+
+    Tries structured output extraction first (Phase 1), then falls back to regex
+    parsing for the three prose sections.
+    """
     import re
 
     sections = {
         'daily_recommendation': '',
         'weekly_recommendation': '',
-        'pattern_insights': ''
+        'pattern_insights': '',
+        'structured_output': None  # Phase 1: machine-readable JSON assessment
     }
 
     if not response_text or not response_text.strip():
         logger.error("Empty response text received")
         return sections
+
+    # Phase 1: Extract structured JSON block first (before regex parsing modifies the text)
+    sections['structured_output'] = extract_structured_output(response_text)
 
     # Clean the response
     cleaned_response = response_text.strip()
@@ -1182,8 +1374,10 @@ def parse_llm_response(response_text):
         if not sections['pattern_insights']:
             sections['pattern_insights'] = "Monitor recovery indicators and training load progression."
 
-    # Clean up markdown formatting in each section
+    # Clean up markdown formatting in prose sections (skip structured_output — it's a dict)
     for key in sections:
+        if key == 'structured_output':
+            continue
         if sections[key]:
             sections[key] = process_markdown(sections[key])
             # Remove ALL blank lines - visual separation via styled headers instead
@@ -1222,38 +1416,17 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
     try:
         logger.info(f"Generating enhanced autopsy for user {user_id}, date {date_str}")
 
-        # Load the training guide for evidence-based analysis
-        training_guide = load_training_guide()
-        if not training_guide:
-            logger.warning("Training guide not available for autopsy generation")
-            return generate_basic_autopsy_fallback_enhanced(prescribed_action, actual_activities, observations)
-
-        # Get recent context for better analysis
-        activities = UnifiedMetricsService.get_recent_activities_for_analysis(days=7, user_id=user_id)
-        current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
-
-        if not current_metrics:
-            logger.warning(f"No current metrics available for autopsy user {user_id}")
-            current_metrics = {
-                'external_acwr': 0,
-                'internal_acwr': 0,
-                'normalized_divergence': 0,
-                'days_since_rest': 0
-            }
-
         # Get user's coaching style preference
         spectrum_value = get_user_coaching_spectrum(user_id)
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
 
-        # Create comprehensive autopsy prompt with alignment scoring and tone
+        # Create autopsy prompt - focuses on comparing prescribed vs actual, no metrics needed
         prompt = create_enhanced_autopsy_prompt_with_scoring(
             date_str,
             prescribed_action,
             actual_activities,
             observations,
-            current_metrics,
-            training_guide,
-            tone_instructions  # Add this parameter
+            tone_instructions
         )
 
         # Get specialized settings for autopsy analysis from config
@@ -1262,9 +1435,9 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         autopsy_max_tokens = autopsy_settings.get('max_tokens', 3000)
         
         logger.info(f"Calling API for autopsy with temperature={autopsy_temperature}, max_tokens={autopsy_max_tokens}")
-        
-        # Call Anthropic API with autopsy-specific settings
-        response = call_anthropic_api(prompt, temperature=autopsy_temperature, max_tokens=autopsy_max_tokens)
+
+        # Call Claude — use Haiku for autopsy scoring (Phase 2 routing)
+        response = call_claude(prompt, temperature=autopsy_temperature, max_tokens=autopsy_max_tokens, task='autopsy')
 
         if not response:
             logger.error("No response from Anthropic API for enhanced autopsy generation")
@@ -1272,6 +1445,16 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
 
         # Parse autopsy response to extract analysis and alignment score
         autopsy_data = parse_enhanced_autopsy_response(response)
+
+        # Phase 3: Update persistent athlete model after every successful autopsy
+        try:
+            update_athlete_model(user_id, {
+                'alignment_score': autopsy_data['alignment_score'],
+                'date': date_str,
+            })
+        except Exception as model_err:
+            # Model update failure must never break the autopsy result
+            logger.warning(f"Athlete model update failed for user {user_id}: {model_err}")
 
         return autopsy_data
 
@@ -1464,8 +1647,8 @@ def get_coaching_style_from_spectrum(spectrum_value):
         }
 
 def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, actual_activities, observations,
-                                                current_metrics, training_guide, tone_instructions=None):
-    """Create comprehensive autopsy prompt that generates alignment scores for learning."""
+                                                tone_instructions=None):
+    """Create autopsy prompt that compares prescribed vs actual without metrics confusion."""
     try:
         # Format user observations
         energy_level = observations.get('energy_level', 'Not recorded')
@@ -1489,15 +1672,9 @@ def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, act
         if tone_instructions:
             tone_section = f"{tone_instructions}\n\n"
 
-        prompt = f"""You are an expert endurance coach conducting a detailed training autopsy analysis for learning purposes.
+        prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
 
 {tone_section}ANALYSIS DATE: {date_str}
-
-CURRENT ATHLETE CONTEXT:
-- External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
-- Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} (Balance: -0.05 to +0.05)
-- Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 PRESCRIBED TRAINING DECISION:
 {prescribed_action}
@@ -1511,10 +1688,6 @@ USER OBSERVATIONS:
 - Pain %: {pain_percentage}% (Percentage of time during the activity that the athlete was thinking about pain)
 - Additional Notes: {notes}
 
-TRAINING REFERENCE FRAMEWORK:
-{training_guide[:1500]}
-...
-
 AUTOPSY ANALYSIS INSTRUCTIONS:
 
 You must provide analysis in EXACTLY this format for parsing{', applying the specified coaching tone throughout' if tone_instructions else ''}:
@@ -1522,27 +1695,31 @@ You must provide analysis in EXACTLY this format for parsing{', applying the spe
 ALIGNMENT_SCORE: [X/10]
 
 ALIGNMENT ASSESSMENT:
-[{('Apply the specified coaching tone. ' if tone_instructions else '')}Detailed comparison of prescribed vs actual training. Score 10=perfect compliance, 8-9=minor deviations, 5-7=moderate changes, 1-4=major deviations. Consider volume, intensity, type, and appropriateness given current metrics.]
+[{('Apply the specified coaching tone. ' if tone_instructions else '')}Compare prescribed vs actual training. Score 10=perfect compliance, 8-9=minor deviations, 5-7=moderate changes, 1-4=major deviations. Consider volume, intensity, workout type, and execution quality. If athlete deviated, check notes for reasons (injury, time constraints, etc.).]
 
 PHYSIOLOGICAL RESPONSE ANALYSIS:
-[{('Use the specified coaching style. ' if tone_instructions else '')}Evaluate energy/RPE/pain levels in context of training load. Compare expected vs actual response. Identify signs of positive adaptation, fatigue, or red flags. Reference Training Reference Guide principles.]
+[{('Use the specified coaching style. ' if tone_instructions else '')}Evaluate energy/RPE/pain levels relative to the workout completed. Was the response appropriate for the effort? Signs of positive adaptation, fatigue, or concerns? How did pre-session energy affect execution?]
 
-LEARNING INSIGHTS & TOMORROW'S IMPLICATIONS:
-[{('Apply the coaching tone throughout. ' if tone_instructions else '')}Key takeaways for future training decisions. Why did athlete deviate (if applicable)? What does response reveal about adaptation state? How should this influence next recommendation? Specific coaching adjustments needed?]
+LEARNING INSIGHTS & COACHING TAKEAWAYS:
+[{('Apply the coaching tone throughout. ' if tone_instructions else '')}Key takeaways from today's session. Why did athlete deviate (if applicable)? What does response reveal about adaptation and adherence patterns? Any coaching adjustments needed based on alignment and physiological response?]
 
 CRITICAL REQUIREMENTS:
 - Start with "ALIGNMENT_SCORE: X/10" where X is a number 1-10
 - Keep total response under 300 words for Journal display
-- Focus on actionable insights that will improve future recommendations
-- Use evidence-based analysis referencing Training Reference Guide principles{(' - Apply the specified coaching tone consistently throughout all sections' if tone_instructions else '')}
+- Focus on actionable insights about compliance and response
+- Check user notes for context on deviations{(' - Apply the specified coaching tone consistently throughout all sections' if tone_instructions else '')}
 """
 
         return prompt
 
     except Exception as e:
         logger.error(f"Error creating enhanced autopsy prompt: {str(e)}")
-        return create_autopsy_prompt(date_str, prescribed_action, actual_activities, observations, current_metrics,
-                                     training_guide)
+        # Fallback to basic prompt without metrics
+        return f"""Analyze this workout:
+Prescribed: {prescribed_action}
+Actual: {actual_activities}
+Observations: {observations}
+Provide alignment score and brief analysis."""
 
 
 def parse_enhanced_autopsy_response(response):
@@ -1615,6 +1792,178 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
             'analysis': f"Enhanced autopsy generation failed: {str(e)}",
             'alignment_score': 5
         }
+
+
+def get_athlete_model_context(user_id):
+    """Return a formatted string for prompt injection based on the athlete's persistent model.
+
+    Phase 3 — Persistent Athlete Model.
+
+    Returns:
+        str: Multi-line context block ready to embed in a prompt, OR
+             an empty string if no model exists or confidence is below the minimum
+             threshold that indicates the model is still in early learning mode.
+    """
+    MIN_INJECT_CONFIDENCE = 0.15
+
+    try:
+        model = get_athlete_model(user_id)
+        if not model:
+            return ""
+
+        confidence = model.get('acwr_sweet_spot_confidence', 0.0) or 0.0
+        total_autopsies = model.get('total_autopsies', 0) or 0
+
+        if confidence < MIN_INJECT_CONFIDENCE:
+            # Still in learning mode — return a brief note so the LLM is aware
+            return "ATHLETE MODEL: LEARNING (building athlete model — insufficient data yet)"
+
+        # Sufficient data — build a full context block
+        avg_alignment = model.get('avg_lifetime_alignment', 5.0) or 5.0
+        trend = model.get('recent_alignment_trend', 'insufficient_data') or 'insufficient_data'
+        sweet_low = model.get('acwr_sweet_spot_low', 0.8) or 0.8
+        sweet_high = model.get('acwr_sweet_spot_high', 1.2) or 1.2
+        div_low = model.get('typical_divergence_low', -0.05) or -0.05
+        div_high = model.get('typical_divergence_high', 0.05) or 0.05
+        div_injury = model.get('divergence_injury_threshold', 0.15) or 0.15
+        last_date = model.get('last_autopsy_date', 'unknown')
+
+        context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies, confidence {confidence:.0%})
+- ACWR Sweet Spot: {sweet_low:.2f}–{sweet_high:.2f} (athlete-specific, not population default)
+- Typical Divergence Range: {div_low:.3f} to {div_high:.3f}
+- Divergence Injury Threshold: -{div_injury:.3f} (RISK only when current divergence < -{div_injury:.3f}. Positive divergence is always safe — this threshold never applies to positive values)
+- Avg Lifetime Alignment Score: {avg_alignment:.1f}/10
+- Recent Alignment Trend: {trend}
+- Last Autopsy Date: {last_date}
+
+COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence range above instead of population defaults where they differ. Confidence {confidence:.0%} — weight accordingly. The divergence injury threshold is negative — only flag injury risk when current divergence is more negative than this threshold."""
+
+        return context
+
+    except Exception as e:
+        logger.error(f"Error building athlete model context for user {user_id}: {e}")
+        return ""
+
+
+def update_athlete_model(user_id, autopsy_data):
+    """Update the athlete's persistent model after a successful autopsy.
+
+    Uses a weighted moving average (30% new, 70% historical) for alignment.
+    Increments total_autopsies, updates last_autopsy_date, computes recent trend,
+    and increments acwr_sweet_spot_confidence (capped at 1.0).
+
+    Also checks the last 10 autopsies to update divergence_injury_threshold:
+    if alignment drops below 5 on days where normalised divergence exceeded a
+    threshold, that threshold is updated in the model.
+
+    Phase 3 — Persistent Athlete Model.
+
+    Args:
+        user_id (int): User ID.
+        autopsy_data (dict): Must contain 'alignment_score' (int/float) and 'date' (str YYYY-MM-DD).
+    """
+    try:
+        alignment_score = float(autopsy_data.get('alignment_score', 5))
+        date_str = autopsy_data.get('date')
+
+        # Fetch existing model (or create default values if not yet present)
+        existing = get_athlete_model(user_id)
+        if existing is None:
+            # Bootstrap an empty row so the upsert has something to merge into
+            upsert_athlete_model(user_id, {})
+            existing = {
+                'total_autopsies': 0,
+                'avg_lifetime_alignment': 5.0,
+                'acwr_sweet_spot_confidence': 0.0,
+            }
+
+        prev_total = existing.get('total_autopsies', 0) or 0
+        prev_avg = existing.get('avg_lifetime_alignment', 5.0) or 5.0
+        prev_confidence = existing.get('acwr_sweet_spot_confidence', 0.0) or 0.0
+
+        # Weighted moving average: 30% new, 70% historical
+        new_avg = (0.7 * prev_avg) + (0.3 * alignment_score)
+        new_total = prev_total + 1
+
+        # Confidence increases 0.05 per autopsy, capped at 1.0
+        new_confidence = min(1.0, prev_confidence + 0.05)
+
+        # Compute recent_alignment_trend from last 5 autopsies (most recent first)
+        recent_scores_rows = execute_query(
+            """
+            SELECT alignment_score FROM ai_autopsies
+            WHERE user_id = %s AND alignment_score IS NOT NULL
+            ORDER BY date DESC
+            LIMIT 5
+            """,
+            (user_id,),
+            fetch=True
+        )
+        recent_scores = [r['alignment_score'] for r in (recent_scores_rows or [])]
+
+        if len(recent_scores) >= 3:
+            # Scores are in DESC order (most recent first)
+            if recent_scores[0] > recent_scores[1] > recent_scores[2]:
+                trend = 'improving'
+            elif recent_scores[0] < recent_scores[1] < recent_scores[2]:
+                trend = 'declining'
+            else:
+                trend = 'stable'
+        else:
+            trend = 'insufficient_data'
+
+        # Update divergence_injury_threshold:
+        # Check last 10 autopsies joined with activities for normalised_divergence.
+        # If alignment < 5 and divergence exceeded some threshold, update the model.
+        new_div_threshold = None
+        try:
+            risk_rows = execute_query(
+                """
+                SELECT a.alignment_score, act.normalized_divergence
+                FROM ai_autopsies a
+                JOIN activities act ON act.user_id = a.user_id AND act.date = a.date
+                WHERE a.user_id = %s
+                  AND a.alignment_score IS NOT NULL
+                  AND act.normalized_divergence IS NOT NULL
+                ORDER BY a.date DESC
+                LIMIT 10
+                """,
+                (user_id,),
+                fetch=True
+            )
+            if risk_rows:
+                for row in risk_rows:
+                    row_alignment = row['alignment_score']
+                    row_div = row['normalized_divergence']
+                    # Injury risk comes from NEGATIVE divergence (Internal > External).
+                    # Only update threshold for negative divergence events with poor alignment.
+                    if row_alignment < 5 and row_div < -0.05:
+                        # Store as positive absolute value (displayed as negative in prompt)
+                        new_div_threshold = round(abs(row_div), 3)
+                        break  # Use the first (most recent) such event
+        except Exception as div_err:
+            logger.warning(f"Could not compute divergence_injury_threshold update: {div_err}")
+
+        updates = {
+            'total_autopsies': new_total,
+            'avg_lifetime_alignment': round(new_avg, 3),
+            'acwr_sweet_spot_confidence': round(new_confidence, 4),
+            'recent_alignment_trend': trend,
+        }
+        if date_str:
+            updates['last_autopsy_date'] = date_str
+        if new_div_threshold is not None:
+            updates['divergence_injury_threshold'] = new_div_threshold
+
+        upsert_athlete_model(user_id, updates)
+        logger.info(
+            f"Updated athlete model for user {user_id}: total_autopsies={new_total}, "
+            f"avg_alignment={new_avg:.2f}, confidence={new_confidence:.2f}, trend={trend}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating athlete model for user {user_id}: {e}")
+        # Do not re-raise — athlete model update failure must never break autopsy flow
 
 
 def get_recent_autopsy_insights(user_id, days=3):
@@ -1788,7 +2137,8 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
                 'daily_recommendation': daily_rec,
                 'weekly_recommendation': weekly_rec,
                 'pattern_insights': pattern_insights,
-                'raw_response': cleaned_response
+                'raw_response': cleaned_response,
+                'structured_output': sections.get('structured_output')
             }
         else:
             logger.warning("No response from autopsy-informed decision generation")
@@ -2014,7 +2364,7 @@ Your response must have exactly three sections with these headers on their own l
 
 DAILY RECOMMENDATION
 
-[Provide tomorrow's specific workout recommendation. Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression) from the Training Reference Framework. Use the athlete's personalized thresholds, not standard ranges. Assessment paragraph + workout details + monitoring guidance. 150-200 words]
+[If autopsy available: Begin with brief context referencing yesterday's workout autopsy: "Yesterday's [workout type]: [alignment_score]/10 alignment - [1-sentence key insight]." Then provide tomorrow's specific workout recommendation. Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression) from the Training Reference Framework. Use the athlete's personalized thresholds, not standard ranges. Assessment paragraph + workout details + monitoring guidance. 150-200 words total.]
 
 WEEKLY PLANNING
 
@@ -2034,6 +2384,59 @@ CRITICAL REQUIREMENTS:
 - Avoid markdown formatting (no #, ##, or **bold**) - use plain text only
 - Focus on actionable guidance that demonstrates learning from recent patterns
 - ENSURE consistency with Coach page weekly plan (if provided) or explain deviations based on metrics
+
+### STRUCTURED OUTPUT (required)
+After your three prose sections, append a machine-readable JSON block inside XML tags.
+
+SIGN CONVENTION: Divergence = External ACWR − Internal ACWR. POSITIVE = External > Internal = recovery/detraining signal. NEGATIVE = Internal > External = overtraining risk. Overtraining threshold: divergence < -0.10.
+
+<structured_output>
+{{
+  "target_date": "{target_date_str}",
+  "assessment": {{
+    "primary_signal": "divergence",
+    "category": "normal_progression",
+    "confidence": 0.85,
+    "primary_driver": "One concise sentence explaining the deciding factor"
+  }},
+  "divergence": {{
+    "value": 0.0,
+    "direction": "balanced",
+    "severity": "none",
+    "interpretation": "balanced"
+  }},
+  "decision": {{
+    "action": "train",
+    "intensity_target": "moderate",
+    "volume_modifier": 0.0,
+    "specific_workout_type": null,
+    "duration_minutes_suggested": null
+  }},
+  "risk": {{
+    "injury_risk_level": "low",
+    "acwr_external": 0.0,
+    "acwr_internal": 0.0,
+    "divergence": 0.0,
+    "days_since_rest": 0,
+    "flags": []
+  }},
+  "context": {{
+    "autopsy_informed": true,
+    "alignment_trend": "insufficient_data",
+    "training_stage": null,
+    "weeks_to_a_race": null
+  }},
+  "meta": {{
+    "model_used": "claude-haiku-4-5-20251001",
+    "generation_timestamp": "ISO8601",
+    "coaching_spectrum": 50,
+    "risk_tolerance": "{recommendation_style}",
+    "tokens_used": {{"input": 0, "output": 0}}
+  }}
+}}
+</structured_output>
+
+Allowed values — assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity. divergence.direction: positive | negative | balanced. divergence.severity: none | mild | moderate | high | critical. divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data. decision.action: train | rest | cross_train | reduce. risk.injury_risk_level: low | moderate | high | critical.
 """
 
     return prompt
@@ -2308,6 +2711,336 @@ def process_markdown(text):
     text = text.strip()
 
     return text
+
+
+# =============================================================================
+# PHASE 4 — AGENTIC CONTEXT ASSEMBLY
+# =============================================================================
+# generate_recommendations_agentic() is a PARALLEL PATH alongside the existing
+# generate_recommendations().  The existing function is UNCHANGED.
+# =============================================================================
+
+def call_claude_with_tools(messages, tools, model=None, temperature=None, max_tokens=3000):
+    """Call Claude using the Anthropic SDK with tool support.
+
+    Args:
+        messages: List of message dicts in Anthropic format.
+        tools: List of Anthropic tool definition dicts (TOOL_DEFINITIONS from
+               llm_context_tools).
+        model: Claude model override (defaults to MODEL_SONNET for agentic path).
+        temperature: Sampling temperature (defaults to RECOMMENDATION_TEMPERATURE).
+        max_tokens: Maximum tokens to generate.
+
+    Returns:
+        The Anthropic Message object (not just the text) so callers can inspect
+        stop_reason, content blocks, and usage.
+    """
+    if model is None:
+        model = MODEL_SONNET
+    if temperature is None:
+        temperature = RECOMMENDATION_TEMPERATURE
+
+    import anthropic as anthropic_sdk
+    api_key = get_api_key()
+    client = anthropic_sdk.Anthropic(api_key=api_key)
+
+    logger.info(
+        f"call_claude_with_tools: model={model}, max_tokens={max_tokens}, "
+        f"temperature={temperature}, messages={len(messages)}, tools={len(tools)}"
+    )
+
+    message = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        tools=tools,
+        messages=messages,
+    )
+
+    logger.info(
+        f"call_claude_with_tools: stop_reason={message.stop_reason}, "
+        f"input_tokens={message.usage.input_tokens}, "
+        f"output_tokens={message.usage.output_tokens}"
+    )
+    return message
+
+
+def execute_tool_call(user_id, tool_name, tool_input):
+    """Dispatch a tool call to the appropriate function in llm_context_tools.
+
+    Args:
+        user_id: The user ID to pass to every tool.
+        tool_name: Name of the tool as returned by the model.
+        tool_input: Dict of arguments the model provided.
+
+    Returns:
+        JSON-serialisable result (list or dict).
+    """
+    from llm_context_tools import (
+        get_activities,
+        get_race_goals,
+        get_weekly_program_day,
+        get_journal_entries,
+        get_athlete_model_tool,
+    )
+
+    logger.info(f"execute_tool_call: tool={tool_name}, user={user_id}, input={tool_input}")
+
+    if tool_name == "get_activities":
+        return get_activities(user_id=user_id, days=tool_input["days"])
+
+    if tool_name == "get_race_goals":
+        return get_race_goals(user_id=user_id)
+
+    if tool_name == "get_weekly_program_day":
+        return get_weekly_program_day(user_id=user_id, target_date=tool_input["target_date"])
+
+    if tool_name == "get_journal_entries":
+        return get_journal_entries(user_id=user_id, days=tool_input["days"])
+
+    if tool_name == "get_athlete_model":
+        return get_athlete_model_tool(user_id=user_id)
+
+    raise ValueError(f"Unknown tool: {tool_name!r}")
+
+
+def generate_recommendations_agentic(user_id, target_date=None):
+    """Generate training recommendations using the two-turn agentic pattern.
+
+    Phase 4 — Agentic Context Assembly.
+
+    Turn 1: Send minimal context (current metrics + tool list) → model responds
+            with tool_use blocks requesting the data it needs.
+    Turn 2: Execute the requested tools, send results back → model generates the
+            full recommendation.
+
+    The function returns the SAME dict structure as generate_recommendations()
+    so callers can treat both paths identically.
+
+    Args:
+        user_id: Required — user ID.
+        target_date: Optional YYYY-MM-DD string.  Derived from current date /
+                     activity status if not provided.
+
+    Returns:
+        Recommendation dict (same structure as generate_recommendations()) or None.
+    """
+    if user_id is None:
+        raise ValueError("user_id is required for generate_recommendations_agentic")
+
+    from llm_context_tools import TOOL_DEFINITIONS
+
+    try:
+        logger.info(f"[AGENTIC] Starting agentic recommendation generation for user {user_id}")
+
+        # ------------------------------------------------------------------ #
+        # Determine target_date (same logic as generate_recommendations)      #
+        # ------------------------------------------------------------------ #
+        from timezone_utils import get_user_current_date
+        current_date = get_user_current_date(user_id)
+        current_date_str = current_date.strftime('%Y-%m-%d')
+
+        if target_date is None:
+            has_activity_today = check_activity_for_date(user_id, current_date_str)
+            has_journal_today = check_journal_for_date(user_id, current_date_str)
+            if has_activity_today and has_journal_today:
+                target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                logger.info(f"[AGENTIC] Has activity + journal today → targeting tomorrow: {target_date}")
+            else:
+                target_date = current_date_str
+                logger.info(f"[AGENTIC] Targeting today: {target_date} (has_activity={has_activity_today}, has_journal={has_journal_today})")
+
+        # ------------------------------------------------------------------ #
+        # Get current metrics (minimal context for Turn 1)                    #
+        # ------------------------------------------------------------------ #
+        current_metrics = get_current_metrics(user_id)
+        if not current_metrics:
+            logger.warning(f"[AGENTIC] No current metrics for user {user_id}, aborting")
+            return None
+
+        ext_acwr = current_metrics.get('external_acwr', 0) or 0
+        int_acwr = current_metrics.get('internal_acwr', 0) or 0
+        divergence = current_metrics.get('normalized_divergence', 0) or 0
+        days_rest = current_metrics.get('days_since_rest', 0) or 0
+
+        # ------------------------------------------------------------------ #
+        # Turn 1 — minimal prompt with metrics + tool list                    #
+        # ------------------------------------------------------------------ #
+        system_turn1 = (
+            "You are an expert endurance sports coach with deep knowledge of "
+            "training load science (ACWR, TRIMP, divergence). "
+            "You have access to tools that can retrieve specific athlete data. "
+            "Request ONLY the data you need to generate a high-quality daily "
+            "training recommendation. Do not request redundant data."
+        )
+
+        user_turn1 = (
+            f"Generate a daily training recommendation for {target_date}.\n\n"
+            f"Current metrics snapshot:\n"
+            f"- External ACWR: {ext_acwr:.2f}\n"
+            f"- Internal ACWR (TRIMP): {int_acwr:.2f}\n"
+            f"- Normalized Divergence: {divergence:.3f}\n"
+            f"- Days Since Rest: {days_rest}\n\n"
+            f"Use the available tools to retrieve any additional context you "
+            f"need, then generate the recommendation in the standard three-section "
+            f"format:\n"
+            f"DAILY RECOMMENDATION: [your recommendation]\n"
+            f"WEEKLY PLANNING: [weekly context]\n"
+            f"PATTERN INSIGHTS: [pattern analysis]\n\n"
+            f"Request the tools you need now."
+        )
+
+        messages = [
+            {"role": "user", "content": user_turn1}
+        ]
+
+        logger.info(f"[AGENTIC] Turn 1: sending minimal context to model")
+        turn1_response = call_claude_with_tools(
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            max_tokens=3000,
+        )
+
+        total_input_tokens = turn1_response.usage.input_tokens
+        total_output_tokens = turn1_response.usage.output_tokens
+
+        # ------------------------------------------------------------------ #
+        # Turn 2 — execute tool calls, send results back                      #
+        # ------------------------------------------------------------------ #
+        if turn1_response.stop_reason == "tool_use":
+            logger.info(f"[AGENTIC] Turn 1 stop_reason=tool_use — executing tool calls")
+
+            # Build tool results
+            tool_results = []
+            for block in turn1_response.content:
+                if block.type != "tool_use":
+                    continue
+
+                tool_name = block.name
+                tool_input_data = block.input
+                tool_use_id = block.id
+
+                try:
+                    result = execute_tool_call(user_id, tool_name, tool_input_data)
+                    result_content = json.dumps(result)
+                    logger.info(
+                        f"[AGENTIC] Tool {tool_name!r} executed OK, "
+                        f"result length={len(result_content)}"
+                    )
+                except Exception as tool_err:
+                    result_content = json.dumps({"error": str(tool_err)})
+                    logger.warning(
+                        f"[AGENTIC] Tool {tool_name!r} failed: {tool_err}"
+                    )
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": result_content,
+                })
+
+            # Append Turn 1 assistant message + tool results to conversation
+            messages.append({"role": "assistant", "content": turn1_response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+            logger.info(f"[AGENTIC] Turn 2: sending tool results ({len(tool_results)} results)")
+            turn2_response = call_claude_with_tools(
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                max_tokens=3000,
+            )
+
+            total_input_tokens += turn2_response.usage.input_tokens
+            total_output_tokens += turn2_response.usage.output_tokens
+
+            # Extract text from Turn 2
+            llm_response = ""
+            for block in turn2_response.content:
+                if hasattr(block, 'text'):
+                    llm_response += block.text
+
+        else:
+            # Model returned the recommendation directly without tool calls
+            logger.info(
+                f"[AGENTIC] Turn 1 stop_reason={turn1_response.stop_reason} — "
+                f"no tool calls, using direct response"
+            )
+            llm_response = ""
+            for block in turn1_response.content:
+                if hasattr(block, 'text'):
+                    llm_response += block.text
+
+        if not llm_response.strip():
+            logger.error(f"[AGENTIC] Empty LLM response for user {user_id}")
+            return None
+
+        logger.info(
+            f"[AGENTIC] Total tokens: input={total_input_tokens}, "
+            f"output={total_output_tokens}"
+        )
+
+        # ------------------------------------------------------------------ #
+        # Parse response (same parser as legacy path)                         #
+        # ------------------------------------------------------------------ #
+        sections = parse_llm_response(llm_response)
+
+        # Inject token count into structured_output.meta
+        if sections.get('structured_output') is None:
+            sections['structured_output'] = {}
+        if isinstance(sections['structured_output'], dict):
+            sections['structured_output']['meta'] = {
+                'agentic': True,
+                'tokens_used': total_input_tokens + total_output_tokens,
+                'input_tokens': total_input_tokens,
+                'output_tokens': total_output_tokens,
+            }
+
+        # ------------------------------------------------------------------ #
+        # Build recommendation dict (same structure as generate_recommendations)
+        # ------------------------------------------------------------------ #
+        activities = get_recent_activities(days=ACTIVITY_ANALYSIS_DAYS, user_id=user_id)
+        start_date = activities[0]['date'] if activities else current_date_str
+        end_date = activities[-1]['date'] if activities else current_date_str
+
+        recommendation = {
+            'generation_date': current_date_str,
+            'target_date': target_date,
+            'valid_until': None,
+            'data_start_date': start_date,
+            'data_end_date': end_date,
+            'metrics_snapshot': current_metrics,
+            'daily_recommendation': sections['daily_recommendation'],
+            'weekly_recommendation': sections['weekly_recommendation'],
+            'pattern_insights': sections['pattern_insights'],
+            'raw_response': llm_response,
+            'user_id': user_id,
+            'is_autopsy_informed': False,
+            'autopsy_count': 0,
+            'avg_alignment_score': None,
+            'structured_output': sections.get('structured_output'),
+        }
+
+        recommendation = fix_dates_for_json(recommendation)
+        recommendation_id = save_llm_recommendation(recommendation)
+        logger.info(
+            f"[AGENTIC] Saved agentic recommendation ID={recommendation_id} "
+            f"for user {user_id}, target_date={target_date}"
+        )
+
+        recommendation['id'] = recommendation_id
+        return recommendation
+
+    except Exception as e:
+        logger.error(
+            f"[AGENTIC] Error generating agentic recommendation for user {user_id}: {e}",
+            exc_info=True
+        )
+        return None
+
+
+# =============================================================================
+# END PHASE 4
+# =============================================================================
 
 
 if __name__ == "__main__":

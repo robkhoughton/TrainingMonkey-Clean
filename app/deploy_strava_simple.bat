@@ -53,7 +53,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo Updating Cloud Run service...
-gcloud run services update %SERVICE_NAME% --region=%REGION% --image %IMAGE_NAME%:%BUILD_TIME%
+gcloud run services update %SERVICE_NAME% --region=%REGION% --image %IMAGE_NAME%:%BUILD_TIME% --timeout=300
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Cloud Run update failed!
     cd ..

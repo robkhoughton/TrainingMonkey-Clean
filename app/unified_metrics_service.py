@@ -433,10 +433,62 @@ class UnifiedMetricsService:
                 'twentyeight_day_avg_load': latest_activity_dict.get('twentyeight_day_avg_load', 0),
                 'twentyeight_day_avg_trimp': latest_activity_dict.get('twentyeight_day_avg_trimp', 0),
                 'days_since_rest': days_since_rest,
-                'latest_activity_date': activity_date,
+                'latest_activity_date': str(activity_date),
                 'calculation_timestamp': datetime.now().isoformat(),
-                'user_id': user_id  # Add user_id to response for verification
+                'user_id': user_id
             }
+
+            # Compute injury risk score using user-specific thresholds from get_adjusted_thresholds().
+            # This is the authoritative calculation — the frontend must not replicate it.
+            from llm_recommendations_module import get_adjusted_thresholds, get_user_recommendation_style
+            recommendation_style = get_user_recommendation_style(user_id)
+            thresholds = get_adjusted_thresholds(recommendation_style)
+
+            acwr_high = thresholds['acwr_high_risk']
+            acwr_undertraining = thresholds['acwr_undertraining']
+            div_overtraining = thresholds['divergence_overtraining']
+            div_moderate = thresholds['divergence_moderate_risk']
+            days_max = thresholds['days_since_rest_max']
+
+            avg_acwr = ((metrics['external_acwr'] or 0) + (metrics['internal_acwr'] or 0)) / 2
+            divergence = metrics['normalized_divergence'] or 0
+            days_rest = metrics['days_since_rest']
+
+            risk_score = 0
+            # ACWR contribution (40%): breakpoints relative to user's acwr_high_risk threshold
+            if avg_acwr > acwr_high + 0.2:
+                risk_score += 40
+            elif avg_acwr > acwr_high:
+                risk_score += 30
+            elif avg_acwr > acwr_high - 0.2:
+                risk_score += 20
+            elif avg_acwr > acwr_undertraining:
+                risk_score += 10
+            # Divergence contribution (40%): extra 0.10 below overtraining threshold = extreme
+            if divergence < div_overtraining - 0.10:
+                risk_score += 40
+            elif divergence < div_overtraining:
+                risk_score += 30
+            elif divergence < div_moderate:
+                risk_score += 15
+            # Days since rest contribution (20%): relative to user's days_since_rest_max
+            if days_rest > days_max:
+                risk_score += 20
+            elif days_rest > days_max - 1:
+                risk_score += 15
+            elif days_rest > days_max - 2:
+                risk_score += 10
+
+            risk_score = min(100, risk_score)
+            risk_label = 'HIGH' if risk_score > 70 else ('MODERATE' if risk_score > 40 else 'LOW')
+
+            metrics['injury_risk_score'] = risk_score
+            metrics['injury_risk_label'] = risk_label
+            metrics['acwr_high_threshold'] = acwr_high
+            metrics['acwr_undertraining_threshold'] = acwr_undertraining
+            metrics['divergence_warn_threshold'] = div_overtraining
+            metrics['divergence_moderate_threshold'] = div_moderate
+            metrics['days_since_rest_max'] = days_max
 
             # Log the values for debugging
             logger.info(f"Unified metrics for user {user_id}:")
@@ -445,6 +497,7 @@ class UnifiedMetricsService:
             logger.info(f"  Normalized Divergence: {metrics['normalized_divergence']}")
             logger.info(f"  Days since rest: {metrics['days_since_rest']}")
             logger.info(f"  Latest activity date: {metrics['latest_activity_date']}")
+            logger.info(f"  Injury risk: {risk_label} ({risk_score}) [{recommendation_style} thresholds]")
 
             return metrics
 
@@ -467,40 +520,32 @@ class UnifiedMetricsService:
 
             logger.info(f"Calculating days since last recorded rest day for user {user_id} (user timezone)")
 
-            # Find the most recent date explicitly marked as a rest day for this user
+            # Find the most recent rest day: either an explicitly marked rest day activity,
+            # OR any day where the user journaled but had no real Strava activity (activity_id > 0).
+            # This handles the case where the user saves observations via the regular Save button
+            # on a rest day without explicitly clicking "Mark as Rest Day".
             last_rest_day_record = execute_query(
-                "SELECT date FROM activities WHERE type = 'rest' AND user_id = %s ORDER BY date DESC LIMIT 1",
-                (user_id,),
+                """
+                SELECT date FROM (
+                    SELECT date FROM activities
+                    WHERE (type = 'rest' OR activity_id < 0) AND user_id = %s
+                    UNION ALL
+                    SELECT je.date FROM journal_entries je
+                    WHERE je.user_id = %s
+                    AND NOT EXISTS (
+                        SELECT 1 FROM activities a
+                        WHERE a.user_id = %s AND a.date = je.date AND a.activity_id > 0
+                    )
+                ) all_rest_days
+                ORDER BY date DESC LIMIT 1
+                """,
+                (user_id, user_id, user_id),
                 fetch=True
             )
 
             if not last_rest_day_record:
-                logger.warning(f"No explicit rest day (type='rest') found for user {user_id}")
-                # If no 'type=rest' day is found, calculate days since the very first record for this user
-                first_ever_record = execute_query(
-                    "SELECT date FROM activities WHERE user_id = %s ORDER BY date ASC LIMIT 1",
-                    (user_id,),
-                    fetch=True
-                )
-                if not first_ever_record:
-                    logger.info(f"No activities found for user {user_id} at all. Returning 0 days since rest.")
-                    return 0
-
-                first_date_str = first_ever_record[0]['date']
-                if isinstance(first_date_str, str):
-                    first_date = ensure_date_obj(first_date_str)
-                elif hasattr(first_date_str, 'date') and callable(first_date_str.date):
-                    first_date = first_date_str.date()
-                else:
-                    first_date = first_date_str
-
-                # FIXED: Use user timezone instead of Pacific-only
-                today = get_user_current_date(user_id)
-
-                days_since_first_record = (today - first_date).days
-                logger.warning(
-                    f"No 'type=rest' day found for user {user_id}. Reporting days since first record ({first_date_str}): {days_since_first_record}")
-                return max(0, days_since_first_record)
+                logger.info(f"No rest day or journal entry found for user {user_id}. Returning 0.")
+                return 0
 
             last_rest_date_str = last_rest_day_record[0]['date']
             if isinstance(last_rest_date_str, str):

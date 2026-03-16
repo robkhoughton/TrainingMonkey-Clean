@@ -505,6 +505,10 @@ ATHLETE RISK TOLERANCE: {risk_tolerance.upper()} ({thresholds['description']})
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
 - Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
 
+DIVERGENCE SIGN CONVENTION:
+  Divergence = External ACWR − Internal ACWR. POSITIVE = External > Internal = body handling load well (SAFE).
+  NEGATIVE = Internal > External = physiological overload (RISK). Risk threshold is negative — only triggers below it.
+
 Current Training Metrics (Last 28 Days):
 - External ACWR: {ext_acwr}
 - Internal ACWR: {int_acwr}

@@ -141,22 +141,41 @@ def execute_query_direct(query, params=(), fetch=False):
     try:
         # Parse connection string to avoid URL parsing issues with database names
         parsed = urlparse(DATABASE_URL)
-        host = parsed.hostname
-        port = parsed.port or 5432
-        database = parsed.path.lstrip('/')  # Remove leading slash
-        user = parsed.username
-        password = parsed.password
-        
+
+        # Cloud SQL socket path — same parsing as get_db_connection()
+        if '/cloudsql/' in DATABASE_URL:
+            import re
+            pattern = r'postgresql://([^:]+):([^@]+)@[^/]*/([^?]+)\?host=([^&]+)'
+            match = re.match(pattern, DATABASE_URL)
+            if match:
+                user, password, database, host = match.groups()
+                port = None
+            else:
+                host = parsed.hostname
+                port = parsed.port or 5432
+                database = parsed.path.lstrip('/')
+                user = parsed.username
+                password = parsed.password
+        else:
+            host = parsed.hostname
+            port = parsed.port or 5432
+            database = parsed.path.lstrip('/')
+            user = parsed.username
+            password = parsed.password
+
         # Use individual parameters instead of connection string
         # This ensures database names with hyphens (like 'train-d') are handled correctly
-        with psycopg2.connect(
+        connect_kwargs = dict(
             host=host,
-            port=port,
             database=database,
             user=user,
             password=password,
             cursor_factory=RealDictCursor
-        ) as conn:
+        )
+        if port:
+            connect_kwargs['port'] = port
+
+        with psycopg2.connect(**connect_kwargs) as conn:
             with conn.cursor() as cursor:
                 # Convert ? placeholders to %s for PostgreSQL compatibility
                 if '?' in query:
@@ -465,14 +484,20 @@ def save_llm_recommendation(recommendation):
                                                                                     dict) else recommendation[
             'metrics_snapshot']
 
+        # Serialize structured_output dict to JSON string for JSONB column
+        raw_structured = recommendation.get('structured_output')
+        structured_output_json = (
+            json.dumps(raw_structured) if isinstance(raw_structured, dict) else raw_structured
+        )
+
         # CRITICAL FIX: Include target_date and autopsy tracking in the INSERT statement
         query = """
             INSERT INTO llm_recommendations (
                 generation_date, target_date, valid_until, data_start_date, data_end_date,
                 metrics_snapshot, daily_recommendation, weekly_recommendation,
                 pattern_insights, raw_response, user_id,
-                is_autopsy_informed, autopsy_count, avg_alignment_score
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                is_autopsy_informed, autopsy_count, avg_alignment_score, structured_output
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         # CRITICAL FIX: Include target_date and autopsy tracking in the parameters
@@ -490,7 +515,8 @@ def save_llm_recommendation(recommendation):
             user_id,
             recommendation.get('is_autopsy_informed', False),  # NEW: autopsy tracking
             recommendation.get('autopsy_count', 0),  # NEW: autopsy count
-            recommendation.get('avg_alignment_score')  # NEW: average alignment score
+            recommendation.get('avg_alignment_score'),  # NEW: average alignment score
+            structured_output_json  # Phase 1: structured output JSONB
         )
 
         result = execute_query(query, params)
@@ -499,6 +525,76 @@ def save_llm_recommendation(recommendation):
 
     except Exception as e:
         logger.error(f"Error saving LLM recommendation: {str(e)}")
+        raise
+
+
+def get_athlete_model(user_id):
+    """Return the athlete_models row for user_id as a dict, or None if not found.
+
+    Phase 3 — Persistent Athlete Model.
+    """
+    try:
+        result = execute_query(
+            "SELECT * FROM athlete_models WHERE user_id = %s",
+            (user_id,),
+            fetch=True
+        )
+        if result:
+            return dict(result[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching athlete model for user {user_id}: {e}")
+        return None
+
+
+def upsert_athlete_model(user_id, model_data):
+    """INSERT or UPDATE the athlete_models row for user_id.
+
+    model_data is a dict whose keys map 1-to-1 with athlete_models columns
+    (excluding id, user_id, created_at).  Only the keys present in model_data
+    are updated; all other columns retain their current values.
+
+    Phase 3 — Persistent Athlete Model.
+    """
+    try:
+        if not model_data:
+            return
+
+        # Build dynamic SET clause from the provided keys
+        allowed_columns = {
+            'acwr_sweet_spot_low', 'acwr_sweet_spot_high', 'acwr_sweet_spot_confidence',
+            'typical_divergence_low', 'typical_divergence_high', 'divergence_injury_threshold',
+            'rpe_calibration_offset', 'rpe_sample_count', 'avg_days_recover_after_hard',
+            'total_autopsies', 'avg_lifetime_alignment', 'recent_alignment_trend',
+            'last_autopsy_date',
+        }
+
+        filtered = {k: v for k, v in model_data.items() if k in allowed_columns}
+        if not filtered:
+            logger.warning(f"upsert_athlete_model called with no valid columns for user {user_id}")
+            return
+
+        set_clauses = ', '.join(f"{col} = %s" for col in filtered)
+        set_values = list(filtered.values())
+
+        # INSERT the row if it doesn't exist, then UPDATE via DO UPDATE SET
+        insert_cols = ', '.join(filtered.keys())
+        insert_placeholders = ', '.join(['%s'] * len(filtered))
+        update_clauses = ', '.join(f"{col} = EXCLUDED.{col}" for col in filtered)
+
+        query = f"""
+            INSERT INTO athlete_models (user_id, {insert_cols})
+            VALUES (%s, {insert_placeholders})
+            ON CONFLICT (user_id) DO UPDATE SET
+                {update_clauses},
+                updated_at = NOW()
+        """
+
+        execute_query(query, [user_id] + set_values)
+        logger.info(f"Upserted athlete model for user {user_id}: {list(filtered.keys())}")
+
+    except Exception as e:
+        logger.error(f"Error upserting athlete model for user {user_id}: {e}")
         raise
 
 
@@ -639,8 +735,35 @@ def get_latest_recommendation(user_id=None):
         return None
 
 
+def recommendation_is_stale(user_id, target_date):
+    """Check whether a recommendation already exists for the given absolute target_date.
+
+    Returns True (stale / needs generation) when no row exists for that date.
+    Returns False when a recommendation row already exists for that date.
+
+    Phase 5 — replaces the fragile valid_until-based check with an explicit date lookup.
+    """
+    if user_id is None:
+        raise ValueError("user_id is required for multi-user support")
+    try:
+        result = execute_query(
+            "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s LIMIT 1",
+            (user_id, str(target_date)),
+            fetch=True
+        )
+        return not bool(result)
+    except Exception as e:
+        logger.error(f"Error in recommendation_is_stale for user {user_id}, date {target_date}: {e}")
+        return True  # safe default: generate rather than skip
+
+
 def recommendation_needs_update(user_id=None):
-    """Check if we need to generate a new recommendation for a specific user."""
+    """Check if we need to generate a new recommendation for a specific user.
+
+    Handles both the legacy valid_until model and the current date-keyed model
+    (where valid_until is NULL). For the date-keyed model, a recommendation is
+    considered fresh if its target_date is today or tomorrow in the user's timezone.
+    """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
@@ -649,10 +772,22 @@ def recommendation_needs_update(user_id=None):
         if not latest:
             return True
 
-        # Check if recommendation is still valid
-        valid_until = datetime.strptime(latest['valid_until'], '%Y-%m-%d').date()
-        today = datetime.now().date()
+        valid_until_raw = latest.get('valid_until')
+        if valid_until_raw is None:
+            # Date-keyed model: recommendation is fresh if target_date is today or tomorrow
+            target_date = latest.get('target_date')
+            if not target_date:
+                return True
+            from timezone_utils import get_user_current_date
+            today = get_user_current_date(user_id)
+            today_str = today.strftime('%Y-%m-%d')
+            tomorrow_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            return str(target_date) not in (today_str, tomorrow_str)
 
+        # Legacy path: recommendation has an explicit expiry date
+        valid_until = datetime.strptime(str(valid_until_raw), '%Y-%m-%d').date()
+        from timezone_utils import get_user_current_date
+        today = get_user_current_date(user_id)
         return today > valid_until
 
     except Exception as e:

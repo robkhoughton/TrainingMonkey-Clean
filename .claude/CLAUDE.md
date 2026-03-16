@@ -119,9 +119,19 @@ Invoke `/design-review` slash command or `@agent-design-review` subagent for tho
 - Before finalizing PRs with visual changes
 - Needing comprehensive accessibility and responsiveness testing
 
-## Local Development (Mock Mode)
+## Local Development
 
-For UI development without Cloud SQL:
+### Database Access (required for migrations and scripts)
+There is no local database. All DB work hits Cloud SQL. Before running any migration, script, or local Flask server against real data, start the proxy:
+
+```bash
+scripts\start_sql_proxy.bat
+```
+
+Keep that window open. Tunnels `localhost:5432 → Cloud SQL`. `.env` is already configured to point to `127.0.0.1`. Direct public IP access is blocked — the proxy is the only path.
+
+### Mock Mode (UI development only, no DB)
+For front-end work that doesn't need real data:
 ```bash
 scripts\start_mock_server.bat
 ```

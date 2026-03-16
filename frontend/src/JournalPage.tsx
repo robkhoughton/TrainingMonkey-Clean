@@ -2,6 +2,27 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styles from './TrainingLoadDashboard.module.css'; // Reuse existing styles
 import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 
+// Phase 6C: structured_output shape from the LLM
+interface StructuredOutput {
+  target_date?: string;
+  assessment?: {
+    category?: string;
+    primary_driver?: string;
+    primary_signal?: string;
+  };
+  divergence?: {
+    severity?: string;
+    direction?: string;
+  };
+  risk?: {
+    injury_risk_level?: string;
+  };
+  context?: {
+    autopsy_informed?: boolean;
+  };
+  [key: string]: unknown;
+}
+
 interface JournalEntry {
   date: string;
   is_today: boolean;
@@ -23,12 +44,17 @@ interface JournalEntry {
     rpe_score: number | null;
     pain_percentage: number | null;
     notes: string;
+    sleep_quality: number | null;      // Phase 6B
+    morning_soreness: number | null;   // Phase 6B
   };
   ai_autopsy: {
     autopsy_analysis?: string;
     alignment_score?: number;
     generated_at?: string;
   };
+  // Phase 6C: machine-readable recommendation metadata (null for pre-Phase-1 rows)
+  structured_output: StructuredOutput | null;
+  recommendation_target_date: string | null;
 }
 
 interface JournalResponse {
@@ -147,6 +173,245 @@ const formatBoldText = (text: string): React.ReactNode => {
   return parts.length > 0 ? <>{parts}</> : text;
 };
 
+// ─── Phase 6B: Morning Readiness Card ──────────────────────────────────────
+interface MorningReadinessCardProps {
+  todayStr: string;
+  onSaved: () => void;
+}
+
+const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, onSaved }) => {
+  const [sleepQuality, setSleepQuality] = useState<number>(3);
+  const [morningSoreness, setMorningSoreness] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/readiness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: todayStr,
+          sleep_quality: sleepQuality,
+          morning_soreness: morningSoreness
+        })
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save readiness data');
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      padding: '14px 16px',
+      backgroundColor: '#f9fafb',
+      marginBottom: '12px'
+    }}>
+      <div style={{
+        fontSize: '0.9rem',
+        fontWeight: '600',
+        color: '#374151',
+        marginBottom: '12px'
+      }}>
+        How are you feeling this morning?
+      </div>
+
+      {/* Sleep Quality */}
+      <div style={{ marginBottom: '10px' }}>
+        <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+          Sleep Quality: {sleepQuality} &nbsp;
+          <span style={{ fontWeight: '400', color: '#9ca3af' }}>
+            (1 = Very poor sleep, 5 = Excellent)
+          </span>
+        </label>
+        <input
+          type="range"
+          min={1}
+          max={5}
+          step={1}
+          value={sleepQuality}
+          onChange={(e) => setSleepQuality(parseInt(e.target.value))}
+          style={{ width: '200px', cursor: 'pointer' }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px', fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>
+          {[1,2,3,4,5].map(n => <span key={n}>{n}</span>)}
+        </div>
+      </div>
+
+      {/* Morning Soreness */}
+      <div style={{ marginBottom: '12px' }}>
+        <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+          Morning Soreness: {morningSoreness} &nbsp;
+          <span style={{ fontWeight: '400', color: '#9ca3af' }}>
+            (0 = Fresh legs, 100 = Very sore)
+          </span>
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={morningSoreness}
+          onChange={(e) => setMorningSoreness(parseInt(e.target.value))}
+          style={{ width: '200px', cursor: 'pointer' }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px', fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>
+          <span>0</span><span>50</span><span>100</span>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ fontSize: '0.8rem', color: '#dc2626', marginBottom: '8px' }}>{error}</div>
+      )}
+
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        style={{
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '6px 16px',
+          fontSize: '0.8rem',
+          fontWeight: '600',
+          cursor: isSaving ? 'not-allowed' : 'pointer',
+          opacity: isSaving ? 0.7 : 1
+        }}
+      >
+        {isSaving ? 'Saving...' : 'Save'}
+      </button>
+    </div>
+  );
+};
+
+
+// ─── Phase 6C: Recommendation Meta Panel ────────────────────────────────────
+interface RecommendationMetaPanelProps {
+  structuredOutput: StructuredOutput;
+  targetDate: string | null;
+}
+
+const formatSnakeCase = (s: string): string =>
+  s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const RecommendationMetaPanel: React.FC<RecommendationMetaPanelProps> = ({ structuredOutput, targetDate }) => {
+  const divergenceSeverity = structuredOutput.divergence?.severity;
+  const divergenceDirection = structuredOutput.divergence?.direction;
+  const divergenceLabel = [divergenceSeverity, divergenceDirection]
+    .filter(Boolean)
+    .map(v => formatSnakeCase(v as string))
+    .join(' ');
+
+  const assessmentCategory = structuredOutput.assessment?.category
+    ? formatSnakeCase(structuredOutput.assessment.category)
+    : null;
+
+  const riskLevel = structuredOutput.risk?.injury_risk_level
+    ? formatSnakeCase(structuredOutput.risk.injury_risk_level)
+    : null;
+
+  const primaryDriver = structuredOutput.assessment?.primary_driver || null;
+  const autopsyInformed = structuredOutput.context?.autopsy_informed === true;
+
+  const displayDate = targetDate || (structuredOutput.target_date ?? null);
+
+  const metaRowStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '6px',
+    fontSize: '0.75rem',
+    color: '#6b7280',
+    marginBottom: '4px',
+    flexWrap: 'wrap',
+    alignItems: 'baseline'
+  };
+
+  const labelStyle: React.CSSProperties = {
+    color: '#6b7280',
+    fontWeight: '600',
+    flexShrink: 0
+  };
+
+  const valueStyle: React.CSSProperties = {
+    color: '#111827',
+    fontWeight: '500'
+  };
+
+  return (
+    <div style={{
+      marginTop: '12px',
+      paddingTop: '10px',
+      borderTop: '1px solid #d1d5db'
+    }}>
+      <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#374151', letterSpacing: '0.05em', marginBottom: '8px', textTransform: 'uppercase' }}>
+        Why this recommendation
+      </div>
+
+      {displayDate && (
+        <div style={metaRowStyle}>
+          <span style={labelStyle}>Recommendation for:</span>
+          <span style={valueStyle}>{displayDate}</span>
+        </div>
+      )}
+
+      {divergenceLabel && (
+        <div style={metaRowStyle}>
+          <span style={labelStyle}>Divergence:</span>
+          <span style={valueStyle}>{divergenceLabel}</span>
+        </div>
+      )}
+
+      {assessmentCategory && (
+        <div style={metaRowStyle}>
+          <span style={labelStyle}>Assessment:</span>
+          <span style={valueStyle}>{assessmentCategory}</span>
+        </div>
+      )}
+
+      {riskLevel && (
+        <div style={metaRowStyle}>
+          <span style={labelStyle}>Risk level:</span>
+          <span style={valueStyle}>{riskLevel}</span>
+        </div>
+      )}
+
+      {primaryDriver && (
+        <div style={{ ...metaRowStyle, flexDirection: 'column', gap: '2px' }}>
+          <span style={labelStyle}>Primary driver:</span>
+          <span style={{ ...valueStyle, fontStyle: 'italic' }}>{primaryDriver}</span>
+        </div>
+      )}
+
+      {autopsyInformed && (
+        <div style={{ marginTop: '4px' }}>
+          <span style={{
+            fontSize: '0.7rem',
+            color: '#059669',
+            fontWeight: '600',
+            backgroundColor: '#d1fae5',
+            padding: '2px 6px',
+            borderRadius: '3px'
+          }}>
+            Autopsy-informed
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const JournalPage: React.FC = () => {
   // Performance monitoring
   usePagePerformanceMonitoring('journal');
@@ -158,6 +423,9 @@ const JournalPage: React.FC = () => {
   const [centerDate, setCenterDate] = useState<string>('');
   const [isSaving, setIsSaving] = useState<string | null>(null);
   const [savedEntries, setSavedEntries] = useState<Set<string>>(new Set()); // Track saved entries
+  // Phase 6B: track dates where readiness was submitted this session
+  const [readinessSubmitted, setReadinessSubmitted] = useState<Set<string>>(new Set());
+  const [isGenerating, setIsGenerating] = useState(false);
   
   // Modal state for full-screen autopsy display
   const [modalOpen, setModalOpen] = useState(false);
@@ -419,6 +687,28 @@ const JournalPage: React.FC = () => {
     }
   };
 
+  // Generate recommendation on demand
+  const handleGenerateRecommendation = async () => {
+    try {
+      setIsGenerating(true);
+      const response = await fetch('/api/llm-recommendations/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        alert(`Could not generate recommendation: ${result.error || 'Unknown error'}`);
+        return;
+      }
+      await fetchJournalData(centerDate || undefined);
+    } catch (error) {
+      alert(`Could not generate recommendation: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Navigation functions
   const navigateToPrevious = () => {
     const prevDate = new Date(centerDate);
@@ -601,6 +891,19 @@ const JournalPage: React.FC = () => {
                             padding: '16px',
                             backgroundColor: 'white'
                           }}>
+                            {/* Phase 6B: Morning Readiness Card — shown for today only, when no readiness yet */}
+                            {entry.is_today &&
+                              entry.observations.sleep_quality == null &&
+                              !readinessSubmitted.has(entry.date) && (
+                                <MorningReadinessCard
+                                  todayStr={entry.date}
+                                  onSaved={() => {
+                                    setReadinessSubmitted(prev => new Set(prev).add(entry.date));
+                                    fetchJournalData(centerDate || undefined);
+                                  }}
+                                />
+                              )}
+
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -627,25 +930,27 @@ const JournalPage: React.FC = () => {
                                   Autopsy-Informed
                                 </span>
                               </div>
-                              {/* Compact Mark as Rest Day button */}
-                              <button
-                                onClick={() => handleMarkRestDay(entry.date)}
-                                disabled={isSaving === entry.date}
-                                style={{
-                                  backgroundColor: '#9333ea',
-                                  color: 'white',
-                                  padding: '6px 12px',
-                                  borderRadius: '4px',
-                                  border: 'none',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '600',
-                                  cursor: isSaving === entry.date ? 'not-allowed' : 'pointer',
-                                  opacity: isSaving === entry.date ? 0.6 : 1,
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                {isSaving === entry.date ? 'Marking...' : 'Mark as Rest Day'}
-                              </button>
+                              {/* Compact Mark as Rest Day button - hide if already marked as rest */}
+                              {(!entry.activity_summary || entry.activity_summary.type !== 'rest') && (
+                                <button
+                                  onClick={() => handleMarkRestDay(entry.date)}
+                                  disabled={isSaving === entry.date}
+                                  style={{
+                                    backgroundColor: '#9333ea',
+                                    color: 'white',
+                                    padding: '6px 12px',
+                                    borderRadius: '4px',
+                                    border: 'none',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    cursor: isSaving === entry.date ? 'not-allowed' : 'pointer',
+                                    opacity: isSaving === entry.date ? 0.6 : 1,
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {isSaving === entry.date ? 'Marking...' : 'Mark as Rest Day'}
+                                </button>
+                              )}
                             </div>
                             <div style={{
                               fontSize: '0.9rem',
@@ -657,6 +962,14 @@ const JournalPage: React.FC = () => {
                             }}>
                               {formatTrainingDecision(entry.todays_decision)}
                             </div>
+
+                            {/* Phase 6C: Recommendation Meta Panel */}
+                            {entry.structured_output && (
+                              <RecommendationMetaPanel
+                                structuredOutput={entry.structured_output}
+                                targetDate={entry.recommendation_target_date}
+                              />
+                            )}
                           </div>
                         ) : (
                           /* No recommendation yet - prompt to complete journal */
@@ -681,7 +994,7 @@ const JournalPage: React.FC = () => {
                               color: '#6b7280',
                               lineHeight: '1.5'
                             }}>
-                              Generate fresh recommendations on the Dashboard tab.
+                              Generate fresh recommendations by entering observations/notes for today's activity and clicking Save
                             </div>
                           </div>
                         )}
@@ -710,16 +1023,50 @@ const JournalPage: React.FC = () => {
                           minWidth: '350px',
                           maxWidth: '500px'
                         }}>
-                          <div style={{
-                            fontSize: '0.875rem',
-                            lineHeight: '1.6',
-                            maxHeight: '120px',
-                            overflowY: 'auto',
-                            color: '#374151',
-                            textAlign: 'left'
-                          }}>
-                            {formatTrainingDecision(entry.todays_decision || 'No AI recommendation available')}
-                          </div>
+                          {(!entry.todays_decision || entry.todays_decision.includes('No recommendation available')) ? (
+                            (entry.is_today || entry.is_tomorrow) ? (
+                              <button
+                                onClick={handleGenerateRecommendation}
+                                disabled={isGenerating}
+                                style={{
+                                  backgroundColor: '#3b82f6',
+                                  color: 'white',
+                                  padding: '8px 14px',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600',
+                                  cursor: isGenerating ? 'not-allowed' : 'pointer',
+                                  opacity: isGenerating ? 0.6 : 1
+                                }}
+                              >
+                                {isGenerating ? 'Generating...' : 'Generate Recommendation'}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '0.875rem', color: '#9ca3af', fontStyle: 'italic' }}>No recommendation</span>
+                            )
+                          ) : (
+                            <>
+                              <div style={{
+                                fontSize: '0.875rem',
+                                lineHeight: '1.6',
+                                maxHeight: '120px',
+                                overflowY: 'auto',
+                                color: '#374151',
+                                textAlign: 'left'
+                              }}>
+                                {formatTrainingDecision(entry.todays_decision)}
+                              </div>
+
+                              {/* Phase 6C: Recommendation Meta Panel for regular rows */}
+                              {entry.structured_output && (
+                                <RecommendationMetaPanel
+                                  structuredOutput={entry.structured_output}
+                                  targetDate={entry.recommendation_target_date}
+                                />
+                              )}
+                            </>
+                          )}
                         </div>
                       </td>
 
@@ -901,10 +1248,24 @@ const JournalPage: React.FC = () => {
                         const isSaved = savedEntries.has(entry.date);
                         const hasAnalysis = entry.ai_autopsy.autopsy_analysis;
                         const isCurrentlySaving = isSaving === entry.date;
-                        const isRestDay = !entry.activity_summary || entry.activity_summary.type === 'rest';
                         const isToday = entry.is_today;
+                        const noActivityYet = !entry.activity_summary?.activity_id;
 
-                        // State 1: Unsaved changes - Show Save button (CHECK THIS FIRST)
+                        // State 0 FIRST: Today, no activity recorded yet, no observations typed — offer rest day
+                        if (isToday && noActivityYet && !hasUnsaved && !isCurrentlySaving) {
+                          return (
+                            <button
+                              onClick={() => handleMarkRestDay(entry.date)}
+                              disabled={isCurrentlySaving}
+                              className={`${styles.journalButton}`}
+                              style={{ backgroundColor: '#9333ea', color: 'white', border: 'none' }}
+                            >
+                              Mark as Rest Day
+                            </button>
+                          );
+                        }
+
+                        // State 1: Unsaved changes or not yet saved — show Save
                         if (hasUnsaved || (!isSaved && !isCurrentlySaving)) {
                           return (
                             <button
@@ -913,24 +1274,6 @@ const JournalPage: React.FC = () => {
                               className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
                             >
                               {isCurrentlySaving ? '💾 Saving...' : '💾 Save'}
-                            </button>
-                          );
-                        }
-
-                        // State 0: Today with no activity and NO observations, show "Mark as Rest Day" button
-                        if (isToday && isRestDay && !isSaved && !hasUnsaved) {
-                          return (
-                            <button
-                              onClick={() => handleMarkRestDay(entry.date)}
-                              disabled={isCurrentlySaving}
-                              className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
-                              style={{
-                                backgroundColor: '#9333ea',
-                                color: 'white',
-                                border: 'none'
-                              }}
-                            >
-                              {isCurrentlySaving ? '🛌 Marking...' : '🛌 Mark as Rest Day'}
                             </button>
                           );
                         }

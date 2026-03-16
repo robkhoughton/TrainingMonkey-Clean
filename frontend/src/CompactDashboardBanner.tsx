@@ -12,6 +12,12 @@ interface CompactDashboardBannerProps {
     sevenDayAvgTrimp: number;
     daysSinceRest: number;
     normalizedDivergence: number;
+    // Backend-computed risk fields — must not be recalculated in the frontend
+    injuryRiskScore?: number;
+    injuryRiskLabel?: string;
+    acwrHighThreshold?: number;
+    divergenceWarnThreshold?: number;
+    divergenceModerateThreshold?: number;
   };
 }
 
@@ -796,48 +802,10 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
           position: 'relative' as const,
           boxSizing: 'border-box' as const
         }}>
-          {/* Dynamic Risk Assessment Title */}
+          {/* Dynamic Risk Assessment Title — label from backend (user-specific thresholds) */}
           {(() => {
-            // Calculate risk score using the same weighted logic as the vertical bar
-            const externalAcwr = metrics?.externalAcwr || 0;
-            const internalAcwr = metrics?.internalAcwr || 0;
-            const divergence = metrics?.normalizedDivergence || 0;
-            const daysSinceRest = metrics?.daysSinceRest || 0;
-            
-            // Calculate risk score (0-100) - same logic as vertical bar
-            let riskScore = 0;
-            
-            // ACWR contribution (40%)
-            const avgAcwr = (externalAcwr + internalAcwr) / 2;
-            if (avgAcwr > 1.5) riskScore += 40;
-            else if (avgAcwr > 1.3) riskScore += 30;
-            else if (avgAcwr > 1.1) riskScore += 20;
-            else if (avgAcwr > 0.8) riskScore += 10;
-            
-            // Divergence contribution (40%)
-            if (divergence < -0.25) riskScore += 40;
-            else if (divergence < -0.15) riskScore += 30;
-            else if (divergence < -0.05) riskScore += 15;
-            
-            // Days since rest contribution (20%)
-            if (daysSinceRest > 7) riskScore += 20;
-            else if (daysSinceRest > 6) riskScore += 15;
-            else if (daysSinceRest > 5) riskScore += 10;
-            
-            const finalRiskScore = Math.min(100, riskScore);
-            
-            // Determine risk level based on score thresholds (matching bar interpretation)
-            let riskLevel = 'LOW';
-            let riskColor = '#2ecc71'; // Green
-            
-            if (finalRiskScore > 70) {
-              riskLevel = 'HIGH';
-              riskColor = '#e74c3c'; // Red
-            } else if (finalRiskScore > 40) {
-              riskLevel = 'MODERATE';
-              riskColor = '#f39c12'; // Orange
-            }
-            
+            const riskLabel = metrics?.injuryRiskLabel ?? 'LOW';
+            const riskColor = riskLabel === 'HIGH' ? '#e74c3c' : riskLabel === 'MODERATE' ? '#f39c12' : '#2ecc71';
             return (
               <h3 style={{
                 margin: '0 0 0.25rem 0',
@@ -846,7 +814,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                 color: '#f0f0f0',
                 textAlign: 'center'
               }}>
-                Injury Risk At-A-Glance - <span style={{ color: riskColor, fontWeight: '700' }}>{riskLevel}</span>
+                Injury Risk At-A-Glance - <span style={{ color: riskColor, fontWeight: '700' }}>{riskLabel}</span>
               </h3>
             );
           })()}
@@ -868,7 +836,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
               value={`Ext: ${typeof metrics?.externalAcwr === 'number' ? metrics.externalAcwr.toFixed(2) : '0.00'}, Int: ${typeof metrics?.internalAcwr === 'number' ? metrics.internalAcwr.toFixed(2) : '0.00'}`}
               description="Dual ACWR display showing both external training load (distance, elevation) and internal stress (heart rate zones) on a single gauge. Green needle = external, blue needle = internal."
               interpretation="Compare needle positions to assess training balance. Both needles in green zone (0.8-1.3) indicates optimal training load."
-              warning={(metrics?.externalAcwr || 0) > 1.3 || (metrics?.internalAcwr || 0) > 1.3 ? "High strain detected - consider reducing training intensity" : undefined}
+              warning={(metrics?.externalAcwr || 0) > (metrics?.acwrHighThreshold ?? 1.3) || (metrics?.internalAcwr || 0) > (metrics?.acwrHighThreshold ?? 1.3) ? "High strain detected - consider reducing training intensity" : undefined}
               position="top"
             >
               <DualNeedleStrainGauge
@@ -883,92 +851,19 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
             <MetricTooltip
               data-metric-tooltip
               metric="Injury Risk Level"
-              value={(() => {
-                const externalAcwr = metrics?.externalAcwr || 0;
-                const internalAcwr = metrics?.internalAcwr || 0;
-                const divergence = metrics?.normalizedDivergence || 0;
-                const daysSinceRest = metrics?.daysSinceRest || 0;
-
-                // Calculate risk level (0-100)
-                let riskScore = 0;
-
-                // ACWR contribution (40%)
-                const avgAcwr = (externalAcwr + internalAcwr) / 2;
-                if (avgAcwr > 1.5) riskScore += 40;
-                else if (avgAcwr > 1.3) riskScore += 30;
-                else if (avgAcwr > 1.1) riskScore += 20;
-                else if (avgAcwr > 0.8) riskScore += 10;
-
-                // Divergence contribution (40%)
-                if (divergence < -0.25) riskScore += 40;
-                else if (divergence < -0.15) riskScore += 30;
-                else if (divergence < -0.05) riskScore += 15;
-
-                // Days since rest contribution (20%)
-                if (daysSinceRest > 7) riskScore += 20;
-                else if (daysSinceRest > 6) riskScore += 15;
-                else if (daysSinceRest > 5) riskScore += 10;
-
-                return Math.min(100, riskScore);
-              })().toFixed(0) + '%'}
+              value={(metrics?.injuryRiskScore ?? 0).toFixed(0) + '%'}
               description="Overall injury risk assessment based on training strain, divergence, and recovery status. Combines ACWR, training balance, and days since rest into a single risk metric."
               interpretation="Green (0-40%): Low risk, training well-balanced. Orange (40-70%): Moderate risk, monitor closely. Red (70-100%): High risk, consider rest or reduced load."
               warning={(() => {
-                const riskLevel = (() => {
-                  const externalAcwr = metrics?.externalAcwr || 0;
-                  const internalAcwr = metrics?.internalAcwr || 0;
-                  const divergence = metrics?.normalizedDivergence || 0;
-                  const daysSinceRest = metrics?.daysSinceRest || 0;
-                  let riskScore = 0;
-                  const avgAcwr = (externalAcwr + internalAcwr) / 2;
-                  if (avgAcwr > 1.5) riskScore += 40;
-                  else if (avgAcwr > 1.3) riskScore += 30;
-                  else if (avgAcwr > 1.1) riskScore += 20;
-                  else if (avgAcwr > 0.8) riskScore += 10;
-                  if (divergence < -0.25) riskScore += 40;
-                  else if (divergence < -0.15) riskScore += 30;
-                  else if (divergence < -0.05) riskScore += 15;
-                  if (daysSinceRest > 7) riskScore += 20;
-                  else if (daysSinceRest > 6) riskScore += 15;
-                  else if (daysSinceRest > 5) riskScore += 10;
-                  return Math.min(100, riskScore);
-                })();
-
-                if (riskLevel > 70) return "High injury risk - rest strongly recommended";
-                if (riskLevel > 40) return "Moderate risk - monitor and consider reducing intensity";
+                const score = metrics?.injuryRiskScore ?? 0;
+                if (score > 70) return "High injury risk - rest strongly recommended";
+                if (score > 40) return "Moderate risk - monitor and consider reducing intensity";
                 return undefined;
               })()}
               position="top"
             >
               <VerticalRiskBar
-                riskLevel={(() => {
-                  const externalAcwr = metrics?.externalAcwr || 0;
-                  const internalAcwr = metrics?.internalAcwr || 0;
-                  const divergence = metrics?.normalizedDivergence || 0;
-                  const daysSinceRest = metrics?.daysSinceRest || 0;
-
-                  // Calculate risk level (0-100)
-                  let riskScore = 0;
-
-                  // ACWR contribution (40%)
-                  const avgAcwr = (externalAcwr + internalAcwr) / 2;
-                  if (avgAcwr > 1.5) riskScore += 40;
-                  else if (avgAcwr > 1.3) riskScore += 30;
-                  else if (avgAcwr > 1.1) riskScore += 20;
-                  else if (avgAcwr > 0.8) riskScore += 10;
-
-                  // Divergence contribution (40%)
-                  if (divergence < -0.25) riskScore += 40;
-                  else if (divergence < -0.15) riskScore += 30;
-                  else if (divergence < -0.05) riskScore += 15;
-
-                  // Days since rest contribution (20%)
-                  if (daysSinceRest > 7) riskScore += 20;
-                  else if (daysSinceRest > 6) riskScore += 15;
-                  else if (daysSinceRest > 5) riskScore += 10;
-
-                  return Math.min(100, riskScore);
-                })()}
+                riskLevel={metrics?.injuryRiskScore ?? 0}
                 size={150}
               />
             </MetricTooltip>
@@ -980,7 +875,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
               value={typeof metrics?.normalizedDivergence === 'number' && !isNaN(metrics.normalizedDivergence) ? metrics.normalizedDivergence.toFixed(3) : '0.000'}
               description="Normalized divergence between external and internal training load. Shows if your heart rate stress matches your external training effort."
               interpretation="Negative values indicate your body is working harder than expected (fatigue/overtraining), positive values suggest good fitness/recovery."
-              warning={(metrics?.normalizedDivergence || 0) < -0.15 ? "High overtraining risk - rest recommended" : (metrics?.normalizedDivergence || 0) < -0.05 ? "Moderate fatigue - consider easier training" : undefined}
+              warning={(metrics?.normalizedDivergence || 0) < (metrics?.divergenceWarnThreshold ?? -0.15) ? "High overtraining risk - rest recommended" : (metrics?.normalizedDivergence || 0) < (metrics?.divergenceModerateThreshold ?? -0.05) ? "Moderate fatigue - consider easier training" : undefined}
               position="top"
             >
               <CircularDivergenceGauge

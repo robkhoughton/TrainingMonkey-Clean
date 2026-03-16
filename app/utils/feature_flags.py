@@ -43,8 +43,18 @@ def is_feature_enabled(feature_name, user_id=None):
         'enhanced_ai_context': False,  # Default OFF
         'settings_validation_strict': True,  # Default ON for safety
         'enhanced_trimp_calculation': False,  # Default OFF - uses heart rate stream data
-        'enhanced_acwr_calculation': False  # Default OFF - uses exponential decay weighting
+        'enhanced_acwr_calculation': False,  # Default OFF - uses exponential decay weighting
+        'agentic_context': False,  # Phase 4: Agentic Context Assembly — OFF by default
     }
+
+    # Phase 4: Agentic context — enabled for user_id=1 (Rob) only
+    if feature_name == 'agentic_context':
+        agentic_beta_ids = [1]  # Rob only; expand to [1, 2, 3] once stable
+        if user_id in agentic_beta_ids:
+            logger.info(f"Agentic context access granted to user {user_id} (Phase 4 beta)")
+            return True
+        logger.info(f"Agentic context access denied to user {user_id} (not in Phase 4 beta)")
+        return False
 
     # Get base enabled state
     base_enabled = feature_flags.get(feature_name, False)

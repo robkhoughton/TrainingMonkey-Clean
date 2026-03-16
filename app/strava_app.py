@@ -21,7 +21,8 @@ import json
 import db_utils
 from datetime import datetime, timedelta, date
 from timezone_utils import get_app_current_date, log_timezone_debug
-from llm_recommendations_module import generate_recommendations, update_recommendations_with_autopsy_learning
+from llm_recommendations_module import generate_recommendations, generate_recommendations_agentic, update_recommendations_with_autopsy_learning
+from utils.feature_flags import is_feature_enabled as _is_feature_enabled
 from flask import Flask, request, jsonify, redirect, url_for, render_template, send_from_directory, session, flash, Response
 from csrf_protection import csrf_protected, require_csrf_token, CSRFTokenType
 from enhanced_token_management import SimpleTokenManager, check_token_status
@@ -1812,12 +1813,79 @@ def get_training_data():
         # No on-the-fly recalculation needed - all features read from single source of truth
         logger.info(f"Processed to {len(aggregated_data)} daily records for dashboard")
 
+        # Build current_metrics from already-fetched data to avoid a redundant DB round-trip.
+        # activity_list is sorted ASC; [-1] is the most recent activity in the window.
+        # Two targeted queries are still needed: days_since_rest and user thresholds.
+        from unified_metrics_service import get_days_since_rest as _get_dsr
+        from llm_recommendations_module import get_adjusted_thresholds, get_user_recommendation_style
+        from unified_metrics_service import UnifiedMetricsService as _UMS
+
+        days_since_rest = _get_dsr(current_user.id)
+        recommendation_style = get_user_recommendation_style(current_user.id)
+        thresholds = get_adjusted_thresholds(recommendation_style)
+
+        last = activity_list[-1]
+        normalized_divergence = last.get('normalized_divergence')
+        if normalized_divergence is None:
+            normalized_divergence = _UMS._calculate_normalized_divergence(
+                last.get('acute_chronic_ratio', 0),
+                last.get('trimp_acute_chronic_ratio', 0)
+            )
+
+        acwr_high        = thresholds['acwr_high_risk']
+        acwr_undertraining = thresholds['acwr_undertraining']
+        div_overtraining = thresholds['divergence_overtraining']
+        div_moderate     = thresholds['divergence_moderate_risk']
+        days_max         = thresholds['days_since_rest_max']
+
+        avg_acwr   = ((last.get('acute_chronic_ratio') or 0) + (last.get('trimp_acute_chronic_ratio') or 0)) / 2
+        divergence = normalized_divergence or 0
+
+        risk_score = 0
+        if avg_acwr > acwr_high + 0.2:      risk_score += 40
+        elif avg_acwr > acwr_high:          risk_score += 30
+        elif avg_acwr > acwr_high - 0.2:    risk_score += 20
+        elif avg_acwr > acwr_undertraining: risk_score += 10
+        if divergence < div_overtraining - 0.10: risk_score += 40
+        elif divergence < div_overtraining:      risk_score += 30
+        elif divergence < div_moderate:          risk_score += 15
+        if days_since_rest > days_max:          risk_score += 20
+        elif days_since_rest > days_max - 1:    risk_score += 15
+        elif days_since_rest > days_max - 2:    risk_score += 10
+        risk_score = min(100, risk_score)
+        risk_label = 'HIGH' if risk_score > 70 else ('MODERATE' if risk_score > 40 else 'LOW')
+
+        current_metrics = {
+            'external_acwr':              last.get('acute_chronic_ratio', 0),
+            'internal_acwr':              last.get('trimp_acute_chronic_ratio', 0),
+            'normalized_divergence':      normalized_divergence,
+            'seven_day_avg_load':         last.get('seven_day_avg_load', 0),
+            'seven_day_avg_trimp':        last.get('seven_day_avg_trimp', 0),
+            'twentyeight_day_avg_load':   last.get('twentyeight_day_avg_load', 0),
+            'twentyeight_day_avg_trimp':  last.get('twentyeight_day_avg_trimp', 0),
+            'days_since_rest':            days_since_rest,
+            'latest_activity_date':       str(last.get('date', '')),
+            'injury_risk_score':          risk_score,
+            'injury_risk_label':          risk_label,
+            'acwr_high_threshold':        acwr_high,
+            'acwr_undertraining_threshold': acwr_undertraining,
+            'divergence_warn_threshold':  div_overtraining,
+            'divergence_moderate_threshold': div_moderate,
+            'days_since_rest_max':        days_max,
+        }
+        logger.info(f"current_metrics for user {current_user.id}: "
+                    f"injury_risk={risk_label}({risk_score}) [{recommendation_style}], "
+                    f"days_since_rest={days_since_rest}")
+
         # Build response maintaining existing structure
         response_data = {
             'success': True,
             'data': aggregated_data,  # Now with properly serialized dates
             'count': len(aggregated_data),
-            'raw_count': len(activity_list)
+            'raw_count': len(activity_list),
+            'days_since_rest': days_since_rest,  # backward compat
+            'current_metrics': current_metrics,
+            'user_today': user_current_date.strftime('%Y-%m-%d')
         }
 
         # Add sport breakdown fields if requested
@@ -2054,22 +2122,6 @@ def get_llm_recommendations():
 
 
 @login_required
-@app.route('/api/llm-recommendations/generate', methods=['POST'])
-def generate_llm_recommendations():
-    """Generate new comprehensive LLM recommendations for the current user"""
-    try:
-        logger.info(f"Generating new LLM recommendations for user {current_user.id}...")
-        recommendation = generate_recommendations(force=True, user_id=current_user.id)
-        if recommendation:
-            return jsonify({'success': True, 'message': 'Generated successfully', 'recommendation': recommendation})
-        else:
-            return jsonify({'success': False, 'error': 'Failed to generate', 'recommendation': None}), 500
-    except Exception as e:
-        logger.error(f"Error generating recommendations: {str(e)}")
-        return jsonify({'success': False, 'error': str(e), 'recommendation': None}), 500
-
-
-@login_required
 @app.route('/api/journal-status', methods=['GET'])
 def get_journal_status_endpoint():
     """Get journal status for last activity - used by Dashboard to enforce workflow."""
@@ -2088,6 +2140,26 @@ def get_journal_status_endpoint():
         logger.error(f"Error getting journal status: {str(e)}")
         return jsonify({'success': False, 'error': str(e), 'status': {'allow_manual_generation': True, 'reason': 'error'}}), 500
 '''
+
+@login_required
+@app.route('/api/llm-recommendations/generate', methods=['POST'])
+def generate_llm_recommendations():
+    """Generate new comprehensive LLM recommendations for the current user"""
+    try:
+        logger.info(f"Generating new LLM recommendations for user {current_user.id}...")
+        if _is_feature_enabled('agentic_context', current_user.id):
+            logger.info(f"Using agentic path for user {current_user.id}")
+            recommendation = generate_recommendations_agentic(user_id=current_user.id)
+        else:
+            recommendation = generate_recommendations(force=True, user_id=current_user.id)
+        if recommendation:
+            return jsonify({'success': True, 'message': 'Generated successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to generate'}), 500
+    except Exception as e:
+        logger.error(f"Error generating recommendations: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/journal-entries-count', methods=['GET'])
 @login_required
@@ -3906,8 +3978,9 @@ def get_journal_entries():
 
         observations_data = db_utils.execute_query(
             """
-            SELECT date, energy_level, rpe_score, pain_percentage, notes
-            FROM journal_entries 
+            SELECT date, energy_level, rpe_score, pain_percentage, notes,
+                   sleep_quality, morning_soreness
+            FROM journal_entries
             WHERE user_id = %s AND date >= %s AND date <= %s
             """,
             (current_user.id, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')),
@@ -3975,6 +4048,9 @@ def get_journal_entries():
             # FIXED: Use unified function that matches Dashboard logic
             todays_decision = get_unified_recommendation_for_date(current_date, current_user.id)
 
+            # Phase 6C: Fetch structured_output and target_date for the meta panel
+            rec_structured_output, rec_target_date = get_recommendation_meta_for_date(current_date, current_user.id)
+
             # Get activity summary for this date (won't exist for future dates)
             activity_summary = get_activity_summary_for_date(current_date, current_user.id) if not is_future else None
 
@@ -3984,7 +4060,9 @@ def get_journal_entries():
                 'energy_level': obs_data.get('energy_level'),
                 'rpe_score': obs_data.get('rpe_score'),
                 'pain_percentage': obs_data.get('pain_percentage'),
-                'notes': obs_data.get('notes', '')
+                'notes': obs_data.get('notes', ''),
+                'sleep_quality': obs_data.get('sleep_quality'),
+                'morning_soreness': obs_data.get('morning_soreness')
             }
 
             # Build autopsy from lookup (won't exist for future dates)
@@ -4016,7 +4094,10 @@ def get_journal_entries():
                 'observations': observations,
                 'ai_autopsy': ai_autopsy,
                 'has_observations': has_observations,
-                'is_next_incomplete': False  # Will be set below
+                'is_next_incomplete': False,  # Will be set below
+                # Phase 6C: Recommendation transparency data
+                'structured_output': rec_structured_output,
+                'recommendation_target_date': rec_target_date
             }
 
             journal_entries.append(journal_entry)
@@ -4038,7 +4119,12 @@ def get_journal_entries():
                 entry['activity_summary'].get('activity_id') is not None
             )
 
-            if has_recommendation and not has_completed_activity and not entry['is_future']:
+            # Include today and tomorrow as candidates (not dates further in the future)
+            # This ensures the card always shows the next actionable workout even when
+            # all past days are complete and today's activity has already synced
+            is_eligible = not entry['is_future'] or entry.get('is_tomorrow', False)
+
+            if has_recommendation and not has_completed_activity and is_eligible:
                 entry['is_next_incomplete'] = True
                 logger.info(f"Marked {entry['date']} as next incomplete workout for user {current_user.id}")
                 break  # Only mark the first (earliest) incomplete entry
@@ -4145,14 +4231,58 @@ def get_unified_recommendation_for_date(date_obj, user_id):
                 date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
             else:
                 # FUTURE date: Frontend adds its own header
-                return "No recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
+                return "No recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
 
-            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
+            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
 
     except Exception as e:
         logger.error(f"Error in get_unified_recommendation_for_date for user {user_id}, date {date_str}: {str(e)}",
                      exc_info=True)
         return f"🤖 AI Training Decision:\nError retrieving recommendation: {str(e)}"
+
+
+def get_recommendation_meta_for_date(date_obj, user_id):
+    """Return (structured_output, target_date) for the recommendation that applies to date_obj.
+
+    structured_output is a dict (parsed from JSONB) or None for pre-Phase-1 rows.
+    target_date is a 'YYYY-MM-DD' string or None.
+    Returns (None, None) when no recommendation exists for this date.
+    """
+    try:
+        date_str = date_obj.strftime('%Y-%m-%d')
+        result = db_utils.execute_query(
+            """
+            SELECT structured_output, target_date
+            FROM llm_recommendations
+            WHERE user_id = %s AND target_date = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id, date_str),
+            fetch=True
+        )
+        if result and result[0]:
+            row = dict(result[0])
+            raw_so = row.get('structured_output')
+            # JSONB columns may come back as dict already (psycopg2 with jsonb) or as string
+            if isinstance(raw_so, str):
+                import json as _json
+                try:
+                    raw_so = _json.loads(raw_so)
+                except Exception:
+                    raw_so = None
+            target_date_raw = row.get('target_date')
+            if target_date_raw and hasattr(target_date_raw, 'strftime'):
+                target_date_str = target_date_raw.strftime('%Y-%m-%d')
+            elif target_date_raw and isinstance(target_date_raw, str) and 'T' in target_date_raw:
+                target_date_str = target_date_raw.split('T')[0]
+            else:
+                target_date_str = str(target_date_raw) if target_date_raw else None
+            return raw_so, target_date_str
+        return None, None
+    except Exception as e:
+        logger.error(f"Error in get_recommendation_meta_for_date for user {user_id}, date {date_str}: {e}")
+        return None, None
 
 
 def get_date_specific_decision_with_label(date_obj, user_id, recommendations_lookup):
@@ -4178,7 +4308,7 @@ def get_date_specific_decision_with_label(date_obj, user_id, recommendations_loo
         if stored_recommendation and stored_recommendation.strip():
             return f"🤖 AI Training Decision for {date_label}:\n\n{stored_recommendation}"
         else:
-            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations on the Dashboard tab."
+            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
 
     except Exception as e:
         logger.error(f"Error getting date-specific decision for {date_str}: {str(e)}")
@@ -4291,10 +4421,10 @@ def get_activity_summary_for_date(date_obj, user_id):
 
         logger.info(f"Getting activity summary for date {date_str}, user {user_id}")
 
-        # Get all activities for this date - SAME QUERY AS ACTIVITIES PAGE
+        # Get all real activities for this date (positive activity_id = from Strava)
         activities = db_utils.execute_query(
             """
-            SELECT 
+            SELECT
                 activity_id,
                 name,
                 type,
@@ -4309,7 +4439,7 @@ def get_activity_summary_for_date(date_obj, user_id):
                 time_in_zone3,
                 time_in_zone4,
                 time_in_zone5
-            FROM activities 
+            FROM activities
             WHERE user_id = %s AND date = %s AND activity_id > 0
             ORDER BY activity_id DESC
             """,
@@ -4319,15 +4449,21 @@ def get_activity_summary_for_date(date_obj, user_id):
 
         logger.info(f"Found {len(activities) if activities else 0} activities for {date_str}")
 
-        # If no activities, return rest day
+        # If no real activities, check for manually-marked rest day (negative activity_id)
         if not activities:
+            rest_day = db_utils.execute_query(
+                "SELECT activity_id FROM activities WHERE user_id = %s AND date = %s AND activity_id < 0 LIMIT 1",
+                (user_id, date_str),
+                fetch=True
+            )
+            rest_activity_id = rest_day[0]['activity_id'] if rest_day else None
             return {
                 'type': 'rest',
                 'distance': 0,
                 'elevation': 0,
                 'workout_classification': 'Rest',
                 'total_trimp': 0,
-                'activity_id': None  # CRITICAL: Include activity_id for Strava links
+                'activity_id': rest_activity_id  # Non-None when manually marked; None when no activity at all
             }
 
         # Convert activities to dict format for easier processing
@@ -4546,7 +4682,7 @@ def get_training_decision_for_journal_date(date_obj, user_id):
                 # For today/past, include the date label
                 return f"🤖 {date_label}:\n\n{decision}"
         else:
-            return f"No recommendation available for this date."
+            return f"No recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
 
     except Exception as e:
         logger.error(f"Error getting journal decision for {date_str}, user {user_id}: {str(e)}", exc_info=True)
@@ -4864,7 +5000,19 @@ def save_journal_entry():
         autopsy_error = None
         is_rest_day = data.get('is_rest_day', False)  # NEW: Rest day flag
 
-        # NEW: Create rest day activity record if explicitly marked
+        # Auto-detect rest day: if no real Strava activity exists for this date, treat as rest day.
+        # This unifies the "regular Save on a no-activity day" and "Mark as Rest Day button" paths.
+        if not is_rest_day:
+            real_activity = db_utils.execute_query(
+                "SELECT activity_id FROM activities WHERE user_id = %s AND date = %s AND activity_id > 0 LIMIT 1",
+                (current_user.id, date_str),
+                fetch=True
+            )
+            if not real_activity or not real_activity[0]:
+                is_rest_day = True
+                logger.info(f"Auto-detected rest day for {date_str}: no real Strava activity found")
+
+        # Create rest day activity record if rest day (explicit or auto-detected)
         if is_rest_day:
             try:
                 # Check if rest day activity already exists
@@ -4953,6 +5101,15 @@ def save_journal_entry():
             # ===== REST DAY PATH =====
             logger.info(f"🛌 Rest day for {date_str} - generating recommendation for {tomorrow_date_str}")
             try:
+                # Recalculate moving averages for the rest day BEFORE generating tomorrow's
+                # recommendation — ensures days_since_rest reflects the just-inserted rest day
+                try:
+                    from strava_training_load import update_moving_averages
+                    update_moving_averages(date_str, current_user.id)
+                    logger.info(f"Updated moving averages for rest day {date_str}")
+                except Exception as ma_err:
+                    logger.warning(f"Could not update moving averages for rest day: {ma_err}")
+
                 from llm_recommendations_module import generate_autopsy_informed_daily_decision
                 decision = generate_autopsy_informed_daily_decision(
                     user_id=current_user.id,
@@ -4977,6 +5134,7 @@ def save_journal_entry():
                         'weekly_recommendation': decision['weekly_recommendation'] or 'See previous weekly guidance',
                         'pattern_insights': decision['pattern_insights'] or f'Generated after rest day on {date_str}',
                         'raw_response': decision['raw_response'],
+                        'structured_output': decision.get('structured_output'),
                         'user_id': current_user.id,
                         'is_autopsy_informed': False,
                         'autopsy_count': 0,
@@ -5032,8 +5190,9 @@ def save_journal_entry():
                     autopsy_insights = {
                         'count': 1,
                         'avg_alignment': alignment_score,
-                        'latest_insights': autopsy_analysis[:300],  # First 300 chars for context
-                        'alignment_trend': [alignment_score]
+                        'latest_insights': autopsy_analysis,  # Full autopsy for complete context
+                        'alignment_trend': [alignment_score],
+                        'date': date_str  # Which day this autopsy analyzed
                     }
                 else:
                     logger.warning(f"⚠️ No autopsy available for {date_str}, using recent autopsy data")
@@ -5099,6 +5258,7 @@ def save_journal_entry():
                             'weekly_recommendation': decision['weekly_recommendation'] or 'See weekly program on Coach page',
                             'pattern_insights': decision['pattern_insights'] or (f"Alignment: {alignment_score}/10" if alignment_score else f"Autopsy from {date_str}"),
                             'raw_response': decision['raw_response'],
+                            'structured_output': decision.get('structured_output'),
                             'user_id': current_user.id,
                             'is_autopsy_informed': True,
                             'autopsy_count': 1,
@@ -5166,6 +5326,63 @@ def save_journal_entry():
         return jsonify({
             'success': False,
             'error': 'Failed to save journal entry',
+            'details': str(e) if app.debug else None
+        }), 500
+
+
+@login_required
+@app.route('/api/readiness', methods=['POST'])
+def save_readiness():
+    """Save morning readiness data (sleep quality + soreness) for today."""
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        date_str = data.get('date')
+        if not date_str:
+            return jsonify({'success': False, 'error': 'Date is required'}), 400
+
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+        sleep_quality = data.get('sleep_quality')
+        if sleep_quality is not None and (not isinstance(sleep_quality, int) or sleep_quality < 1 or sleep_quality > 5):
+            return jsonify({'success': False, 'error': 'sleep_quality must be an integer between 1 and 5'}), 400
+
+        morning_soreness = data.get('morning_soreness')
+        if morning_soreness is not None and (not isinstance(morning_soreness, int) or morning_soreness < 0 or morning_soreness > 100):
+            return jsonify({'success': False, 'error': 'morning_soreness must be an integer between 0 and 100'}), 400
+
+        query = """
+            INSERT INTO journal_entries (user_id, date, sleep_quality, morning_soreness, updated_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (user_id, date)
+            DO UPDATE SET
+                sleep_quality = EXCLUDED.sleep_quality,
+                morning_soreness = EXCLUDED.morning_soreness,
+                updated_at = NOW()
+        """
+
+        db_utils.execute_query(query, (
+            current_user.id,
+            date_str,
+            sleep_quality,
+            morning_soreness
+        ))
+
+        logger.info(f"Saved readiness data for user {current_user.id} on {date_str}: sleep_quality={sleep_quality}, morning_soreness={morning_soreness}")
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        logger.error(f"Error saving readiness data: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Failed to save readiness data',
             'details': str(e) if app.debug else None
         }), 500
 
@@ -5738,8 +5955,11 @@ def weekly_comprehensive_cron():
                 logger.info(f"Generating weekly comprehensive for user {user_id} ({email})")
 
                 # Generate full comprehensive recommendation
-                from llm_recommendations_module import generate_recommendations
-                recommendation = generate_recommendations(force=True, user_id=user_id)
+                if _is_feature_enabled('agentic_context', user_id):
+                    logger.info(f"Using agentic path for user {user_id}")
+                    recommendation = generate_recommendations_agentic(user_id=user_id)
+                else:
+                    recommendation = generate_recommendations(force=True, user_id=user_id)
 
                 if recommendation:
                     success_count += 1
