@@ -529,9 +529,11 @@ class UnifiedMetricsService:
                 SELECT date FROM (
                     SELECT date FROM activities
                     WHERE (type = 'rest' OR activity_id < 0) AND user_id = %s
+                    AND date < CURRENT_DATE
                     UNION ALL
                     SELECT je.date FROM journal_entries je
                     WHERE je.user_id = %s
+                    AND je.date < CURRENT_DATE
                     AND NOT EXISTS (
                         SELECT 1 FROM activities a
                         WHERE a.user_id = %s AND a.date = je.date AND a.activity_id > 0

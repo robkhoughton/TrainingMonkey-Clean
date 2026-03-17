@@ -566,7 +566,7 @@ def upsert_athlete_model(user_id, model_data):
             'typical_divergence_low', 'typical_divergence_high', 'divergence_injury_threshold',
             'rpe_calibration_offset', 'rpe_sample_count', 'avg_days_recover_after_hard',
             'total_autopsies', 'avg_lifetime_alignment', 'recent_alignment_trend',
-            'last_autopsy_date',
+            'last_autopsy_date', 'injury_notes', 'preference_notes',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}
@@ -595,6 +595,62 @@ def upsert_athlete_model(user_id, model_data):
 
     except Exception as e:
         logger.error(f"Error upserting athlete model for user {user_id}: {e}")
+        raise
+
+
+def get_recommendation_conversation(user_id, recommendation_date):
+    """Fetch conversation row for a user+date. Returns dict or None."""
+    try:
+        result = execute_query(
+            """
+            SELECT id, messages, extraction_result, extraction_done, created_at, updated_at
+            FROM recommendation_conversations
+            WHERE user_id = %s AND recommendation_date = %s
+            """,
+            (user_id, recommendation_date),
+            fetch=True
+        )
+        if result:
+            return dict(result[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching recommendation conversation for user {user_id} date {recommendation_date}: {e}")
+        return None
+
+
+def upsert_recommendation_conversation(user_id, recommendation_date, messages):
+    """Insert or update conversation messages for a user+date."""
+    try:
+        execute_query(
+            """
+            INSERT INTO recommendation_conversations (user_id, recommendation_date, messages)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, recommendation_date) DO UPDATE SET
+                messages = EXCLUDED.messages,
+                updated_at = NOW()
+            """,
+            (user_id, recommendation_date, json.dumps(messages)),
+            fetch=False
+        )
+    except Exception as e:
+        logger.error(f"Error upserting recommendation conversation for user {user_id} date {recommendation_date}: {e}")
+        raise
+
+
+def mark_conversation_extraction_done(user_id, recommendation_date, extraction_result):
+    """Mark extraction complete and store the extraction result JSON."""
+    try:
+        execute_query(
+            """
+            UPDATE recommendation_conversations
+            SET extraction_result = %s, extraction_done = TRUE, updated_at = NOW()
+            WHERE user_id = %s AND recommendation_date = %s
+            """,
+            (json.dumps(extraction_result), user_id, recommendation_date),
+            fetch=False
+        )
+    except Exception as e:
+        logger.error(f"Error marking extraction done for user {user_id} date {recommendation_date}: {e}")
         raise
 
 
@@ -1253,6 +1309,320 @@ def delete_hr_stream_data(activity_id, user_id=None):
 # Database schema changes should be done via SQL Editor, not in code
 # See docs/database_schema_rules.md for guidelines
 
+
+# =============================================================================
+# Plan Execution Loop — Phase A: Weekly Context Storage
+# =============================================================================
+
+def get_current_week_context(user_id):
+    """Return the active weekly_programs row for the current week.
+
+    Fetches strategic_summary, deviation_log, revision_pending, and
+    revision_proposal for the most recent week_start_date <= today.
+
+    Returns:
+        dict with keys (strategic_summary, deviation_log, revision_pending,
+        revision_proposal, week_start_date, id) or None if no row found.
+    """
+    try:
+        result = execute_query(
+            """
+            SELECT id, week_start_date,
+                   strategic_summary, deviation_log,
+                   revision_pending, revision_proposal
+            FROM weekly_programs
+            WHERE user_id = %s
+              AND week_start_date <= CURRENT_DATE
+            ORDER BY week_start_date DESC
+            LIMIT 1
+            """,
+            (user_id,),
+            fetch=True
+        )
+        if result:
+            return dict(result[0])
+        return None
+    except Exception as e:
+        logger.error(f"db_utils: get_current_week_context failed for user {user_id}: {e}")
+        return None
+
+
+def append_deviation_log(user_id, week_start, entry):
+    """Append a deviation entry to weekly_programs.deviation_log.
+
+    Uses a fetch-modify-store pattern to append to the JSONB array atomically
+    within a single UPDATE statement via PostgreSQL jsonb concatenation.
+
+    Args:
+        user_id (int): User ID.
+        week_start (date | str): Monday date of the target week (YYYY-MM-DD).
+        entry (dict): Deviation record with keys:
+            date (str), tier (int), alignment (int), reason (str),
+            prescribed (str), actual (str).
+    """
+    try:
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET deviation_log = COALESCE(deviation_log, '[]'::jsonb)
+                                || to_jsonb(%s::jsonb),
+                updated_at = NOW()
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (json.dumps(entry), user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: Appended deviation log entry for user {user_id}, "
+            f"week {week_start}, date {entry.get('date')}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: append_deviation_log failed for user {user_id}, "
+            f"week {week_start}: {e}"
+        )
+        raise
+
+
+def set_revision_pending(user_id, week_start, proposal):
+    """Flag the weekly plan as needing revision and store the proposal.
+
+    Args:
+        user_id (int): User ID.
+        week_start (date | str): Monday date of the target week (YYYY-MM-DD).
+        proposal (dict): Proposed revised plan from the LLM.
+    """
+    try:
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET revision_pending = TRUE,
+                revision_proposal = %s::jsonb
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (json.dumps(proposal), user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: revision_pending set for user {user_id}, week {week_start}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: set_revision_pending failed for user {user_id}, "
+            f"week {week_start}: {e}"
+        )
+        raise
+
+
+def upsert_week_strategic_summary(user_id, week_start, strategic_summary):
+    """Store the strategic_summary JSONB on the weekly_programs row.
+
+    Updates only the strategic_summary column for the given user/week_start
+    combination. Does nothing (logs a warning) if no matching row exists.
+
+    Args:
+        user_id (int): User ID.
+        week_start (date | str): Monday date of the target week (YYYY-MM-DD).
+        strategic_summary (dict): Structured coaching context per schema:
+            training_stage, weeks_to_a_race, weekly_intensity_target,
+            key_sessions, load_target_low, load_target_high, strategic_notes.
+    """
+    try:
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET strategic_summary = %s::jsonb
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (json.dumps(strategic_summary), user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: strategic_summary stored for user {user_id}, week {week_start}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: upsert_week_strategic_summary failed for user {user_id}, "
+            f"week {week_start}: {e}"
+        )
+        raise
+
+
+def get_revision_proposal(user_id):
+    """Return revision proposal data if revision_pending=TRUE for the current week, else None.
+
+    Returns a dict with keys (week_start_date, revision_proposal, deviation_log, program_json)
+    or None if no pending revision exists.
+    """
+    try:
+        result = execute_query(
+            """
+            SELECT week_start_date, revision_proposal, deviation_log, program_json
+            FROM weekly_programs
+            WHERE user_id = %s
+              AND revision_pending = TRUE
+              AND week_start_date <= CURRENT_DATE
+            ORDER BY week_start_date DESC
+            LIMIT 1
+            """,
+            (user_id,),
+            fetch=True
+        )
+        if result:
+            row = result[0]
+            if hasattr(row, 'keys'):
+                return {
+                    'week_start_date': str(row['week_start_date']),
+                    'revision_proposal': row['revision_proposal'],
+                    'deviation_log': row['deviation_log'] or [],
+                    'program_json': row['program_json'],
+                }
+            else:
+                return {
+                    'week_start_date': str(row[0]),
+                    'revision_proposal': row[1],
+                    'deviation_log': row[2] or [],
+                    'program_json': row[3],
+                }
+        return None
+    except Exception as e:
+        logger.error(f"db_utils: get_revision_proposal failed for user {user_id}: {e}")
+        return None
+
+
+def apply_revision(user_id, week_start):
+    """Acknowledge a revision proposal: set revision_pending=FALSE, clear revision_proposal,
+    and append an approval entry to deviation_log.
+
+    Note: Does NOT replace program_json — the revision_proposal schema stores metadata
+    (note, triggered_by, tier2_reason), not a full replacement plan. Approval is logged
+    as acknowledgement; actual plan regeneration is a future enhancement.
+    """
+    try:
+        today = str(datetime.now().date())
+        approval_entry = json.dumps({
+            "date": today,
+            "note": "athlete approved revision proposal"
+        })
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET revision_pending = FALSE,
+                revision_proposal = NULL,
+                deviation_log = COALESCE(deviation_log, '[]'::jsonb) || %s::jsonb
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (f'[{approval_entry}]', user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: revision approved (acknowledged) for user {user_id}, week {week_start}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: apply_revision failed for user {user_id}, week {week_start}: {e}"
+        )
+        raise
+
+
+def dismiss_revision(user_id, week_start):
+    """Clear revision_pending and proposal without applying. Appends a note to deviation_log."""
+    try:
+        today = str(datetime.now().date())
+        dismissal_entry = json.dumps({
+            "date": today,
+            "note": "athlete elected to keep original plan"
+        })
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET revision_pending = FALSE,
+                revision_proposal = NULL,
+                deviation_log = COALESCE(deviation_log, '[]'::jsonb) || %s::jsonb
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (f'[{dismissal_entry}]', user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: revision dismissed for user {user_id}, week {week_start}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: dismiss_revision failed for user {user_id}, week {week_start}: {e}"
+        )
+        raise
+
+
+def get_pending_alignment_query(user_id):
+    """Return the most recent pending or snoozed (and due) alignment query for this user.
+
+    A snoozed query is returned only when snooze_until <= today.
+    Returns a dict with keys (id, activity_date, alignment_score, status), or None.
+    """
+    try:
+        result = execute_query(
+            """
+            SELECT id, activity_date, alignment_score, status
+            FROM alignment_queries
+            WHERE user_id = %s
+              AND (
+                status = 'pending'
+                OR (status = 'snoozed' AND snooze_until <= CURRENT_DATE)
+              )
+            ORDER BY activity_date DESC
+            LIMIT 1
+            """,
+            (user_id,),
+            fetch=True
+        )
+        if result:
+            row = result[0]
+            return {
+                'id': row['id'] if hasattr(row, 'keys') else row[0],
+                'activity_date': str(row['activity_date'] if hasattr(row, 'keys') else row[1]),
+                'alignment_score': row['alignment_score'] if hasattr(row, 'keys') else row[2],
+                'status': row['status'] if hasattr(row, 'keys') else row[3],
+            }
+        return None
+    except Exception as e:
+        logger.error(f"db_utils: get_pending_alignment_query failed for user {user_id}: {e}")
+        return None
+
+
+def update_alignment_query(query_id, status, response=None, snooze_until=None):
+    """Update status, response, and/or snooze_until on an alignment_queries row.
+
+    Args:
+        query_id (int): Primary key of the alignment_queries row.
+        status (str): New status — 'answered', 'snoozed', or 'dismissed'.
+        response (str | None): Athlete's free-text response (for 'answered' status).
+        snooze_until (date | str | None): Date until which to snooze (for 'snoozed' status).
+    """
+    try:
+        execute_query(
+            """
+            UPDATE alignment_queries
+            SET status = %s,
+                response = COALESCE(%s, response),
+                snooze_until = COALESCE(%s, snooze_until),
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (status, response, snooze_until, query_id),
+            fetch=False
+        )
+        logger.info(f"db_utils: alignment_queries id={query_id} updated to status={status}")
+    except Exception as e:
+        logger.error(f"db_utils: update_alignment_query failed for id={query_id}: {e}")
+        raise
+
+
 # Also update the __all__ list to include these new functions:
 __all__ = [
     'get_db_connection',
@@ -1278,4 +1648,16 @@ __all__ = [
     'update_activity_trimp_metadata',
     'get_activities_needing_trimp_recalculation',
     'delete_hr_stream_data',
+    # Plan Execution Loop — Phase A
+    'get_current_week_context',
+    'append_deviation_log',
+    'set_revision_pending',
+    'upsert_week_strategic_summary',
+    # Plan Execution Loop — Phase E
+    'get_revision_proposal',
+    'apply_revision',
+    'dismiss_revision',
+    # Plan Execution Loop — Phase D
+    'get_pending_alignment_query',
+    'update_alignment_query',
 ]

@@ -92,9 +92,8 @@ Detailed standards are organized in `.claude/rules/`:
 ## Visual Development
 
 ### Design Principles
-- Comprehensive brand framework: `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`
-- Quick reference style guide: `docs/branding/QUICK_REFERENCE_STYLE_GUIDE.md`
-- Design principles summary: `.claude/context/design-principles.md`
+- Brand framework (single source of truth): `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`
+- Design principles summary (Claude context): `.claude/context/design-principles.md`
 - When making visual (front-end, UI/UX) changes, always refer to these files for guidance
 
 ### Quick Visual Check
@@ -121,8 +120,15 @@ Invoke `/design-review` slash command or `@agent-design-review` subagent for tho
 
 ## Local Development
 
-### Database Access (required for migrations and scripts)
-There is no local database. All DB work hits Cloud SQL. Before running any migration, script, or local Flask server against real data, start the proxy:
+### Database Access — Migrations
+
+**All DB migrations and schema changes are run directly in Google Cloud SQL Editor, not locally.**
+
+- Write migration scripts in `scripts/migrations/` as reference/documentation, but do NOT instruct the user to run them locally.
+- When a migration is ready, provide the SQL and tell the user to paste it into the Google Cloud SQL Editor.
+- Never ask the user to start the SQL proxy for migration purposes.
+
+The SQL proxy is still needed for running the local Flask server or local scripts against real data:
 
 ```bash
 scripts\start_sql_proxy.bat

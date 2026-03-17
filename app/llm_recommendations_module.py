@@ -27,6 +27,9 @@ from db_utils import (
     get_last_activity_date,
     get_athlete_model,
     upsert_athlete_model,
+    get_current_week_context,  # Phase B: Macro→Meso→Micro injection
+    append_deviation_log,      # Phase C: Deviation classification
+    set_revision_pending,      # Phase C: Deviation classification
 )
 
 # Setup logging - write to stdout for Cloud Logging visibility
@@ -820,13 +823,14 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
-    # Get athlete experience level from user profile (not calculated from volume)
+    # Get athlete experience level and age from user profile
     athlete_experience = execute_query(
-        "SELECT training_experience FROM users WHERE id = %s",
+        "SELECT training_experience, age FROM users WHERE id = %s",
         (user_id,),
         fetch=True
     )
     athlete_profile = athlete_experience[0]['training_experience'].capitalize() if (athlete_experience and athlete_experience[0].get('training_experience')) else "Intermediate"
+    athlete_age = athlete_experience[0]['age'] if (athlete_experience and athlete_experience[0].get('age')) else None
 
     # Use pre-fetched recommendation_style if provided, otherwise query (fallback for other callers)
     if recommendation_style is None:
@@ -934,6 +938,68 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     else:
         autopsy_context = ""
 
+    # Build weekly context block (Phase B: Macro→Meso→Micro injection)
+    weekly_context_block = ""
+    try:
+        week_ctx = get_current_week_context(user_id)
+        summary = week_ctx.get('strategic_summary') if week_ctx else None
+        if summary:
+            # Determine day of week from target_date (falls back to current_date)
+            ref_date_str = target_date if target_date else current_date
+            try:
+                ref_date_obj = datetime.strptime(ref_date_str, DEFAULT_DATE_FORMAT)
+                day_of_week = ref_date_obj.strftime("%A")
+            except (ValueError, TypeError):
+                day_of_week = "Today"
+
+            week_start = week_ctx.get('week_start_date', '')
+            if hasattr(week_start, 'strftime'):
+                week_start = week_start.strftime(DEFAULT_DATE_FORMAT)
+
+            training_stage = summary.get('training_stage', 'unknown')
+            intensity_target = summary.get('weekly_intensity_target', 'unknown')
+            load_low = summary.get('load_target_low', 'N/A')
+            load_high = summary.get('load_target_high', 'N/A')
+            strategic_notes = summary.get('strategic_notes', '')
+            key_sessions = summary.get('key_sessions', [])
+
+            # Format key sessions list
+            if key_sessions:
+                key_sessions_str = ", ".join(
+                    f"{s.get('day', '?')} — {s.get('type', '?')}" for s in key_sessions
+                )
+            else:
+                key_sessions_str = "none specified"
+
+            # Match today's day against key_sessions
+            today_session = next(
+                (s for s in key_sessions if s.get('day', '').lower() == day_of_week.lower()),
+                None
+            )
+            if today_session:
+                todays_prescribed = f"{today_session.get('type', 'session')}"
+                if today_session.get('notes'):
+                    todays_prescribed += f" ({today_session['notes']})"
+            else:
+                todays_prescribed = "filler day"
+
+            weekly_context_block = f"""
+### WEEKLY CONTEXT (week of {week_start})
+Training stage: {training_stage} | Intensity target: {intensity_target} | Load range: {load_low}–{load_high} ACWR
+Key sessions this week: {key_sessions_str}
+Today is {day_of_week}. Today's prescribed session: {todays_prescribed}
+Strategic notes: {strategic_notes}
+Safety constraints (ACWR thresholds, injury flags) take precedence over plan targets.
+"""
+        else:
+            weekly_context_block = """
+### WEEKLY CONTEXT
+[No weekly plan active — recommendation generated independently]
+"""
+    except Exception as e:
+        logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Continuing without weekly context.")
+        weekly_context_block = ""
+
     # Build the enhanced prompt with tone integration and risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
 
@@ -946,6 +1012,7 @@ ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description
 
 ### ATHLETE PROFILE
 Experience Level: {athlete_profile}
+Age: {f"{athlete_age} years old" if athlete_age else "Not specified"}
 Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
 Assessment Category: {assessment_category}
 
@@ -959,6 +1026,7 @@ Assessment Category: {assessment_category}
 {athlete_model_context}
 {readiness_context}
 {autopsy_context}
+{weekly_context_block}
 ### PATTERN ANALYSIS
 Training Trends:
 - Weekly volume: {pattern_analysis['weekly_volume_trend']}
@@ -2705,14 +2773,18 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 logger.info(f"🔄 But yesterday's autopsy is NEWER (from {autopsy_generated_at})")
                                 logger.info(f"🔄 REGENERATING today's ({user_current_date}) recommendation with latest autopsy insights")
                             else:
-                                # Recommendation is already based on latest autopsy
-                                next_date = user_current_date + timedelta(days=1)
+                                # Recommendation is already based on latest autopsy.
+                                # Generate for journal_date + 1, not user_current_date + 1.
+                                # Using user_current_date + 1 would pre-generate a rec for a future
+                                # date (e.g. Wednesday) when processing a past journal entry (Monday),
+                                # before the intermediate day (Tuesday) has even been logged.
+                                next_date = journal_date_obj + timedelta(days=1)
                                 logger.info(f"✅ Today's recommendation ({recommendation_time}) already includes latest autopsy ({autopsy_generated_at})")
-                                logger.info(f"✅ Generating for tomorrow ({next_date})")
+                                logger.info(f"✅ Generating for {next_date} (journal_date + 1)")
                         else:
-                            # No autopsy for yesterday - generate for tomorrow
-                            next_date = user_current_date + timedelta(days=1)
-                            logger.info(f"✅ No new autopsy for yesterday, generating for tomorrow ({next_date})")
+                            # No autopsy for yesterday - generate for journal_date + 1
+                            next_date = journal_date_obj + timedelta(days=1)
+                            logger.info(f"✅ No new autopsy for yesterday, generating for {next_date} (journal_date + 1)")
                     
                     next_date_str = next_date.strftime('%Y-%m-%d')
                     tomorrow_str = next_date_str  # For backward compatibility with existing code
@@ -3161,6 +3233,239 @@ def generate_recommendations_agentic(user_id, target_date=None):
             exc_info=True
         )
         return None
+
+
+# =============================================================================
+# PHASE C — DEVIATION CLASSIFICATION
+# =============================================================================
+
+def classify_deviation(user_id, activity_date, alignment_score, extraction_result, structured_output):
+    """Classify whether an autopsy result warrants logging a deviation and/or
+    triggering a plan revision proposal.
+
+    This function is always wrapped in try/except at the call site and must
+    NEVER raise — classification failure must not break autopsy flow.
+
+    Tier logic:
+        Tier 0 — alignment >= 7, or no active weekly plan: no action.
+        Tier 1 — alignment 5-6, external cause, or fatigue/injury on filler day:
+                  append to deviation_log.
+        Tier 2 — injury/fatigue on key session day, key session missed, ACWR
+                  spike >20% above load_target_high, or 2+ consecutive injury
+                  days: append + set revision_pending.
+
+    Args:
+        user_id (int): User ID.
+        activity_date (str | date): Date of the activity (YYYY-MM-DD).
+        alignment_score (int): 1-10 alignment score from autopsy.
+        extraction_result (dict): Extracted signals from recommendation
+            conversation (keys: injury_or_pain_notes, preference_note,
+            rpe_calibration_signal, nothing_significant).
+        structured_output (dict | None): LLM structured_output block for the
+            *recommendation* covering this date (may be None if no rec exists).
+    """
+    try:
+        # Normalise activity_date to string
+        if isinstance(activity_date, date):
+            activity_date_str = activity_date.strftime('%Y-%m-%d')
+        else:
+            activity_date_str = str(activity_date)
+
+        # --- 1. Fetch week context -----------------------------------------------
+        week_ctx = get_current_week_context(user_id)
+        if not week_ctx:
+            logger.info(
+                f"classify_deviation: no weekly_programs row for user {user_id} — Tier 0, no action"
+            )
+            return
+
+        strategic_summary = week_ctx.get('strategic_summary') or {}
+        if not strategic_summary:
+            logger.info(
+                f"classify_deviation: no strategic_summary for user {user_id} — Tier 0, no action"
+            )
+            return
+
+        week_start = week_ctx.get('week_start_date')
+        deviation_log = week_ctx.get('deviation_log') or []
+        key_sessions = strategic_summary.get('key_sessions') or []
+        load_target_high = strategic_summary.get('load_target_high')
+
+        # --- 2. Tier 0: high alignment -------------------------------------------
+        alignment_score = int(alignment_score) if alignment_score is not None else 5
+        if alignment_score >= 7:
+            logger.info(
+                f"classify_deviation: alignment={alignment_score} >= 7 for user {user_id} — Tier 0, no action"
+            )
+            return
+
+        # --- 3. Determine key-session day ----------------------------------------
+        # key_sessions entries are expected to be day-of-week strings, e.g.
+        # "Tuesday", "Thursday", or dicts with a "day" key.
+        activity_day_name = datetime.strptime(activity_date_str, '%Y-%m-%d').strftime('%A')
+
+        def _day_name(entry):
+            if isinstance(entry, dict):
+                return str(entry.get('day', '')).strip().lower()
+            return str(entry).strip().lower()
+
+        is_key_day = any(_day_name(e) == activity_day_name.lower() for e in key_sessions)
+
+        # prescribed label for the deviation entry
+        if is_key_day:
+            matched = next(
+                (e for e in key_sessions if _day_name(e) == activity_day_name.lower()), None
+            )
+            if isinstance(matched, dict):
+                prescribed_label = matched.get('session_type') or matched.get('description') or "key session"
+            else:
+                prescribed_label = "key session"
+        else:
+            prescribed_label = "filler day"
+
+        # --- 4. Extract signals from extraction_result ---------------------------
+        extraction_result = extraction_result or {}
+        injury_note = extraction_result.get('injury_or_pain_notes')
+        preference_note = extraction_result.get('preference_note') or ''
+        rpe_signal = extraction_result.get('rpe_calibration_signal') or ''
+
+        has_injury_flag = bool(injury_note)
+
+        # Also check risk flags in structured_output
+        so = structured_output or {}
+        risk = so.get('risk') or {}
+        so_flags = risk.get('flags') or []
+        if not has_injury_flag:
+            has_injury_flag = any(
+                'injur' in str(f).lower() or 'pain' in str(f).lower()
+                for f in so_flags
+            )
+
+        has_fatigue_flag = (
+            'fatigue' in rpe_signal.lower()
+            or 'fatigue' in preference_note.lower()
+            or any('fatigue' in str(f).lower() for f in so_flags)
+        )
+
+        external_keywords = ('weather', 'travel', 'work', 'schedule', 'sick', 'illness')
+        external_cause = any(kw in preference_note.lower() for kw in external_keywords)
+
+        # --- 5. Check ACWR spike -------------------------------------------------
+        acwr_external = risk.get('acwr_external')
+        acwr_spike = False
+        if acwr_external and load_target_high:
+            try:
+                acwr_spike = float(acwr_external) > float(load_target_high) * 1.2
+            except (TypeError, ValueError):
+                pass
+
+        # --- 6. Check consecutive injury days in existing deviation_log ----------
+        consecutive_injury = False
+        if has_injury_flag and deviation_log:
+            try:
+                prev_date = (
+                    datetime.strptime(activity_date_str, '%Y-%m-%d') - timedelta(days=1)
+                ).strftime('%Y-%m-%d')
+                for entry in deviation_log:
+                    if isinstance(entry, dict) and entry.get('date') == prev_date:
+                        entry_reason = str(entry.get('reason', '')).lower()
+                        entry_actual = str(entry.get('actual', '')).lower()
+                        if 'injur' in entry_reason or 'pain' in entry_reason \
+                                or 'injur' in entry_actual or 'pain' in entry_actual:
+                            consecutive_injury = True
+                            break
+            except Exception:
+                pass
+
+        # --- 7. Determine tier ---------------------------------------------------
+        tier2_reason = None
+
+        if alignment_score <= 4:
+            if is_key_day and (has_injury_flag or has_fatigue_flag):
+                tier2_reason = f"{'injury' if has_injury_flag else 'fatigue'} flag on key session day"
+            elif consecutive_injury:
+                tier2_reason = "injury flag on 2+ consecutive days"
+            elif acwr_spike:
+                tier2_reason = "ACWR spike >20% above weekly load_target_high"
+            # else: Tier 1 — alignment <=4 with external cause, fatigue on filler, or plain misalignment
+        else:
+            # alignment is 5 or 6
+            pass  # Tier 1
+
+        # Key session missed entirely (no activity data — check via structured_output decision.action)
+        decision = so.get('decision') or {}
+        if decision.get('action') == 'rest' and is_key_day and alignment_score <= 4:
+            if not tier2_reason:
+                tier2_reason = "key session missed entirely"
+
+        tier = 2 if tier2_reason else 1
+
+        # --- 8. Build reason and actual strings ----------------------------------
+        if tier2_reason:
+            reason = tier2_reason
+        elif external_cause:
+            reason = f"external constraint: {preference_note[:80]}"
+        elif has_injury_flag:
+            reason = f"injury/pain noted: {str(injury_note)[:80]}"
+        elif has_fatigue_flag:
+            reason = f"fatigue signal: {rpe_signal[:80] or 'reported fatigue'}"
+        else:
+            reason = f"alignment {alignment_score}/10 below threshold"
+
+        actual_str = f"activity completed — alignment {alignment_score}/10"
+        if has_injury_flag and injury_note:
+            actual_str = f"{str(injury_note)[:100]} — alignment {alignment_score}/10"
+        elif has_fatigue_flag and rpe_signal:
+            actual_str = f"{rpe_signal[:100]} — alignment {alignment_score}/10"
+
+        # --- 9. Build deviation entry dict ---------------------------------------
+        deviation_entry = {
+            "date": activity_date_str,
+            "tier": tier,
+            "alignment": alignment_score,
+            "reason": reason,
+            "prescribed": prescribed_label,
+            "actual": actual_str,
+        }
+
+        # --- 10. Append to deviation_log -----------------------------------------
+        append_deviation_log(user_id, week_start, deviation_entry)
+        logger.info(
+            f"classify_deviation: Tier {tier} deviation logged for user {user_id}, "
+            f"date={activity_date_str}, alignment={alignment_score}, reason='{reason}'"
+        )
+
+        # --- 11. Tier 2: set revision_pending ------------------------------------
+        if tier == 2:
+            prescribed_session_desc = prescribed_label
+            if is_key_day:
+                proposal_text = (
+                    f"{tier2_reason.capitalize()} ({activity_day_name}). "
+                    f"Consider replacing {prescribed_session_desc} with easy recovery "
+                    f"or adjusting week structure to protect key training stimulus."
+                )
+            else:
+                proposal_text = (
+                    f"{tier2_reason.capitalize()} on {activity_day_name}. "
+                    f"Review upcoming week load targets and consider reducing intensity."
+                )
+            proposal = {
+                "note": proposal_text,
+                "triggered_by": activity_date_str,
+                "tier2_reason": tier2_reason,
+            }
+            set_revision_pending(user_id, week_start, proposal)
+            logger.info(
+                f"classify_deviation: revision_pending set for user {user_id}, "
+                f"week={week_start}, reason='{tier2_reason}'"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"classify_deviation: unexpected error for user {user_id}, "
+            f"date={activity_date}, alignment={alignment_score}: {e}",
+            exc_info=True
+        )
 
 
 # =============================================================================

@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Tuple, Any
 # Import existing modules
 from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
-from db_utils import execute_query
+from db_utils import execute_query, upsert_week_strategic_summary
 from llm_recommendations_module import (
     call_anthropic_api,
     load_training_guide,
@@ -31,7 +31,8 @@ from llm_recommendations_module import (
     get_coaching_tone_instructions,
     get_user_recommendation_style,
     get_adjusted_thresholds,
-    analyze_pattern_flags
+    analyze_pattern_flags,
+    MODEL_HAIKU,
 )
 from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
 
@@ -478,6 +479,15 @@ def build_weekly_program_prompt(
     # Get coaching tone
     spectrum_value = get_user_coaching_spectrum(user_id)
     tone_instructions = get_coaching_tone_instructions(spectrum_value)
+
+    # Get athlete profile fields not covered by other fetches
+    athlete_profile_data = execute_query(
+        "SELECT training_experience, age FROM users WHERE id = %s",
+        (user_id,),
+        fetch=True
+    )
+    athlete_experience = athlete_profile_data[0]['training_experience'].capitalize() if (athlete_profile_data and athlete_profile_data[0].get('training_experience')) else "Intermediate"
+    athlete_age = athlete_profile_data[0]['age'] if (athlete_profile_data and athlete_profile_data[0].get('age')) else None
     
     # Build prompt sections
     week_end = target_week_start + timedelta(days=6)
@@ -500,6 +510,8 @@ def build_weekly_program_prompt(
 **ATHLETE PROFILE & CURRENT STATUS**
 
 Training Week: {target_week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}
+Athlete Age: {f"{athlete_age} years old" if athlete_age else "Not specified"}
+Experience Level: {athlete_experience}
 
 ATHLETE RISK TOLERANCE: {risk_tolerance.upper()} ({thresholds['description']})
 - ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
@@ -767,6 +779,108 @@ def generate_weekly_program(
         raise
 
 
+def _extract_and_store_strategic_summary(user_id: int, week_start, program_data: Dict) -> None:
+    """Extract a structured strategic_summary from the generated plan via Haiku.
+
+    Makes a single short Haiku call to parse the weekly plan into a compact
+    JSON context snapshot, then persists it via upsert_week_strategic_summary.
+
+    This is an internal helper — never call directly. Always wrapped in
+    try/except by save_weekly_program so extraction failure is non-fatal.
+
+    Args:
+        user_id: User ID (used for logging only here).
+        week_start: Monday date of the target week.
+        program_data: Full program dict from generate_weekly_program.
+    """
+    # Build a compact text representation of the plan for Haiku to parse
+    plan_text_parts = []
+    plan_text_parts.append(f"Week start: {program_data.get('week_start_date', str(week_start))}")
+
+    if program_data.get('training_phase'):
+        plan_text_parts.append(f"Training phase: {program_data['training_phase']}")
+    if program_data.get('weekly_overview'):
+        plan_text_parts.append(f"Overview: {program_data['weekly_overview']}")
+
+    daily = program_data.get('daily_program', [])
+    for day_plan in daily:
+        day_name = day_plan.get('day', '')
+        workout_type = day_plan.get('workout_type', day_plan.get('type', ''))
+        notes = day_plan.get('description', day_plan.get('notes', ''))
+        plan_text_parts.append(f"  {day_name}: {workout_type} — {notes}")
+
+    predicted = program_data.get('predicted_metrics', {})
+    if predicted:
+        plan_text_parts.append(
+            f"Predicted ACWR: {predicted.get('acwr_estimate')}, "
+            f"Divergence: {predicted.get('divergence_estimate')}"
+        )
+
+    plan_text = "\n".join(plan_text_parts)
+
+    extraction_prompt = f"""You are a training analytics assistant. Given the weekly training plan below, extract a JSON object with EXACTLY these fields. Return ONLY the JSON — no explanation, no markdown fences.
+
+{{
+  "training_stage": "<string: e.g. base, build, peak, taper, recovery>",
+  "weeks_to_a_race": <integer or null>,
+  "weekly_intensity_target": "<easy|moderate|hard|peak>",
+  "key_sessions": [
+    {{"day": "<day name>", "type": "<session type>", "notes": "<brief notes>"}}
+  ],
+  "load_target_low": <float between 0.5 and 1.5>,
+  "load_target_high": <float between 0.5 and 1.5>,
+  "strategic_notes": "<one concise sentence of coaching rationale>"
+}}
+
+Rules:
+- key_sessions: include only the 1–3 most important sessions (not rest days).
+- weekly_intensity_target: infer from overall session mix.
+- load_target_low / load_target_high: ACWR range this week targets (e.g. 0.85 / 1.05).
+- strategic_notes: max 120 characters.
+- weeks_to_a_race: null if no race goal is evident.
+
+Weekly plan:
+{plan_text}
+"""
+
+    response_text = call_anthropic_api(
+        extraction_prompt,
+        model=MODEL_HAIKU,
+        temperature=0.1,
+        max_tokens=400,
+        timeout=20,
+    )
+
+    if not response_text or not response_text.strip():
+        raise ValueError("Empty response from Haiku for strategic summary extraction")
+
+    # Strip any accidental markdown fences before parsing
+    clean = response_text.strip()
+    if clean.startswith("```"):
+        clean = clean.split("```")[1]
+        if clean.startswith("json"):
+            clean = clean[4:]
+    clean = clean.strip()
+
+    strategic_summary = json.loads(clean)
+
+    # Validate required keys are present
+    required_keys = {
+        'training_stage', 'weeks_to_a_race', 'weekly_intensity_target',
+        'key_sessions', 'load_target_low', 'load_target_high', 'strategic_notes'
+    }
+    missing = required_keys - set(strategic_summary.keys())
+    if missing:
+        raise ValueError(f"Strategic summary missing required keys: {missing}")
+
+    upsert_week_strategic_summary(user_id, week_start, strategic_summary)
+    logger.info(
+        f"Strategic summary stored for user {user_id}, week {week_start}: "
+        f"stage={strategic_summary.get('training_stage')}, "
+        f"intensity={strategic_summary.get('weekly_intensity_target')}"
+    )
+
+
 def save_weekly_program(
     user_id: int,
     week_start: date,
@@ -820,7 +934,17 @@ def save_weekly_program(
         program_id = None
     
     logger.info(f"Saved weekly program {program_id} for user {user_id}, week {week_start}")
-    
+
+    # --- Phase A: Extract and store strategic_summary via Haiku ---
+    # Wrap in try/except so extraction failure never breaks weekly plan generation.
+    try:
+        _extract_and_store_strategic_summary(user_id, week_start, program_data)
+    except Exception as summary_err:
+        logger.warning(
+            f"Strategic summary extraction failed for user {user_id}, "
+            f"week {week_start} — plan saved successfully, summary skipped: {summary_err}"
+        )
+
     return program_id
 
 

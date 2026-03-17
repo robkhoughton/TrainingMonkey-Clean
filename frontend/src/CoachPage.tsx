@@ -209,6 +209,16 @@ interface TrainingSchedule {
   cross_training_hours: number;
 }
 
+interface AthleteModel {
+  acwr_sweet_spot_low: number | null;
+  acwr_sweet_spot_high: number | null;
+  acwr_sweet_spot_confidence: number | null;  // 0.0–1.0
+  avg_lifetime_alignment: number | null;
+  recent_alignment_trend: number[] | null;
+  total_autopsies: number;
+  last_autopsy_date: string | null;
+}
+
 interface DailyWorkout {
   day: string;
   date: string;
@@ -278,6 +288,298 @@ interface RaceAnalysis {
 }
 
 // ============================================================================
+// ATHLETE MODEL PANEL
+// ============================================================================
+
+const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
+  const confidencePct = model?.acwr_sweet_spot_confidence != null
+    ? Math.round(model.acwr_sweet_spot_confidence * 100)
+    : null;
+
+  const isLearning = confidencePct != null && confidencePct < 15;
+  const hasSweetSpot = model?.acwr_sweet_spot_low != null && model?.acwr_sweet_spot_high != null;
+
+  // Determine trend direction from recent_alignment_trend array
+  const trendArr = model?.recent_alignment_trend;
+  let trendLabel = 'Insufficient data';
+  if (trendArr && trendArr.length >= 2) {
+    const delta = trendArr[trendArr.length - 1] - trendArr[0];
+    trendLabel = delta > 0.3 ? 'Improving' : delta < -0.3 ? 'Declining' : 'Stable';
+  }
+
+  return (
+    <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem', maxWidth: '1200px', margin: '0 auto 0.75rem auto' }}>
+      <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '0.75rem', color: '#1e293b', borderBottom: '2px solid #e1e8ed', paddingBottom: '0.5rem', textAlign: 'left' }}>
+        What Your Coach Has Learned About You
+      </h2>
+
+      {isLearning || !model ? (
+        <div style={{ padding: '0.75rem 1rem', backgroundColor: '#fef9c3', borderRadius: '6px', border: '1px solid #fde047' }}>
+          <p style={{ margin: 0, color: '#854d0e', fontSize: '14px', textAlign: 'left' }}>
+            <strong>Still learning</strong> — {model ? `${model.total_autopsies} workout${model.total_autopsies !== 1 ? 's' : ''} analyzed so far.` : 'No workouts analyzed yet.'} Your coach needs at least a few post-workout analyses to calibrate your personal training zones. Keep logging and the model will sharpen.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+          {hasSweetSpot && (
+            <div style={{ padding: '0.75rem', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #bae6fd' }}>
+              <div style={{ fontSize: '12px', color: '#0369a1', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>ACWR Sweet Spot</div>
+              <div style={{ fontSize: '22px', fontWeight: '700', color: '#0c4a6e', textAlign: 'left' }}>{model.acwr_sweet_spot_low} – {model.acwr_sweet_spot_high}</div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Your optimal load ratio range</div>
+            </div>
+          )}
+          <div style={{ padding: '0.75rem', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+            <div style={{ fontSize: '12px', color: '#15803d', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Model Confidence</div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#14532d', textAlign: 'left' }}>{confidencePct}%</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Based on {model.total_autopsies} workout{model.total_autopsies !== 1 ? 's' : ''}</div>
+          </div>
+          <div style={{ padding: '0.75rem', backgroundColor: '#faf5ff', borderRadius: '6px', border: '1px solid #e9d5ff' }}>
+            <div style={{ fontSize: '12px', color: '#7e22ce', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Alignment Trend</div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#581c87', textAlign: 'left' }}>{trendLabel}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>How well you follow the plan</div>
+          </div>
+          {model.avg_lifetime_alignment != null && (
+            <div style={{ padding: '0.75rem', backgroundColor: '#fff7ed', borderRadius: '6px', border: '1px solid #fed7aa' }}>
+              <div style={{ fontSize: '12px', color: '#c2410c', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Avg Alignment</div>
+              <div style={{ fontSize: '22px', fontWeight: '700', color: '#7c2d12', textAlign: 'left' }}>{model.avg_lifetime_alignment}/10</div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Lifetime training alignment score</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// REVISION PROPOSAL TYPES + COMPONENT — Phase E (Plan Execution Loop)
+// ============================================================================
+
+interface DeviationLogEntry {
+  date: string;
+  reason?: string;
+  tier?: number;
+  note?: string;
+}
+
+interface RevisionProposal {
+  note?: string;
+  triggered_by?: string;
+  tier2_reason?: string;
+}
+
+interface RevisionProposalData {
+  pending: boolean;
+  week_start: string;
+  proposal: RevisionProposal | null;
+  deviation_log: DeviationLogEntry[];
+}
+
+interface RevisionProposalCardProps {
+  data: RevisionProposalData;
+  onApprove: () => void;
+  onDismiss: () => void;
+}
+
+const RevisionProposalCard: React.FC<RevisionProposalCardProps> = ({ data, onApprove, onDismiss }) => {
+  const [actionState, setActionState] = useState<'idle' | 'approving' | 'dismissing' | 'approved' | 'dismissed'>('idle');
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const proposal = data.proposal || {};
+
+  // Filter to tier-1/2 entries only (those with a tier field, or any entry with a reason)
+  const significantEntries = (data.deviation_log || [])
+    .filter(e => e.tier === 1 || e.tier === 2 || e.reason)
+    .slice(-3);
+
+  const handleApprove = async () => {
+    setActionState('approving');
+    setActionError(null);
+    try {
+      const res = await fetch('/api/coach/revision-proposal/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ week_start: data.week_start }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Approval failed');
+      setActionState('approved');
+      onApprove();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Something went wrong');
+      setActionState('idle');
+    }
+  };
+
+  const handleDismiss = async () => {
+    setActionState('dismissing');
+    setActionError(null);
+    try {
+      const res = await fetch('/api/coach/revision-proposal/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ week_start: data.week_start }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Dismiss failed');
+      setActionState('dismissed');
+      onDismiss();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Something went wrong');
+      setActionState('idle');
+    }
+  };
+
+  if (actionState === 'approved') {
+    return (
+      <div style={{
+        margin: '0.75rem 0',
+        padding: '1rem 1.25rem',
+        backgroundColor: '#f0fdf4',
+        border: '2px solid #86efac',
+        borderRadius: '8px',
+        color: '#15803d',
+        fontSize: '15px',
+        fontWeight: '600',
+        textAlign: 'left'
+      }}>
+        Plan adjustment acknowledged and logged.
+      </div>
+    );
+  }
+
+  if (actionState === 'dismissed') {
+    return null;
+  }
+
+  return (
+    <div style={{
+      margin: '0.75rem 0',
+      padding: '1.25rem',
+      backgroundColor: '#fffbeb',
+      border: '2px solid #f59e0b',
+      borderRadius: '8px',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div style={{
+          display: 'inline-block',
+          padding: '2px 10px',
+          backgroundColor: '#f59e0b',
+          color: 'white',
+          borderRadius: '12px',
+          fontSize: '12px',
+          fontWeight: '700',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          flexShrink: 0
+        }}>
+          Plan Review
+        </div>
+        <h3 style={{
+          margin: 0,
+          fontSize: '16px',
+          fontWeight: '700',
+          color: '#92400e',
+          textAlign: 'left'
+        }}>
+          Your training plan may need adjustment
+        </h3>
+      </div>
+
+      {/* Summary note */}
+      {(proposal.note || proposal.triggered_by) && (
+        <p style={{
+          margin: '0 0 0.75rem 0',
+          fontSize: '14px',
+          color: '#78350f',
+          lineHeight: '1.6',
+          textAlign: 'left'
+        }}>
+          {proposal.note || proposal.triggered_by}
+          {proposal.tier2_reason && (
+            <span style={{ display: 'block', marginTop: '0.25rem', color: '#92400e' }}>
+              {proposal.tier2_reason}
+            </span>
+          )}
+        </p>
+      )}
+
+      {/* Deviation log summary */}
+      {significantEntries.length > 0 && (
+        <div style={{
+          marginBottom: '1rem',
+          padding: '0.75rem',
+          backgroundColor: '#fef3c7',
+          borderRadius: '6px',
+          border: '1px solid #fde68a'
+        }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: '#92400e', marginBottom: '0.4rem', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Recent deviations
+          </div>
+          <ul style={{ margin: 0, padding: '0 0 0 1.1rem', listStyle: 'disc' }}>
+            {significantEntries.map((entry, idx) => (
+              <li key={idx} style={{ fontSize: '13px', color: '#78350f', lineHeight: '1.5', textAlign: 'left' }}>
+                <span style={{ fontWeight: '600' }}>{entry.date}</span>
+                {' — '}
+                {entry.reason || entry.note || ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Error */}
+      {actionError && (
+        <p style={{ margin: '0 0 0.75rem 0', fontSize: '13px', color: '#b91c1c', textAlign: 'left' }}>
+          {actionError}
+        </p>
+      )}
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <button
+          onClick={handleApprove}
+          disabled={actionState === 'approving' || actionState === 'dismissing'}
+          style={{
+            padding: '9px 20px',
+            backgroundColor: actionState === 'approving' ? '#d97706' : '#f59e0b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: actionState === 'approving' || actionState === 'dismissing' ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            opacity: actionState === 'approving' || actionState === 'dismissing' ? 0.7 : 1
+          }}
+        >
+          {actionState === 'approving' ? 'Saving...' : 'Approve changes'}
+        </button>
+        <button
+          onClick={handleDismiss}
+          disabled={actionState === 'approving' || actionState === 'dismissing'}
+          style={{
+            padding: '9px 20px',
+            backgroundColor: 'transparent',
+            color: '#92400e',
+            border: '2px solid #f59e0b',
+            borderRadius: '6px',
+            cursor: actionState === 'approving' || actionState === 'dismissing' ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            opacity: actionState === 'approving' || actionState === 'dismissing' ? 0.7 : 1
+          }}
+        >
+          {actionState === 'dismissing' ? 'Saving...' : 'Keep original plan'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -299,6 +601,8 @@ const CoachPage: React.FC = () => {
   // Secondary navigation state
   const [activeSubTab, setActiveSubTab] = useState<'workout' | 'goals' | 'history' | 'schedule'>('workout');
 
+  const [athleteModel, setAthleteModel] = useState<AthleteModel | null>(null);
+
   // Schedule review state
   const [scheduleReviewStatus, setScheduleReviewStatus] = useState<{
     needs_review: boolean;
@@ -306,6 +610,9 @@ const CoachPage: React.FC = () => {
     is_sunday: boolean;
   } | null>(null);
   const [showScheduleReviewBanner, setShowScheduleReviewBanner] = useState<boolean>(false);
+
+  // Phase E: revision proposal state
+  const [revisionProposal, setRevisionProposal] = useState<RevisionProposalData | null>(null);
 
   // ============================================================================
   // DATA FETCHING
@@ -328,12 +635,16 @@ const CoachPage: React.FC = () => {
         goalsRes,
         stageRes,
         programRes,
-        reviewStatusRes
+        reviewStatusRes,
+        athleteModelRes,
+        revisionRes
       ] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/training-stage'),
         fetch('/api/coach/weekly-program'),
-        fetch('/api/coach/schedule-review-status')
+        fetch('/api/coach/schedule-review-status'),
+        fetch('/api/athlete-model'),
+        fetch('/api/coach/revision-proposal', { credentials: 'include' })
       ]);
 
       // Check for critical errors (race goals is essential)
@@ -386,6 +697,24 @@ const CoachPage: React.FC = () => {
             is_sunday: reviewData.is_sunday
           });
           setShowScheduleReviewBanner(reviewData.needs_review);
+        }
+      }
+
+      // Parse athlete model
+      if (athleteModelRes.ok) {
+        const modelData = await athleteModelRes.json();
+        if (modelData.success) {
+          setAthleteModel(modelData.model);
+        }
+      }
+
+      // Phase E: parse revision proposal
+      if (revisionRes.ok) {
+        const revisionData = await revisionRes.json();
+        if (revisionData.pending) {
+          setRevisionProposal(revisionData as RevisionProposalData);
+        } else {
+          setRevisionProposal(null);
         }
       }
 
@@ -1043,6 +1372,22 @@ const CoachPage: React.FC = () => {
       )}
 
       {/* ============================================================
+          REVISION PROPOSAL CARD — Phase E
+      ============================================================ */}
+      {revisionProposal && revisionProposal.pending && (
+        <div style={{ padding: '0 0.75rem' }}>
+          <RevisionProposalCard
+            data={revisionProposal}
+            onApprove={() => {
+              setRevisionProposal(null);
+              fetchCoachData();
+            }}
+            onDismiss={() => setRevisionProposal(null)}
+          />
+        </div>
+      )}
+
+      {/* ============================================================
           TIMELINE VISUALIZATION (immediately below countdown with minimal gap)
       ============================================================ */}
       {trainingStage && trainingStage.timeline && trainingStage.timeline.length > 0 && (
@@ -1082,6 +1427,9 @@ const CoachPage: React.FC = () => {
           {weeklyProgram?.strategic_context && (
             <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
           )}
+
+          {/* Athlete Model Panel - what the coach has learned */}
+          <AthleteModelPanel model={athleteModel} />
         </>
       )}
       {activeSubTab === 'goals' && <RaceGoalsPage />}

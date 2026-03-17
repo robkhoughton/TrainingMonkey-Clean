@@ -297,14 +297,300 @@ const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, o
 };
 
 
+// ─── Shared utility ──────────────────────────────────────────────────────────
+const formatSnakeCase = (s: string): string =>
+  s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// ─── Phase 5: Why This Recommendation ───────────────────────────────────────
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface WhyPanelState {
+  status: 'idle' | 'loading' | 'active' | 'error';
+  conversation: ConversationMessage[];
+  inputText: string;
+  isSendingTurn: boolean;
+}
+
+interface WhyRecommendationPanelProps {
+  structuredOutput: any;           // the structured_output JSONB field
+  targetDate: string;              // recommendation_target_date (YYYY-MM-DD)
+  todaysDecision: string;          // the prose recommendation text (read-only, displayed above)
+}
+
+const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structuredOutput, targetDate, todaysDecision: _todaysDecision }) => {
+  const [state, setState] = useState<WhyPanelState>({
+    status: 'idle',
+    conversation: [],
+    inputText: '',
+    isSendingTurn: false
+  });
+
+  const divergenceSeverity = (structuredOutput as StructuredOutput).divergence?.severity;
+  const divergenceDirection = (structuredOutput as StructuredOutput).divergence?.direction;
+  const divergenceLabel = [divergenceSeverity, divergenceDirection]
+    .filter(Boolean)
+    .map(v => formatSnakeCase(v as string))
+    .join(' ');
+
+  const assessmentCategory = (structuredOutput as StructuredOutput).assessment?.category
+    ? formatSnakeCase((structuredOutput as StructuredOutput).assessment!.category!)
+    : null;
+
+  const riskLevel = (structuredOutput as StructuredOutput).risk?.injury_risk_level
+    ? formatSnakeCase((structuredOutput as StructuredOutput).risk!.injury_risk_level!)
+    : null;
+
+  const primaryDriver = (structuredOutput as StructuredOutput).assessment?.primary_driver || null;
+
+  const metaRowStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '6px',
+    fontSize: '0.75rem',
+    color: '#6b7280',
+    marginBottom: '4px',
+    flexWrap: 'wrap',
+    alignItems: 'baseline'
+  };
+
+  const labelStyle: React.CSSProperties = {
+    color: '#6b7280',
+    fontWeight: '600',
+    flexShrink: 0
+  };
+
+  const valueStyle: React.CSSProperties = {
+    color: '#111827',
+    fontWeight: '500'
+  };
+
+  const handleWhyClick = async () => {
+    setState(s => ({ ...s, status: 'loading' }));
+    try {
+      const res = await fetch('/api/recommendation-conversation/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recommendation_date: targetDate,
+          structured_output: structuredOutput,
+          metrics: {}
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setState(s => ({ ...s, status: 'active', conversation: data.conversation }));
+    } catch (err) {
+      setState(s => ({ ...s, status: 'error' }));
+    }
+  };
+
+  const handleSend = async () => {
+    if (!state.inputText.trim() || state.isSendingTurn) return;
+    const userMessage = state.inputText.trim();
+    setState(s => ({ ...s, isSendingTurn: true, inputText: '' }));
+    try {
+      const res = await fetch('/api/recommendation-conversation/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recommendation_date: targetDate,
+          message: userMessage,
+          conversation: state.conversation,
+          structured_output: structuredOutput
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setState(s => ({ ...s, conversation: data.conversation, isSendingTurn: false }));
+    } catch (err) {
+      setState(s => ({ ...s, isSendingTurn: false }));
+    }
+  };
+
+  const handleDone = () => {
+    // Fire-and-forget extraction — don't await
+    fetch('/api/recommendation-conversation/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        recommendation_date: targetDate,
+        conversation: state.conversation
+      })
+    }).catch(() => {}); // swallow errors — extraction is non-critical
+    setState(s => ({ ...s, status: 'idle' }));
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div style={{
+      marginTop: '12px',
+      paddingTop: '10px',
+      borderTop: '1px solid #d1d5db'
+    }}>
+      {/* State: idle */}
+      {state.status === 'idle' && (
+        <div style={{ marginTop: '8px' }}>
+          <button
+            onClick={handleWhyClick}
+            style={{
+              backgroundColor: 'transparent',
+              color: '#3b82f6',
+              border: '1px solid #3b82f6',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '0.75rem',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            Why this recommendation?
+          </button>
+        </div>
+      )}
+
+      {/* State: loading */}
+      {state.status === 'loading' && (
+        <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>
+          Generating explanation...
+        </div>
+      )}
+
+      {/* State: error */}
+      {state.status === 'error' && (
+        <div style={{ marginTop: '8px' }}>
+          <span style={{ fontSize: '0.75rem', color: '#dc2626' }}>
+            Could not load explanation. Please try again.
+          </span>
+          <button
+            onClick={() => setState(s => ({ ...s, status: 'idle' }))}
+            style={{
+              marginLeft: '8px',
+              backgroundColor: 'transparent',
+              color: '#3b82f6',
+              border: '1px solid #3b82f6',
+              borderRadius: '4px',
+              padding: '2px 8px',
+              fontSize: '0.75rem',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* State: active — conversation */}
+      {state.status === 'active' && (
+        <div style={{ marginTop: '10px' }}>
+          <div style={{
+            maxHeight: '300px',
+            overflowY: 'auto',
+            border: '1px solid #e5e7eb',
+            borderRadius: '6px',
+            padding: '8px',
+            backgroundColor: '#f9fafb',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {state.conversation.map((msg, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                }}
+              >
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  lineHeight: '1.5',
+                  backgroundColor: msg.role === 'user' ? '#dbeafe' : '#f3f4f6',
+                  color: '#1f2937',
+                  textAlign: 'left'
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Input row */}
+          <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={state.inputText}
+              onChange={(e) => setState(s => ({ ...s, inputText: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a follow-up question..."
+              disabled={state.isSendingTurn}
+              style={{
+                flex: 1,
+                padding: '5px 8px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                opacity: state.isSendingTurn ? 0.6 : 1
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={state.isSendingTurn || !state.inputText.trim()}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '5px 12px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: (state.isSendingTurn || !state.inputText.trim()) ? 'not-allowed' : 'pointer',
+                opacity: (state.isSendingTurn || !state.inputText.trim()) ? 0.6 : 1
+              }}
+            >
+              Send
+            </button>
+            <button
+              onClick={handleDone}
+              style={{
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '5px 12px',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 // ─── Phase 6C: Recommendation Meta Panel ────────────────────────────────────
 interface RecommendationMetaPanelProps {
   structuredOutput: StructuredOutput;
   targetDate: string | null;
 }
-
-const formatSnakeCase = (s: string): string =>
-  s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const RecommendationMetaPanel: React.FC<RecommendationMetaPanelProps> = ({ structuredOutput, targetDate }) => {
   const divergenceSeverity = structuredOutput.divergence?.severity;
@@ -412,6 +698,186 @@ const RecommendationMetaPanel: React.FC<RecommendationMetaPanelProps> = ({ struc
 };
 
 
+// ─── Phase D: Alignment Query ────────────────────────────────────────────────
+interface AlignmentQuery {
+  id: number;
+  activity_date: string;
+  alignment_score: number;
+  status: string;
+}
+
+interface AlignmentQueryCardProps {
+  query: AlignmentQuery;
+  onDismissed: () => void;
+}
+
+const AlignmentQueryCard: React.FC<AlignmentQueryCardProps> = ({ query, onDismissed }) => {
+  const [responseText, setResponseText] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const postAction = async (endpoint: string, body?: object) => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/alignment-queries/${query.id}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed');
+      setIsBusy(false);
+      return false;
+    }
+    setIsBusy(false);
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!responseText.trim()) return;
+    const ok = await postAction('respond', { response: responseText.trim() });
+    if (ok) {
+      setConfirmed(true);
+      setTimeout(() => onDismissed(), 2000);
+    }
+  };
+
+  const handleSnooze = async () => {
+    const ok = await postAction('snooze');
+    if (ok) onDismissed();
+  };
+
+  const handleDismiss = async () => {
+    const ok = await postAction('dismiss');
+    if (ok) onDismissed();
+  };
+
+  const formattedDate = (() => {
+    const d = new Date(`${query.activity_date}T12:00:00Z`);
+    return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  })();
+
+  if (confirmed) {
+    return (
+      <div style={{
+        border: '1px solid var(--color-border, #d1d5db)',
+        borderRadius: '6px',
+        padding: '14px 16px',
+        backgroundColor: 'var(--color-surface-alt, #f0fdf4)',
+        marginBottom: '16px',
+        fontSize: '0.875rem',
+        color: 'var(--color-text-muted, #374151)',
+        fontStyle: 'italic'
+      }}>
+        Got it — thanks for letting us know.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      border: '1px solid var(--color-amber-border, #fbbf24)',
+      borderRadius: '6px',
+      padding: '14px 16px',
+      backgroundColor: 'var(--color-amber-surface, #fffbeb)',
+      marginBottom: '16px'
+    }}>
+      <div style={{
+        fontSize: '0.875rem',
+        fontWeight: '600',
+        color: 'var(--color-text, #1f2937)',
+        marginBottom: '8px'
+      }}>
+        Your training was off-plan on {formattedDate}. What happened?
+      </div>
+
+      <textarea
+        value={responseText}
+        onChange={(e) => setResponseText(e.target.value)}
+        placeholder="E.g. feeling run-down, travel, unexpected work commitment..."
+        rows={3}
+        disabled={isBusy}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          padding: '6px 8px',
+          border: '1px solid var(--color-border, #d1d5db)',
+          borderRadius: '4px',
+          fontSize: '0.8rem',
+          resize: 'vertical',
+          opacity: isBusy ? 0.6 : 1,
+          marginBottom: '8px'
+        }}
+      />
+
+      {error && (
+        <div style={{ fontSize: '0.75rem', color: '#dc2626', marginBottom: '6px' }}>{error}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          onClick={handleSubmit}
+          disabled={isBusy || !responseText.trim()}
+          style={{
+            backgroundColor: 'var(--color-primary, #3b82f6)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '5px 14px',
+            fontSize: '0.8rem',
+            fontWeight: '600',
+            cursor: (isBusy || !responseText.trim()) ? 'not-allowed' : 'pointer',
+            opacity: (isBusy || !responseText.trim()) ? 0.6 : 1
+          }}
+        >
+          Submit
+        </button>
+        <button
+          onClick={handleSnooze}
+          disabled={isBusy}
+          style={{
+            backgroundColor: 'transparent',
+            color: 'var(--color-text-muted, #6b7280)',
+            border: '1px solid var(--color-border, #d1d5db)',
+            borderRadius: '4px',
+            padding: '5px 14px',
+            fontSize: '0.8rem',
+            fontWeight: '500',
+            cursor: isBusy ? 'not-allowed' : 'pointer',
+            opacity: isBusy ? 0.6 : 1
+          }}
+        >
+          Not now
+        </button>
+        <button
+          onClick={handleDismiss}
+          disabled={isBusy}
+          style={{
+            backgroundColor: 'transparent',
+            color: 'var(--color-text-muted, #6b7280)',
+            border: 'none',
+            padding: '5px 8px',
+            fontSize: '0.75rem',
+            cursor: isBusy ? 'not-allowed' : 'pointer',
+            opacity: isBusy ? 0.6 : 1,
+            textDecoration: 'underline'
+          }}
+        >
+          Never ask again
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
 const JournalPage: React.FC = () => {
   // Performance monitoring
   usePagePerformanceMonitoring('journal');
@@ -426,6 +892,8 @@ const JournalPage: React.FC = () => {
   // Phase 6B: track dates where readiness was submitted this session
   const [readinessSubmitted, setReadinessSubmitted] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
+  // Phase D: alignment query
+  const [pendingQuery, setPendingQuery] = useState<AlignmentQuery | null>(null);
   
   // Modal state for full-screen autopsy display
   const [modalOpen, setModalOpen] = useState(false);
@@ -555,11 +1023,13 @@ const JournalPage: React.FC = () => {
           try {
             const url = centerDate ? `/api/journal?date=${centerDate}` : '/api/journal';
             const response = await fetch(url);
-            
+
             if (response.ok) {
               const result: JournalResponse = await response.json();
               if (result.success) {
                 setJournalData(result.data);
+                // Phase D: re-check for alignment queries after autopsy may have been generated
+                fetchPendingAlignmentQuery();
                 
                 // Find the saved entry and open modal if autopsy is available
                 const savedEntry = result.data.find(e => e.date === date);
@@ -615,6 +1085,27 @@ const JournalPage: React.FC = () => {
       return newSet;
     });
   };
+
+  // Phase D: fetch pending alignment query
+  const fetchPendingAlignmentQuery = useCallback(async () => {
+    try {
+      const res = await fetch('/api/alignment-queries/pending', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.pending) {
+        setPendingQuery({
+          id: data.id,
+          activity_date: data.activity_date,
+          alignment_score: data.alignment_score,
+          status: data.status,
+        });
+      } else {
+        setPendingQuery(null);
+      }
+    } catch {
+      // Non-critical — silently ignore
+    }
+  }, []);
 
   // Handle save
   const handleSave = (date: string) => {
@@ -753,6 +1244,11 @@ const JournalPage: React.FC = () => {
     fetchJournalData();
   }, [fetchJournalData]);
 
+  // Phase D: fetch pending alignment query on mount
+  useEffect(() => {
+    fetchPendingAlignmentQuery();
+  }, [fetchPendingAlignmentQuery]);
+
   // Format date for display
   const formatDate = (dateStr: string) => {
     const date = new Date(`${dateStr}T12:00:00Z`);
@@ -834,6 +1330,14 @@ const JournalPage: React.FC = () => {
         }}>
           {error}
         </div>
+      )}
+
+      {/* Phase D: Alignment Query Card — shown above journal table when pending */}
+      {pendingQuery && (
+        <AlignmentQueryCard
+          query={pendingQuery}
+          onDismissed={() => setPendingQuery(null)}
+        />
       )}
 
       <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '20px' }}>
@@ -985,11 +1489,12 @@ const JournalPage: React.FC = () => {
                               {formatTrainingDecision(entry.todays_decision)}
                             </div>
 
-                            {/* Phase 6C: Recommendation Meta Panel */}
+                            {/* Phase 5: Why This Recommendation Panel */}
                             {entry.structured_output && (
-                              <RecommendationMetaPanel
+                              <WhyRecommendationPanel
                                 structuredOutput={entry.structured_output}
-                                targetDate={entry.recommendation_target_date}
+                                targetDate={entry.recommendation_target_date || ''}
+                                todaysDecision={entry.todays_decision || ''}
                               />
                             )}
                           </div>
@@ -1080,11 +1585,12 @@ const JournalPage: React.FC = () => {
                                 {formatTrainingDecision(entry.todays_decision)}
                               </div>
 
-                              {/* Phase 6C: Recommendation Meta Panel for regular rows */}
+                              {/* Phase 5: Why This Recommendation Panel for regular rows */}
                               {entry.structured_output && (
-                                <RecommendationMetaPanel
+                                <WhyRecommendationPanel
                                   structuredOutput={entry.structured_output}
-                                  targetDate={entry.recommendation_target_date}
+                                  targetDate={entry.recommendation_target_date || ''}
+                                  todaysDecision={entry.todays_decision || ''}
                                 />
                               )}
                             </>

@@ -149,6 +149,9 @@ except Exception as e:
 
 **Never modify schema in application code.** Create migration scripts in `scripts/migrations/`.
 
+**Run migrations in Google Cloud SQL Editor — not locally.**
+When a migration is ready, extract the SQL and tell the user to run it directly in the Cloud SQL Editor. Do NOT instruct the user to run the migration Python script via terminal. The Python scripts in `scripts/migrations/` serve as reference documentation and version history, not execution targets.
+
 ### Migration Script Template
 
 ```python

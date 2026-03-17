@@ -915,19 +915,26 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
         }}>
           <div style={{
             backgroundColor: 'white',
-            borderRadius: '0.5rem',
-            padding: '1.5rem',
+            borderRadius: '8px',
+            padding: '20px',
             width: '100%',
             maxWidth: '420px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           }}>
-            <h2 style={{ margin: '0 0 1.25rem', fontSize: '1.1rem', fontWeight: '600', color: '#1e293b' }}>
-              Log your workout — {syncedActivityName}
-            </h2>
+            <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #dee2e6' }}>
+              <h2 style={{ margin: '0 0 2px', fontSize: '1rem', fontWeight: '600', color: '#1f2937' }}>
+                Add your impression
+              </h2>
+              {syncedActivityName && syncedActivityName !== 'your workout' && (
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic' }}>
+                  {syncedActivityName}
+                </p>
+              )}
+            </div>
 
             {/* Energy level */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
                 How did you feel going into this workout?
               </label>
               <select
@@ -935,9 +942,9 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 onChange={(e) => setJournalForm(f => ({ ...f, energy_level: e.target.value ? Number(e.target.value) : null }))}
                 style={{
                   width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  padding: '5px 8px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
                   fontSize: '0.875rem',
                   color: '#374151',
                   backgroundColor: 'white',
@@ -953,8 +960,8 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             </div>
 
             {/* RPE */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
                 How hard did it feel? (RPE 1–10)
               </label>
               <select
@@ -962,9 +969,9 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 onChange={(e) => setJournalForm(f => ({ ...f, rpe_score: e.target.value ? Number(e.target.value) : null }))}
                 style={{
                   width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  padding: '5px 8px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
                   fontSize: '0.875rem',
                   color: '#374151',
                   backgroundColor: 'white',
@@ -978,8 +985,8 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             </div>
 
             {/* Notes */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
                 Notes (optional)
               </label>
               <textarea
@@ -989,9 +996,9 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 rows={3}
                 style={{
                   width: '100%',
-                  padding: '0.5rem 0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  padding: '5px 8px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
                   fontSize: '0.875rem',
                   color: '#374151',
                   resize: 'vertical',
@@ -1001,16 +1008,17 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             </div>
 
             {/* Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button
                 onClick={handleJournalSkip}
                 style={{
-                  padding: '0.5rem 1rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  padding: '6px 16px',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px',
                   backgroundColor: 'white',
                   color: '#6b7280',
-                  fontSize: '0.875rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
                   cursor: 'pointer',
                 }}
               >
@@ -1019,13 +1027,13 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               <button
                 onClick={handleJournalSave}
                 style={{
-                  padding: '0.5rem 1rem',
+                  padding: '6px 16px',
                   border: 'none',
-                  borderRadius: '0.375rem',
-                  backgroundColor: '#6B8F7F',
+                  borderRadius: '4px',
+                  backgroundColor: '#3b82f6',
                   color: 'white',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
                   cursor: 'pointer',
                 }}
               >

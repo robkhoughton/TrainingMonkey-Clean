@@ -19,6 +19,8 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(getInitialTab());
   const [showJournalBadge, setShowJournalBadge] = useState(false);
+  const [hasPendingAlignmentQuery, setHasPendingAlignmentQuery] = useState(false);
+  const [hasPendingRevision, setHasPendingRevision] = useState(false);
 
   // Update tab when URL parameters change
   useEffect(() => {
@@ -36,11 +38,31 @@ function App() {
     setShowJournalBadge(!visitedJournalToday);
   }, []);
 
-  // Handle tab change and clear Journal badge
+  // Phase D: check for pending alignment query on mount
+  useEffect(() => {
+    fetch('/api/alignment-queries/pending', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : { pending: false })
+      .then(data => setHasPendingAlignmentQuery(!!data.pending))
+      .catch(() => {});
+  }, []);
+
+  // Phase E: check for pending revision proposal on mount
+  useEffect(() => {
+    fetch('/api/coach/revision-proposal', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : { pending: false })
+      .then(data => setHasPendingRevision(!!data.pending))
+      .catch(() => {});
+  }, []);
+
+  // Handle tab change and clear Journal/Coach badges
   const handleTabChange = (tabKey: string) => {
     if (tabKey === 'journal') {
       localStorage.setItem('journal_visited_' + new Date().toDateString(), 'true');
       setShowJournalBadge(false);
+      setHasPendingAlignmentQuery(false);
+    }
+    if (tabKey === 'coach') {
+      setHasPendingRevision(false);
     }
     setActiveTab(tabKey);
     // Update URL to reflect active tab
@@ -131,7 +153,21 @@ function App() {
               }}
             >
               <span>{tab.label}</span>
-              {tab.key === 'journal' && showJournalBadge && (
+              {tab.key === 'journal' && hasPendingAlignmentQuery && (
+                <span
+                  title="You have an unanswered training question"
+                  style={{
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#f59e0b',
+                    marginLeft: '4px',
+                    animation: 'pulse 2s infinite'
+                  }}
+                />
+              )}
+              {tab.key === 'journal' && !hasPendingAlignmentQuery && showJournalBadge && (
                 <span style={{
                   display: 'inline-block',
                   width: '8px',
@@ -142,6 +178,20 @@ function App() {
                   animation: 'pulse 2s infinite'
                 }}>
                 </span>
+              )}
+              {tab.key === 'coach' && hasPendingRevision && (
+                <span
+                  title="Your training plan has a pending revision"
+                  style={{
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#f59e0b',
+                    marginLeft: '4px',
+                    animation: 'pulse 2s infinite'
+                  }}
+                />
               )}
             </button>
             ))}

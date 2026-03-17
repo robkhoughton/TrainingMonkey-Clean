@@ -2151,6 +2151,9 @@ def get_journal_status_endpoint():
 _rec_jobs: dict = {}
 _rec_jobs_lock = threading.Lock()
 
+_conv_extraction_jobs = {}
+_conv_extraction_jobs_lock = threading.Lock()
+
 
 def _cleanup_stale_rec_jobs():
     """Remove job entries older than 10 minutes."""
@@ -2218,6 +2221,190 @@ def get_recommendation_job_status(job_id):
     if job['user_id'] != current_user.id:
         return jsonify({'status': 'not_found'}), 404
     return jsonify({'status': job['status'], 'error': job.get('error')})
+
+
+def _run_extraction_job(job_id, user_id, recommendation_date, conversation):
+    try:
+        from recommendation_conversation_service import run_extraction_pass
+        run_extraction_pass(user_id, recommendation_date, conversation)
+        with _conv_extraction_jobs_lock:
+            _conv_extraction_jobs[job_id]['status'] = 'complete'
+        logger.info(f"Extraction job {job_id} complete for user {user_id}")
+    except Exception as e:
+        logger.error(f"Extraction job {job_id} failed for user {user_id}: {e}")
+        with _conv_extraction_jobs_lock:
+            _conv_extraction_jobs[job_id]['status'] = 'error'
+
+
+@login_required
+@app.route('/api/recommendation-conversation/explain', methods=['POST'])
+def recommendation_conversation_explain():
+    try:
+        data = request.get_json() or {}
+        recommendation_date = data.get('recommendation_date')
+        if not recommendation_date:
+            return jsonify({'error': 'recommendation_date is required'}), 400
+
+        from db_utils import get_recommendation_conversation, execute_query
+        from recommendation_conversation_service import generate_why_explanation
+
+        # Return existing conversation if already generated
+        existing = get_recommendation_conversation(current_user.id, recommendation_date)
+        if existing and existing.get('messages'):
+            messages = existing['messages']
+            first_assistant = next((m['content'] for m in messages if m.get('role') == 'assistant'), None)
+            return jsonify({'explanation': first_assistant, 'conversation': messages})
+
+        # One query — all context was stored when the recommendation was generated
+        rows = execute_query(
+            """SELECT daily_recommendation, structured_output
+               FROM llm_recommendations
+               WHERE user_id = %s AND target_date = %s
+               ORDER BY generated_at DESC LIMIT 1""",
+            (current_user.id, recommendation_date), fetch=True
+        )
+        rec = dict(rows[0]) if rows else {}
+        structured_output = rec.get('structured_output') or {}
+        todays_decision = rec.get('daily_recommendation') or ''
+
+        explanation = generate_why_explanation(
+            current_user.id, recommendation_date,
+            structured_output, todays_decision
+        )
+        return jsonify({
+            'explanation': explanation,
+            'conversation': [{'role': 'assistant', 'content': explanation}]
+        })
+    except Exception as e:
+        logger.error(f"Error in recommendation_conversation_explain: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/recommendation-conversation/chat', methods=['POST'])
+def recommendation_conversation_chat():
+    try:
+        data = request.get_json() or {}
+        recommendation_date = data.get('recommendation_date')
+        message = data.get('message')
+        if not recommendation_date or not message:
+            return jsonify({'error': 'recommendation_date and message are required'}), 400
+
+        from recommendation_conversation_service import chat_turn
+
+        conversation = data.get('conversation') or []
+        structured_output = data.get('structured_output') or {}
+        reply = chat_turn(current_user.id, recommendation_date, message, conversation, structured_output)
+        updated_conversation = conversation + [
+            {'role': 'user', 'content': message},
+            {'role': 'assistant', 'content': reply},
+        ]
+        return jsonify({'reply': reply, 'conversation': updated_conversation})
+    except Exception as e:
+        logger.error(f"Error in recommendation_conversation_chat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/recommendation-conversation/finish', methods=['POST'])
+def recommendation_conversation_finish():
+    try:
+        data = request.get_json() or {}
+        recommendation_date = data.get('recommendation_date')
+        if not recommendation_date:
+            return jsonify({'error': 'recommendation_date is required'}), 400
+
+        from db_utils import get_recommendation_conversation
+
+        existing = get_recommendation_conversation(current_user.id, recommendation_date)
+        if existing and existing.get('extraction_done'):
+            return jsonify({'status': 'already_done'}), 200
+
+        conversation = data.get('conversation') or []
+        job_id = str(uuid.uuid4())
+        with _conv_extraction_jobs_lock:
+            _conv_extraction_jobs[job_id] = {'status': 'pending', 'user_id': current_user.id}
+
+        thread = threading.Thread(
+            target=_run_extraction_job,
+            args=(job_id, current_user.id, recommendation_date, conversation),
+            daemon=True
+        )
+        thread.start()
+        logger.info(f"Started extraction job {job_id} for user {current_user.id}")
+        return jsonify({'job_id': job_id, 'status': 'pending'}), 202
+    except Exception as e:
+        logger.error(f"Error in recommendation_conversation_finish: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# ALIGNMENT QUERIES — Phase D (Plan Execution Loop)
+# =============================================================================
+
+@login_required
+@app.route('/api/alignment-queries/pending', methods=['GET'])
+def get_pending_alignment_query_endpoint():
+    """Return the most recent pending/snoozed alignment query for the current user."""
+    try:
+        query = db_utils.get_pending_alignment_query(current_user.id)
+        if query:
+            return jsonify({
+                'pending': True,
+                'id': query['id'],
+                'activity_date': query['activity_date'],
+                'alignment_score': query['alignment_score'],
+                'status': query['status'],
+            })
+        return jsonify({'pending': False})
+    except Exception as e:
+        logger.error(f"Error in get_pending_alignment_query_endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/alignment-queries/<int:query_id>/respond', methods=['POST'])
+def respond_alignment_query(query_id):
+    """Mark alignment query as answered and store athlete's response text."""
+    try:
+        data = request.get_json() or {}
+        response_text = data.get('response', '').strip()
+        if not response_text:
+            return jsonify({'error': 'response is required'}), 400
+        db_utils.update_alignment_query(query_id, status='answered', response=response_text)
+        logger.info(f"Alignment query {query_id} answered by user {current_user.id}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in respond_alignment_query: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/alignment-queries/<int:query_id>/snooze', methods=['POST'])
+def snooze_alignment_query(query_id):
+    """Snooze alignment query until tomorrow."""
+    try:
+        from datetime import date, timedelta
+        tomorrow = str(date.today() + timedelta(days=1))
+        db_utils.update_alignment_query(query_id, status='snoozed', snooze_until=tomorrow)
+        logger.info(f"Alignment query {query_id} snoozed by user {current_user.id} until {tomorrow}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in snooze_alignment_query: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/alignment-queries/<int:query_id>/dismiss', methods=['POST'])
+def dismiss_alignment_query(query_id):
+    """Permanently dismiss alignment query (Never ask again)."""
+    try:
+        db_utils.update_alignment_query(query_id, status='dismissed')
+        logger.info(f"Alignment query {query_id} dismissed by user {current_user.id}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in dismiss_alignment_query: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/journal-entries-count', methods=['GET'])
@@ -5353,6 +5540,77 @@ def save_journal_entry():
                 autopsy_error = str(e)
                 logger.error(f"❌ Autopsy generation failed for {date_str}: {e}", exc_info=True)
             
+            # STEP 1.5: Phase C — Deviation Classification
+            # Run only when autopsy succeeded and an alignment score is available.
+            # Fetch extraction_result from the recommendation conversation for date_str,
+            # and structured_output from the llm_recommendations row for date_str.
+            if autopsy_generated and alignment_score is not None:
+                try:
+                    from llm_recommendations_module import classify_deviation
+
+                    conv_row = db_utils.get_recommendation_conversation(current_user.id, date_str)
+                    extraction_result_for_classification = (
+                        conv_row.get('extraction_result') if conv_row else None
+                    ) or {}
+
+                    rec_row = db_utils.execute_query(
+                        "SELECT structured_output FROM llm_recommendations "
+                        "WHERE user_id = %s AND target_date = %s "
+                        "ORDER BY generated_at DESC LIMIT 1",
+                        (current_user.id, date_str),
+                        fetch=True
+                    )
+                    structured_output_for_classification = (
+                        rec_row[0].get('structured_output') if rec_row and rec_row[0] else None
+                    ) or {}
+
+                    classify_deviation(
+                        user_id=current_user.id,
+                        activity_date=date_str,
+                        alignment_score=alignment_score,
+                        extraction_result=extraction_result_for_classification,
+                        structured_output=structured_output_for_classification,
+                    )
+                except Exception as classify_err:
+                    logger.warning(
+                        f"classify_deviation failed for user {current_user.id}, "
+                        f"date {date_str}: {classify_err}"
+                    )
+
+            # Phase D: Insert alignment query when score is poor and autopsy found nothing significant
+            if autopsy_generated and alignment_score is not None and alignment_score < 4:
+                try:
+                    # Check whether autopsy extraction surfaced any meaningful insight
+                    conv_row_for_query = db_utils.get_recommendation_conversation(current_user.id, date_str)
+                    extraction_for_query = (
+                        conv_row_for_query.get('extraction_result') if conv_row_for_query else None
+                    ) or {}
+                    nothing_significant = (
+                        extraction_for_query is None
+                        or extraction_for_query.get('nothing_significant') is True
+                        or not extraction_for_query
+                    )
+                    if nothing_significant:
+                        db_utils.execute_query(
+                            """
+                            INSERT INTO alignment_queries
+                                (user_id, activity_date, alignment_score, status)
+                            VALUES (%s, %s, %s, 'pending')
+                            ON CONFLICT (user_id, activity_date) DO NOTHING
+                            """,
+                            (current_user.id, date_str, alignment_score),
+                            fetch=False
+                        )
+                        logger.info(
+                            f"Phase D: alignment query queued for user {current_user.id}, "
+                            f"date {date_str}, alignment={alignment_score}"
+                        )
+                except Exception as aq_err:
+                    logger.warning(
+                        f"Phase D: alignment query insertion failed for user {current_user.id}, "
+                        f"date {date_str}: {aq_err}"
+                    )
+
             # STEP 2: Generate/update recommendation for TOMORROW using THIS autopsy
             try:
                 logger.info(f"🤖 Step 2: Generating recommendation for {tomorrow_date_str} using autopsy from {date_str}")
@@ -10753,6 +11011,38 @@ def proactive_token_refresh():
 # =============================================================================
 # API endpoints for YTM Coach page features: race goals, race history, training schedules
 
+@app.route('/api/athlete-model', methods=['GET'])
+@login_required
+def get_athlete_model_api():
+    """Return the athlete model for the current user (ACWR sweet spot, confidence, alignment trend)."""
+    try:
+        user_id = current_user.id
+        model = db_utils.get_athlete_model(user_id)
+        if not model:
+            return jsonify({'success': True, 'model': None})
+
+        # Round floats for clean display; convert Decimal/date types
+        def safe_float(v, decimals=2):
+            try:
+                return round(float(v), decimals) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        payload = {
+            'acwr_sweet_spot_low': safe_float(model.get('acwr_sweet_spot_low')),
+            'acwr_sweet_spot_high': safe_float(model.get('acwr_sweet_spot_high')),
+            'acwr_sweet_spot_confidence': safe_float(model.get('acwr_sweet_spot_confidence'), 4),
+            'avg_lifetime_alignment': safe_float(model.get('avg_lifetime_alignment'), 1),
+            'recent_alignment_trend': model.get('recent_alignment_trend'),  # list or None
+            'total_autopsies': model.get('total_autopsies') or 0,
+            'last_autopsy_date': str(model['last_autopsy_date']) if model.get('last_autopsy_date') else None,
+        }
+        return jsonify({'success': True, 'model': payload})
+    except Exception as e:
+        logger.error(f"Error fetching athlete model: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/race-goals', methods=['GET'])
 @login_required
 def get_race_goals():
@@ -12943,6 +13233,64 @@ def generate_weekly_program_manual():
         
     except Exception as e:
         logger.error(f"Error generating weekly program: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# =============================================================================
+# REVISION PROPOSAL — Phase E (Plan Execution Loop)
+# =============================================================================
+
+@login_required
+@app.route('/api/coach/revision-proposal', methods=['GET'])
+def get_revision_proposal_endpoint():
+    """Return revision proposal if revision_pending=TRUE for the current week."""
+    try:
+        proposal = db_utils.get_revision_proposal(current_user.id)
+        if proposal:
+            return jsonify({
+                'pending': True,
+                'week_start': proposal['week_start_date'],
+                'proposal': proposal['revision_proposal'],
+                'deviation_log': proposal['deviation_log'],
+            })
+        return jsonify({'pending': False})
+    except Exception as e:
+        logger.error(f"Error in get_revision_proposal_endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/coach/revision-proposal/approve', methods=['POST'])
+def approve_revision_proposal():
+    """Acknowledge (approve) the pending revision proposal for a given week."""
+    try:
+        data = request.get_json() or {}
+        week_start = data.get('week_start')
+        if not week_start:
+            return jsonify({'error': 'week_start is required'}), 400
+        db_utils.apply_revision(current_user.id, week_start)
+        logger.info(f"Revision proposal approved by user {current_user.id} for week {week_start}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in approve_revision_proposal: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
+@app.route('/api/coach/revision-proposal/dismiss', methods=['POST'])
+def dismiss_revision_proposal():
+    """Dismiss the pending revision proposal, keeping original plan."""
+    try:
+        data = request.get_json() or {}
+        week_start = data.get('week_start')
+        if not week_start:
+            return jsonify({'error': 'week_start is required'}), 400
+        db_utils.dismiss_revision(current_user.id, week_start)
+        logger.info(f"Revision proposal dismissed by user {current_user.id} for week {week_start}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in dismiss_revision_proposal: {e}")
         return jsonify({'error': str(e)}), 500
 
 
