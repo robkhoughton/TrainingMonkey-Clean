@@ -145,6 +145,5 @@ Use these Playwright MCP tools:
 ## Reference Documents
 
 Always consult these files for brand standards:
-- `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md` - Complete brand framework
-- `docs/branding/QUICK_REFERENCE_STYLE_GUIDE.md` - Quick reference with code snippets
+- `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md` - Complete brand framework (single source of truth)
 - `frontend/DesignReview/design-principles-example.md` - S-tier design checklist

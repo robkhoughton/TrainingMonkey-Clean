@@ -1,6 +1,208 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 
+// ─── Quick Journal Modal ───────────────────────────────────────────────────
+
+interface QuickJournalModalProps {
+  date: string;           // YYYY-MM-DD
+  onDone: () => void;     // called on submit OR skip
+}
+
+const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone }) => {
+  const [energy, setEnergy] = useState<number | null>(null);
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [pain, setPain] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const complete = energy !== null && rpe !== null && pain !== null;
+
+  const handleSubmit = async () => {
+    if (!complete || submitting) return;
+    setSubmitting(true);
+    try {
+      await fetch('/api/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          energy_level: energy,
+          rpe_score: rpe,
+          pain_percentage: pain,
+        }),
+      });
+    } catch (_) {
+      // Non-blocking — don't prevent the user from continuing
+    } finally {
+      onDone();
+    }
+  };
+
+  const btnBase: React.CSSProperties = {
+    padding: '6px 0',
+    minWidth: '36px',
+    border: '1px solid #d1d5db',
+    borderRadius: '4px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+    background: 'white',
+    color: '#374151',
+  };
+
+  const btnActive: React.CSSProperties = {
+    ...btnBase,
+    background: '#1B2E4B',
+    color: 'white',
+    borderColor: '#1B2E4B',
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      zIndex: 1000,
+      animation: 'ytm-backdrop-in 0.18s ease',
+    }}>
+      <style>{`
+        @keyframes ytm-backdrop-in { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes ytm-sheet-up { from { transform: translateY(40px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+      `}</style>
+
+      <div style={{
+        background: 'white',
+        borderRadius: '12px 12px 0 0',
+        width: '100%', maxWidth: '560px',
+        overflow: 'hidden',
+        animation: 'ytm-sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)',
+        boxShadow: '0 -8px 32px rgba(0,0,0,0.18)',
+      }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+          padding: '0.875rem 1.25rem',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontSize: '10px', letterSpacing: '0.14em', fontWeight: '700', color: '#7D9CB8', textTransform: 'uppercase' }}>
+              Sync Complete
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: 'white', marginTop: '1px' }}>
+              How was today's session?
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>{date}</div>
+        </div>
+
+        {/* Fields */}
+        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+
+          {/* Energy */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
+              Energy going in
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { v: 1, label: '1', sub: 'Barely out of bed' },
+                { v: 2, label: '2', sub: 'Low' },
+                { v: 3, label: '3', sub: 'Normal' },
+                { v: 4, label: '4', sub: 'High' },
+                { v: 5, label: '5', sub: 'Fired up' },
+              ].map(({ v, label, sub }) => (
+                <button
+                  key={v}
+                  onClick={() => setEnergy(v)}
+                  title={sub}
+                  style={energy === v ? btnActive : btnBase}
+                >
+                  {label}
+                </button>
+              ))}
+              {energy !== null && (
+                <span style={{ fontSize: '12px', color: '#6b7280', alignSelf: 'center', marginLeft: '6px' }}>
+                  {['', 'Barely out of bed', 'Low', 'Normal', 'High', 'Fired up'][energy]}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* RPE */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
+              How hard did it feel (RPE)
+            </div>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+              {[1,2,3,4,5,6,7,8,9,10].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setRpe(v)}
+                  style={rpe === v ? btnActive : btnBase}
+                >
+                  {v}
+                </button>
+              ))}
+              {rpe !== null && (
+                <span style={{ fontSize: '12px', color: '#6b7280', alignSelf: 'center', marginLeft: '4px' }}>
+                  {rpe <= 3 ? 'Easy' : rpe <= 5 ? 'Moderate' : rpe <= 7 ? 'Hard' : rpe <= 9 ? 'Very hard' : 'Max effort'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Pain */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
+              Pain — % of time thinking about it
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {[0, 20, 40, 60, 80, 100].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setPain(v)}
+                  style={pain === v ? { ...btnActive, borderColor: v >= 60 ? '#dc2626' : '#1B2E4B', background: v >= 60 ? '#dc2626' : '#1B2E4B' } : { ...btnBase, borderColor: v >= 60 ? '#fca5a5' : '#d1d5db', color: v >= 60 ? '#dc2626' : '#374151' }}
+                >
+                  {v}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.25rem' }}>
+            <button
+              onClick={onDone}
+              style={{ fontSize: '13px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }}
+            >
+              Skip for now
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!complete || submitting}
+              style={{
+                padding: '8px 24px',
+                borderRadius: '4px',
+                border: 'none',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: complete ? 'pointer' : 'not-allowed',
+                background: complete ? '#1B2E4B' : '#e5e7eb',
+                color: complete ? 'white' : '#9ca3af',
+                transition: 'background 0.2s, color 0.2s',
+              }}
+            >
+              {submitting ? 'Saving...' : 'Save debrief'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── ManualSyncComponent ───────────────────────────────────────────────────
+
 interface ManualSyncProps {
   onSyncComplete?: () => void;
 }
@@ -10,6 +212,16 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showJournalModal, setShowJournalModal] = useState(false);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const handleJournalDone = () => {
+    setShowJournalModal(false);
+    if (onSyncComplete) {
+      setTimeout(() => { onSyncComplete(); }, 500);
+    }
+  };
 
   // PROACTIVE TOKEN REFRESH: Refresh tokens when component mounts
   useEffect(() => {
@@ -67,12 +279,8 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
 
       if (data.success) {
         setResult(data);
-        // Call the callback to refresh dashboard data
-        if (onSyncComplete) {
-          setTimeout(() => {
-            onSyncComplete();
-          }, 1000);
-        }
+        // Show quick journal modal before refreshing dashboard
+        setTimeout(() => { setShowJournalModal(true); }, 600);
       } else {
         setError(data.error || 'Sync failed');
       }
@@ -84,6 +292,10 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
   };
 
   return (
+    <>
+    {showJournalModal && (
+      <QuickJournalModal date={todayStr} onDone={handleJournalDone} />
+    )}
     <div className={styles.chartContainer} style={{
       background: 'linear-gradient(135deg, #FC5200, #ff8c00)',
       color: 'white',
@@ -244,6 +456,7 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
         }
       `}</style>
     </div>
+    </>
   );
 };
 

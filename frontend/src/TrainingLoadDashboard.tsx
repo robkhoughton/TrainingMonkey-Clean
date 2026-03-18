@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceArea, ComposedChart, ReferenceLine, Bar
@@ -222,7 +223,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     return '';
   };
 
-  // FIXED: Custom tooltip component with proper click-to-freeze functionality
+  // Custom tooltip component with click-to-pin functionality
   const CustomTooltip = ({ active, payload, label, coordinate }: any) => {
     // Use frozen data if available, otherwise active data
     const currentData = frozenTooltipData || (active ? { payload, label, coordinate } : null);
@@ -233,83 +234,114 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
     const formattedDate = formatTooltipDate(currentData.label);
     const activityId = currentData.payload[0]?.payload?.activity_id;
+    const frozen = !!frozenTooltipData;
 
-    return (
+    // Clamp position to viewport
+    const TOOLTIP_WIDTH = 280;
+    const TOOLTIP_HEIGHT_EST = 300;
+    const rawLeft = currentData.coordinate ? currentData.coordinate.x + 20 : 0;
+    const rawTop = currentData.coordinate ? currentData.coordinate.y - 100 : 0;
+    const clampedLeft = Math.min(rawLeft, (typeof window !== 'undefined' ? window.innerWidth : 1440) - TOOLTIP_WIDTH - 16);
+    const clampedTop = Math.min(Math.max(16, rawTop), (typeof window !== 'undefined' ? window.innerHeight : 900) - TOOLTIP_HEIGHT_EST - 16);
+
+    const tooltipContent = (
       <div
         style={{
           backgroundColor: 'white',
-          border: '2px solid #3b82f6',
+          border: frozen ? '2px solid #1B2E4B' : '2px solid #3b82f6',
           borderRadius: '8px',
-          padding: '12px',
-          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2)',
-          minWidth: '240px',
-          maxWidth: '320px',
+          padding: '0',
+          boxShadow: frozen
+            ? '0 8px 24px rgba(27, 46, 75, 0.25)'
+            : '0 4px 12px rgba(59, 130, 246, 0.2)',
+          width: `${TOOLTIP_WIDTH}px`,
           fontSize: '12px',
           fontFamily: 'Arial, sans-serif',
-          position: frozenTooltipData ? 'fixed' : 'relative',
+          position: frozen ? 'fixed' : 'relative',
           zIndex: 50000,
           pointerEvents: 'auto',
-          cursor: frozenTooltipData ? 'default' : 'pointer',
-          left: frozenTooltipData && currentData.coordinate ? `${currentData.coordinate.x + 20}px` : 'auto',
-          top: frozenTooltipData && currentData.coordinate ? `${Math.max(20, currentData.coordinate.y - 100)}px` : 'auto'
+          cursor: 'default',
+          left: frozen ? `${clampedLeft}px` : 'auto',
+          top: frozen ? `${clampedTop}px` : 'auto',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          overflow: 'hidden',
         }}
         onClick={(e) => {
           e.stopPropagation();
-          if (!frozenTooltipData && active && payload && coordinate) {
-            setFrozenTooltipData({ payload, label, coordinate });
+        }}
+        onMouseEnter={(e) => {
+          if (!frozen) {
+            (e.currentTarget as HTMLDivElement).style.borderColor = '#1B2E4B';
+            (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 18px rgba(27, 46, 75, 0.2)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!frozen) {
+            (e.currentTarget as HTMLDivElement).style.borderColor = '#3b82f6';
+            (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.2)';
           }
         }}
       >
-        {/* Close button for frozen tooltips */}
-        {frozenTooltipData && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setFrozenTooltipData(null);
-            }}
-            style={{
-              position: 'absolute',
-              top: '6px',
-              right: '6px',
-              background: '#ef4444',
-              color: 'white',
-              border: 'none',
-              borderRadius: '50%',
-              width: '20px',
-              height: '20px',
-              fontSize: '14px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold'
-            }}
-          >
-            ×
-          </button>
-        )}
-
-        <p style={{
-          margin: '0 0 10px 0',
-          fontWeight: 'bold',
-          fontSize: '14px',
-          borderBottom: '1px solid #e5e7eb',
-          paddingBottom: '6px'
+        {/* Header */}
+        <div style={{
+          background: frozen ? '#1B2E4B' : '#EBF5FF',
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}>
-          {formattedDate}
-          {!frozenTooltipData && (
-            <span style={{ fontSize: '10px', color: '#6b7280', marginLeft: '8px' }}>
-              (Click to freeze)
-            </span>
-          )}
-        </p>
+          <span style={{
+            fontWeight: 'bold',
+            fontSize: '13px',
+            color: frozen ? 'white' : '#1B2E4B',
+          }}>
+            {formattedDate}
+          </span>
+          {frozen ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                letterSpacing: '0.06em',
+                color: '#7D9CB8',
+                textTransform: 'uppercase',
+              }}>
+                Pinned
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFrozenTooltipData(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.15)',
+                  color: 'white',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: '4px',
+                  width: '20px',
+                  height: '20px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+        </div>
 
-        <div style={{ marginBottom: '10px' }}>
+        {/* Data rows */}
+        <div style={{ padding: '10px 12px 8px' }}>
           {currentData.payload.map((entry: any, index: number) => {
             let displayName = entry.name;
             let displayValue = entry.value;
 
-            // Fix naming for specific metrics
             if (entry.dataKey === 'normalized_divergence') {
               displayName = 'Normalized Divergence';
             } else if (entry.dataKey === 'acute_chronic_ratio') {
@@ -335,29 +367,22 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '3px'
+                marginBottom: '4px',
               }}>
                 <span style={{
                   color: entry.color,
                   fontWeight: '500',
                   marginRight: '8px',
-                  fontSize: '11px'
+                  fontSize: '11px',
                 }}>
                   {displayName}:
                 </span>
-                <span style={{ fontWeight: 'bold', fontSize: '12px' }}>
+                <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#1F2937' }}>
                   {(() => {
-                    if (displayValue === null || displayValue === undefined) {
-                      return 'N/A';
-                    }
-
+                    if (displayValue === null || displayValue === undefined) return 'N/A';
                     const digits = displayName.includes('ACWR') || displayName.includes('Divergence') ? 3 : 1;
                     const numericValue = coerceNumber(displayValue, NaN);
-
-                    if (Number.isFinite(numericValue)) {
-                      return numericValue.toFixed(digits);
-                    }
-
+                    if (Number.isFinite(numericValue)) return numericValue.toFixed(digits);
                     return typeof displayValue === 'string' ? displayValue : 'N/A';
                   })()}
                 </span>
@@ -366,12 +391,12 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           })}
         </div>
 
-        {/* Enhanced Strava Link */}
+        {/* Strava link */}
         {activityId && activityId !== 0 && (
           <div style={{
             borderTop: '1px solid #e5e7eb',
-            paddingTop: '8px',
-            textAlign: 'center'
+            padding: '8px 12px',
+            textAlign: 'center',
           }}>
             <a
               href={`https://www.strava.com/activities/${activityId}`}
@@ -380,33 +405,52 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               onClick={(e) => e.stopPropagation()}
               style={{
                 display: 'inline-block',
-                padding: '8px 16px',
+                padding: '6px 16px',
                 backgroundColor: '#fc4c02',
                 color: 'white',
                 textDecoration: 'none',
-                borderRadius: '6px',
+                borderRadius: '4px',
                 fontSize: '12px',
-                fontWeight: 'bold',
-                transition: 'all 0.2s',
-                border: '2px solid #fc4c02'
+                fontWeight: '600',
+                transition: 'background-color 0.15s, transform 0.15s',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = '#e73c00';
-                e.currentTarget.style.borderColor = '#e73c00';
-                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.transform = 'scale(1.04)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = '#fc4c02';
-                e.currentTarget.style.borderColor = '#fc4c02';
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              🔗 View on Strava
+              View on Strava
             </a>
+          </div>
+        )}
+
+        {/* Click-to-pin affordance — only shown in hover state */}
+        {!frozen && (
+          <div style={{
+            background: '#EBF5FF',
+            borderTop: '1px solid #dbeafe',
+            padding: '5px 12px',
+            textAlign: 'center',
+            fontSize: '11px',
+            color: '#3b82f6',
+            fontWeight: '500',
+            letterSpacing: '0.01em',
+          }}>
+            Click chart to pin
           </div>
         )}
       </div>
     );
+
+    // When frozen, portal to document.body so Recharts' wrapper hiding can't affect it
+    if (frozenTooltipData) {
+      return createPortal(tooltipContent, document.body);
+    }
+    return tooltipContent;
   };
 
   // FIXED: Dynamic domain calculation for normalized divergence with inverted axis
@@ -907,61 +951,99 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
         <div style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000,
         }}>
           <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '20px',
+            backgroundColor: '#1B2E4B',
+            borderRadius: '10px',
+            padding: '28px 28px 24px',
             width: '100%',
-            maxWidth: '420px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            maxWidth: '460px',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(125,156,184,0.15)',
           }}>
-            <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #dee2e6' }}>
-              <h2 style={{ margin: '0 0 2px', fontSize: '1rem', fontWeight: '600', color: '#1f2937' }}>
-                Add your impression
+            {/* Header */}
+            <div style={{ marginBottom: '22px' }}>
+              <h2 style={{
+                margin: '0 0 6px',
+                fontFamily: '"DM Serif Display", Georgia, serif',
+                fontSize: '1.625rem',
+                fontWeight: '400',
+                color: '#ffffff',
+                lineHeight: '1.2',
+                letterSpacing: '-0.01em',
+              }}>
+                What your watch can't tell us
               </h2>
               {syncedActivityName && syncedActivityName !== 'your workout' && (
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic' }}>
+                <p style={{
+                  margin: 0,
+                  fontSize: '0.8rem',
+                  color: '#7D9CB8',
+                  fontStyle: 'italic',
+                  letterSpacing: '0.02em',
+                }}>
                   {syncedActivityName}
                 </p>
               )}
+              <div style={{
+                marginTop: '16px',
+                height: '1px',
+                background: 'linear-gradient(90deg, rgba(125,156,184,0.5) 0%, rgba(27,46,75,0) 100%)',
+              }} />
             </div>
 
             {/* Energy level */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
-                How did you feel going into this workout?
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.7rem',
+                fontWeight: '700',
+                color: '#7D9CB8',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+              }}>
+                How did you feel going in?
               </label>
               <select
                 value={journalForm.energy_level ?? ''}
                 onChange={(e) => setJournalForm(f => ({ ...f, energy_level: e.target.value ? Number(e.target.value) : null }))}
                 style={{
                   width: '100%',
-                  padding: '5px 8px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
+                  padding: '8px 10px',
+                  border: '1px solid rgba(125,156,184,0.3)',
+                  borderRadius: '6px',
                   fontSize: '0.875rem',
-                  color: '#374151',
-                  backgroundColor: 'white',
+                  color: '#E6F0FF',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  outline: 'none',
+                  cursor: 'pointer',
                 }}
               >
-                <option value="">Select...</option>
-                <option value="1">1 — Barely got out of bed</option>
-                <option value="2">2 — Low energy</option>
-                <option value="3">3 — Normal</option>
-                <option value="4">4 — High energy</option>
-                <option value="5">5 — Fired up</option>
+                <option value="" style={{ backgroundColor: '#1B2E4B' }}>Select...</option>
+                <option value="1" style={{ backgroundColor: '#1B2E4B' }}>1 — Barely got out of bed</option>
+                <option value="2" style={{ backgroundColor: '#1B2E4B' }}>2 — Low energy</option>
+                <option value="3" style={{ backgroundColor: '#1B2E4B' }}>3 — Normal</option>
+                <option value="4" style={{ backgroundColor: '#1B2E4B' }}>4 — High energy</option>
+                <option value="5" style={{ backgroundColor: '#1B2E4B' }}>5 — Fired up</option>
               </select>
             </div>
 
             {/* RPE */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.7rem',
+                fontWeight: '700',
+                color: '#7D9CB8',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+              }}>
                 How hard did it feel? (RPE 1–10)
               </label>
               <select
@@ -969,25 +1051,35 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 onChange={(e) => setJournalForm(f => ({ ...f, rpe_score: e.target.value ? Number(e.target.value) : null }))}
                 style={{
                   width: '100%',
-                  padding: '5px 8px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
+                  padding: '8px 10px',
+                  border: '1px solid rgba(125,156,184,0.3)',
+                  borderRadius: '6px',
                   fontSize: '0.875rem',
-                  color: '#374151',
-                  backgroundColor: 'white',
+                  color: '#E6F0FF',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  outline: 'none',
+                  cursor: 'pointer',
                 }}
               >
-                <option value="">Select...</option>
+                <option value="" style={{ backgroundColor: '#1B2E4B' }}>Select...</option>
                 {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                  <option key={n} value={n}>{n}</option>
+                  <option key={n} value={n} style={{ backgroundColor: '#1B2E4B' }}>{n}</option>
                 ))}
               </select>
             </div>
 
             {/* Notes */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '4px' }}>
-                Notes (optional)
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.7rem',
+                fontWeight: '700',
+                color: '#7D9CB8',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+              }}>
+                Notes
               </label>
               <textarea
                 value={journalForm.notes}
@@ -996,30 +1088,33 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 rows={3}
                 style={{
                   width: '100%',
-                  padding: '5px 8px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
+                  padding: '8px 10px',
+                  border: '1px solid rgba(125,156,184,0.3)',
+                  borderRadius: '6px',
                   fontSize: '0.875rem',
-                  color: '#374151',
+                  color: '#E6F0FF',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
                   resize: 'vertical',
                   boxSizing: 'border-box',
+                  outline: 'none',
                 }}
               />
             </div>
 
             {/* Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
               <button
                 onClick={handleJournalSkip}
                 style={{
-                  padding: '6px 16px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  color: '#6b7280',
+                  padding: '8px 18px',
+                  border: '1px solid rgba(125,156,184,0.25)',
+                  borderRadius: '6px',
+                  backgroundColor: 'transparent',
+                  color: 'rgba(125,156,184,0.7)',
                   fontSize: '0.8rem',
                   fontWeight: '600',
                   cursor: 'pointer',
+                  letterSpacing: '0.02em',
                 }}
               >
                 Skip
@@ -1027,14 +1122,15 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               <button
                 onClick={handleJournalSave}
                 style={{
-                  padding: '6px 16px',
+                  padding: '9px 22px',
                   border: 'none',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   backgroundColor: '#3b82f6',
                   color: 'white',
-                  fontSize: '0.8rem',
-                  fontWeight: '600',
+                  fontSize: '0.875rem',
+                  fontWeight: '700',
                   cursor: 'pointer',
+                  letterSpacing: '0.02em',
                 }}
               >
                 Save &amp; Continue
@@ -1207,6 +1303,16 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             <ComposedChart
               data={filtered}
               margin={{ top: 5, right: 50, left: 20, bottom: 5 }}
+              onClick={(data: any, event: any) => {
+                if (data && data.activePayload && data.activePayload.length && !frozenTooltipData) {
+                  setFrozenTooltipData({
+                    payload: data.activePayload,
+                    label: data.activeLabel,
+                    coordinate: data.activeCoordinate,
+                  });
+                  if (event) event.stopPropagation();
+                }
+              }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -1216,6 +1322,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 padding={{ left: 10, right: 10 }}
               />
               <YAxis
+                yAxisId={0}
                 domain={[0, 2.5]}
                 label={{
                   value: 'ACWR',
@@ -1282,53 +1389,46 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
               <Legend />
 
               {/* Risk zones — boundaries from user-specific thresholds (get_adjusted_thresholds()) */}
-              {(() => {
-                const high = metrics.acwrHighThreshold ?? 1.3;
-                const undertraining = metrics.acwrUndertrainingThreshold ?? 0.8;
-                return (
-                  <>
-                    {/* Low Risk: < undertraining */}
-                    <ReferenceArea
-                      y1={0}
-                      y2={undertraining}
-                      fill="rgba(40, 167, 69, 0.15)"
-                      stroke="rgba(40, 167, 69, 0.3)"
-                      strokeWidth={1}
-                      label={{ value: "Low Risk", position: "insideTopLeft", fontSize: 10, fill: "green" }}
-                    />
-                    {/* Balanced: undertraining–high */}
-                    <ReferenceArea
-                      y1={undertraining}
-                      y2={high}
-                      fill="rgba(255, 193, 7, 0.2)"
-                      stroke="rgba(255, 193, 7, 0.3)"
-                      strokeWidth={1}
-                      label={{ value: "Balanced", position: "insideTopLeft", fontSize: 10, fill: "#b8860b" }}
-                    />
-                    {/* Moderate Risk: high to high+0.2 */}
-                    <ReferenceArea
-                      y1={high}
-                      y2={high + 0.2}
-                      fill="rgba(255, 87, 34, 0.25)"
-                      stroke="rgba(255, 87, 34, 0.3)"
-                      strokeWidth={1}
-                      label={{ value: "Moderate Risk", position: "insideTopLeft", fontSize: 10, fill: "#ff5722" }}
-                    />
-                    {/* High Risk: > high+0.2 */}
-                    <ReferenceArea
-                      y1={high + 0.2}
-                      y2={2.5}
-                      fill="rgba(199, 21, 133, 0.25)"
-                      stroke="rgba(199, 21, 133, 0.3)"
-                      strokeWidth={1}
-                      label={{ value: "High Risk", position: "insideTopLeft", fontSize: 10, fill: "#c71585" }}
-                    />
-                  </>
-                );
-              })()}
+              <ReferenceArea
+                yAxisId={0}
+                y1={0}
+                y2={metrics.acwrUndertrainingThreshold ?? 0.8}
+                fill="rgba(40, 167, 69, 0.15)"
+                stroke="rgba(40, 167, 69, 0.3)"
+                strokeWidth={1}
+                label={{ value: "Low Risk", position: "insideTopLeft", fontSize: 10, fill: "green" }}
+              />
+              <ReferenceArea
+                yAxisId={0}
+                y1={metrics.acwrUndertrainingThreshold ?? 0.8}
+                y2={metrics.acwrHighThreshold ?? 1.3}
+                fill="rgba(255, 193, 7, 0.2)"
+                stroke="rgba(255, 193, 7, 0.3)"
+                strokeWidth={1}
+                label={{ value: "Balanced", position: "insideTopLeft", fontSize: 10, fill: "#b8860b" }}
+              />
+              <ReferenceArea
+                yAxisId={0}
+                y1={metrics.acwrHighThreshold ?? 1.3}
+                y2={(metrics.acwrHighThreshold ?? 1.3) + 0.2}
+                fill="rgba(255, 87, 34, 0.25)"
+                stroke="rgba(255, 87, 34, 0.3)"
+                strokeWidth={1}
+                label={{ value: "Moderate Risk", position: "insideTopLeft", fontSize: 10, fill: "#ff5722" }}
+              />
+              <ReferenceArea
+                yAxisId={0}
+                y1={(metrics.acwrHighThreshold ?? 1.3) + 0.2}
+                y2={2.5}
+                fill="rgba(199, 21, 133, 0.25)"
+                stroke="rgba(199, 21, 133, 0.3)"
+                strokeWidth={1}
+                label={{ value: "High Risk", position: "insideTopLeft", fontSize: 10, fill: "#c71585" }}
+              />
 
               {/* Internal Load (TRIMP) Line */}
               <Line
+                yAxisId={0}
                 type="monotone"
                 dataKey="trimp_acute_chronic_ratio"
                 name="Internal Load (TRIMP)"
@@ -1348,6 +1448,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
               {/* External Work Line */}
               <Line
+                yAxisId={0}
                 type="monotone"
                 dataKey="acute_chronic_ratio"
                 name="External Work"
@@ -1436,6 +1537,16 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             <ComposedChart
               data={filtered}
               margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
+              onClick={(data: any, event: any) => {
+                if (data && data.activePayload && data.activePayload.length && !frozenTooltipData) {
+                  setFrozenTooltipData({
+                    payload: data.activePayload,
+                    label: data.activeLabel,
+                    coordinate: data.activeCoordinate,
+                  });
+                  if (event) event.stopPropagation();
+                }
+              }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -1492,6 +1603,16 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             <ComposedChart
               data={filtered}
               margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
+              onClick={(data: any, event: any) => {
+                if (data && data.activePayload && data.activePayload.length && !frozenTooltipData) {
+                  setFrozenTooltipData({
+                    payload: data.activePayload,
+                    label: data.activeLabel,
+                    coordinate: data.activeCoordinate,
+                  });
+                  if (event) event.stopPropagation();
+                }
+              }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis

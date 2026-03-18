@@ -31,6 +31,7 @@ from llm_recommendations_module import (
     get_coaching_tone_instructions,
     get_user_recommendation_style,
     get_adjusted_thresholds,
+    apply_athlete_model_to_thresholds,
     analyze_pattern_flags,
     MODEL_HAIKU,
 )
@@ -473,6 +474,7 @@ def build_weekly_program_prompt(
     # Get personalization data (from Dashboard LLM system)
     risk_tolerance = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(risk_tolerance)
+    thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
     autopsy_insights = get_recent_autopsy_insights(user_id, days=7)
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
     
@@ -486,6 +488,22 @@ def build_weekly_program_prompt(
         (user_id,),
         fetch=True
     )
+
+    # Get most recent weekly synthesis (prior week) to inform this week's planning
+    synthesis_rows = execute_query(
+        """
+        SELECT weekly_synthesis, week_start_date
+        FROM weekly_programs
+        WHERE user_id = %s
+          AND week_start_date < %s
+          AND weekly_synthesis IS NOT NULL
+        ORDER BY week_start_date DESC
+        LIMIT 1
+        """,
+        (user_id, target_week_start),
+        fetch=True
+    )
+    prior_synthesis = synthesis_rows[0] if synthesis_rows else None
     athlete_experience = athlete_profile_data[0]['training_experience'].capitalize() if (athlete_profile_data and athlete_profile_data[0].get('training_experience')) else "Intermediate"
     athlete_age = athlete_profile_data[0]['age'] if (athlete_profile_data and athlete_profile_data[0].get('age')) else None
     
@@ -538,6 +556,10 @@ Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags.get('warnings')
 
 {f"Recent Analyses: {autopsy_insights['count']} autopsies, Average Alignment: {autopsy_insights['avg_alignment']}/10" if autopsy_insights else "No recent autopsy data available"}
 {f"Key Learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
+
+**LAST WEEK IN REVIEW**
+
+{f"Week of {prior_synthesis['week_start_date'].strftime('%B %d')}:{chr(10)}{prior_synthesis['weekly_synthesis']}" if prior_synthesis else "No prior week synthesis available — this is either the first week or synthesis has not yet run."}
 
 **RACE GOALS**
 
@@ -1046,6 +1068,135 @@ def get_or_generate_weekly_program(
         logger.error(f"Failed to save program to database: {e}")
         # Return program anyway, just don't cache it
         program['from_cache'] = False
-    
+
     return program
+
+
+def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
+    """Generate a retrospective weekly synthesis narrative for the completed week.
+
+    Compares what was planned (strategic_summary) against what actually happened
+    (activities + journal entries). Returns a 150-200 word narrative or None on failure.
+    Called by the Saturday cron — non-fatal if it fails.
+    """
+    try:
+        week_end = week_start + timedelta(days=6)
+
+        # --- What was planned ---
+        planned_row = execute_query(
+            """
+            SELECT strategic_summary, program_json
+            FROM weekly_programs
+            WHERE user_id = %s AND week_start_date = %s
+            """,
+            (user_id, str(week_start)),
+            fetch=True
+        )
+        strategic_summary = None
+        if planned_row and planned_row[0]:
+            raw = planned_row[0].get('strategic_summary')
+            if isinstance(raw, dict):
+                strategic_summary = raw
+            elif isinstance(raw, str):
+                try:
+                    strategic_summary = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        # --- What actually happened ---
+        activities = execute_query(
+            """
+            SELECT date, type, total_load_miles, distance_miles, elevation_gain_feet,
+                   trimp, acute_chronic_ratio, normalized_divergence
+            FROM activities
+            WHERE user_id = %s AND date >= %s AND date <= %s
+            ORDER BY date
+            """,
+            (user_id, str(week_start), str(week_end)),
+            fetch=True
+        )
+
+        journal_obs = get_recent_journal_observations(user_id, days=7)
+
+        # --- Current metrics for context ---
+        metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
+
+        # --- Build prompt ---
+        plan_section = "No plan was recorded for this week." if not strategic_summary else (
+            f"Training stage: {strategic_summary.get('training_stage', 'unknown')}\n"
+            f"Intensity target: {strategic_summary.get('weekly_intensity_target', 'unknown')}\n"
+            f"Load target: {strategic_summary.get('load_target_low', '?')}–{strategic_summary.get('load_target_high', '?')} ACWR\n"
+            f"Strategic notes: {strategic_summary.get('strategic_notes', 'none')}"
+        )
+
+        activity_lines = []
+        total_load = 0.0
+        for a in (activities or []):
+            d = dict(a)
+            load = float(d.get('total_load_miles') or 0)
+            total_load += load
+            div = d.get('normalized_divergence')
+            div_str = f", div {div:.2f}" if div is not None else ""
+            activity_lines.append(
+                f"  {d['date']}: {d.get('type','?')} {load:.1f}mi load "
+                f"(ACWR {d.get('acute_chronic_ratio') or 0:.2f}{div_str})"
+            )
+        activity_section = "\n".join(activity_lines) if activity_lines else "No activities recorded."
+
+        journal_section = format_journal_observations_for_prompt(journal_obs) if journal_obs else "No journal entries this week."
+
+        metrics_section = (
+            f"End-of-week ACWR: {metrics.get('external_acwr', 'N/A')}\n"
+            f"Divergence: {metrics.get('normalized_divergence', 'N/A')}\n"
+            f"Days since rest: {metrics.get('days_since_rest', 'N/A')}"
+        ) if metrics else "Metrics unavailable."
+
+        prompt = f"""You are an expert trail running coach writing a concise end-of-week synthesis for your athlete.
+
+Week: {week_start.strftime('%B %d')} – {week_end.strftime('%B %d, %Y')}
+Total training load: {total_load:.1f} load miles
+
+WHAT WAS PLANNED:
+{plan_section}
+
+WHAT ACTUALLY HAPPENED:
+{activity_section}
+
+ATHLETE OBSERVATIONS THIS WEEK:
+{journal_section}
+
+END-OF-WEEK METRICS:
+{metrics_section}
+
+Write a retrospective synthesis of 150-200 words covering:
+1. What the athlete actually did vs what was planned (alignment assessment)
+2. Key physiological patterns that emerged (ACWR trend, divergence signals, fatigue)
+3. What this week teaches us about the athlete's current adaptation state
+4. One forward-looking observation for next week
+
+Write in second person ("you"), use plain text (no markdown), coaching tone. Be specific — reference actual numbers and dates. Do not list these as numbered points; write as flowing prose."""
+
+        response = call_anthropic_api(prompt, max_tokens=400)
+        if not response:
+            return None
+
+        synthesis = response.strip()
+
+        # Persist to DB
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET weekly_synthesis = %s, synthesis_generated_at = NOW()
+            WHERE user_id = %s AND week_start_date = %s
+            """,
+            (synthesis, user_id, str(week_start)),
+            fetch=False
+        )
+
+        logger.info(f"Weekly synthesis stored for user {user_id}, week {week_start}")
+        return synthesis
+
+    except Exception as e:
+        logger.error(f"Error generating weekly synthesis for user {user_id}: {e}")
+        return None
 

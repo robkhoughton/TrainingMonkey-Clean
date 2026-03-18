@@ -2,13 +2,9 @@
 Email Enforcement Module
 Tracks email collection urgency and enforcement for users with synthetic emails.
 
-CURRENT STATUS: Phase 1 - Passive tracking only (no user-facing changes)
-
-NEXT STEPS: See EMAIL_ENFORCEMENT_ROADMAP.md for deployment timeline
-  - Phase 2: Enable soft prompts (lines 67, 76)
-  - Phase 3: Enable hard blocking (line 85)
-  
-CHECK BACK: 5-7 days after Phase 1 deployment to enable Phase 2
+CURRENT STATUS: Phase 3 - Full enforcement active
+  - Days 0-6: Grace period (no prompts)
+  - Days 7+: Hard block — redirect to /collect-email
 """
 
 from datetime import datetime, timezone
@@ -79,8 +75,8 @@ def get_email_urgency_level(user_data):
     # Calculate urgency for users with synthetic emails
     days = get_days_since_registration(registration_date)
     
-    if days <= 3:
-        # Phase 1: Grace period - no prompts
+    if days <= 6:
+        # Grace period — no prompts for first week
         return {
             'level': 'none',
             'days_registered': days,
@@ -88,35 +84,15 @@ def get_email_urgency_level(user_data):
             'should_block_access': False,
             'message': f'Day {days} - grace period'
         }
-    
-    elif days <= 7:
-        # Phase 2: Soft prompt - dismissible modal once per session
-        return {
-            'level': 'soft',
-            'days_registered': days,
-            'should_show_modal': False,  # Phase 1: disabled
-            'should_block_access': False,
-            'message': f'Day {days} - would show soft modal (disabled in Phase 1)'
-        }
-    
-    elif days <= 14:
-        # Phase 2: Medium prompt - persistent banner
-        return {
-            'level': 'medium',
-            'days_registered': days,
-            'should_show_modal': False,  # Phase 1: disabled
-            'should_block_access': False,
-            'message': f'Day {days} - would show persistent banner (disabled in Phase 1)'
-        }
-    
+
     else:
-        # Phase 3: Hard block - must provide email
+        # Hard block — must provide real email
         return {
             'level': 'hard',
             'days_registered': days,
-            'should_show_modal': False,  # Phase 1: disabled
-            'should_block_access': False,  # Phase 1: disabled - no blocking
-            'message': f'Day {days} - would block access (disabled in Phase 1)'
+            'should_show_modal': False,
+            'should_block_access': True,
+            'message': f'Day {days} - blocking access until email provided'
         }
 
 

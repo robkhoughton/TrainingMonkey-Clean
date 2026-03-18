@@ -273,6 +273,28 @@ def get_api_key():
     return api_key.strip()
 
 
+def _classify_activity_intensity(activity):
+    """Classify a single activity row into Easy/Recovery, Moderate, or Hard using HR zone times.
+    Returns 'Unknown' when HR data is absent. Used internally by analyze_pattern_flags."""
+    z1 = activity.get('time_in_zone1') or 0
+    z2 = activity.get('time_in_zone2') or 0
+    z3 = activity.get('time_in_zone3') or 0
+    z4 = activity.get('time_in_zone4') or 0
+    z5 = activity.get('time_in_zone5') or 0
+    total = z1 + z2 + z3 + z4 + z5
+    if total == 0:
+        return 'Unknown'
+    p = [z / total * 100 for z in (z1, z2, z3, z4, z5)]
+    if p[0] > 50 or p[1] > 50:
+        return 'Easy/Recovery'
+    if p[2] > 50 or (p[1] + p[2] > 70):
+        return 'Moderate'
+    if p[3] > 30 or p[4] > 20 or (p[3] + p[4] > 40):
+        return 'Hard'
+    primary = p.index(max(p))
+    return 'Easy/Recovery' if primary <= 1 else ('Moderate' if primary == 2 else 'Hard')
+
+
 def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=None):
     """Analyze training patterns for red flags and positive adaptations with user-specific thresholds."""
     try:
@@ -345,6 +367,41 @@ def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=
             if consecutive_positive_days >= 3:
                 flags['positive_patterns'].append(
                     f"Efficient adaptation - {consecutive_positive_days} consecutive days of positive divergence indicates excellent load tolerance")
+
+        # #5 — Back-to-back hard session detection
+        last_7 = sorted({a['date']: a for a in recent_data[-7:]}.values(), key=lambda x: x['date'])
+        intensities = [(a['date'], _classify_activity_intensity(a)) for a in last_7]
+        known = [(d, i) for d, i in intensities if i != 'Unknown']
+        for idx in range(1, len(known)):
+            if known[idx][1] == 'Hard' and known[idx - 1][1] == 'Hard':
+                flags['warnings'].append(
+                    f"Back-to-back hard sessions on {known[idx - 1][0]} and {known[idx][0]} — "
+                    f"recovery may be insufficient; consider an easy day between hard efforts")
+                break  # Report once per analysis window
+
+        # #6 — Minimum easy day guardrail (≥2 easy/recovery days in last 7)
+        easy_days = sum(1 for _, i in intensities if i == 'Easy/Recovery')
+        if len(known) >= 5 and easy_days < 2:
+            flags['red_flags'].append(
+                f"Only {easy_days} easy/recovery day(s) in the last 7 days — "
+                f"insufficient aerobic base recovery; trail runners need at least 2 easy days per week")
+
+        # #11 — Activity gap detection (gaps >5 days in training record)
+        all_dates = sorted(set(
+            a['date'] if isinstance(a['date'], str) else a['date'].strftime('%Y-%m-%d')
+            for a in activities if a.get('date')
+        ))
+        if len(all_dates) >= 2:
+            from datetime import date as date_type, timedelta as td
+            for i in range(1, len(all_dates)):
+                d0 = date_type.fromisoformat(all_dates[i - 1])
+                d1 = date_type.fromisoformat(all_dates[i])
+                gap = (d1 - d0).days
+                if gap > 5:
+                    flags['warnings'].append(
+                        f"Training gap: {gap} days without activity ({all_dates[i-1]} to {all_dates[i]}) — "
+                        f"return-to-load caution applies; limit ACWR to 1.1 this week to avoid re-injury risk")
+                    break  # Report the most recent qualifying gap only
 
         return flags
 
@@ -836,7 +893,8 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     if recommendation_style is None:
         recommendation_style = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(recommendation_style)
-    
+    thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
+
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
 
     # Get date information using USER'S TIMEZONE
@@ -1113,7 +1171,8 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
     "acwr_internal": 0.0,
     "divergence": 0.0,
     "days_since_rest": 0,
-    "flags": []
+    "flags": [],
+    "pain_location": null
   }},
   "context": {{
     "autopsy_informed": false,
@@ -1140,6 +1199,7 @@ Allowed enum values:
 - decision.action: train | rest | cross_train | reduce
 - decision.intensity_target: easy | moderate | hard | race_effort | none
 - risk.injury_risk_level: low | moderate | high | critical
+- risk.pain_location: Extract from athlete notes — the specific body part if pain is mentioned (e.g., "left knee", "right achilles", "lower back", "hip flexor"). Set to null if no pain is mentioned in the notes.
 - context.alignment_trend: improving | stable | declining | insufficient_data
 """
 
@@ -1798,6 +1858,35 @@ def get_adjusted_thresholds(recommendation_style):
     logger.info(f"Using {recommendation_style} thresholds: {selected_thresholds['description']}")
     
     return selected_thresholds
+
+
+def apply_athlete_model_to_thresholds(thresholds, user_id):
+    """Override style-based ACWR ceiling with the athlete's personal sweet spot when the
+    model is sufficiently calibrated (confidence ≥ 15%).
+
+    Returns a new dict — never mutates the input.
+    Age, training history, and individual response are all baked into the sweet spot via
+    autopsy learning. Numeric age alone is a poor proxy; this is the correct override.
+    """
+    MIN_CONFIDENCE = 0.15
+    try:
+        model = get_athlete_model(user_id)
+        if not model:
+            return thresholds
+        confidence = model.get('acwr_sweet_spot_confidence') or 0.0
+        sweet_high = model.get('acwr_sweet_spot_high')
+        if confidence >= MIN_CONFIDENCE and sweet_high:
+            calibrated = dict(thresholds)
+            calibrated['acwr_high_risk'] = float(sweet_high)
+            logger.info(
+                f"Thresholds calibrated for user {user_id}: acwr_high_risk "
+                f"{thresholds['acwr_high_risk']} → {sweet_high:.2f} "
+                f"(athlete model confidence {confidence:.0%})"
+            )
+            return calibrated
+    except Exception as e:
+        logger.warning(f"Could not apply athlete model to thresholds for user {user_id}: {e}")
+    return thresholds
 
 
 def get_coaching_style_from_spectrum(spectrum_value):
@@ -2611,7 +2700,8 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
     "acwr_internal": 0.0,
     "divergence": 0.0,
     "days_since_rest": 0,
-    "flags": []
+    "flags": [],
+    "pain_location": null
   }},
   "context": {{
     "autopsy_informed": true,
@@ -2629,7 +2719,7 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 }}
 </structured_output>
 
-Allowed values — assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity. divergence.direction: positive | negative | balanced. divergence.severity: none | mild | moderate | high | critical. divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data. decision.action: train | rest | cross_train | reduce. risk.injury_risk_level: low | moderate | high | critical.
+Allowed values — assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity. divergence.direction: positive | negative | balanced. divergence.severity: none | mild | moderate | high | critical. divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data. decision.action: train | rest | cross_train | reduce. risk.injury_risk_level: low | moderate | high | critical. risk.pain_location: specific body part extracted from athlete notes (e.g., "left knee", "right achilles") or null if no pain mentioned.
 """
 
     return prompt

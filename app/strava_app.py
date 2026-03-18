@@ -755,8 +755,8 @@ def oauth_callback():
             # Always redirect to pending (even if send failed - user can resend)
             return redirect('/email-verification-pending')
         else:
-            # Synthetic email → skip verification
-            return redirect('/welcome-post-strava')
+            # Synthetic email → require real email before entering app
+            return redirect('/collect-email')
 
     except Exception as e:
         error_msg = f"OAuth callback error: {str(e)}"
@@ -1939,24 +1939,26 @@ def home():
 @login_required
 def dashboard():
     """Serve React dashboard"""
-    # Phase 1: Track email enforcement status (passive monitoring only)
-    # TODO: Enable Phase 2 in 5-7 days - see EMAIL_ENFORCEMENT_ROADMAP.md
+    # Email enforcement: block users with synthetic emails after grace period
     try:
         from email_enforcement import get_email_urgency_level, log_email_enforcement_status
-        
+
         user_data = {
             'email': current_user.email,
             'registration_date': current_user.registration_date,
             'is_admin': current_user.is_admin,
             'email_modal_dismissals': getattr(current_user, 'email_modal_dismissals', 0)
         }
-        
+
         urgency = get_email_urgency_level(user_data)
         log_email_enforcement_status(current_user.id, urgency)
-        
+
+        if urgency['should_block_access']:
+            logger.info(f"Blocking dashboard access for user {current_user.id} — no real email ({urgency['message']})")
+            return redirect('/collect-email')
+
     except Exception as e:
-        # Fail silently - don't disrupt user experience
-        logger.error(f"Email enforcement tracking error for user {current_user.id}: {e}")
+        logger.error(f"Email enforcement error for user {current_user.id}: {e}")
     
     response = send_from_directory('build', 'index.html')
     # CRITICAL: Prevent caching of index.html so users always get latest JS file references
@@ -2534,6 +2536,41 @@ def update_user_email():
         
     except Exception as e:
         logger.error(f"Error updating email: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/collect-email')
+@login_required
+def collect_email_page():
+    """Hard-gate page requiring users to provide a real email before accessing the app."""
+    from email_enforcement import has_real_email
+    # If user already has a real email, skip this page
+    if has_real_email(current_user.email):
+        return redirect('/welcome-post-strava')
+    return render_template('collect_email.html')
+
+
+@app.route('/api/user/send-verification', methods=['POST'])
+@login_required
+def send_verification_email():
+    """Send verification email to current user's email address."""
+    try:
+        email = current_user.email
+        if not email or '@training-monkey.com' in email:
+            return jsonify({'error': 'No real email on file'}), 400
+
+        service = EmailVerificationService()
+        base_url = os.environ.get('APP_BASE_URL', 'https://yourtrainingmonkey.com')
+        success, error = service.send_verification(current_user.id, email, base_url)
+
+        if success:
+            return jsonify({'success': True})
+        else:
+            logger.error(f"Failed to send verification email to user {current_user.id}: {error}")
+            return jsonify({'error': 'Failed to send email. Please use the resend button.'}), 500
+
+    except Exception as e:
+        logger.error(f"Error in send_verification_email for user {current_user.id}: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -6578,6 +6615,104 @@ def weekly_program_cron():
 
     except Exception as e:
         logger.error(f"Error in weekly program cron: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/cron/weekly-synthesis', methods=['POST'])
+def weekly_synthesis_cron():
+    """
+    Generate end-of-week synthesis narrative for all users.
+    Run Saturday evening via Cloud Scheduler.
+    Requires X-Cloudscheduler-Jobname header for auth.
+    """
+    if not request.headers.get('X-Cloudscheduler-Jobname'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        from coach_recommendations import generate_weekly_synthesis
+        from datetime import datetime, timedelta
+
+        # Saturday run: synthesize the week that just ended (Mon–Sat)
+        today = datetime.utcnow().date()
+        # Week start = most recent Monday
+        days_since_monday = today.weekday()
+        week_start = today - timedelta(days=days_since_monday)
+
+        users = db_utils.execute_query(
+            "SELECT DISTINCT user_id FROM activities WHERE date >= %s",
+            (week_start,),
+            fetch=True
+        )
+
+        processed = 0
+        errors = 0
+        for row in (users or []):
+            uid = row['user_id']
+            try:
+                generate_weekly_synthesis(uid, week_start.isoformat())
+                processed += 1
+            except Exception as e:
+                logger.error(f"weekly-synthesis cron: user {uid} failed: {e}")
+                errors += 1
+
+        logger.info(f"Weekly synthesis cron: {processed} processed, {errors} errors")
+        return jsonify({'success': True, 'processed': processed, 'errors': errors})
+
+    except Exception as e:
+        logger.error(f"Error in weekly synthesis cron: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/weekly-synthesis', methods=['GET'])
+@login_required
+def get_weekly_synthesis():
+    """
+    Return the most recent weekly synthesis for the current user.
+    Optional ?week_start=YYYY-MM-DD to fetch a specific week.
+    """
+    try:
+        user_id = session['user_id']
+        week_start = request.args.get('week_start')
+
+        if week_start:
+            row = db_utils.execute_query(
+                """
+                SELECT week_start, weekly_synthesis, synthesis_generated_at,
+                       strategic_summary
+                FROM weekly_programs
+                WHERE user_id = %s AND week_start = %s
+                LIMIT 1
+                """,
+                (user_id, week_start),
+                fetch=True
+            )
+        else:
+            row = db_utils.execute_query(
+                """
+                SELECT week_start, weekly_synthesis, synthesis_generated_at,
+                       strategic_summary
+                FROM weekly_programs
+                WHERE user_id = %s AND weekly_synthesis IS NOT NULL
+                ORDER BY week_start DESC
+                LIMIT 1
+                """,
+                (user_id,),
+                fetch=True
+            )
+
+        if not row:
+            return jsonify({'synthesis': None, 'week_start': None})
+
+        r = row[0]
+        return jsonify({
+            'synthesis': r['weekly_synthesis'],
+            'week_start': r['week_start'].isoformat() if r['week_start'] else None,
+            'generated_at': r['synthesis_generated_at'].isoformat() if r['synthesis_generated_at'] else None,
+            'strategic_summary': r['strategic_summary'],
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching weekly synthesis: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -11043,6 +11178,110 @@ def get_athlete_model_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/coach/race-readiness', methods=['GET'])
+@login_required
+def get_race_readiness():
+    """Project whether the athlete can safely reach race-peak load before their A race.
+
+    Projection: each week the athlete trains at chronic × acwr_ceiling.
+    new_chronic = old_chronic × (21 + acwr_ceiling × 7) / 28
+    Peak week target = race_total_load_miles (distance + vert/750).
+    Uses personal ACWR sweet spot if athlete model confidence ≥ 15%.
+    """
+    try:
+        from coach_recommendations import get_race_goals as _get_race_goals
+        from llm_recommendations_module import (
+            get_user_recommendation_style, get_adjusted_thresholds,
+            apply_athlete_model_to_thresholds
+        )
+        from db_utils import get_athlete_model
+        import math
+
+        user_id = current_user.id
+
+        # Get primary race goal (A first, then B, then first available)
+        goals = _get_race_goals(user_id)
+        if not goals:
+            return jsonify({'success': True, 'readiness': None, 'reason': 'no_race_goals'})
+
+        primary = next((g for g in goals if g['priority'] == 'A'), None) or goals[0]
+
+        distance_miles = primary.get('distance_miles')
+        elevation_gain_feet = primary.get('elevation_gain_feet') or 0
+
+        if not distance_miles:
+            return jsonify({'success': True, 'readiness': None, 'reason': 'no_distance_set'})
+
+        race_total_load = float(distance_miles) + float(elevation_gain_feet) / 750.0
+
+        # Current chronic load (28-day avg daily load)
+        metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
+        chronic = metrics.get('twentyeight_day_avg') or metrics.get('twentyeight_day_avg_load')
+        if not chronic or chronic <= 0:
+            return jsonify({'success': True, 'readiness': None, 'reason': 'insufficient_load_data'})
+        chronic = float(chronic)
+
+        # ACWR ceiling — use calibrated athlete model if available
+        style = get_user_recommendation_style(user_id)
+        thresholds = get_adjusted_thresholds(style)
+        thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
+        acwr_ceiling = thresholds['acwr_high_risk']
+
+        # Weeks available
+        today = get_app_current_date()
+        race_date = datetime.strptime(primary['race_date'], '%Y-%m-%d').date()
+        weeks_available = max(0, (race_date - today).days // 7)
+
+        # Current peak week capability
+        current_peak_week = 7 * chronic * acwr_ceiling
+
+        # Project forward
+        projected = chronic
+        weeks_needed = 0
+        weekly_multiplier = (21 + acwr_ceiling * 7) / 28
+        while 7 * projected * acwr_ceiling < race_total_load:
+            projected *= weekly_multiplier
+            weeks_needed += 1
+            if weeks_needed > 52:
+                break
+
+        # Determine status
+        if current_peak_week >= race_total_load:
+            status = 'already_ready'
+            message = f"Current training peak ({current_peak_week:.0f} load miles/week) already meets race target ({race_total_load:.0f}). Focus on maintaining and sharpening."
+        elif weeks_needed <= weeks_available:
+            status = 'on_track'
+            message = f"On track. At ACWR {acwr_ceiling}, you reach race-peak load in {weeks_needed} week{'s' if weeks_needed != 1 else ''} — {weeks_available - weeks_needed} week{'s' if weeks_available - weeks_needed != 1 else ''} to spare."
+        else:
+            shortfall = weeks_needed - weeks_available
+            status = 'not_achievable'
+            message = f"Not achievable safely. Needs {weeks_needed} weeks at ACWR {acwr_ceiling} — only {weeks_available} available. Race target may exceed safe build capacity."
+
+        model = get_athlete_model(user_id)
+        confidence = float(model.get('acwr_sweet_spot_confidence') or 0) if model else 0.0
+
+        return jsonify({
+            'success': True,
+            'readiness': {
+                'status': status,
+                'message': message,
+                'race_name': primary['race_name'],
+                'race_date': primary['race_date'],
+                'race_total_load': round(race_total_load, 1),
+                'current_chronic_daily': round(chronic, 2),
+                'current_peak_week': round(current_peak_week, 1),
+                'weeks_needed': weeks_needed,
+                'weeks_available': weeks_available,
+                'acwr_ceiling_used': round(acwr_ceiling, 2),
+                'model_calibrated': confidence >= 0.15,
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error computing race readiness for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/race-goals', methods=['GET'])
 @login_required
 def get_race_goals():
@@ -11054,10 +11293,10 @@ def get_race_goals():
         # Query race goals
         race_goals = db_utils.execute_query(
             """
-            SELECT id, user_id, race_name, race_date, race_type, priority, 
-                   target_time, notes, elevation_gain_feet, created_at, updated_at
-            FROM race_goals 
-            WHERE user_id = %s 
+            SELECT id, user_id, race_name, race_date, race_type, priority,
+                   target_time, notes, elevation_gain_feet, distance_miles, created_at, updated_at
+            FROM race_goals
+            WHERE user_id = %s
             ORDER BY race_date ASC
             """,
             (user_id,),
@@ -11163,18 +11402,19 @@ def create_race_goal():
         target_time = data.get('target_time')
         notes = data.get('notes')
         elevation_gain_feet = data.get('elevation_gain_feet')
-        
+        distance_miles = data.get('distance_miles')
+
         logger.info(f"Creating race goal for user {user_id}: {race_name} ({priority})")
-        
+
         # Insert new race goal
         result = db_utils.execute_query(
             """
-            INSERT INTO race_goals 
-                (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, created_at, updated_at
+            INSERT INTO race_goals
+                (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, distance_miles, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, distance_miles, created_at, updated_at
             """,
-            (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet),
+            (user_id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, distance_miles),
             fetch=True
         )
         
@@ -11299,7 +11539,10 @@ def update_race_goal(goal_id):
         if 'elevation_gain_feet' in data:
             update_fields.append('elevation_gain_feet = %s')
             update_values.append(data['elevation_gain_feet'])
-        
+        if 'distance_miles' in data:
+            update_fields.append('distance_miles = %s')
+            update_values.append(data['distance_miles'])
+
         if not update_fields:
             return jsonify({'success': False, 'error': 'No fields to update'}), 400
         

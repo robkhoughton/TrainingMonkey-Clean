@@ -46,7 +46,7 @@ Using the `@agent-design-review` agent, conduct a comprehensive design review:
 1. **Navigate** to `http://localhost:5001/dashboard` using Playwright
 2. **Test** all pages affected by the changes (Dashboard, Activities, Journal, Coach, Settings)
 3. **Capture** screenshots at desktop (1440px), tablet (768px), and mobile (375px)
-4. **Verify** brand compliance against `docs/branding/QUICK_REFERENCE_STYLE_GUIDE.md`
+4. **Verify** brand compliance against `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`
 5. **Check** for console errors
 6. **Report** findings using the triage matrix (Blocker/High/Medium/Nitpick)
 

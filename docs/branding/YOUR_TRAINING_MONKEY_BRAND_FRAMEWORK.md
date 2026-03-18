@@ -247,88 +247,91 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
 
 #### Buttons
 
-**Primary Action Button**
+**Primary Action Button** (in-app)
 ```css
-background: linear-gradient(135deg, #667eea, #764ba2);
+background-color: #3b82f6;
 color: white;
-padding: 1rem 2rem;
-border-radius: 12px;
-font-size: 1.1rem;
+padding: 6px 16px;
+border: none;
+border-radius: 4px;
+font-size: 0.8rem;
 font-weight: 600;
-box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-
-hover: transform: translateY(-2px);
-       box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+cursor: pointer;
 ```
 
-**Success Button** (CTAs)
+**Secondary Button** (in-app)
 ```css
-background: linear-gradient(135deg, #16a34a, #15803d);
-color: white;
-padding: 1rem 2rem;
-border-radius: 12px;
-box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3);
+background-color: white;
+color: #6b7280;
+padding: 6px 16px;
+border: 1px solid #dee2e6;
+border-radius: 4px;
+font-size: 0.8rem;
+font-weight: 600;
+cursor: pointer;
 ```
 
-**Danger/Alert Button** (Start Training, Critical Actions)
+**CTA Button** (marketing/landing pages — use sparingly, ONE per page max)
 ```css
 background: #FF5722;
 color: white;
 padding: 1rem 2.5rem;
 border-radius: 50px;
 font-weight: 600;
-box-shadow: 0 4px 15px rgba(255, 87, 34, 0.4);
 ```
 
 #### Cards
 
-**Standard Card**
+**Standard Card** (in-app)
 ```css
 background: white;
-border-radius: 12px;
-padding: 1.5rem;
-box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-border: 1px solid #e2e8f0;
+border-radius: 8px;
+padding: 20px;
+box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+```
+
+**Section Header Divider**
+```css
+border-bottom: 2px solid #dee2e6;
+padding-bottom: 12px;
+margin-bottom: 16px;
 ```
 
 **Highlighted Card** (Important Info)
 ```css
-background: white;
-border-radius: 12px;
-padding: 1.5rem;
+background: #f8f9fa;
 border-left: 4px solid #3b82f6;
-box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06);
+border-radius: 8px;
+padding: 1rem 1.25rem;
 ```
 
 **Alert Card**
 ```css
-background: #f8fafc;
-border-left: 4px solid #667eea;
-border-radius: 12px;
-padding: 1.5rem;
+background: #fef3c7;
+border: 2px solid #f59e0b;
+border-radius: 8px;
+padding: 1.25rem;
 ```
 
 #### Form Elements
 
-**Input Fields**
+**Input Fields / Select Dropdowns** (in-app)
 ```css
 width: 100%;
-padding: 0.875rem 1rem;
-border: 2px solid #e5e7eb;
-border-radius: 10px;
-font-size: 1rem;
+padding: 5px 8px;
+border: 1px solid #dee2e6;
+border-radius: 4px;
+font-size: 0.875rem;
 background: white;
-
-focus: border-color: #667eea;
-       box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-
-invalid: border-color: #ef4444;
+color: #374151;
 ```
 
-**Select Dropdowns**
+**Labels**
 ```css
-Same as input fields
-max-width: 280px (content-appropriate)
+font-size: 0.8rem;
+color: #6b7280;
+display: block;
+margin-bottom: 4px;
 ```
 
 ### Iconography
@@ -632,9 +635,8 @@ Always style as: `<em><strong>Your Training Monkey</strong></em>`
 
 **1 Primary Button Maximum**
 - Most important action
-- Action Orange or Purple Gradient
-- Largest size (prominent)
-- Example: "Connect with Strava", "Start Training"
+- Blue (#3b82f6) for in-app actions; Orange (#FF5722) for marketing CTAs
+- Example: "Save", "Connect with Strava"
 
 **2-3 Secondary Buttons**
 - Supporting actions
@@ -740,18 +742,17 @@ margin-top: 0.25rem;
 **Use for:** General content blocks, feature descriptions
 ```css
 background: white;
-border-radius: 12px;
-padding: 1.5rem;
-box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-margin-bottom: 1.5rem;
+border-radius: 8px;
+padding: 20px;
+box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 ```
 
 #### Emphasized Card (Left Border)
 **Use for:** Important information, steps, tutorials
 ```css
 border-left: 4px solid #3b82f6;
-background: #f8fafc;
-border-radius: 12px;
+background: #f8f9fa;
+border-radius: 8px;
 padding: 1rem 1.25rem;
 ```
 
@@ -760,7 +761,7 @@ padding: 1rem 1.25rem;
 ```css
 background: #fef3c7;
 border: 2px solid #f59e0b;
-border-radius: 12px;
+border-radius: 8px;
 padding: 1.25rem;
 ```
 
@@ -769,19 +770,17 @@ padding: 1.25rem;
 ```css
 background: rgba(22, 163, 74, 0.1);
 border: 1px solid #16a34a;
-border-radius: 12px;
+border-radius: 8px;
 padding: 1rem;
-text-align: center;
 ```
 
 #### Data Card (Chart/Metric)
 **Use for:** Analytics, dashboard widgets
 ```css
 background: white;
-border: 1px solid #e2e8f0;
-border-radius: 12px;
-padding: 1.5rem;
-box-shadow: 0 6px 14px rgba(2, 6, 23, 0.06);
+border-radius: 8px;
+padding: 20px;
+box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 ```
 
 ---

@@ -522,9 +522,8 @@ What's the brand guideline for this?
 ## Reference Documents
 
 ### Brand Guidelines
-- **Complete framework:** `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`
-- **Quick reference:** `docs/branding/QUICK_REFERENCE_STYLE_GUIDE.md`
-- **Design principles:** `.claude/context/design-principles.md`
+- **Brand framework (single source of truth):** `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`
+- **Design principles summary:** `.claude/context/design-principles.md`
 
 ### Design Review System
 - **Agent config:** `.claude/agents/design-review.md`

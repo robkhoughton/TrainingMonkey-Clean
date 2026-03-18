@@ -181,6 +181,20 @@ interface RaceGoal {
   target_time: string | null;
   notes: string | null;
   elevation_gain_feet: number | null;
+  distance_miles: number | null;
+}
+
+interface RaceReadiness {
+  status: 'already_ready' | 'on_track' | 'not_achievable';
+  message: string;
+  race_name: string;
+  race_date: string;
+  race_total_load: number;
+  current_peak_week: number;
+  weeks_needed: number;
+  weeks_available: number;
+  acwr_ceiling_used: number;
+  model_calibrated: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -288,65 +302,466 @@ interface RaceAnalysis {
 }
 
 // ============================================================================
+// RACE READINESS CARD
+// ============================================================================
+
+const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = ({ readiness }) => {
+  const statusConfig = {
+    already_ready: { label: 'Race Ready',    accent: '#7D9CB8', light: '#E6F0FF', text: '#1B2E4B' },
+    on_track:      { label: 'On Track',      accent: '#16a34a', light: '#f0fdf4', text: '#14532d' },
+    not_achievable:{ label: 'Load Gap',      accent: '#dc2626', light: '#fef2f2', text: '#7f1d1d' },
+  };
+
+  const cfg = readiness ? statusConfig[readiness.status] : null;
+  const fillPct = readiness
+    ? Math.min(100, Math.round((readiness.current_peak_week / readiness.race_total_load) * 100))
+    : 0;
+
+  return (
+    <div style={{
+      maxWidth: '1200px',
+      margin: '0 auto 0.75rem auto',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
+    }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+        padding: '0.75rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontSize: '10px', letterSpacing: '0.15em', fontWeight: '700', color: '#1B2E4B', textTransform: 'uppercase', textAlign: 'left' }}>
+            Race Readiness
+          </div>
+          <div style={{ fontSize: '15px', fontWeight: '700', color: '#1B2E4B', marginTop: '1px', textAlign: 'left' }}>
+            {readiness ? readiness.race_name : 'A Race Projection'}
+          </div>
+        </div>
+        {cfg && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '4px 10px', borderRadius: '20px',
+            backgroundColor: `${cfg.accent}22`,
+            border: `1px solid ${cfg.accent}66`,
+          }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: cfg.accent }} />
+            <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.08em', color: cfg.accent, textTransform: 'uppercase' }}>
+              {cfg.label}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div style={{ backgroundColor: 'white', padding: '1.25rem' }}>
+        {!readiness ? (
+          <p style={{ margin: 0, fontSize: '14px', color: '#6b7280', textAlign: 'left', lineHeight: '1.6' }}>
+            Add distance to your A race goal to see your readiness projection.
+          </p>
+        ) : (
+          <>
+            {/* Verdict message */}
+            <p style={{
+              margin: '0 0 1.25rem 0',
+              fontSize: '14px',
+              color: '#1F2937',
+              lineHeight: '1.65',
+              textAlign: 'left',
+              borderLeft: `3px solid ${cfg!.accent}`,
+              paddingLeft: '0.75rem',
+            }}>
+              {readiness.message}
+            </p>
+
+            {/* Load progress bar */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', textAlign: 'left' }}>
+                  Current Peak Week
+                </span>
+                <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase' }}>
+                  Race Target
+                </span>
+              </div>
+              <div style={{ position: 'relative', height: '10px', backgroundColor: '#e5e7eb', borderRadius: '5px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${fillPct}%`,
+                  backgroundColor: cfg!.accent,
+                  borderRadius: '5px',
+                  transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+                }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: cfg!.accent, fontVariantNumeric: 'tabular-nums' }}>
+                  {readiness.current_peak_week} mi
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
+                  {readiness.race_total_load} mi
+                </span>
+              </div>
+            </div>
+
+            {/* Metric row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1px', backgroundColor: '#e5e7eb' }}>
+              {[
+                { label: 'WEEKS AVAILABLE', value: String(readiness.weeks_available) },
+                { label: 'WEEKS TO PEAK', value: readiness.status === 'already_ready' ? '—' : String(readiness.weeks_needed) },
+                { label: 'ACWR CEILING', value: String(readiness.acwr_ceiling_used), sub: readiness.model_calibrated ? 'calibrated' : 'default' },
+              ].map(m => (
+                <div key={m.label} style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderTop: `2px solid ${cfg!.accent}` }}>
+                  <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.35rem', textAlign: 'left' }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#1B2E4B', lineHeight: '1', fontVariantNumeric: 'tabular-nums', textAlign: 'left' }}>
+                    {m.value}
+                  </div>
+                  {m.sub && (
+                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '0.2rem', textAlign: 'left' }}>{m.sub}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// WEEKLY SYNTHESIS CARD
+// ============================================================================
+
+interface WeeklySynthesisData {
+  synthesis: string | null;
+  week_start: string | null;
+  generated_at: string | null;
+  strategic_summary: string | null;
+}
+
+export const WeeklySynthesisCard: React.FC<{
+  data: WeeklySynthesisData | null;
+  loading?: boolean;
+}> = ({ data, loading = false }) => {
+  const [intentOpen, setIntentOpen] = useState(false);
+
+  const formatWeekLabel = (iso: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const formatGeneratedAt = (iso: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div style={{
+      maxWidth: '1200px',
+      margin: '0 auto 0.75rem auto',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
+    }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+        padding: '0.75rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ fontSize: '10px', letterSpacing: '0.15em', fontWeight: '700', color: '#1B2E4B', textTransform: 'uppercase' }}>
+          Weekly Synthesis
+        </div>
+        {data?.week_start && (
+          <div style={{ fontSize: '11px', fontWeight: '600', color: '#1B2E4B', letterSpacing: '0.05em' }}>
+            Week of {formatWeekLabel(data.week_start)}
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div style={{ backgroundColor: 'white', padding: '1.25rem' }}>
+        {loading ? (
+          /* Skeleton shimmer */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <style>{`
+              @keyframes ytm-shimmer {
+                0%   { background-position: -400px 0; }
+                100% { background-position: 400px 0; }
+              }
+              .ytm-skel {
+                background: linear-gradient(90deg, #f0f2f5 25%, #e2e6ea 50%, #f0f2f5 75%);
+                background-size: 800px 100%;
+                animation: ytm-shimmer 1.4s infinite;
+                border-radius: 4px;
+              }
+            `}</style>
+            {[100, 85, 90, 60].map((w, i) => (
+              <div key={i} className="ytm-skel" style={{ height: '14px', width: `${w}%` }} />
+            ))}
+          </div>
+        ) : !data?.synthesis ? (
+          /* Empty state */
+          <p style={{
+            margin: 0,
+            fontSize: '14px',
+            color: '#9ca3af',
+            lineHeight: '1.6',
+            textAlign: 'left',
+            fontStyle: 'italic',
+          }}>
+            Weekly synthesis generates Saturday evening after your training week closes.
+          </p>
+        ) : (
+          <>
+            {/* Narrative */}
+            <p style={{
+              margin: '0 0 1rem 0',
+              fontSize: '14.5px',
+              lineHeight: '1.75',
+              color: '#1F2937',
+              textAlign: 'left',
+              borderLeft: '3px solid #7D9CB8',
+              paddingLeft: '0.875rem',
+            }}>
+              {data.synthesis}
+            </p>
+
+            {/* Planned intent disclosure */}
+            {data.strategic_summary && (
+              <div style={{
+                borderTop: '1px solid #f0f2f4',
+                paddingTop: '0.75rem',
+                marginTop: '0.25rem',
+              }}>
+                <button
+                  onClick={() => setIntentOpen(o => !o)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    letterSpacing: '0.1em',
+                    color: '#9ca3af',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    height: '10px',
+                    borderRight: '1.5px solid #9ca3af',
+                    borderBottom: '1.5px solid #9ca3af',
+                    transform: intentOpen ? 'rotate(-135deg) translate(-2px,-2px)' : 'rotate(45deg)',
+                    transition: 'transform 0.18s ease',
+                    marginTop: intentOpen ? '4px' : '0',
+                  }} />
+                  {intentOpen ? 'Hide' : 'View'} planned intent
+                </button>
+                {intentOpen && (
+                  <p style={{
+                    margin: '0.625rem 0 0 0',
+                    fontSize: '13px',
+                    lineHeight: '1.65',
+                    color: '#6b7280',
+                    textAlign: 'left',
+                    paddingLeft: '1rem',
+                    borderLeft: '2px solid #e5e7eb',
+                  }}>
+                    {data.strategic_summary}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Footer timestamp */}
+            {data.generated_at && (
+              <div style={{
+                marginTop: '1rem',
+                fontSize: '11px',
+                color: '#d1d5db',
+                textAlign: 'right',
+                letterSpacing: '0.04em',
+              }}>
+                Generated {formatGeneratedAt(data.generated_at)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // ATHLETE MODEL PANEL
 // ============================================================================
 
 const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
+  const CALIBRATION_TARGET = 20;
+
   const confidencePct = model?.acwr_sweet_spot_confidence != null
     ? Math.round(model.acwr_sweet_spot_confidence * 100)
     : null;
 
-  const isLearning = confidencePct != null && confidencePct < 15;
-  const hasSweetSpot = model?.acwr_sweet_spot_low != null && model?.acwr_sweet_spot_high != null;
+  const isLearning = !model || confidencePct == null || confidencePct < 15;
+  const autopsyCount = model?.total_autopsies ?? 0;
+  const progressPct = Math.min(100, Math.round((autopsyCount / CALIBRATION_TARGET) * 100));
 
-  // Determine trend direction from recent_alignment_trend array
   const trendArr = model?.recent_alignment_trend;
   let trendLabel = 'Insufficient data';
+  let trendColor = '#6b7280';
   if (trendArr && trendArr.length >= 2) {
     const delta = trendArr[trendArr.length - 1] - trendArr[0];
-    trendLabel = delta > 0.3 ? 'Improving' : delta < -0.3 ? 'Declining' : 'Stable';
+    if (delta > 0.3) { trendLabel = 'Improving'; trendColor = '#16a34a'; }
+    else if (delta < -0.3) { trendLabel = 'Declining'; trendColor = '#dc2626'; }
+    else { trendLabel = 'Stable'; trendColor = '#7D9CB8'; }
   }
 
-  return (
-    <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '1rem', maxWidth: '1200px', margin: '0 auto 0.75rem auto' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '0.75rem', color: '#1e293b', borderBottom: '2px solid #e1e8ed', paddingBottom: '0.5rem', textAlign: 'left' }}>
-        What Your Coach Has Learned About You
-      </h2>
+  const metrics = [
+    {
+      label: 'ACWR SWEET SPOT',
+      value: (model?.acwr_sweet_spot_low != null && model?.acwr_sweet_spot_high != null)
+        ? `${model.acwr_sweet_spot_low} – ${model.acwr_sweet_spot_high}`
+        : '—',
+      sub: 'Your personal optimal load ratio',
+      accent: '#7D9CB8',
+      valueColor: '#1B2E4B',
+    },
+    {
+      label: 'MODEL CONFIDENCE',
+      value: confidencePct != null ? `${confidencePct}%` : '—',
+      sub: `${autopsyCount} workout${autopsyCount !== 1 ? 's' : ''} analyzed`,
+      accent: '#6B8F7F',
+      valueColor: '#1B2E4B',
+    },
+    {
+      label: 'ALIGNMENT TREND',
+      value: trendLabel,
+      sub: 'How closely you follow the plan',
+      accent: trendColor,
+      valueColor: trendColor,
+    },
+    {
+      label: 'AVG ALIGNMENT',
+      value: model?.avg_lifetime_alignment != null ? `${model.avg_lifetime_alignment}/10` : '—',
+      sub: 'Lifetime plan adherence score',
+      accent: '#1B2E4B',
+      valueColor: '#1B2E4B',
+    },
+  ];
 
-      {isLearning || !model ? (
-        <div style={{ padding: '0.75rem 1rem', backgroundColor: '#fef9c3', borderRadius: '6px', border: '1px solid #fde047' }}>
-          <p style={{ margin: 0, color: '#854d0e', fontSize: '14px', textAlign: 'left' }}>
-            <strong>Still learning</strong> — {model ? `${model.total_autopsies} workout${model.total_autopsies !== 1 ? 's' : ''} analyzed so far.` : 'No workouts analyzed yet.'} Your coach needs at least a few post-workout analyses to calibrate your personal training zones. Keep logging and the model will sharpen.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-          {hasSweetSpot && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #bae6fd' }}>
-              <div style={{ fontSize: '12px', color: '#0369a1', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>ACWR Sweet Spot</div>
-              <div style={{ fontSize: '22px', fontWeight: '700', color: '#0c4a6e', textAlign: 'left' }}>{model.acwr_sweet_spot_low} – {model.acwr_sweet_spot_high}</div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Your optimal load ratio range</div>
-            </div>
-          )}
-          <div style={{ padding: '0.75rem', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-            <div style={{ fontSize: '12px', color: '#15803d', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Model Confidence</div>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: '#14532d', textAlign: 'left' }}>{confidencePct}%</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Based on {model.total_autopsies} workout{model.total_autopsies !== 1 ? 's' : ''}</div>
+  return (
+    <div style={{
+      maxWidth: '1200px',
+      margin: '0 auto 0.75rem auto',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
+    }}>
+      {/* Header bar */}
+      <div style={{
+        background: 'linear-gradient(90deg, #1B2E4B 0%, #2d4a6e 100%)',
+        padding: '0.75rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontSize: '10px', letterSpacing: '0.15em', color: '#7D9CB8', fontWeight: '700', textTransform: 'uppercase', textAlign: 'left' }}>
+            Athlete Model
           </div>
-          <div style={{ padding: '0.75rem', backgroundColor: '#faf5ff', borderRadius: '6px', border: '1px solid #e9d5ff' }}>
-            <div style={{ fontSize: '12px', color: '#7e22ce', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Alignment Trend</div>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: '#581c87', textAlign: 'left' }}>{trendLabel}</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>How well you follow the plan</div>
+          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff', marginTop: '1px', textAlign: 'left' }}>
+            What Your Coach Has Learned
           </div>
-          {model.avg_lifetime_alignment != null && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#fff7ed', borderRadius: '6px', border: '1px solid #fed7aa' }}>
-              <div style={{ fontSize: '12px', color: '#c2410c', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'left' }}>Avg Alignment</div>
-              <div style={{ fontSize: '22px', fontWeight: '700', color: '#7c2d12', textAlign: 'left' }}>{model.avg_lifetime_alignment}/10</div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem', textAlign: 'left' }}>Lifetime training alignment score</div>
-            </div>
-          )}
         </div>
-      )}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '4px 10px',
+          borderRadius: '20px',
+          backgroundColor: isLearning ? 'rgba(217, 119, 6, 0.2)' : 'rgba(22, 163, 74, 0.2)',
+          border: `1px solid ${isLearning ? 'rgba(217,119,6,0.5)' : 'rgba(22,163,74,0.5)'}`,
+        }}>
+          <div style={{
+            width: '6px', height: '6px', borderRadius: '50%',
+            backgroundColor: isLearning ? '#f59e0b' : '#16a34a',
+          }} />
+          <span style={{
+            fontSize: '11px', fontWeight: '600', letterSpacing: '0.08em',
+            color: isLearning ? '#fcd34d' : '#4ade80',
+            textTransform: 'uppercase',
+          }}>
+            {isLearning ? 'Calibrating' : 'Calibrated'}
+          </span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ backgroundColor: 'white', padding: isLearning ? '1.25rem' : '0' }}>
+        {isLearning ? (
+          <div>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '14px', color: '#374151', lineHeight: '1.6', textAlign: 'left' }}>
+              Your coach is building a calibrated model of how you respond to training load. Post-workout analyses unlock progressively sharper recommendations.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ flex: 1, height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${progressPct}%`,
+                  background: 'linear-gradient(90deg, #7D9CB8 0%, #6B8F7F 100%)',
+                  borderRadius: '3px',
+                }} />
+              </div>
+              <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                {autopsyCount} / {CALIBRATION_TARGET} analyses
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1px', backgroundColor: '#e5e7eb' }}>
+            {metrics.map((m) => (
+              <div key={m.label} style={{
+                backgroundColor: 'white',
+                padding: '1rem 1.25rem',
+                borderLeft: `3px solid ${m.accent}`,
+              }}>
+                <div style={{
+                  fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700',
+                  color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left',
+                }}>
+                  {m.label}
+                </div>
+                <div style={{
+                  fontSize: '26px', fontWeight: '700', lineHeight: '1',
+                  color: m.valueColor, marginBottom: '0.4rem', textAlign: 'left',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {m.value}
+                </div>
+                <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'left' }}>
+                  {m.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -602,6 +1017,8 @@ const CoachPage: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'workout' | 'goals' | 'history' | 'schedule'>('workout');
 
   const [athleteModel, setAthleteModel] = useState<AthleteModel | null>(null);
+  const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
+  const [weeklySynthesis, setWeeklySynthesis] = useState<WeeklySynthesisData | null>(null);
 
   // Schedule review state
   const [scheduleReviewStatus, setScheduleReviewStatus] = useState<{
@@ -637,14 +1054,18 @@ const CoachPage: React.FC = () => {
         programRes,
         reviewStatusRes,
         athleteModelRes,
-        revisionRes
+        revisionRes,
+        readinessRes,
+        synthesisRes
       ] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/training-stage'),
         fetch('/api/coach/weekly-program'),
         fetch('/api/coach/schedule-review-status'),
         fetch('/api/athlete-model'),
-        fetch('/api/coach/revision-proposal', { credentials: 'include' })
+        fetch('/api/coach/revision-proposal', { credentials: 'include' }),
+        fetch('/api/coach/race-readiness'),
+        fetch('/api/coach/weekly-synthesis')
       ]);
 
       // Check for critical errors (race goals is essential)
@@ -705,6 +1126,22 @@ const CoachPage: React.FC = () => {
         const modelData = await athleteModelRes.json();
         if (modelData.success) {
           setAthleteModel(modelData.model);
+        }
+      }
+
+      // Parse race readiness
+      if (readinessRes.ok) {
+        const readinessData = await readinessRes.json();
+        if (readinessData.success && readinessData.readiness) {
+          setRaceReadiness(readinessData.readiness);
+        }
+      }
+
+      // Parse weekly synthesis
+      if (synthesisRes.ok) {
+        const synthData = await synthesisRes.json();
+        if (!synthData.error) {
+          setWeeklySynthesis(synthData);
         }
       }
 
@@ -1427,6 +1864,12 @@ const CoachPage: React.FC = () => {
           {weeklyProgram?.strategic_context && (
             <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
           )}
+
+          {/* Race Readiness Projection */}
+          <RaceReadinessCard readiness={raceReadiness} />
+
+          {/* Weekly Synthesis - retrospective narrative */}
+          <WeeklySynthesisCard data={weeklySynthesis} />
 
           {/* Athlete Model Panel - what the coach has learned */}
           <AthleteModelPanel model={athleteModel} />
