@@ -12,6 +12,7 @@ interface RaceGoal {
   target_time: string | null;
   notes: string | null;
   elevation_gain_feet: number | null;
+  distance_miles: number | null;
 }
 
 const RaceGoalsPage: React.FC = () => {

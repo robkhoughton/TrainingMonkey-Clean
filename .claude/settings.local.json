@@ -42,7 +42,9 @@
       "mcp__open-brain__list_thoughts",
       "mcp__open-brain__capture_thought",
       "mcp__open-brain__search_thoughts",
-      "Bash(cd \"C:\\\\Users\\\\robho\\\\Documents\\\\VAULT\\\\TrainingMonkey-Clean\" && bash scripts/build_and_copy.sh 2>&1 | tail -5)"
+      "Bash(cd \"C:\\\\Users\\\\robho\\\\Documents\\\\VAULT\\\\TrainingMonkey-Clean\" && bash scripts/build_and_copy.sh 2>&1 | tail -5)",
+      "Bash(sed -i \"s/background: rgba\\(255,255,255,0.06\\);/background: #162440;/g; s/background: rgba\\(255,255,255,0.10\\);/background: #1a2d4e;/g\" \"C:\\\\Users\\\\robho\\\\Documents\\\\VAULT\\\\TrainingMonkey-Clean\\\\frontend\\\\src\\\\RaceGoalsManager.tsx\")",
+      "Bash(sed -i \"s/background: rgba\\(255,255,255,0.06\\);/background: #162440;/g; s/background: rgba\\(255,255,255,0.10\\);/background: #1a2d4e;/g; s/race.error ? ''rgba\\(239,68,68,0.1\\)'' : ''rgba\\(255,255,255,0.06\\)''/race.error ? ''#2a1a1a'' : ''#162440''/g\" \"C:\\\\Users\\\\robho\\\\Documents\\\\VAULT\\\\TrainingMonkey-Clean\\\\frontend\\\\src\\\\RaceHistoryManager.tsx\")"
     ],
     "deny": [],
     "ask": []

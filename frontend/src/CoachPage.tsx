@@ -3,9 +3,9 @@ import styles from './TrainingLoadDashboard.module.css';
 import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
 import WeeklyProgramDisplay from './WeeklyProgramDisplay';
 import TimelineVisualization from './TimelineVisualization';
-import RaceGoalsPage from './RaceGoalsPage';
 import RaceHistoryPage from './RaceHistoryPage';
 import TrainingSchedulePage from './TrainingSchedulePage';
+import SeasonPage from './SeasonPage';
 import YTMSpinner from './YTMSpinner';
 
 // ============================================================================
@@ -184,7 +184,7 @@ interface RaceGoal {
   distance_miles: number | null;
 }
 
-interface RaceReadiness {
+export interface RaceReadiness {
   status: 'already_ready' | 'on_track' | 'not_achievable';
   message: string;
   race_name: string;
@@ -223,7 +223,7 @@ interface TrainingSchedule {
   cross_training_hours: number;
 }
 
-interface AthleteModel {
+export interface AthleteModel {
   acwr_sweet_spot_low: number | null;
   acwr_sweet_spot_high: number | null;
   acwr_sweet_spot_confidence: number | null;  // 0.0–1.0
@@ -305,7 +305,7 @@ interface RaceAnalysis {
 // RACE READINESS CARD
 // ============================================================================
 
-const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = ({ readiness }) => {
+export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = ({ readiness }) => {
   const statusConfig = {
     already_ready: { label: 'Race Ready',    accent: '#7D9CB8', light: '#E6F0FF', text: '#1B2E4B' },
     on_track:      { label: 'On Track',      accent: '#16a34a', light: '#f0fdf4', text: '#14532d' },
@@ -319,25 +319,24 @@ const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = ({ read
 
   return (
     <div style={{
-      maxWidth: '1200px',
-      margin: '0 auto 0.75rem auto',
+      width: '100%',
       borderRadius: '8px',
       overflow: 'hidden',
       boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
     }}>
       {/* Header */}
       <div style={{
-        background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+        background: 'linear-gradient(90deg, #1B2E4B 0%, #2d4a6e 100%)',
         padding: '0.75rem 1.25rem',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
         <div>
-          <div style={{ fontSize: '10px', letterSpacing: '0.15em', fontWeight: '700', color: '#1B2E4B', textTransform: 'uppercase', textAlign: 'left' }}>
+          <div style={{ fontSize: '10px', letterSpacing: '0.15em', fontWeight: '700', color: '#7D9CB8', textTransform: 'uppercase', textAlign: 'left' }}>
             Race Readiness
           </div>
-          <div style={{ fontSize: '15px', fontWeight: '700', color: '#1B2E4B', marginTop: '1px', textAlign: 'left' }}>
+          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff', marginTop: '1px', textAlign: 'left' }}>
             {readiness ? readiness.race_name : 'A Race Projection'}
           </div>
         </div>
@@ -611,7 +610,7 @@ export const WeeklySynthesisCard: React.FC<{
 // ATHLETE MODEL PANEL
 // ============================================================================
 
-const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
+export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
   const CALIBRATION_TARGET = 20;
 
   const confidencePct = model?.acwr_sweet_spot_confidence != null
@@ -667,8 +666,7 @@ const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) 
 
   return (
     <div style={{
-      maxWidth: '1200px',
-      margin: '0 auto 0.75rem auto',
+      width: '100%',
       borderRadius: '8px',
       overflow: 'hidden',
       boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
@@ -734,7 +732,7 @@ const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) 
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1px', backgroundColor: '#e5e7eb' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', backgroundColor: '#e5e7eb' }}>
             {metrics.map((m) => (
               <div key={m.label} style={{
                 backgroundColor: 'white',
@@ -1014,7 +1012,7 @@ const CoachPage: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   
   // Secondary navigation state
-  const [activeSubTab, setActiveSubTab] = useState<'workout' | 'goals' | 'history' | 'schedule'>('workout');
+  const [activeSubTab, setActiveSubTab] = useState<'week' | 'season' | 'history'>('week');
 
   const [athleteModel, setAthleteModel] = useState<AthleteModel | null>(null);
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
@@ -1554,16 +1552,15 @@ const CoachPage: React.FC = () => {
                 flexWrap: 'nowrap'
               }}>
                 {[
-                  { key: 'workout', label: 'Workout Plan' },
-                  { key: 'goals', label: 'Race Goals' },
-                  { key: 'history', label: 'Race History' },
-                  { key: 'schedule', label: 'Training Schedule' }
+                  { key: 'week', label: 'Week' },
+                  { key: 'season', label: 'Season' },
+                  { key: 'history', label: 'History' },
                 ].map((tab) => (
                   <li key={tab.key} style={{ flexShrink: 0 }}>
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveSubTab(tab.key as 'workout' | 'goals' | 'history' | 'schedule');
+                        setActiveSubTab(tab.key as 'week' | 'season' | 'history');
                       }}
                       style={{
                         display: 'inline-block',
@@ -1853,31 +1850,27 @@ const CoachPage: React.FC = () => {
       {/* ============================================================
           TAB CONTENT AREA - Route to separate pages
       ============================================================ */}
-      {activeSubTab === 'workout' && (
+      {activeSubTab === 'week' && (
         <>
           {/* 7-Day Workout Plan */}
           <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem' }}>
             <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
           </div>
 
-          {/* Strategic Analysis & Context - Enhanced with collapsible sections */}
+          {/* Strategic Analysis & Context */}
           {weeklyProgram?.strategic_context && (
             <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
           )}
 
-          {/* Race Readiness Projection */}
-          <RaceReadinessCard readiness={raceReadiness} />
-
           {/* Weekly Synthesis - retrospective narrative */}
           <WeeklySynthesisCard data={weeklySynthesis} />
 
-          {/* Athlete Model Panel - what the coach has learned */}
-          <AthleteModelPanel model={athleteModel} />
+          {/* Training Schedule - configuration for the plan */}
+          <TrainingSchedulePage />
         </>
       )}
-      {activeSubTab === 'goals' && <RaceGoalsPage />}
+      {activeSubTab === 'season' && <SeasonPage />}
       {activeSubTab === 'history' && <RaceHistoryPage />}
-      {activeSubTab === 'schedule' && <TrainingSchedulePage />}
 
     </div>
   );

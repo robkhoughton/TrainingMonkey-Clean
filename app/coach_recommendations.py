@@ -56,7 +56,7 @@ STRATEGIC_CONTEXT_TEMPERATURE = 0.75  # Rich narrative analysis - benefits from 
 def get_race_goals(user_id: int) -> List[Dict]:
     """Fetch user's race goals ordered by date."""
     query = """
-        SELECT id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet
+        SELECT id, race_name, race_date, race_type, priority, target_time, notes, elevation_gain_feet, distance_miles
         FROM race_goals
         WHERE user_id = %s
         ORDER BY race_date ASC
@@ -76,7 +76,8 @@ def get_race_goals(user_id: int) -> List[Dict]:
             'priority': row['priority'],
             'target_time': row['target_time'],
             'notes': row['notes'],
-            'elevation_gain_feet': row['elevation_gain_feet']
+            'elevation_gain_feet': row['elevation_gain_feet'],
+            'distance_miles': row['distance_miles'],
         })
     
     return goals

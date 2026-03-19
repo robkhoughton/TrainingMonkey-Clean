@@ -14,6 +14,7 @@ interface RaceGoal {
   target_time: string | null;
   notes: string | null;
   elevation_gain_feet: number | null;
+  distance_miles: number | null;
 }
 
 interface RaceGoalsManagerProps {
@@ -39,7 +40,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
     priority: 'B' as 'A' | 'B' | 'C',
     target_time: '',
     notes: '',
-    elevation_gain_feet: ''
+    elevation_gain_feet: '',
+    distance_miles: ''
   });
 
   // ============================================================================
@@ -55,7 +57,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
       priority: 'B',
       target_time: '',
       notes: '',
-      elevation_gain_feet: ''
+      elevation_gain_feet: '',
+      distance_miles: ''
     });
     setShowForm(true);
     setError(null);
@@ -70,7 +73,8 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
       priority: goal.priority,
       target_time: goal.target_time || '',
       notes: goal.notes || '',
-      elevation_gain_feet: goal.elevation_gain_feet?.toString() || ''
+      elevation_gain_feet: goal.elevation_gain_feet?.toString() || '',
+      distance_miles: goal.distance_miles?.toString() || ''
     });
     setShowForm(true);
     setError(null);
@@ -97,9 +101,12 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
         notes: formData.notes.trim() || null
       };
       
-      // Only include elevation if it has a value (for backwards compatibility)
+      // Only include elevation/distance if they have values (backwards compatibility)
       if (formData.elevation_gain_feet && formData.elevation_gain_feet.trim()) {
         payload.elevation_gain_feet = parseInt(formData.elevation_gain_feet);
+      }
+      if (formData.distance_miles && formData.distance_miles.trim()) {
+        payload.distance_miles = parseFloat(formData.distance_miles);
       }
 
       const url = editingGoal
@@ -219,221 +226,261 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
         </div>
       )}
 
-      {/* Form */}
+      {/* Form — Tactical Modal */}
       {showForm && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
         <div style={{
-          backgroundColor: '#f8f9fa',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          border: '2px solid #3498db'
+          backgroundColor: '#1B2E4B',
+          backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+          backgroundSize: '4px 4px',
+          border: '1px solid rgba(255,87,34,0.7)',
+          borderRadius: '6px',
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: '560px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
         }}>
-          <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#2c3e50' }}>
-            {editingGoal ? 'Edit Race Goal' : 'Add New Race Goal'}
-          </h3>
+          {/* Header strip */}
+          <div style={{
+            background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+            padding: '0.75rem 1.25rem',
+            fontSize: '10px',
+            letterSpacing: '0.15em',
+            fontWeight: '700',
+            color: '#1B2E4B',
+            textTransform: 'uppercase',
+          }}>
+            {editingGoal ? 'Modify Goal' : 'Configure Target'}
+          </div>
 
-          {error && (
-            <div style={{
-              padding: '12px',
-              backgroundColor: '#fee',
-              border: '1px solid #fcc',
-              borderRadius: '4px',
-              marginBottom: '15px',
-              color: '#c33',
-              fontSize: '14px'
-            }}>
-              {error}
-            </div>
-          )}
+          <div style={{ padding: '20px' }}>
+            {error && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'rgba(239,68,68,0.15)',
+                border: '1px solid rgba(239,68,68,0.4)',
+                borderRadius: '4px',
+                marginBottom: '16px',
+                color: '#fca5a5',
+                fontSize: '13px',
+              }}>
+                {error}
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-              {/* Race Name */}
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Race Name <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.race_name}
-                  onChange={(e) => setFormData({ ...formData, race_name: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., Western States 100"
-                />
+            <style>{`
+              .ytm-form-input {
+                width: 100%;
+                padding: 8px 10px;
+                background: #162440;
+                border: 1px solid rgba(125,156,184,0.3);
+                border-radius: 4px;
+                font-size: 0.875rem;
+                color: #E6F0FF;
+                box-sizing: border-box;
+              }
+              .ytm-form-input::placeholder { color: rgba(230,240,255,0.25); }
+              .ytm-form-input:focus {
+                outline: none;
+                border-color: #7D9CB8;
+                background: #1a2d4e;
+                box-shadow: 0 0 0 2px rgba(125,156,184,0.2);
+              }
+              .ytm-form-select {
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237D9CB8'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 10px center;
+                padding-right: 28px;
+              }
+              .ytm-form-select option { background: #1B2E4B; color: #E6F0FF; }
+              .ytm-form-input[type=number]::-webkit-inner-spin-button,
+              .ytm-form-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+              .ytm-form-input[type=number] { -moz-appearance: textfield; }
+            `}</style>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+
+                {/* Race Name */}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Race Name <span style={{ color: '#FF5722' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.race_name}
+                    onChange={(e) => setFormData({ ...formData, race_name: e.target.value })}
+                    required
+                    className="ytm-form-input"
+                    placeholder="e.g., Western States 100"
+                  />
+                </div>
+
+                {/* Race Date */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Race Date <span style={{ color: '#FF5722' }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.race_date}
+                    onChange={(e) => setFormData({ ...formData, race_date: e.target.value })}
+                    required
+                    className="ytm-form-input"
+                  />
+                </div>
+
+                {/* Priority */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Priority <span style={{ color: '#FF5722' }}>*</span>
+                  </label>
+                  <select
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value as 'A' | 'B' | 'C' })}
+                    required
+                    className="ytm-form-input ytm-form-select"
+                  >
+                    <option value="A">A — Primary Focus</option>
+                    <option value="B">B — Fitness Check</option>
+                    <option value="C">C — Training Volume</option>
+                  </select>
+                </div>
+
+                {/* Race Type */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Type
+                  </label>
+                  <select
+                    value={formData.race_type}
+                    onChange={(e) => setFormData({ ...formData, race_type: e.target.value })}
+                    className="ytm-form-input ytm-form-select"
+                  >
+                    <option value="">—</option>
+                    <option value="Trail">Trail</option>
+                    <option value="Road">Road</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Distance */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Distance <span style={{ color: 'rgba(125,156,184,0.6)', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>mi</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.distance_miles}
+                    onChange={(e) => setFormData({ ...formData, distance_miles: e.target.value })}
+                    className="ytm-form-input"
+                    placeholder="50"
+                    min="0"
+                    step="0.1"
+                  />
+                </div>
+
+                {/* Elevation Gain */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Elevation <span style={{ color: 'rgba(125,156,184,0.6)', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>ft</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.elevation_gain_feet}
+                    onChange={(e) => setFormData({ ...formData, elevation_gain_feet: e.target.value })}
+                    className="ytm-form-input"
+                    placeholder="18000"
+                    min="0"
+                  />
+                </div>
+
+                {/* Target Time */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Target Time
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.target_time}
+                    onChange={(e) => setFormData({ ...formData, target_time: e.target.value })}
+                    className="ytm-form-input"
+                    placeholder="24:00 or Sub-24"
+                  />
+                </div>
+
+                {/* Notes */}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                    Notes
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="ytm-form-input"
+                    style={{ minHeight: '72px', fontFamily: 'inherit', resize: 'vertical' }}
+                    placeholder="Course notes, goals, strategy..."
+                  />
+                </div>
               </div>
 
-              {/* Race Date */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Race Date <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={formData.race_date}
-                  onChange={(e) => setFormData({ ...formData, race_date: e.target.value })}
-                  required
+              {/* Form Actions */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={isSaving}
                   style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
+                    padding: '10px 16px',
+                    background: 'transparent',
+                    color: '#7D9CB8',
+                    border: '1px solid rgba(125,156,184,0.3)',
                     borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              </div>
-
-              {/* Priority */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Priority <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <select
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as 'A' | 'B' | 'C' })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    letterSpacing: '0.05em',
+                    opacity: isSaving ? 0.5 : 1,
                   }}
                 >
-                  <option value="A">A - Primary Focus (only one allowed)</option>
-                  <option value="B">B - Fitness Check</option>
-                  <option value="C">C - Training Volume</option>
-                </select>
-              </div>
-
-              {/* Race Type */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Race Type/Distance
-                </label>
-                <input
-                  type="text"
-                  value={formData.race_type}
-                  onChange={(e) => setFormData({ ...formData, race_type: e.target.value })}
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
                   style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
+                    padding: '10px 24px',
+                    background: isSaving ? 'rgba(255,87,34,0.5)' : '#FF5722',
+                    color: 'white',
+                    border: 'none',
                     borderRadius: '4px',
-                    fontSize: '14px'
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
                   }}
-                  placeholder="e.g., 100 Mile Trail"
-                />
+                >
+                  {isSaving ? 'Working...' : (editingGoal ? 'Commit Changes' : 'Set Target')}
+                </button>
               </div>
-
-              {/* Target Time */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Target Time
-                </label>
-                <input
-                  type="text"
-                  value={formData.target_time}
-                  onChange={(e) => setFormData({ ...formData, target_time: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., 24:00 or Sub-24"
-                />
-              </div>
-
-              {/* Elevation Gain */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Elevation Gain (ft)
-                </label>
-                <input
-                  type="number"
-                  value={formData.elevation_gain_feet}
-                  onChange={(e) => setFormData({ ...formData, elevation_gain_feet: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., 18000"
-                  min="0"
-                />
-              </div>
-
-              {/* Notes */}
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Notes
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    minHeight: '80px',
-                    fontFamily: 'inherit'
-                  }}
-                  placeholder="Course notes, goals, strategy..."
-                />
-              </div>
-            </div>
-
-            {/* Form Actions */}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={isSaving}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#95a5a6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                {isSaving ? 'Saving...' : (editingGoal ? 'Update Goal' : 'Save Goal')}
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
+        </div>
         </div>
       )}
 
@@ -507,9 +554,13 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
 
                     {/* Race Type, Target Time & Elevation */}
                     <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: '#7f8c8d' }}>
-                      {goal.race_type && (
+                      {(goal.race_type || goal.distance_miles) && (
                         <div>
-                          <strong>Type:</strong> {goal.race_type}
+                          <strong>Type:</strong>{' '}
+                          {[
+                            goal.distance_miles ? `${goal.distance_miles}mi` : null,
+                            goal.race_type || null
+                          ].filter(Boolean).join(' ')}
                         </div>
                       )}
                       {goal.target_time && (

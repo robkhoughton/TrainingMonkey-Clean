@@ -687,54 +687,174 @@ cursor: wait;
 
 ### Form Design
 
-#### Field Layout
+#### Design Philosophy
 
-**Vertical Stacking** (Default)
-- One field per row
-- Clear label above field
-- Helper text below field
-- Best for mobile and accessibility
+Forms in YTM are **configuration panels for a precision system**, not friendly data-entry flows. The user is an analytical athlete — an engineer by day, a competitor by aspiration — feeding inputs into a coaching engine. The aesthetic is **tactical watch**: high contrast, instrument-precise, action-oriented. Forms should feel like mission control, not a wellness journal.
 
-**Horizontal Grid** (When Appropriate)
-- Related fields grouped (Birth Month + Birth Year)
-- Maximum 2 columns
-- Responsive: Stack on mobile (<768px)
+This is deliberately different from content cards (white, light, readable). The dark form container signals **mode shift: you are now acting, not reading.**
 
-#### Field Sizing
+#### Tactical Form Aesthetic (Standard)
 
-**Content-Appropriate Widths:**
-- Numbers (age, year): 120px max
-- Email: 100% width
-- Select dropdowns: 280px max (or content-dependent)
-- Text areas: 100% width
-
-**Never:**
-- Make short inputs full-width (looks broken)
-- Make long inputs too narrow (causes horizontal scroll)
-
-#### Validation
-
-**Inline Validation:**
-- Show errors on blur (when user leaves field)
-- Show success checkmark on valid input
-- Use color + icon (not color alone for accessibility)
-
-**Error Messages:**
+**Container:**
 ```css
-color: #ef4444;
-font-size: 0.85rem;
-margin-top: 0.25rem;
-display: flex;
-align-items: center;
-gap: 0.5rem;
+background-color: #1B2E4B;
+background-image:
+  linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+  linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+  linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+  linear-gradient(45deg,  rgba(255,255,255,0.04) 25%, transparent 25%);
+background-size: 4px 4px;
+border: 1px solid rgba(255, 87, 34, 0.7); /* action-mode orange border */
+border-radius: 6px;
+width: 100%;
+max-width: 560px;   /* hard limit — applies to ALL modals and inline panels, no exceptions */
+max-height: 90vh;   /* modals only — pair with overflow-y: auto */
 ```
 
-**Success Messages:**
+The carbon fiber weave (4-gradient CSS pattern at 4% opacity, 4px tile) gives the modal surface a tactile, engineered quality — consistent with the precision instrument aesthetic and the tactical watch reference. Pure CSS, no image assets.
+
+**Critical:** Keep tile size at `4px`. This is what prevents the diamond plate look — the tile size, not the opacity. At `8px` the pattern reads as embossed diamond plate regardless of opacity. At `4px`, `0.04` opacity gives a visible but refined weave.
+
+The orange border signals action mode — the user is committing, not reading. Restrained at 0.7 opacity so it frames without overpowering.
+
+**Header strip** (same gradient pattern as data cards):
 ```css
-color: #16a34a;
-font-size: 0.85rem;
-margin-top: 0.25rem;
+background: linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%);
+padding: 0.75rem 1.25rem;
+font-size: 10px;
+letter-spacing: 0.15em;
+font-weight: 700;
+color: #1B2E4B;
+text-transform: uppercase;
 ```
+
+**Labels** — instrument readout style:
+```css
+font-size: 0.7rem;
+font-weight: 700;
+letter-spacing: 0.12em;
+text-transform: uppercase;
+color: #7D9CB8;
+margin-bottom: 5px;
+display: block;
+```
+
+**Input / Select fields:**
+```css
+width: 100%;
+padding: 8px 10px;
+background: #162440;   /* solid — never transparent, or carbon fiber texture bleeds through */
+border: 1px solid rgba(125, 156, 184, 0.3);
+border-radius: 4px;
+font-size: 0.875rem;
+color: #E6F0FF;
+-webkit-appearance: none;  /* suppress number spinner arrows */
+-moz-appearance: textfield;
+```
+
+**Input focus state:**
+```css
+border-color: #7D9CB8;
+outline: none;
+background: rgba(255, 255, 255, 0.10);
+box-shadow: 0 0 0 2px rgba(125, 156, 184, 0.2);
+```
+
+**Placeholder text:**
+```css
+color: rgba(230, 240, 255, 0.25);
+```
+
+**Select — suppress default arrow, add custom:**
+```css
+appearance: none;
+background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237D9CB8'/%3E%3C/svg%3E");
+background-repeat: no-repeat;
+background-position: right 10px center;
+padding-right: 28px;
+```
+
+**Required field marker:**
+```css
+color: #FF5722;
+/* Use * only — no prose */
+```
+
+**Error state:**
+```css
+border-color: #ef4444;
+color: #fca5a5; /* error message text */
+font-size: 0.75rem;
+margin-top: 3px;
+```
+
+#### Grid Layout
+
+Two-column grid (default for race/goal forms):
+```css
+display: grid;
+grid-template-columns: repeat(2, minmax(0, 280px));
+gap: 15px;
+```
+
+Full-width fields (name, notes, long text):
+```css
+grid-column: 1 / -1;
+```
+
+Single-column forms: `max-width: 480px`
+
+**Never** use `width: 100%` on a form container without a `max-width` cap. Unconstrained forms on wide monitors are illegible.
+
+#### CTA Language
+
+Actions on forms must use precise, context-specific verbs — never generic "Save":
+
+| Context | Primary CTA | Cancel |
+|---------|-------------|--------|
+| Add new goal / target | **SET TARGET** | Cancel |
+| Edit / update existing | **COMMIT CHANGES** | Cancel |
+| Log a result (new entry) | **LOG RESULT** | Cancel |
+| Bulk commit (e.g. N parsed results) | **COMMIT N RESULTS** | Cancel |
+| Delete / destructive | **CONFIRM** | Abort |
+| Settings / preferences | **APPLY** | Cancel |
+| First-time setup | **INITIALIZE** | Skip |
+
+**Primary CTA button:**
+```css
+background: #FF5722;
+color: white;
+font-weight: 700;
+font-size: 0.8rem;
+letter-spacing: 0.08em;
+text-transform: uppercase;
+padding: 10px 24px;
+border: none;
+border-radius: 4px;
+cursor: pointer;
+```
+
+**Cancel / secondary:**
+```css
+background: transparent;
+color: #7D9CB8;
+border: 1px solid rgba(125, 156, 184, 0.3);
+font-weight: 600;
+font-size: 0.8rem;
+padding: 10px 16px;
+border-radius: 4px;
+cursor: pointer;
+```
+
+#### Readability Constraints
+
+- Form container: `max-width: 560px` always
+- Body text within forms: `max-width: 75ch`
+- Never stretch inputs to fill a wide viewport — WCAG 1.4.8
+
+#### Reference Implementation
+
+`frontend/src/RaceGoalsManager.tsx` — canonical example of this pattern in the app.
 
 ### Card Design Patterns
 

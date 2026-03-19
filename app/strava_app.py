@@ -6671,7 +6671,7 @@ def get_weekly_synthesis():
     Optional ?week_start=YYYY-MM-DD to fetch a specific week.
     """
     try:
-        user_id = session['user_id']
+        user_id = current_user.id
         week_start = request.args.get('week_start')
 
         if week_start:
@@ -7423,20 +7423,28 @@ def update_user_settings():
     try:
         data = request.get_json()
         coaching_spectrum = data.get('coaching_style_spectrum')
+        recommendation_style = data.get('recommendation_style')
 
         if coaching_spectrum is not None:
-            # Validate range
             if not (0 <= coaching_spectrum <= 100):
                 return jsonify({'error': 'Invalid spectrum value'}), 400
-
-            # Update only the spectrum column (remove coaching_style_description)
             db_utils.execute_query("""
-                UPDATE user_settings 
-                SET %s = %s
+                UPDATE user_settings
+                SET coaching_style_spectrum = %s, updated_at = NOW()
                 WHERE id = %s
             """, (coaching_spectrum, current_user.id))
-
             logger.info(f"Updated coaching style spectrum to {coaching_spectrum} for user {current_user.id}")
+
+        if recommendation_style is not None:
+            valid_styles = ['conservative', 'balanced', 'adaptive', 'aggressive']
+            if recommendation_style not in valid_styles:
+                return jsonify({'error': 'Invalid recommendation style'}), 400
+            db_utils.execute_query("""
+                UPDATE user_settings
+                SET recommendation_style = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (recommendation_style, current_user.id))
+            logger.info(f"Updated recommendation style to {recommendation_style} for user {current_user.id}")
 
         return jsonify({'success': True})
 
@@ -7452,8 +7460,8 @@ def get_user_settings():
     try:
         # Remove coaching_style_description from the query
         result = db_utils.execute_query("""
-            SELECT coaching_style_spectrum, coaching_tone
-            FROM user_settings 
+            SELECT coaching_style_spectrum, coaching_tone, recommendation_style
+            FROM user_settings
             WHERE id = %s
         """, (current_user.id,), fetch=True)
 
@@ -7461,12 +7469,14 @@ def get_user_settings():
             settings = result[0]
             return jsonify({
                 'coaching_style_spectrum': settings.get('coaching_style_spectrum', 50),
-                'coaching_tone': settings.get('coaching_tone', 'supportive')
+                'coaching_tone': settings.get('coaching_tone', 'supportive'),
+                'recommendation_style': settings.get('recommendation_style', 'balanced')
             })
         else:
             return jsonify({
                 'coaching_style_spectrum': 50,
-                'coaching_tone': 'supportive'
+                'coaching_tone': 'supportive',
+                'recommendation_style': 'balanced'
             })
 
     except Exception as e:
@@ -11195,6 +11205,7 @@ def get_race_readiness():
             apply_athlete_model_to_thresholds
         )
         from db_utils import get_athlete_model
+        from unified_metrics_service import UnifiedMetricsService
         import math
 
         user_id = current_user.id

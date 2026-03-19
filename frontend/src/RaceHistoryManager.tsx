@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 
 // ============================================================================
@@ -37,13 +37,39 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Time field refs for auto-advance
+  const timeHRef = useRef<HTMLInputElement>(null);
+  const timeMRef = useRef<HTMLInputElement>(null);
+  const timeSRef = useRef<HTMLInputElement>(null);
+
   // Manual form state
   const [formData, setFormData] = useState({
     race_name: '',
     distance_miles: '',
     race_date: '',
-    finish_time_minutes: ''
+    time_h: '',
+    time_m: '',
+    time_s: ''
   });
+
+  // Convert stored decimal minutes → H/MM/SS display
+  const minutesToHMS = (totalMinutes: number) => {
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.floor(totalMinutes % 60);
+    const s = Math.round((totalMinutes % 1) * 60);
+    return {
+      time_h: h.toString(),
+      time_m: m.toString().padStart(2, '0'),
+      time_s: s.toString().padStart(2, '0')
+    };
+  };
+
+  // Convert H/MM/SS fields → decimal minutes for storage
+  const hmsToMinutes = (h: string, m: string, s: string): number => {
+    return (parseInt(h || '0', 10) * 60) +
+           parseInt(m || '0', 10) +
+           (parseInt(s || '0', 10) / 60);
+  };
 
   // Screenshot upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -61,7 +87,9 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
       race_name: '',
       distance_miles: '',
       race_date: '',
-      finish_time_minutes: ''
+      time_h: '',
+      time_m: '',
+      time_s: ''
     });
     setShowManualForm(true);
     setError(null);
@@ -73,7 +101,7 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
       race_name: race.race_name,
       distance_miles: race.distance_miles.toString(),
       race_date: race.race_date,
-      finish_time_minutes: race.finish_time_minutes.toString()
+      ...minutesToHMS(race.finish_time_minutes)
     });
     setShowManualForm(true);
     setError(null);
@@ -95,7 +123,7 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
         race_name: formData.race_name.trim(),
         distance_miles: parseFloat(formData.distance_miles),
         race_date: formData.race_date,
-        finish_time_minutes: parseInt(formData.finish_time_minutes, 10)
+        finish_time_minutes: hmsToMinutes(formData.time_h, formData.time_m, formData.time_s)
       };
 
       const url = editingRace
@@ -351,436 +379,501 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
         </div>
       )}
 
-      {/* Manual Entry Form */}
+      {/* Manual Entry Form — Tactical Modal */}
       {showManualForm && (
-        <div style={{
-          backgroundColor: '#f8f9fa',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          border: '2px solid #3498db'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#2c3e50' }}>
-            {editingRace ? 'Edit Race Result' : 'Add Race Manually'}
-          </h3>
-
-          {error && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) handleCancelManual(); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div style={{
+            backgroundColor: '#1B2E4B',
+            backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+            backgroundSize: '4px 4px',
+            border: '1px solid rgba(255,87,34,0.7)',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            width: '100%',
+            maxWidth: '560px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}>
+            {/* Header strip */}
             <div style={{
-              padding: '12px',
-              backgroundColor: '#fee',
-              border: '1px solid #fcc',
-              borderRadius: '4px',
-              marginBottom: '15px',
-              color: '#c33',
-              fontSize: '14px'
+              background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+              padding: '0.75rem 1.25rem',
+              fontSize: '10px',
+              letterSpacing: '0.15em',
+              fontWeight: '700',
+              color: '#1B2E4B',
+              textTransform: 'uppercase',
             }}>
-              {error}
+              {editingRace ? 'Modify Result' : 'Log Race Result'}
             </div>
-          )}
 
-          <form onSubmit={handleManualSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-              {/* Race Name */}
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Race Name <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.race_name}
-                  onChange={(e) => setFormData({ ...formData, race_name: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., Lake Sonoma 50"
-                />
-              </div>
-
-              {/* Distance */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Distance (miles) <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={formData.distance_miles}
-                  onChange={(e) => setFormData({ ...formData, distance_miles: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., 50.0"
-                />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Race Date <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={formData.race_date}
-                  onChange={(e) => setFormData({ ...formData, race_date: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              </div>
-
-              {/* Finish Time */}
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '14px' }}>
-                  Finish Time (total minutes) <span style={{ color: '#e74c3c' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={formData.finish_time_minutes}
-                  onChange={(e) => setFormData({ ...formData, finish_time_minutes: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                  placeholder="e.g., 480 (for 8 hours)"
-                />
-                <div style={{ marginTop: '5px', fontSize: '12px', color: '#7f8c8d' }}>
-                  💡 Tip: Convert hours to minutes (e.g., 8:30 = 510 minutes)
+            <div style={{ padding: '20px' }}>
+              {error && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  borderRadius: '4px',
+                  marginBottom: '16px',
+                  color: '#fca5a5',
+                  fontSize: '13px',
+                }}>
+                  {error}
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Form Actions */}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={handleCancelManual}
-                disabled={isSaving}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#95a5a6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                {isSaving ? 'Saving...' : (editingRace ? 'Update Race' : 'Save Race')}
-              </button>
+              <style>{`
+                .ytm-hist-input {
+                  width: 100%;
+                  padding: 8px 10px;
+                  background: #162440;
+                  border: 1px solid rgba(125,156,184,0.3);
+                  border-radius: 4px;
+                  font-size: 0.875rem;
+                  color: #E6F0FF;
+                  box-sizing: border-box;
+                }
+                .ytm-hist-input::placeholder { color: rgba(230,240,255,0.25); }
+                .ytm-hist-input:focus {
+                  outline: none;
+                  border-color: #7D9CB8;
+                  background: #1a2d4e;
+                  box-shadow: 0 0 0 2px rgba(125,156,184,0.2);
+                }
+                .ytm-hist-input[type=number]::-webkit-inner-spin-button,
+                .ytm-hist-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+                .ytm-hist-input[type=number] { -moz-appearance: textfield; }
+              `}</style>
+
+              <form onSubmit={handleManualSubmit}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+
+                  {/* Race Name */}
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                      Race Name <span style={{ color: '#FF5722' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.race_name}
+                      onChange={(e) => setFormData({ ...formData, race_name: e.target.value })}
+                      required
+                      className="ytm-hist-input"
+                      placeholder="e.g., Lake Sonoma 50"
+                    />
+                  </div>
+
+                  {/* Distance */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                      Distance <span style={{ color: 'rgba(125,156,184,0.6)', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>mi</span> <span style={{ color: '#FF5722' }}>*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={formData.distance_miles}
+                      onChange={(e) => setFormData({ ...formData, distance_miles: e.target.value })}
+                      required
+                      className="ytm-hist-input"
+                      placeholder="50.0"
+                    />
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                      Race Date <span style={{ color: '#FF5722' }}>*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.race_date}
+                      onChange={(e) => setFormData({ ...formData, race_date: e.target.value })}
+                      required
+                      className="ytm-hist-input"
+                    />
+                  </div>
+
+                  {/* Finish Time */}
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7D9CB8' }}>
+                      Finish Time <span style={{ color: '#FF5722' }}>*</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                        <input
+                          ref={timeHRef}
+                          type="number"
+                          min="0"
+                          max="99"
+                          value={formData.time_h}
+                          onChange={(e) => {
+                            setFormData({ ...formData, time_h: e.target.value });
+                            if (e.target.value.length >= 2) timeMRef.current?.focus();
+                          }}
+                          required
+                          className="ytm-hist-input"
+                          style={{ width: '64px', textAlign: 'center' }}
+                          placeholder="0"
+                        />
+                        <span style={{ fontSize: '0.65rem', color: 'rgba(125,156,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>hr</span>
+                      </div>
+                      <span style={{ color: '#7D9CB8', fontSize: '1.2rem', fontWeight: '300', paddingBottom: '18px' }}>:</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                        <input
+                          ref={timeMRef}
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={formData.time_m}
+                          onChange={(e) => {
+                            setFormData({ ...formData, time_m: e.target.value });
+                            if (e.target.value.length >= 2) timeSRef.current?.focus();
+                          }}
+                          required
+                          className="ytm-hist-input"
+                          style={{ width: '64px', textAlign: 'center' }}
+                          placeholder="00"
+                        />
+                        <span style={{ fontSize: '0.65rem', color: 'rgba(125,156,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>min</span>
+                      </div>
+                      <span style={{ color: '#7D9CB8', fontSize: '1.2rem', fontWeight: '300', paddingBottom: '18px' }}>:</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                        <input
+                          ref={timeSRef}
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={formData.time_s}
+                          onChange={(e) => setFormData({ ...formData, time_s: e.target.value })}
+                          className="ytm-hist-input"
+                          style={{ width: '64px', textAlign: 'center' }}
+                          placeholder="00"
+                        />
+                        <span style={{ fontSize: '0.65rem', color: 'rgba(125,156,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>sec</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Actions */}
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleCancelManual}
+                    disabled={isSaving}
+                    style={{
+                      padding: '10px 16px',
+                      background: 'transparent',
+                      color: '#7D9CB8',
+                      border: '1px solid rgba(125,156,184,0.3)',
+                      borderRadius: '4px',
+                      cursor: isSaving ? 'not-allowed' : 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      letterSpacing: '0.05em',
+                      opacity: isSaving ? 0.5 : 1,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    style={{
+                      padding: '10px 24px',
+                      background: isSaving ? 'rgba(255,87,34,0.5)' : '#FF5722',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: isSaving ? 'not-allowed' : 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {isSaving ? 'Working...' : (editingRace ? 'Commit Changes' : 'Log Result')}
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
-      {/* Screenshot Upload Modal */}
+      {/* Screenshot Upload Modal — Tactical */}
       {showScreenshotUpload && (
-        <div style={{
-          backgroundColor: '#f8f9fa',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          border: '2px solid #9b59b6'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#2c3e50' }}>
-            📷 Upload Ultrasignup Screenshot
-          </h3>
-
-          {error && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) handleCancelScreenshot(); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div style={{
+            backgroundColor: '#1B2E4B',
+            backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+            backgroundSize: '4px 4px',
+            border: '1px solid rgba(255,87,34,0.7)',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            width: '100%',
+            maxWidth: '680px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}>
+            {/* Header */}
             <div style={{
-              padding: '12px',
-              backgroundColor: '#fee',
-              border: '1px solid #fcc',
-              borderRadius: '4px',
-              marginBottom: '15px',
-              color: '#c33',
-              fontSize: '14px'
+              background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+              padding: '0.75rem 1.25rem',
+              fontSize: '10px',
+              letterSpacing: '0.15em',
+              fontWeight: '700',
+              color: '#1B2E4B',
+              textTransform: 'uppercase',
             }}>
-              {error}
+              Import Race Results
             </div>
-          )}
 
-          {/* File Picker */}
-          {extractedRaces.length === 0 && (
-            <div>
-              <div style={{
-                border: '2px dashed #9b59b6',
-                borderRadius: '8px',
-                padding: '30px',
-                textAlign: 'center',
-                marginBottom: '20px',
-                backgroundColor: 'white'
-              }}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  style={{ marginBottom: '15px' }}
-                />
-                {selectedFile && (
-                  <div style={{ marginTop: '10px', color: '#7f8c8d', fontSize: '14px' }}>
-                    Selected: {selectedFile.name}
-                  </div>
-                )}
-              </div>
+            <div style={{ padding: '20px' }}>
+              {error && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  borderRadius: '4px',
+                  marginBottom: '16px',
+                  color: '#fca5a5',
+                  fontSize: '13px',
+                }}>
+                  {error}
+                </div>
+              )}
 
-              {/* Upload Progress */}
-              {isUploading && (
-                <div style={{ marginBottom: '20px' }}>
+              {/* File Picker */}
+              {extractedRaces.length === 0 && (
+                <div>
+                  {/* Drop zone */}
                   <div style={{
-                    height: '30px',
-                    backgroundColor: '#e1e8ed',
-                    borderRadius: '15px',
-                    overflow: 'hidden',
-                    position: 'relative'
+                    border: '1px dashed rgba(125,156,184,0.4)',
+                    borderRadius: '4px',
+                    padding: '24px',
+                    textAlign: 'center',
+                    marginBottom: '16px',
+                    background: 'rgba(255,255,255,0.04)',
                   }}>
-                    <div style={{
-                      height: '100%',
-                      width: `${uploadProgress}%`,
-                      backgroundColor: '#9b59b6',
-                      transition: 'width 0.3s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '14px',
-                      fontWeight: '600'
-                    }}>
-                      {uploadProgress}%
-                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      style={{ marginBottom: '10px', color: '#E6F0FF' }}
+                    />
+                    {selectedFile && (
+                      <div style={{ marginTop: '8px', color: '#7D9CB8', fontSize: '13px' }}>
+                        {selectedFile.name}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ textAlign: 'center', marginTop: '10px', color: '#7f8c8d', fontSize: '14px' }}>
-                    Analyzing screenshot with AI...
+
+                  {/* Upload Progress */}
+                  {isUploading && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{
+                        height: '6px',
+                        background: 'rgba(255,255,255,0.1)',
+                        borderRadius: '3px',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${uploadProgress}%`,
+                          background: '#FF5722',
+                          transition: 'width 0.3s ease',
+                          borderRadius: '3px',
+                        }} />
+                      </div>
+                      <div style={{ marginTop: '6px', color: '#7D9CB8', fontSize: '12px', letterSpacing: '0.06em' }}>
+                        ANALYZING — {uploadProgress}%
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Instructions */}
+                  <div style={{
+                    padding: '12px 14px',
+                    background: 'rgba(125,156,184,0.08)',
+                    border: '1px solid rgba(125,156,184,0.2)',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    color: 'rgba(230,240,255,0.6)',
+                    marginBottom: '20px',
+                    lineHeight: '1.6',
+                  }}>
+                    Screenshot race results from ultrasignup.com. Ensure names, dates, distances, and times are visible. One screenshot at a time. Review extracted data before committing.
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={handleCancelScreenshot}
+                      disabled={isUploading}
+                      style={{
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        color: '#7D9CB8',
+                        border: '1px solid rgba(125,156,184,0.3)',
+                        borderRadius: '4px',
+                        cursor: isUploading ? 'not-allowed' : 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        opacity: isUploading ? 0.5 : 1,
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleScreenshotUpload}
+                      disabled={!selectedFile || isUploading}
+                      style={{
+                        padding: '10px 24px',
+                        background: (!selectedFile || isUploading) ? 'rgba(255,87,34,0.35)' : '#FF5722',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (!selectedFile || isUploading) ? 'not-allowed' : 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '700',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {isUploading ? 'Parsing...' : 'Parse Screenshot'}
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Upload Instructions */}
-              <div style={{
-                padding: '15px',
-                backgroundColor: '#e8f4f8',
-                borderRadius: '6px',
-                fontSize: '13px',
-                color: '#555',
-                marginBottom: '20px'
-              }}>
-                <strong>📋 Instructions:</strong>
-                <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
-                  <li>Screenshot your race results from ultrasignup.com</li>
-                  <li>Make sure race names, dates, distances, and times are clearly visible</li>
-                  <li>Upload one screenshot at a time</li>
-                  <li>Review and edit the extracted data before saving</li>
-                </ul>
-              </div>
+              {/* Extracted Races Review */}
+              {extractedRaces.length > 0 && (
+                <div>
+                  <div style={{
+                    padding: '10px 14px',
+                    background: 'rgba(22,163,74,0.15)',
+                    border: '1px solid rgba(22,163,74,0.4)',
+                    borderRadius: '4px',
+                    marginBottom: '16px',
+                    color: '#86efac',
+                    fontSize: '13px',
+                  }}>
+                    {extractedRaces.length} result{extractedRaces.length !== 1 ? 's' : ''} extracted. Review and edit before committing.
+                  </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={handleCancelScreenshot}
-                  disabled={isUploading}
-                  style={{
-                    padding: '10px 20px',
-                    backgroundColor: '#95a5a6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: isUploading ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    opacity: isUploading ? 0.6 : 1
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleScreenshotUpload}
-                  disabled={!selectedFile || isUploading}
-                  style={{
-                    padding: '10px 20px',
-                    backgroundColor: '#9b59b6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: (!selectedFile || isUploading) ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    opacity: (!selectedFile || isUploading) ? 0.6 : 1
-                  }}
-                >
-                  {isUploading ? 'Uploading...' : 'Upload & Parse'}
-                </button>
-              </div>
+                  <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          {['Race Name', 'Distance mi', 'Date', 'Time min'].map(h => (
+                            <th key={h} style={{
+                              padding: '8px 10px',
+                              textAlign: 'left',
+                              fontSize: '0.65rem',
+                              fontWeight: '700',
+                              letterSpacing: '0.1em',
+                              textTransform: 'uppercase',
+                              color: '#7D9CB8',
+                              borderBottom: '1px solid rgba(125,156,184,0.2)',
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {extractedRaces.map((race, index) => (
+                          <tr key={index}>
+                            {(['race_name', 'distance_miles', 'race_date', 'finish_time_minutes'] as const).map((field) => (
+                              <td key={field} style={{ padding: '6px 4px' }}>
+                                <input
+                                  type={field === 'race_date' ? 'date' : field === 'race_name' ? 'text' : 'number'}
+                                  value={(race as any)[field]}
+                                  onChange={(e) => handleExtractedRaceEdit(index, field, e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 8px',
+                                    background: race.error ? '#2a1a1a' : '#162440',
+                                    border: `1px solid ${race.error ? 'rgba(239,68,68,0.4)' : 'rgba(125,156,184,0.3)'}`,
+                                    borderRadius: '3px',
+                                    fontSize: '13px',
+                                    color: '#E6F0FF',
+                                  }}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Bulk Save Actions */}
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={handleCancelScreenshot}
+                      disabled={isSaving}
+                      style={{
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        color: '#7D9CB8',
+                        border: '1px solid rgba(125,156,184,0.3)',
+                        borderRadius: '4px',
+                        cursor: isSaving ? 'not-allowed' : 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        opacity: isSaving ? 0.5 : 1,
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleBulkSave}
+                      disabled={isSaving}
+                      style={{
+                        padding: '10px 24px',
+                        background: isSaving ? 'rgba(255,87,34,0.5)' : '#FF5722',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: isSaving ? 'not-allowed' : 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '700',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {isSaving ? 'Working...' : `Commit ${extractedRaces.length} Result${extractedRaces.length !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-
-          {/* Extracted Races Review Table */}
-          {extractedRaces.length > 0 && (
-            <div>
-              <div style={{
-                backgroundColor: '#d1f2eb',
-                padding: '12px',
-                borderRadius: '6px',
-                marginBottom: '15px',
-                fontSize: '14px',
-                color: '#0e6655'
-              }}>
-                ✅ Found {extractedRaces.length} race(s)! Review and edit if needed, then save.
-              </div>
-
-              <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#e1e8ed' }}>
-                      <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Race Name</th>
-                      <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Distance (mi)</th>
-                      <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Date</th>
-                      <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Time (min)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {extractedRaces.map((race, index) => (
-                      <tr key={index} style={{ backgroundColor: race.error ? '#fee' : 'white' }}>
-                        <td style={{ padding: '8px', border: '1px solid #ccc' }}>
-                          <input
-                            type="text"
-                            value={race.race_name}
-                            onChange={(e) => handleExtractedRaceEdit(index, 'race_name', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              border: '1px solid #ddd',
-                              borderRadius: '3px',
-                              fontSize: '13px'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px', border: '1px solid #ccc' }}>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={race.distance_miles}
-                            onChange={(e) => handleExtractedRaceEdit(index, 'distance_miles', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              border: '1px solid #ddd',
-                              borderRadius: '3px',
-                              fontSize: '13px'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px', border: '1px solid #ccc' }}>
-                          <input
-                            type="date"
-                            value={race.race_date}
-                            onChange={(e) => handleExtractedRaceEdit(index, 'race_date', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              border: '1px solid #ddd',
-                              borderRadius: '3px',
-                              fontSize: '13px'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px', border: '1px solid #ccc' }}>
-                          <input
-                            type="number"
-                            value={race.finish_time_minutes}
-                            onChange={(e) => handleExtractedRaceEdit(index, 'finish_time_minutes', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '6px',
-                              border: '1px solid #ddd',
-                              borderRadius: '3px',
-                              fontSize: '13px'
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Bulk Save Actions */}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={handleCancelScreenshot}
-                  disabled={isSaving}
-                  style={{
-                    padding: '10px 20px',
-                    backgroundColor: '#95a5a6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: isSaving ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    opacity: isSaving ? 0.6 : 1
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleBulkSave}
-                  disabled={isSaving}
-                  style={{
-                    padding: '10px 20px',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: isSaving ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    opacity: isSaving ? 0.6 : 1
-                  }}
-                >
-                  {isSaving ? 'Saving...' : `Save ${extractedRaces.length} Race(s)`}
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 
