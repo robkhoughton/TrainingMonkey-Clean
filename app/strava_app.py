@@ -2345,6 +2345,23 @@ def recommendation_conversation_finish():
 # =============================================================================
 
 @login_required
+@app.route('/api/athlete-model/early-warning', methods=['GET'])
+def get_early_warning_endpoint():
+    """Return active early warning from athlete model, if any."""
+    try:
+        model = db_utils.get_athlete_model(current_user.id)
+        if model and model.get('early_warning_active'):
+            return jsonify({
+                'active': True,
+                'message': model.get('early_warning_message'),
+            })
+        return jsonify({'active': False})
+    except Exception as e:
+        logger.error(f"Error in get_early_warning_endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@login_required
 @app.route('/api/alignment-queries/pending', methods=['GET'])
 def get_pending_alignment_query_endpoint():
     """Return the most recent pending/snoozed alignment query for the current user."""
@@ -4491,13 +4508,23 @@ def get_journal_entries():
                 logger.info(f"Marked {entry['date']} as next incomplete workout for user {current_user.id}")
                 break  # Only mark the first (earliest) incomplete entry
 
-        # Filter out future dates that don't have recommendations
-        # Only show future dates if they have an actual recommendation
+        # Filter out future dates that don't have recommendations.
+        # Tomorrow is only shown if today's activity has already been logged —
+        # surfacing tomorrow's plan before today is complete is confusing and
+        # the recommendation was generated from today's autopsy anyway.
+        today_entry = next((e for e in journal_entries if e.get('is_today')), None)
+        today_complete = bool(
+            today_entry and
+            today_entry.get('activity_summary') and
+            today_entry['activity_summary'].get('activity_id') is not None
+        )
+
         journal_entries = [
             entry for entry in journal_entries
             if not entry['is_future'] or (
                 entry['todays_decision'] and
-                'No recommendation available' not in entry['todays_decision']
+                'No recommendation available' not in entry['todays_decision'] and
+                (not entry.get('is_tomorrow') or today_complete)
             )
         ]
 
@@ -5612,6 +5639,21 @@ def save_journal_entry():
                     logger.warning(
                         f"classify_deviation failed for user {current_user.id}, "
                         f"date {date_str}: {classify_err}"
+                    )
+
+            # Update athlete model AFTER Phase C so deviation_reason is available
+            # for threshold calibration in update_athlete_model().
+            if autopsy_generated and alignment_score is not None:
+                try:
+                    from llm_recommendations_module import update_athlete_model
+                    update_athlete_model(current_user.id, {
+                        'alignment_score': alignment_score,
+                        'date': date_str,
+                    })
+                except Exception as model_err:
+                    logger.warning(
+                        f"Athlete model update failed for user {current_user.id}, "
+                        f"date {date_str}: {model_err}"
                     )
 
             # Phase D: Insert alignment query when score is poor and autopsy found nothing significant
@@ -11173,14 +11215,42 @@ def get_athlete_model_api():
             except (TypeError, ValueError):
                 return None
 
+        # Journal coverage: activities with journal entries in last 30 days
+        coverage_rows = db_utils.execute_query(
+            """
+            SELECT
+                COUNT(DISTINCT a.activity_id) AS activity_count,
+                COUNT(DISTINCT j.date)        AS journal_count
+            FROM activities a
+            LEFT JOIN journal_entries j
+                   ON j.user_id = a.user_id AND j.date = a.date
+            WHERE a.user_id = %s
+              AND a.date >= CURRENT_DATE - INTERVAL '30 days'
+              AND a.activity_id > 0
+              AND a.type != 'rest'
+            """,
+            (user_id,),
+            fetch=True
+        )
+        coverage = coverage_rows[0] if coverage_rows else {}
+        activity_count = int(coverage.get('activity_count') or 0)
+        journal_count = int(coverage.get('journal_count') or 0)
+        journal_coverage_pct = round((journal_count / activity_count * 100)) if activity_count > 0 else 0
+
+        total_autopsies = model.get('total_autopsies') or 0
+        div_low = safe_float(model.get('typical_divergence_low'), 3)
+        div_threshold = safe_float(model.get('divergence_injury_threshold'), 3)
+
         payload = {
-            'acwr_sweet_spot_low': safe_float(model.get('acwr_sweet_spot_low')),
-            'acwr_sweet_spot_high': safe_float(model.get('acwr_sweet_spot_high')),
-            'acwr_sweet_spot_confidence': safe_float(model.get('acwr_sweet_spot_confidence'), 4),
             'avg_lifetime_alignment': safe_float(model.get('avg_lifetime_alignment'), 1),
-            'recent_alignment_trend': model.get('recent_alignment_trend'),  # list or None
-            'total_autopsies': model.get('total_autopsies') or 0,
+            'recent_alignment_trend': model.get('recent_alignment_trend'),
+            'total_autopsies': total_autopsies,
             'last_autopsy_date': str(model['last_autopsy_date']) if model.get('last_autopsy_date') else None,
+            'typical_divergence_low': div_low,
+            'divergence_injury_threshold': div_threshold,
+            'journal_count': journal_count,
+            'activity_count': activity_count,
+            'journal_coverage_pct': journal_coverage_pct,
         }
         return jsonify({'success': True, 'model': payload})
     except Exception as e:

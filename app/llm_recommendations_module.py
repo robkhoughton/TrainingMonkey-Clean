@@ -1657,16 +1657,8 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         # Parse autopsy response to extract analysis and alignment score
         autopsy_data = parse_enhanced_autopsy_response(response)
 
-        # Phase 3: Update persistent athlete model after every successful autopsy
-        try:
-            update_athlete_model(user_id, {
-                'alignment_score': autopsy_data['alignment_score'],
-                'date': date_str,
-            })
-        except Exception as model_err:
-            # Model update failure must never break the autopsy result
-            logger.warning(f"Athlete model update failed for user {user_id}: {model_err}")
-
+        # NOTE: update_athlete_model() is called in save_journal_entry() AFTER Phase C
+        # (classify_deviation) so that deviation_reason is available for threshold calibration.
         return autopsy_data
 
     except Exception as e:
@@ -1873,17 +1865,37 @@ def apply_athlete_model_to_thresholds(thresholds, user_id):
         model = get_athlete_model(user_id)
         if not model:
             return thresholds
+
+        calibrated = dict(thresholds)
+        changes = []
+
+        # Override acwr_high_risk from sweet spot (existing logic).
         confidence = model.get('acwr_sweet_spot_confidence') or 0.0
         sweet_high = model.get('acwr_sweet_spot_high')
         if confidence >= MIN_CONFIDENCE and sweet_high:
-            calibrated = dict(thresholds)
             calibrated['acwr_high_risk'] = float(sweet_high)
+            changes.append(f"acwr_high_risk→{sweet_high:.2f}")
+
+        # Override divergence_overtraining from personalized breakdown threshold.
+        # Stored as positive absolute value; applied as negative.
+        # Defaults (0.15 → -0.15) match the balanced style baseline — no-op until calibrated.
+        div_threshold = model.get('divergence_injury_threshold') or 0.15
+        calibrated['divergence_overtraining'] = -float(div_threshold)
+        changes.append(f"divergence_overtraining→{-div_threshold:.3f}")
+
+        # Override divergence_moderate_risk from personalized productive window edge.
+        # Marks the boundary between productive training and elevated stress for this athlete.
+        # Default (-0.05) matches the balanced style baseline — no-op until calibrated.
+        div_low = model.get('typical_divergence_low') or -0.05
+        calibrated['divergence_moderate_risk'] = float(div_low)
+        changes.append(f"divergence_moderate_risk→{div_low:.3f}")
+
+        if changes:
             logger.info(
-                f"Thresholds calibrated for user {user_id}: acwr_high_risk "
-                f"{thresholds['acwr_high_risk']} → {sweet_high:.2f} "
-                f"(athlete model confidence {confidence:.0%})"
+                f"Thresholds calibrated for user {user_id}: {', '.join(changes)}"
             )
-            return calibrated
+        return calibrated
+
     except Exception as e:
         logger.warning(f"Could not apply athlete model to thresholds for user {user_id}: {e}")
     return thresholds
@@ -2102,19 +2114,18 @@ def get_athlete_model_context(user_id):
         sweet_low = model.get('acwr_sweet_spot_low', 0.8) or 0.8
         sweet_high = model.get('acwr_sweet_spot_high', 1.2) or 1.2
         div_low = model.get('typical_divergence_low', -0.05) or -0.05
-        div_high = model.get('typical_divergence_high', 0.05) or 0.05
         div_injury = model.get('divergence_injury_threshold', 0.15) or 0.15
         last_date = model.get('last_autopsy_date', 'unknown')
 
         context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies, confidence {confidence:.0%})
 - ACWR Sweet Spot: {sweet_low:.2f}–{sweet_high:.2f} (athlete-specific, not population default)
-- Typical Divergence Range: {div_low:.3f} to {div_high:.3f}
-- Divergence Injury Threshold: -{div_injury:.3f} (RISK only when current divergence < -{div_injury:.3f}. Positive divergence is always safe — this threshold never applies to positive values)
+- Productive Training Window: 0.000 to {div_low:.3f} (positive divergence = recovery; {div_low:.3f} = hard training edge for this athlete)
+- Breakdown Threshold: {-div_injury:.3f} (RISK only when current divergence < {-div_injury:.3f} — beyond this athlete's productive range)
 - Avg Lifetime Alignment Score: {avg_alignment:.1f}/10
 - Recent Alignment Trend: {trend}
 - Last Autopsy Date: {last_date}
 
-COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence range above instead of population defaults where they differ. Confidence {confidence:.0%} — weight accordingly. The divergence injury threshold is negative — only flag injury risk when current divergence is more negative than this threshold."""
+COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence window above instead of population defaults. Confidence {confidence:.0%} — weight accordingly. Affirm training in the productive window. Flag risk only when divergence exceeds the breakdown threshold."""
 
         return context
 
@@ -2133,6 +2144,10 @@ def update_athlete_model(user_id, autopsy_data):
     Also checks the last 10 autopsies to update divergence_injury_threshold:
     if alignment drops below 5 on days where normalised divergence exceeded a
     threshold, that threshold is updated in the model.
+
+    Computes typical_divergence_low/high from healthy training days (alignment >= 7,
+    no pain, adequate energy) to establish the athlete's personal safe range.
+    Requires N>=5 qualifying days; otherwise leaves the existing value untouched.
 
     Phase 3 — Persistent Athlete Model.
 
@@ -2191,47 +2206,125 @@ def update_athlete_model(user_id, autopsy_data):
             trend = 'insufficient_data'
 
         # Update divergence_injury_threshold:
-        # Check last 10 autopsies joined with activities for normalised_divergence.
-        # If alignment < 5 and divergence exceeded some threshold, update the model.
+        # Collect all physical-cause distress events where divergence is beyond the
+        # athlete's productive training window edge (typical_divergence_low).
+        # Requires N>=3 qualifying events; uses median for robustness.
         new_div_threshold = None
         try:
-            risk_rows = execute_query(
+            current_div_low = (existing or {}).get('typical_divergence_low') or -0.05
+            distress_rows = execute_query(
                 """
-                SELECT a.alignment_score, act.normalized_divergence
+                SELECT act.normalized_divergence
                 FROM ai_autopsies a
                 JOIN activities act ON act.user_id = a.user_id AND act.date = a.date
                 WHERE a.user_id = %s
-                  AND a.alignment_score IS NOT NULL
+                  AND a.deviation_reason = 'physical'
                   AND act.normalized_divergence IS NOT NULL
+                  AND act.normalized_divergence < %s
                 ORDER BY a.date DESC
-                LIMIT 10
+                """,
+                (user_id, current_div_low),
+                fetch=True
+            )
+            if distress_rows and len(distress_rows) >= 3:
+                distress_vals = sorted([r['normalized_divergence'] for r in distress_rows])
+                mid = len(distress_vals) // 2
+                median_div = distress_vals[mid]
+                new_div_threshold = round(abs(median_div), 3)
+                logger.info(
+                    f"Computed breakdown threshold for user {user_id}: "
+                    f"{-new_div_threshold:.3f} (median of {len(distress_vals)} distress events, "
+                    f"anchored to div_low={current_div_low:.3f})"
+                )
+        except Exception as div_err:
+            logger.warning(f"Could not compute divergence_injury_threshold for user {user_id}: {div_err}")
+
+        # Compute typical_divergence_low from healthy training days.
+        # Healthy day = high alignment, no pain reported, adequate energy, real activity.
+        # P20 of the distribution gives the lower edge of the productive training window.
+        # Zero is the natural upper boundary (positive divergence = recovery by definition).
+        # typical_divergence_high is not computed — positive divergence needs no personal calibration.
+        new_div_low = None
+        try:
+            healthy_rows = execute_query(
+                """
+                SELECT act.normalized_divergence
+                FROM activities act
+                JOIN ai_autopsies a ON a.user_id = act.user_id AND a.date = act.date
+                LEFT JOIN journal_entries j ON j.user_id = act.user_id AND j.date = act.date
+                WHERE act.user_id = %s
+                  AND act.normalized_divergence IS NOT NULL
+                  AND act.activity_id > 0
+                  AND act.type != 'rest'
+                  AND a.alignment_score >= 7
+                  AND (j.pain_percentage IS NULL OR j.pain_percentage = 0)
+                  AND (j.energy_level IS NULL OR j.energy_level >= 3)
+                ORDER BY act.date DESC
+                LIMIT 60
                 """,
                 (user_id,),
                 fetch=True
             )
-            if risk_rows:
-                for row in risk_rows:
-                    row_alignment = row['alignment_score']
-                    row_div = row['normalized_divergence']
-                    # Injury risk comes from NEGATIVE divergence (Internal > External).
-                    # Only update threshold for negative divergence events with poor alignment.
-                    if row_alignment < 5 and row_div < -0.05:
-                        # Store as positive absolute value (displayed as negative in prompt)
-                        new_div_threshold = round(abs(row_div), 3)
-                        break  # Use the first (most recent) such event
-        except Exception as div_err:
-            logger.warning(f"Could not compute divergence_injury_threshold update: {div_err}")
+            if healthy_rows and len(healthy_rows) >= 5:
+                div_values = sorted([r['normalized_divergence'] for r in healthy_rows])
+                n = len(div_values)
+                p20_idx = max(0, int(n * 0.20) - 1)
+                new_div_low = round(div_values[p20_idx], 3)
+                logger.info(
+                    f"Computed productive training window edge for user {user_id}: "
+                    f"div_low={new_div_low} (n={n} healthy days)"
+                )
+        except Exception as div_range_err:
+            logger.warning(f"Could not compute typical_divergence_low for user {user_id}: {div_range_err}")
+
+        # Check for sustained physical distress pattern: 2 of last 5 autopsies physical.
+        # Auto-sets or auto-clears early_warning_active based on current pattern.
+        early_warning_active = False
+        early_warning_message = None
+        try:
+            recent_rows = execute_query(
+                """
+                SELECT deviation_reason
+                FROM ai_autopsies
+                WHERE user_id = %s
+                  AND deviation_reason IS NOT NULL
+                ORDER BY date DESC
+                LIMIT 5
+                """,
+                (user_id,),
+                fetch=True
+            )
+            if recent_rows:
+                physical_count = sum(1 for r in recent_rows if r['deviation_reason'] == 'physical')
+                total_classified = len(recent_rows)
+                if physical_count >= 2:
+                    early_warning_active = True
+                    early_warning_message = (
+                        f"Physical distress signals on {physical_count} of your last "
+                        f"{total_classified} workouts. Your coach is monitoring this pattern — "
+                        f"consider reducing load until symptoms resolve."
+                    )
+                    logger.info(
+                        f"Early warning SET for user {user_id}: "
+                        f"{physical_count}/{total_classified} recent workouts physical distress"
+                    )
+        except Exception as ew_err:
+            logger.warning(f"Could not compute early warning for user {user_id}: {ew_err}")
 
         updates = {
             'total_autopsies': new_total,
             'avg_lifetime_alignment': round(new_avg, 3),
             'acwr_sweet_spot_confidence': round(new_confidence, 4),
             'recent_alignment_trend': trend,
+            'early_warning_active': early_warning_active,
+            'early_warning_message': early_warning_message,
         }
         if date_str:
             updates['last_autopsy_date'] = date_str
         if new_div_threshold is not None:
             updates['divergence_injury_threshold'] = new_div_threshold
+        if new_div_low is not None:
+            updates['typical_divergence_low'] = new_div_low
 
         upsert_athlete_model(user_id, updates)
         logger.info(
@@ -3524,6 +3617,30 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
             f"classify_deviation: Tier {tier} deviation logged for user {user_id}, "
             f"date={activity_date_str}, alignment={alignment_score}, reason='{reason}'"
         )
+
+        # --- 10a. Write deviation_reason to ai_autopsies -------------------------
+        # Makes the category queryable for athlete model threshold calibration.
+        if has_injury_flag or has_fatigue_flag:
+            deviation_reason = 'physical'
+        elif external_cause:
+            deviation_reason = 'external'
+        else:
+            deviation_reason = 'unknown'
+        try:
+            execute_query(
+                """
+                UPDATE ai_autopsies
+                SET deviation_reason = %s
+                WHERE user_id = %s AND date = %s
+                """,
+                (deviation_reason, user_id, activity_date_str),
+                fetch=False
+            )
+        except Exception as dr_err:
+            logger.warning(
+                f"classify_deviation: could not write deviation_reason for user {user_id}, "
+                f"date={activity_date_str}: {dr_err}"
+            )
 
         # --- 11. Tier 2: set revision_pending ------------------------------------
         if tier == 2:

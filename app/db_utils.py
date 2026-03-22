@@ -567,6 +567,7 @@ def upsert_athlete_model(user_id, model_data):
             'rpe_calibration_offset', 'rpe_sample_count', 'avg_days_recover_after_hard',
             'total_autopsies', 'avg_lifetime_alignment', 'recent_alignment_trend',
             'last_autopsy_date', 'injury_notes', 'preference_notes',
+            'early_warning_active', 'early_warning_message',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}
@@ -1563,6 +1564,8 @@ def get_pending_alignment_query(user_id):
     """Return the most recent pending or snoozed (and due) alignment query for this user.
 
     A snoozed query is returned only when snooze_until <= today.
+    Queries older than 2 days are not surfaced — context fades and the prompt
+    becomes confusing when shown days after the event.
     Returns a dict with keys (id, activity_date, alignment_score, status), or None.
     """
     try:
@@ -1575,6 +1578,7 @@ def get_pending_alignment_query(user_id):
                 status = 'pending'
                 OR (status = 'snoozed' AND snooze_until <= CURRENT_DATE)
               )
+              AND activity_date >= CURRENT_DATE - INTERVAL '2 days'
             ORDER BY activity_date DESC
             LIMIT 1
             """,

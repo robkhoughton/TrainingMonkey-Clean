@@ -894,6 +894,8 @@ const JournalPage: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   // Phase D: alignment query
   const [pendingQuery, setPendingQuery] = useState<AlignmentQuery | null>(null);
+  // Early warning: physical distress pattern
+  const [earlyWarning, setEarlyWarning] = useState<string | null>(null);
   
   // Modal state for full-screen autopsy display
   const [modalOpen, setModalOpen] = useState(false);
@@ -1249,6 +1251,14 @@ const JournalPage: React.FC = () => {
     fetchPendingAlignmentQuery();
   }, [fetchPendingAlignmentQuery]);
 
+  // Early warning: fetch on mount
+  useEffect(() => {
+    fetch('/api/athlete-model/early-warning', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.active) setEarlyWarning(data.message); })
+      .catch(() => {});
+  }, []);
+
   // Format date for display
   const formatDate = (dateStr: string) => {
     const date = new Date(`${dateStr}T12:00:00Z`);
@@ -1329,6 +1339,41 @@ const JournalPage: React.FC = () => {
           marginBottom: '20px'
         }}>
           {error}
+        </div>
+      )}
+
+      {/* Early warning: physical distress pattern banner */}
+      {earlyWarning && (
+        <div style={{
+          padding: '14px 18px',
+          marginBottom: '16px',
+          backgroundColor: '#fefce8',
+          border: '1px solid #ca8a04',
+          borderLeft: '4px solid #ca8a04',
+          borderRadius: '6px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '12px',
+        }}>
+          <div style={{ color: '#713f12', fontSize: '0.9rem', lineHeight: '1.5' }}>
+            <strong style={{ display: 'block', marginBottom: '4px' }}>Early Warning</strong>
+            {earlyWarning}
+          </div>
+          <button
+            onClick={() => setEarlyWarning(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#92400e',
+              fontSize: '1.1rem',
+              lineHeight: '1',
+              padding: '0',
+              flexShrink: 0,
+            }}
+            aria-label="Dismiss warning"
+          >×</button>
         </div>
       )}
 
