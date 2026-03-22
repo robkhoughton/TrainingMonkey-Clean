@@ -5421,6 +5421,7 @@ def save_journal_entry():
 
         # EXISTING AUTOPSY TRIGGER LOGIC - ONLY ENHANCED WITH BETTER TRACKING
         autopsy_generated = False
+        autopsy_is_fallback = False
         autopsy_error = None
         is_rest_day = data.get('is_rest_day', False)  # NEW: Rest day flag
 
@@ -5585,7 +5586,7 @@ def save_journal_entry():
             alignment_score = None
             try:
                 logger.info(f"🔍 Step 1: Generating autopsy for {date_str}")
-                generate_autopsy_for_date(date_str, current_user.id)
+                autopsy_is_fallback = generate_autopsy_for_date(date_str, current_user.id) or False
                 autopsy_generated = True
                 logger.info(f"✅ Autopsy generated for {date_str}")
                 
@@ -5643,7 +5644,9 @@ def save_journal_entry():
 
             # Update athlete model AFTER Phase C so deviation_reason is available
             # for threshold calibration in update_athlete_model().
-            if autopsy_generated and alignment_score is not None:
+            # Skip when the autopsy is a fallback — it uses a hardcoded score=6 that
+            # does not reflect real compliance and would bias avg_lifetime_alignment.
+            if autopsy_generated and alignment_score is not None and not autopsy_is_fallback:
                 try:
                     from llm_recommendations_module import update_athlete_model
                     update_athlete_model(current_user.id, {
@@ -5948,9 +5951,11 @@ def generate_autopsy_for_date(date_str, user_id):
         )
 
         # Extract analysis and alignment score from enhanced result
+        is_fallback = False
         if isinstance(autopsy_result, dict):
             autopsy_analysis = autopsy_result.get('analysis', '')
             alignment_score = autopsy_result.get('alignment_score', 5)
+            is_fallback = autopsy_result.get('is_fallback', False)
         else:
             # Fallback for old format
             autopsy_analysis = autopsy_result if autopsy_result else ''
@@ -5979,6 +5984,7 @@ def generate_autopsy_for_date(date_str, user_id):
         ))
 
         logger.info(f"Successfully generated and saved enhanced AI autopsy for user {user_id} on {date_str}")
+        return is_fallback
 
     except Exception as e:
         logger.error(f"Error generating enhanced autopsy for {date_str}, user {user_id}: {str(e)}")

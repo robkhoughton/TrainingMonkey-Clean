@@ -980,10 +980,15 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         alignment_trend = autopsy_insights.get('alignment_trend', [])
         trend_description = "improving" if len(alignment_trend) >= 2 and alignment_trend[-1] > alignment_trend[0] else "mixed"
         
+        reason_breakdown = autopsy_insights.get('reason_breakdown', {})
+        reason_parts = [f"{v} {k}" for k, v in reason_breakdown.items() if v > 0]
+        reason_str = ", ".join(reason_parts) if reason_parts else "none classified"
+
         autopsy_context = f"""
 ### RECENT AUTOPSY LEARNING ({autopsy_insights['count']} analyses)
 - Average Alignment Score: {autopsy_insights['avg_alignment']:.1f}/10
 - Alignment Trend: {trend_description} ({alignment_trend})
+- Deviation Causes: {reason_str}
 - Latest Insights: {autopsy_insights.get('latest_insights', 'No specific insights')[:200]}
 
 **COACHING ADAPTATION STRATEGY:**
@@ -1049,14 +1054,28 @@ Today is {day_of_week}. Today's prescribed session: {todays_prescribed}
 Strategic notes: {strategic_notes}
 Safety constraints (ACWR thresholds, injury flags) take precedence over plan targets.
 """
+            # 2-C: Append deviation log / revision pending summary when present
+            deviation_log = week_ctx.get('deviation_log') or []
+            revision_pending = week_ctx.get('revision_pending') or False
+            if deviation_log or revision_pending:
+                weekly_context_block += f"This week's deviation count: {len(deviation_log)}"
+                if revision_pending:
+                    weekly_context_block += " | Plan revision pending — a mid-week adjustment has been proposed."
+                weekly_context_block += "\n"
         else:
             weekly_context_block = """
 ### WEEKLY CONTEXT
 [No weekly plan active — recommendation generated independently]
 """
     except Exception as e:
-        logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Continuing without weekly context.")
-        weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics only]\n"
+        logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Falling back to race goals.")
+        try:
+            from coach_recommendations import get_race_goals, format_race_goals_for_prompt
+            fallback_goals = get_race_goals(user_id)
+            goals_str = format_race_goals_for_prompt(fallback_goals)
+            weekly_context_block = f"\n### WEEKLY CONTEXT\n[Weekly plan unavailable — using race goals directly]\n{goals_str}\n"
+        except Exception:
+            weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics only]\n"
 
     # Build the enhanced prompt with tone integration and risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
@@ -2133,7 +2152,7 @@ COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence win
 
     except Exception as e:
         logger.error(f"Error building athlete model context for user {user_id}: {e}")
-        return "ATHLETE MODEL: LEARNING (building athlete model — insufficient data yet)"
+        return "ATHLETE MODEL: UNAVAILABLE (fetch error — using population defaults)"
 
 
 def update_athlete_model(user_id, autopsy_data):
@@ -2157,12 +2176,6 @@ def update_athlete_model(user_id, autopsy_data):
         user_id (int): User ID.
         autopsy_data (dict): Must contain 'alignment_score' (int/float) and 'date' (str YYYY-MM-DD).
     """
-    # Fallback autopsies use a hardcoded score=6 that does not reflect real compliance.
-    # Updating the model with synthetic data would bias avg_lifetime_alignment toward 6.
-    if autopsy_data.get('is_fallback'):
-        logger.info(f"Skipping athlete model update for user {user_id}: autopsy is a fallback.")
-        return
-
     try:
         alignment_score = float(autopsy_data.get('alignment_score', 5))
         date_str = autopsy_data.get('date')
@@ -2357,7 +2370,7 @@ def get_recent_autopsy_insights(user_id, days=3):
 
         recent_autopsies = execute_query(
             """
-            SELECT date, autopsy_analysis, alignment_score, generated_at
+            SELECT date, autopsy_analysis, alignment_score, deviation_reason, generated_at
             FROM ai_autopsies
             WHERE user_id = %s AND date >= %s
             ORDER BY date DESC
@@ -2389,11 +2402,18 @@ def get_recent_autopsy_insights(user_id, days=3):
 
         avg_alignment = sum(alignment_scores) / len(alignment_scores) if alignment_scores else 5
 
+        reason_breakdown = {
+            'physical': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'physical'),
+            'external': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'external'),
+            'unknown': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'unknown'),
+        }
+
         return {
             'count': len(recent_autopsies),
             'avg_alignment': round(avg_alignment, 1),
             'latest_insights': key_insights[0] if key_insights else None,
-            'alignment_trend': alignment_scores[-3:] if len(alignment_scores) >= 3 else alignment_scores
+            'alignment_trend': alignment_scores[-3:] if len(alignment_scores) >= 3 else alignment_scores,
+            'reason_breakdown': reason_breakdown,
         }
 
     except Exception as e:

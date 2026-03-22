@@ -33,6 +33,7 @@ from llm_recommendations_module import (
     get_adjusted_thresholds,
     apply_athlete_model_to_thresholds,
     analyze_pattern_flags,
+    get_recent_autopsy_insights,
     MODEL_HAIKU,
 )
 from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
@@ -307,35 +308,6 @@ def get_recent_journal_observations(user_id: int, days: int = 7) -> List[Dict]:
     return observations
 
 
-def get_recent_autopsy_insights(user_id: int, days: int = 7) -> Optional[Dict]:
-    """Fetch recent autopsy analyses for learning integration."""
-    query = """
-        SELECT alignment_score, autopsy_analysis, date
-        FROM ai_autopsies
-        WHERE user_id = %s
-        AND date >= CURRENT_DATE - INTERVAL '%s days'
-        AND alignment_score IS NOT NULL
-        ORDER BY date DESC
-    """
-    results = execute_query(query, (user_id, days), fetch=True)
-    
-    if not results or len(results) == 0:
-        return None
-    
-    scores = [row['alignment_score'] for row in results if row['alignment_score']]
-    avg_score = sum(scores) / len(scores) if scores else 0
-    
-    # Get most recent insights summary (first 200 chars)
-    latest_insights = results[0]['autopsy_analysis'][:200] if results[0]['autopsy_analysis'] else ""
-    
-    return {
-        'count': len(results),
-        'avg_alignment': round(avg_score, 1),
-        'alignment_scores': scores,
-        'latest_insights': latest_insights
-    }
-
-
 def format_race_goals_for_prompt(race_goals: List[Dict]) -> str:
     """Format race goals as readable text for LLM prompt."""
     if not race_goals:
@@ -556,6 +528,7 @@ Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags.get('warnings')
 **AUTOPSY LEARNING**
 
 {f"Recent Analyses: {autopsy_insights['count']} autopsies, Average Alignment: {autopsy_insights['avg_alignment']}/10" if autopsy_insights else "No recent autopsy data available"}
+{(lambda rb: f"Deviation Causes: {', '.join(f'{v} {k}' for k, v in rb.items() if v > 0) or 'none classified'}")(autopsy_insights['reason_breakdown']) if autopsy_insights and autopsy_insights.get('reason_breakdown') else ""}
 {f"Key Learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
 
 **LAST WEEK IN REVIEW**
