@@ -1056,7 +1056,7 @@ Safety constraints (ACWR thresholds, injury flags) take precedence over plan tar
 """
     except Exception as e:
         logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Continuing without weekly context.")
-        weekly_context_block = ""
+        weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics only]\n"
 
     # Build the enhanced prompt with tone integration and risk tolerance context
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
@@ -2073,14 +2073,16 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
 
         return {
             'analysis': analysis,
-            'alignment_score': alignment_score
+            'alignment_score': alignment_score,
+            'is_fallback': True,
         }
 
     except Exception as e:
         logger.error(f"Error generating enhanced fallback autopsy: {str(e)}")
         return {
             'analysis': f"Enhanced autopsy generation failed: {str(e)}",
-            'alignment_score': 5
+            'alignment_score': 5,
+            'is_fallback': True,
         }
 
 
@@ -2131,7 +2133,7 @@ COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence win
 
     except Exception as e:
         logger.error(f"Error building athlete model context for user {user_id}: {e}")
-        return ""
+        return "ATHLETE MODEL: LEARNING (building athlete model — insufficient data yet)"
 
 
 def update_athlete_model(user_id, autopsy_data):
@@ -2155,6 +2157,12 @@ def update_athlete_model(user_id, autopsy_data):
         user_id (int): User ID.
         autopsy_data (dict): Must contain 'alignment_score' (int/float) and 'date' (str YYYY-MM-DD).
     """
+    # Fallback autopsies use a hardcoded score=6 that does not reflect real compliance.
+    # Updating the model with synthetic data would bias avg_lifetime_alignment toward 6.
+    if autopsy_data.get('is_fallback'):
+        logger.info(f"Skipping athlete model update for user {user_id}: autopsy is a fallback.")
+        return
+
     try:
         alignment_score = float(autopsy_data.get('alignment_score', 5))
         date_str = autopsy_data.get('date')
@@ -2195,10 +2203,12 @@ def update_athlete_model(user_id, autopsy_data):
         recent_scores = [r['alignment_score'] for r in (recent_scores_rows or [])]
 
         if len(recent_scores) >= 3:
-            # Scores are in DESC order (most recent first)
-            if recent_scores[0] > recent_scores[1] > recent_scores[2]:
+            # Scores are in DESC order (most recent first).
+            # Use endpoint comparison (most recent vs. oldest) to detect directional
+            # movement — strict monotonicity nearly always produced 'stable'.
+            if recent_scores[0] > recent_scores[-1]:
                 trend = 'improving'
-            elif recent_scores[0] < recent_scores[1] < recent_scores[2]:
+            elif recent_scores[0] < recent_scores[-1]:
                 trend = 'declining'
             else:
                 trend = 'stable'
@@ -2690,6 +2700,31 @@ COACHING STRATEGY: Standard evidence-based recommendation without learning conte
     target_date_obj = safe_datetime_parse(target_date_str)
     day_name = target_date_obj.strftime('%A')
 
+    # Athlete model context (personalized thresholds + confidence)
+    athlete_model_context = get_athlete_model_context(user_id)
+
+    # Training stage from existing Coach page logic (DB call, not recomputed)
+    training_stage_context = ""
+    try:
+        from coach_recommendations import get_current_training_stage
+        stage_info = get_current_training_stage(user_id)
+        training_stage_context = (
+            f"TRAINING STAGE: {stage_info.get('stage', 'Unknown')}"
+            + (f" | Weeks to {stage_info.get('race_name', 'race')}: {stage_info.get('weeks_to_race', 'N/A')}" if stage_info.get('race_name') else "")
+            + (f" | {stage_info.get('details', '')}" if stage_info.get('details') else "")
+        )
+    except Exception as _e:
+        logger.warning(f"Could not fetch training stage: {_e}")
+
+    # Alignment K of N (raw counts — LLM interprets)
+    alignment_kn_context = ""
+    if autopsy_insights and autopsy_insights.get('alignment_trend'):
+        scores = [s for s in autopsy_insights['alignment_trend'] if isinstance(s, (int, float))]
+        if len(scores) >= 2:
+            n = len(scores)
+            k = sum(1 for s in scores if s >= 7)
+            alignment_kn_context = f"ALIGNMENT: {k} of last {n} workouts scored ≥7 | avg {autopsy_insights.get('avg_alignment', 0):.1f}/10"
+
     prompt = f"""You are an expert endurance coach providing tomorrow's training decision with learning from recent autopsy analyses.
 
 TARGET DATE: {target_date_str} ({day_name})
@@ -2707,6 +2742,12 @@ CURRENT METRICS:
 - Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} [{NORMALIZED_DIVERGENCE_FORMULA}]
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 - 7-day Avg Load: {current_metrics.get('seven_day_avg_load') or 0:.2f} miles/day
+
+{training_stage_context}
+
+{alignment_kn_context}
+
+{athlete_model_context}
 
 {weekly_program_context}
 
@@ -2735,22 +2776,23 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
 
 REQUIRED OUTPUT FORMAT (CRITICAL - FOLLOW EXACTLY):
 
-Your response must have exactly three sections with these headers on their own lines:
+Your response must have exactly ONE section with this header on its own line:
 
 DAILY RECOMMENDATION
 
-[If autopsy available: Begin with brief context referencing yesterday's workout autopsy: "Yesterday's [workout type]: [alignment_score]/10 alignment - [1-sentence key insight]." Then provide tomorrow's specific workout recommendation. Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression) from the Training Reference Framework. Use the athlete's personalized thresholds, not standard ranges. Assessment paragraph + workout details + monitoring guidance. 150-200 words total.]
-
-WEEKLY PLANNING
-
-[Provide weekly strategy analysis: address current ACWR trend, recovery cycle, upcoming week structure. Reference autopsy learning patterns and apply weekly planning priorities from the guide. Adjust recommendations to match the athlete's {recommendation_style} risk tolerance. 100-150 words]
-
-PATTERN INSIGHTS
-
-[Identify 2-3 key observations from recent training patterns and autopsy analyses using the pattern recognition framework. Interpret metrics relative to this athlete's personalized thresholds. What's working well? What needs attention? Forward-looking insights. 75-100 words]
+[Write a training prescription as flowing prose — no bullet points, no numbered lines, no headers within the section. Cover these elements in order:
+1. The planned workout from COACH PAGE WEEKLY PLAN (type, distance, terrain, vert). If no plan exists, note that and prescribe from metrics.
+2. The training stage and what it means for today's effort.
+3. Alignment: cite the K-of-N figure from ALIGNMENT data above and what it says about recent execution.
+4. Metrics: cite External ACWR, Internal ACWR, and Divergence values. Interpret each using the athlete's personal thresholds from ATHLETE MODEL — where are they in their productive training window?
+5. Prescription confidence: state the model confidence % and autopsy count and what that means for trusting this prescription.
+6. Decision: "Proceed as planned." or "Adjust: [specific change] because [one reason]."
+7. 2-3 execution cues (effort zone, terrain, pacing, HR, duration).
+8. If active injury signals: one sentence on managing it this workout.
+100-130 words total.]
 
 CRITICAL REQUIREMENTS:
-- Use the athlete's PERSONALIZED THRESHOLDS listed above, not standard guide thresholds
+- Use the athlete's PERSONALIZED THRESHOLDS from ATHLETE MODEL, not population constants
 - Apply the Training Reference Framework principles throughout
 - Keep each section focused and actionable
 - Reference specific numbers from the metrics
@@ -2761,7 +2803,7 @@ CRITICAL REQUIREMENTS:
 - ENSURE consistency with Coach page weekly plan (if provided) or explain deviations based on metrics
 
 ### STRUCTURED OUTPUT (required)
-After your three prose sections, append a machine-readable JSON block inside XML tags.
+After the DAILY RECOMMENDATION section, append a machine-readable JSON block inside XML tags.
 
 SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
@@ -3085,9 +3127,36 @@ def process_markdown(text):
     # Remove markdown code formatting
     text = re.sub(r'`([^`]+)`', r'\1', text)  # `code` -> code
 
+    # Remove markdown table rows (lines containing | ... | syntax)
+    text = re.sub(r'^\s*\|.*\|\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\|[-| :]+\|\s*$', '', text, flags=re.MULTILINE)
+
+    # Remove horizontal rules (--- or ***)
+    text = re.sub(r'^\s*[-*]{2,}\s*$', '', text, flags=re.MULTILINE)
+
+    # Remove emojis and unicode symbols
+    emoji_pattern = re.compile(
+        "[\U0001F600-\U0001F64F"   # emoticons
+        "\U0001F300-\U0001F5FF"    # symbols & pictographs
+        "\U0001F680-\U0001F6FF"    # transport & map
+        "\U0001F700-\U0001F77F"    # alchemical symbols
+        "\U0001F780-\U0001F7FF"    # geometric shapes
+        "\U0001F800-\U0001F8FF"    # supplemental arrows
+        "\U0001F900-\U0001F9FF"    # supplemental symbols
+        "\U0001FA00-\U0001FA6F"    # chess symbols
+        "\U0001FA70-\U0001FAFF"    # symbols and pictographs extended
+        "\U00002702-\U000027B0"    # dingbats
+        "\U000024C2-\U0001F251"    # enclosed characters
+        "\U00002600-\U000026FF"    # misc symbols (includes ☑ ⚠ etc.)
+        "\U00002700-\U000027BF"    # dingbats
+        "]+", flags=re.UNICODE
+    )
+    text = emoji_pattern.sub('', text)
+
     # Clean up excessive whitespace
-    text = re.sub(r'\n\s*\n', '\n\n', text)  # Normalize line breaks
-    text = re.sub(r'\s+', ' ', text)  # Normalize spaces
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)  # Collapse triple+ blank lines
+    text = re.sub(r'\n\s*\n', '\n\n', text)        # Normalize double blank lines
+    text = re.sub(r'[ \t]+', ' ', text)             # Normalize spaces (preserve newlines)
     text = text.strip()
 
     return text
@@ -3244,6 +3313,16 @@ def generate_recommendations_agentic(user_id, target_date=None):
         days_rest = current_metrics.get('days_since_rest', 0) or 0
 
         # ------------------------------------------------------------------ #
+        # Fetch tone instructions so the agentic path matches standard path   #
+        # ------------------------------------------------------------------ #
+        try:
+            spectrum_value = get_user_coaching_spectrum(user_id)
+            tone_instructions = get_coaching_tone_instructions(spectrum_value)
+        except Exception as tone_err:
+            logger.warning(f"[AGENTIC] Could not fetch tone instructions for user {user_id}: {tone_err}")
+            tone_instructions = ""
+
+        # ------------------------------------------------------------------ #
         # Turn 1 — minimal prompt with metrics + tool list                    #
         # ------------------------------------------------------------------ #
         system_turn1 = (
@@ -3252,6 +3331,7 @@ def generate_recommendations_agentic(user_id, target_date=None):
             "You have access to tools that can retrieve specific athlete data. "
             "Request ONLY the data you need to generate a high-quality daily "
             "training recommendation. Do not request redundant data."
+            + (f"\n\n{tone_instructions}" if tone_instructions else "")
         )
 
         user_turn1 = (
