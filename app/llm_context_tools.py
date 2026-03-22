@@ -255,8 +255,8 @@ def get_athlete_model_tool(user_id: int) -> dict:
     result = _serialize(model)
     logger.info(
         f"get_athlete_model_tool(user={user_id}): "
-        f"confidence={result.get('acwr_sweet_spot_confidence')}, "
-        f"autopsies={result.get('total_autopsies')}"
+        f"autopsies={result.get('total_autopsies')}, "
+        f"div_low_n={result.get('div_low_n')}, threshold_n={result.get('threshold_n')}"
     )
     return result
 

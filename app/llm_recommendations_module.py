@@ -1146,6 +1146,8 @@ Using the Training Reference Framework above and applying the specified coaching
 - Interpret metrics relative to this athlete's personalized thresholds
 - Include forward-looking trend analysis based on recent patterns
 
+PLAN OVERRIDE RULE: If today's prescribed session (from WEEKLY CONTEXT) conflicts with your recommendation (e.g., you recommend recovery but the plan calls for a key session), explicitly state the conflict and safety rationale in your DAILY RECOMMENDATION. Example: "Your plan calls for [X] today, but [metric reason] means today should be [Y] instead."
+
 CRITICAL REQUIREMENTS:
 - Use the ATHLETE'S PERSONALIZED THRESHOLDS, not the standard guide thresholds
 - Apply the specified coaching tone consistently throughout all sections
@@ -1204,7 +1206,11 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
     "generation_timestamp": "ISO8601",
     "coaching_spectrum": 50,
     "risk_tolerance": "{recommendation_style}",
-    "tokens_used": {{"input": 0, "output": 0}}
+    "tokens_used": {{"input": 0, "output": 0}},
+    "athlete_model_injected": false,
+    "div_low_n": 0,
+    "threshold_n": 0,
+    "divergence_overtraining_threshold": 0.0
   }}
 }}
 </structured_output>
@@ -3349,6 +3355,89 @@ def generate_recommendations_agentic(user_id, target_date=None):
             tone_instructions = ""
 
         # ------------------------------------------------------------------ #
+        # Fetch static context not available as tools (4-C parity fix)       #
+        # morning readiness, training guide, weekly strategic context         #
+        # ------------------------------------------------------------------ #
+        static_context_parts = []
+
+        # Morning readiness — same query as standard path
+        try:
+            readiness_data = execute_query(
+                "SELECT sleep_quality, morning_soreness FROM journal_entries "
+                "WHERE user_id = %s AND date = %s",
+                (user_id, target_date),
+                fetch=True
+            )
+            if readiness_data and readiness_data[0]:
+                row = dict(readiness_data[0])
+                sq = row.get('sleep_quality')
+                ms = row.get('morning_soreness')
+                if sq is not None or ms is not None:
+                    sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
+                    r_parts = []
+                    if sq is not None:
+                        r_parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
+                    if ms is not None:
+                        r_parts.append(f"Morning soreness: {ms}/100")
+                    static_context_parts.append(
+                        "### MORNING READINESS\n" + "\n".join(f"- {p}" for p in r_parts)
+                    )
+        except Exception as readiness_err:
+            logger.warning(f"[AGENTIC] Could not fetch morning readiness for user {user_id}: {readiness_err}")
+
+        # Weekly strategic context — not available via get_weekly_program_day tool
+        try:
+            week_ctx = get_current_week_context(user_id)
+            if week_ctx:
+                summary = week_ctx.get('strategic_summary') or {}
+                stage = summary.get('training_stage', 'unknown')
+                intensity = summary.get('weekly_intensity_target', 'unknown')
+                load_low = summary.get('load_target_low', 'N/A')
+                load_high = summary.get('load_target_high', 'N/A')
+                strategic_notes = summary.get('strategic_notes', '')
+                deviation_log = week_ctx.get('deviation_log') or []
+                revision_pending = week_ctx.get('revision_pending') or False
+                wk_lines = [
+                    f"Training stage: {stage} | Intensity target: {intensity} | Load range: {load_low}–{load_high} ACWR",
+                    f"This week's deviations: {len(deviation_log)}",
+                ]
+                if revision_pending:
+                    wk_lines.append("Plan revision pending — a mid-week adjustment has been proposed.")
+                if strategic_notes:
+                    wk_lines.append(f"Strategic notes: {strategic_notes}")
+                static_context_parts.append(
+                    "### WEEKLY STRATEGIC CONTEXT\n" + "\n".join(wk_lines)
+                )
+        except Exception as wk_err:
+            logger.warning(f"[AGENTIC] Could not fetch weekly context for user {user_id}: {wk_err}")
+
+        # Filtered training guide — critical for framework-grounded recommendations
+        try:
+            training_guide = load_training_guide()
+            if training_guide:
+                ext_acwr_val = current_metrics.get('external_acwr', 0) or 0
+                int_acwr_val = current_metrics.get('internal_acwr', 0) or 0
+                div_val = current_metrics.get('normalized_divergence', 0) or 0
+                days_rest_val = current_metrics.get('days_since_rest', 0) or 0
+                # Derive assessment category using same logic as standard path
+                thresholds_agentic = get_adjusted_thresholds(get_user_recommendation_style(user_id))
+                thresholds_agentic = apply_athlete_model_to_thresholds(thresholds_agentic, user_id)
+                if days_rest_val > thresholds_agentic['days_since_rest_max']:
+                    agentic_category = "mandatory_rest"
+                elif div_val < thresholds_agentic['divergence_overtraining']:
+                    agentic_category = "overtraining_risk"
+                elif ext_acwr_val > thresholds_agentic['acwr_high_risk'] and int_acwr_val > thresholds_agentic['acwr_high_risk']:
+                    agentic_category = "high_acwr_risk"
+                else:
+                    agentic_category = "normal_progression"
+                filtered = _select_guide_sections(training_guide, agentic_category)
+                static_context_parts.append("### TRAINING REFERENCE FRAMEWORK\n" + filtered)
+        except Exception as guide_err:
+            logger.warning(f"[AGENTIC] Could not load training guide for user {user_id}: {guide_err}")
+
+        static_context_block = "\n\n".join(static_context_parts)
+
+        # ------------------------------------------------------------------ #
         # Turn 1 — minimal prompt with metrics + tool list                    #
         # ------------------------------------------------------------------ #
         system_turn1 = (
@@ -3358,6 +3447,7 @@ def generate_recommendations_agentic(user_id, target_date=None):
             "Request ONLY the data you need to generate a high-quality daily "
             "training recommendation. Do not request redundant data."
             + (f"\n\n{tone_instructions}" if tone_instructions else "")
+            + (f"\n\n{static_context_block}" if static_context_block else "")
         )
 
         user_turn1 = (

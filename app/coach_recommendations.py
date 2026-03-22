@@ -477,6 +477,21 @@ def build_weekly_program_prompt(
         fetch=True
     )
     prior_synthesis = synthesis_rows[0] if synthesis_rows else None
+
+    prior_deviation_rows = execute_query(
+        """
+        SELECT deviation_log, week_start_date
+        FROM weekly_programs
+        WHERE user_id = %s
+          AND week_start_date < %s
+          AND deviation_log IS NOT NULL
+        ORDER BY week_start_date DESC
+        LIMIT 1
+        """,
+        (user_id, target_week_start),
+        fetch=True
+    )
+    prior_deviation_log = prior_deviation_rows[0]['deviation_log'] if prior_deviation_rows else []
     athlete_experience = athlete_profile_data[0]['training_experience'].capitalize() if (athlete_profile_data and athlete_profile_data[0].get('training_experience')) else "Intermediate"
     athlete_age = athlete_profile_data[0]['age'] if (athlete_profile_data and athlete_profile_data[0].get('age')) else None
     
@@ -534,6 +549,7 @@ Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags.get('warnings')
 **LAST WEEK IN REVIEW**
 
 {f"Week of {prior_synthesis['week_start_date'].strftime('%B %d')}:{chr(10)}{prior_synthesis['weekly_synthesis']}" if prior_synthesis else "No prior week synthesis available — this is either the first week or synthesis has not yet run."}
+{f"Prior week deviations: {len(prior_deviation_log)} logged" if prior_deviation_log else "No deviation log available."}
 
 **RACE GOALS**
 
