@@ -568,6 +568,7 @@ def upsert_athlete_model(user_id, model_data):
             'total_autopsies', 'avg_lifetime_alignment', 'recent_alignment_trend',
             'last_autopsy_date', 'injury_notes', 'preference_notes',
             'early_warning_active', 'early_warning_message',
+            'div_low_n', 'threshold_n',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}

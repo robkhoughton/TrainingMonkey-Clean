@@ -1872,14 +1872,13 @@ def get_adjusted_thresholds(recommendation_style):
 
 
 def apply_athlete_model_to_thresholds(thresholds, user_id):
-    """Override style-based ACWR ceiling with the athlete's personal sweet spot when the
-    model is sufficiently calibrated (confidence ≥ 15%).
+    """Override style-based divergence thresholds with the athlete's personal values when
+    the model has been calibrated from real autopsy data.
 
     Returns a new dict — never mutates the input.
-    Age, training history, and individual response are all baked into the sweet spot via
-    autopsy learning. Numeric age alone is a poor proxy; this is the correct override.
+    The injury signal framework is divergence-based; ACWR thresholds are not overridden
+    here (the acwr_sweet_spot_low/high fields are retired — see Phase 3-A of QC plan).
     """
-    MIN_CONFIDENCE = 0.15
     try:
         model = get_athlete_model(user_id)
         if not model:
@@ -1887,13 +1886,6 @@ def apply_athlete_model_to_thresholds(thresholds, user_id):
 
         calibrated = dict(thresholds)
         changes = []
-
-        # Override acwr_high_risk from sweet spot (existing logic).
-        confidence = model.get('acwr_sweet_spot_confidence') or 0.0
-        sweet_high = model.get('acwr_sweet_spot_high')
-        if confidence >= MIN_CONFIDENCE and sweet_high:
-            calibrated['acwr_high_risk'] = float(sweet_high)
-            changes.append(f"acwr_high_risk→{sweet_high:.2f}")
 
         # Override divergence_overtraining from personalized breakdown threshold.
         # Stored as positive absolute value; applied as negative.
@@ -2112,41 +2104,47 @@ def get_athlete_model_context(user_id):
 
     Returns:
         str: Multi-line context block ready to embed in a prompt, OR
-             an empty string if no model exists or confidence is below the minimum
-             threshold that indicates the model is still in early learning mode.
+             an empty string if no model exists or the model has fewer than 3 autopsies.
     """
-    MIN_INJECT_CONFIDENCE = 0.15
+    MIN_AUTOPSIES = 3
 
     try:
         model = get_athlete_model(user_id)
         if not model:
             return ""
 
-        confidence = model.get('acwr_sweet_spot_confidence', 0.0) or 0.0
         total_autopsies = model.get('total_autopsies', 0) or 0
 
-        if confidence < MIN_INJECT_CONFIDENCE:
+        if total_autopsies < MIN_AUTOPSIES:
             # Still in learning mode — return a brief note so the LLM is aware
             return "ATHLETE MODEL: LEARNING (building athlete model — insufficient data yet)"
 
         # Sufficient data — build a full context block
         avg_alignment = model.get('avg_lifetime_alignment', 5.0) or 5.0
         trend = model.get('recent_alignment_trend', 'insufficient_data') or 'insufficient_data'
-        sweet_low = model.get('acwr_sweet_spot_low', 0.8) or 0.8
-        sweet_high = model.get('acwr_sweet_spot_high', 1.2) or 1.2
         div_low = model.get('typical_divergence_low', -0.05) or -0.05
         div_injury = model.get('divergence_injury_threshold', 0.15) or 0.15
         last_date = model.get('last_autopsy_date', 'unknown')
+        div_low_n = model.get('div_low_n', 0) or 0
+        threshold_n = model.get('threshold_n', 0) or 0
 
-        context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies, confidence {confidence:.0%})
-- ACWR Sweet Spot: {sweet_low:.2f}–{sweet_high:.2f} (athlete-specific, not population default)
-- Productive Training Window: 0.000 to {div_low:.3f} (positive divergence = recovery; {div_low:.3f} = hard training edge for this athlete)
-- Breakdown Threshold: {-div_injury:.3f} (RISK only when current divergence < {-div_injury:.3f} — beyond this athlete's productive range)
+        div_low_calibration = (
+            f"calibrated from {div_low_n} healthy days" if div_low_n >= 5
+            else "population default — calibrating"
+        )
+        threshold_calibration = (
+            f"calibrated from {threshold_n} distress events" if threshold_n >= 3
+            else "population default — calibrating"
+        )
+
+        context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies)
+- Productive window edge: {div_low:.3f} ({div_low_calibration})
+- Breakdown threshold: {-div_injury:.3f} ({threshold_calibration})
 - Avg Lifetime Alignment Score: {avg_alignment:.1f}/10
 - Recent Alignment Trend: {trend}
 - Last Autopsy Date: {last_date}
 
-COACHING NOTE: Use the athlete's personalized ACWR sweet spot and divergence window above instead of population defaults. Confidence {confidence:.0%} — weight accordingly. Affirm training in the productive window. Flag risk only when divergence exceeds the breakdown threshold."""
+COACHING NOTE: Use the athlete's personalized divergence window above instead of population defaults. Affirm training in the productive window. Flag risk only when divergence exceeds the breakdown threshold."""
 
         return context
 
@@ -2233,6 +2231,7 @@ def update_athlete_model(user_id, autopsy_data):
         # athlete's productive training window edge (typical_divergence_low).
         # Requires N>=3 qualifying events; uses median for robustness.
         new_div_threshold = None
+        new_threshold_n = None
         try:
             current_div_low = (existing or {}).get('typical_divergence_low') or -0.05
             distress_rows = execute_query(
@@ -2254,9 +2253,10 @@ def update_athlete_model(user_id, autopsy_data):
                 mid = len(distress_vals) // 2
                 median_div = distress_vals[mid]
                 new_div_threshold = round(abs(median_div), 3)
+                new_threshold_n = len(distress_vals)
                 logger.info(
                     f"Computed breakdown threshold for user {user_id}: "
-                    f"{-new_div_threshold:.3f} (median of {len(distress_vals)} distress events, "
+                    f"{-new_div_threshold:.3f} (median of {new_threshold_n} distress events, "
                     f"anchored to div_low={current_div_low:.3f})"
                 )
         except Exception as div_err:
@@ -2268,6 +2268,7 @@ def update_athlete_model(user_id, autopsy_data):
         # Zero is the natural upper boundary (positive divergence = recovery by definition).
         # typical_divergence_high is not computed — positive divergence needs no personal calibration.
         new_div_low = None
+        new_div_low_n = None
         try:
             healthy_rows = execute_query(
                 """
@@ -2293,6 +2294,7 @@ def update_athlete_model(user_id, autopsy_data):
                 n = len(div_values)
                 p20_idx = max(0, int(n * 0.20) - 1)
                 new_div_low = round(div_values[p20_idx], 3)
+                new_div_low_n = n
                 logger.info(
                     f"Computed productive training window edge for user {user_id}: "
                     f"div_low={new_div_low} (n={n} healthy days)"
@@ -2346,8 +2348,12 @@ def update_athlete_model(user_id, autopsy_data):
             updates['last_autopsy_date'] = date_str
         if new_div_threshold is not None:
             updates['divergence_injury_threshold'] = new_div_threshold
+        if new_threshold_n is not None:
+            updates['threshold_n'] = new_threshold_n
         if new_div_low is not None:
             updates['typical_divergence_low'] = new_div_low
+        if new_div_low_n is not None:
+            updates['div_low_n'] = new_div_low_n
 
         upsert_athlete_model(user_id, updates)
         logger.info(
