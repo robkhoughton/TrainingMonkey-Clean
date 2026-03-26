@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import YTMSpinner from './YTMSpinner';
 import { createPortal } from 'react-dom';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -142,8 +143,26 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [journalForm, setJournalForm] = useState<{
     energy_level: number | null;
     rpe_score: number | null;
+    pain_percentage: number | null;
     notes: string;
-  }>({ energy_level: null, rpe_score: null, notes: '' });
+  }>({ energy_level: null, rpe_score: null, pain_percentage: null, notes: '' });
+  const [modalPhase, setModalPhase] = useState<'form' | 'processing' | 'autopsy'>('form');
+  const [autopsyModalData, setAutopsyModalData] = useState<{ analysis: string; score: number | null } | null>(null);
+  const [processingMsg, setProcessingMsg] = useState('Saving observations...');
+  const processingMsgIdxRef = useRef(0);
+  const PROCESSING_MESSAGES = ['Saving observations...', 'Analyzing your workout...', 'Building tomorrow\'s plan...', 'Finalizing...'];
+
+  // Cycle processing messages during journal save
+  useEffect(() => {
+    if (modalPhase !== 'processing') return;
+    processingMsgIdxRef.current = 0;
+    setProcessingMsg(PROCESSING_MESSAGES[0]);
+    const timer = setInterval(() => {
+      processingMsgIdxRef.current = Math.min(processingMsgIdxRef.current + 1, PROCESSING_MESSAGES.length - 1);
+      setProcessingMsg(PROCESSING_MESSAGES[processingMsgIdxRef.current]);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [modalPhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSyncComplete = async () => {
     // Check if today's journal observations already exist before prompting
@@ -165,7 +184,9 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     } catch {
       // On error, fall through and show modal anyway
     }
-    setJournalForm({ energy_level: null, rpe_score: null, notes: '' });
+    setJournalForm({ energy_level: null, rpe_score: null, pain_percentage: null, notes: '' });
+    setModalPhase('form');
+    setAutopsyModalData(null);
     setShowJournalModal(true);
   };
 
@@ -922,6 +943,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
   const handleJournalSave = async () => {
     const today = new Date().toISOString().split('T')[0];
+    setModalPhase('processing');
     try {
       const response = await fetch('/api/journal', {
         method: 'POST',
@@ -930,215 +952,168 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           date: today,
           energy_level: journalForm.energy_level,
           rpe_score: journalForm.rpe_score,
+          pain_percentage: journalForm.pain_percentage,
           notes: journalForm.notes || null,
         }),
       });
-      if (!response.ok) {
-        console.error('Journal save failed:', await response.text());
+      const data = await response.json();
+      if (data.autopsy_analysis) {
+        setAutopsyModalData({ analysis: data.autopsy_analysis, score: data.alignment_score ?? null });
+        setModalPhase('autopsy');
+      } else {
+        setShowJournalModal(false);
+        onNavigateToTab?.('journal');
       }
     } catch (err) {
       console.error('Journal save error:', err);
+      setShowJournalModal(false);
+      window.location.reload();
     }
-    setShowJournalModal(false);
-    window.location.reload();
   };
 
   // Main dashboard render
   return (
     <div className={styles.container}>
-      {/* Post-Sync Journal Prompt Modal (Phase 6A) */}
-      {showJournalModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            backgroundColor: '#1B2E4B',
-            borderRadius: '10px',
-            padding: '28px 28px 24px',
-            width: '100%',
-            maxWidth: '460px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(125,156,184,0.15)',
-          }}>
-            {/* Header */}
-            <div style={{ marginBottom: '22px' }}>
-              <h2 style={{
-                margin: '0 0 6px',
-                fontFamily: '"DM Serif Display", Georgia, serif',
-                fontSize: '1.625rem',
-                fontWeight: '400',
-                color: '#ffffff',
-                lineHeight: '1.2',
-                letterSpacing: '-0.01em',
-              }}>
-                What your watch can't tell us
-              </h2>
-              {syncedActivityName && syncedActivityName !== 'your workout' && (
-                <p style={{
-                  margin: 0,
-                  fontSize: '0.8rem',
-                  color: '#7D9CB8',
-                  fontStyle: 'italic',
-                  letterSpacing: '0.02em',
-                }}>
-                  {syncedActivityName}
-                </p>
+      {/* Post-Sync Journal Prompt Modal — 3-phase */}
+      {showJournalModal && (() => {
+        const CARBON_BG = {
+          backgroundColor: '#1B2E4B',
+          backgroundImage: [
+            'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+            'linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+            'linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+            'linear-gradient(45deg,  rgba(255,255,255,0.04) 25%, transparent 25%)',
+          ].join(', '),
+          backgroundSize: '4px 4px',
+        };
+        const fieldLabel: React.CSSProperties = {
+          display: 'block', marginBottom: '8px',
+          fontSize: '0.72rem', fontWeight: 700,
+          color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.08em',
+        };
+        const btnOff: React.CSSProperties = {
+          padding: '6px 0', minWidth: '38px',
+          background: 'rgba(230,240,255,0.05)', border: '1px solid rgba(125,156,184,0.22)',
+          borderRadius: '4px', fontSize: '13px', fontWeight: 600,
+          color: '#7D9CB8', cursor: 'pointer', transition: 'all 0.13s',
+        };
+        const btnOn: React.CSSProperties = {
+          ...btnOff, background: 'rgba(255,87,34,0.14)',
+          border: '1px solid rgba(255,87,34,0.55)', color: '#E6F0FF',
+          boxShadow: '0 0 8px rgba(255,87,34,0.18)',
+        };
+        const btnPainOff: React.CSSProperties = {
+          ...btnOff, border: '1px solid rgba(220,38,38,0.3)', color: '#fca5a5',
+        };
+        const btnPainOn: React.CSSProperties = {
+          ...btnPainOff, background: 'rgba(220,38,38,0.18)',
+          border: '1px solid rgba(220,38,38,0.7)', boxShadow: '0 0 8px rgba(220,38,38,0.2)',
+        };
+        const complete = journalForm.energy_level !== null && journalForm.rpe_score !== null && journalForm.pain_percentage !== null;
+        const scoreColor = (s: number | null) => s === null ? '#7D9CB8' : s >= 7 ? '#16A34A' : s >= 4 ? '#f59e0b' : '#dc2626';
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
+            <style>{`
+              @keyframes ytm-modal-in { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+              @keyframes ytm-phase-fade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+            `}</style>
+            <div style={{ ...CARBON_BG, border: '1px solid rgba(255,87,34,0.65)', borderRadius: '8px', overflow: 'hidden', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', animation: 'ytm-modal-in 0.24s cubic-bezier(0.22,1,0.36,1)', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}>
+
+              {/* ── FORM PHASE ── */}
+              {modalPhase === 'form' && (
+                <div style={{ animation: 'ytm-phase-fade 0.18s ease' }}>
+                  <div style={{ background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)', padding: '12px 24px' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>Post-Workout Debrief</span>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'white', marginTop: '2px' }}>How was today's session?</div>
+                    {syncedActivityName && syncedActivityName !== 'your workout' && (
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(230,240,255,0.6)', marginTop: '2px', fontStyle: 'italic' }}>{syncedActivityName}</div>
+                    )}
+                  </div>
+                  <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                    {/* Energy */}
+                    <div>
+                      <span style={fieldLabel}>Energy going in</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {([1,2,3,4,5] as number[]).map(v => (
+                          <button key={v} onClick={() => setJournalForm(f => ({ ...f, energy_level: v }))} title={['','Barely out of bed','Low','Normal','High','Fired up'][v]} style={journalForm.energy_level === v ? btnOn : btnOff}>{v}</button>
+                        ))}
+                        {journalForm.energy_level !== null && (
+                          <span style={{ fontSize: '11px', color: '#7D9CB8', marginLeft: '4px', fontStyle: 'italic' }}>{['','Barely out of bed','Low','Normal','High','Fired up'][journalForm.energy_level]}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* RPE */}
+                    <div>
+                      <span style={fieldLabel}>Effort (RPE)</span>
+                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {[1,2,3,4,5,6,7,8,9,10].map(v => (
+                          <button key={v} onClick={() => setJournalForm(f => ({ ...f, rpe_score: v }))} style={journalForm.rpe_score === v ? btnOn : btnOff}>{v}</button>
+                        ))}
+                        {journalForm.rpe_score !== null && (
+                          <span style={{ fontSize: '11px', color: '#7D9CB8', marginLeft: '4px', fontStyle: 'italic' }}>{journalForm.rpe_score <= 3 ? 'Easy' : journalForm.rpe_score <= 5 ? 'Moderate' : journalForm.rpe_score <= 7 ? 'Hard' : journalForm.rpe_score <= 9 ? 'Very hard' : 'Max effort'}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Pain */}
+                    <div>
+                      <span style={fieldLabel}>Pain — % of time thinking about it</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {[0,20,40,60,80,100].map(v => (
+                          <button key={v} onClick={() => setJournalForm(f => ({ ...f, pain_percentage: v }))} style={journalForm.pain_percentage === v ? (v >= 60 ? btnPainOn : btnOn) : (v >= 60 ? btnPainOff : btnOff)}>{v}%</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
+                      <button onClick={handleJournalSkip} style={{ fontSize: '12px', color: 'rgba(230,240,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>Skip for now</button>
+                      <button onClick={handleJournalSave} disabled={!complete} style={{ padding: '9px 28px', borderRadius: '4px', border: 'none', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: complete ? 'pointer' : 'not-allowed', background: complete ? '#FF5722' : 'rgba(230,240,255,0.07)', color: complete ? 'white' : 'rgba(230,240,255,0.25)', boxShadow: complete ? '0 2px 12px rgba(255,87,34,0.35)' : 'none' }}>Log Debrief</button>
+                    </div>
+                  </div>
+                </div>
               )}
-              <div style={{
-                marginTop: '16px',
-                height: '1px',
-                background: 'linear-gradient(90deg, rgba(125,156,184,0.5) 0%, rgba(27,46,75,0) 100%)',
-              }} />
-            </div>
 
-            {/* Energy level */}
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '0.7rem',
-                fontWeight: '700',
-                color: '#7D9CB8',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-              }}>
-                How did you feel going in?
-              </label>
-              <select
-                value={journalForm.energy_level ?? ''}
-                onChange={(e) => setJournalForm(f => ({ ...f, energy_level: e.target.value ? Number(e.target.value) : null }))}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  border: '1px solid rgba(125,156,184,0.3)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  color: '#E6F0FF',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="" style={{ backgroundColor: '#1B2E4B' }}>Select...</option>
-                <option value="1" style={{ backgroundColor: '#1B2E4B' }}>1 — Barely got out of bed</option>
-                <option value="2" style={{ backgroundColor: '#1B2E4B' }}>2 — Low energy</option>
-                <option value="3" style={{ backgroundColor: '#1B2E4B' }}>3 — Normal</option>
-                <option value="4" style={{ backgroundColor: '#1B2E4B' }}>4 — High energy</option>
-                <option value="5" style={{ backgroundColor: '#1B2E4B' }}>5 — Fired up</option>
-              </select>
-            </div>
+              {/* ── PROCESSING PHASE ── */}
+              {modalPhase === 'processing' && (
+                <div style={{ padding: '52px 24px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px', animation: 'ytm-phase-fade 0.2s ease' }}>
+                  <YTMSpinner size={80} />
+                  <div style={{ color: '#7D9CB8', fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{processingMsg}</div>
+                </div>
+              )}
 
-            {/* RPE */}
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '0.7rem',
-                fontWeight: '700',
-                color: '#7D9CB8',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-              }}>
-                How hard did it feel? (RPE 1–10)
-              </label>
-              <select
-                value={journalForm.rpe_score ?? ''}
-                onChange={(e) => setJournalForm(f => ({ ...f, rpe_score: e.target.value ? Number(e.target.value) : null }))}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  border: '1px solid rgba(125,156,184,0.3)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  color: '#E6F0FF',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="" style={{ backgroundColor: '#1B2E4B' }}>Select...</option>
-                {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                  <option key={n} value={n} style={{ backgroundColor: '#1B2E4B' }}>{n}</option>
-                ))}
-              </select>
-            </div>
+              {/* ── AUTOPSY PHASE ── */}
+              {modalPhase === 'autopsy' && autopsyModalData && (() => {
+                const color = scoreColor(autopsyModalData.score);
+                return (
+                  <div style={{ animation: 'ytm-phase-fade 0.22s ease' }}>
+                    <div style={{ background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>Workout Autopsy</span>
+                      {autopsyModalData.score !== null && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color, border: `1px solid ${color}`, padding: '2px 10px', borderRadius: '10px', background: `${color}18` }}>{autopsyModalData.score}/10</span>
+                      )}
+                    </div>
+                    <div style={{ padding: '20px 24px 24px' }}>
+                      <div style={{ color: '#CBD5E1', fontSize: '0.875rem', lineHeight: '1.75', maxHeight: '48vh', overflowY: 'auto', paddingRight: '6px' }}>
+                        {autopsyModalData.analysis.split('\n').filter(l => l.trim()).map((line, i) => (
+                          <p key={i} style={{ margin: '0 0 10px 0' }}>{line}</p>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '20px', borderTop: '1px solid rgba(125,156,184,0.15)', marginTop: '16px' }}>
+                        <button onClick={() => { setShowJournalModal(false); onNavigateToTab?.('journal'); }} style={{ padding: '9px 28px', borderRadius: '4px', border: 'none', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', background: '#FF5722', color: 'white', boxShadow: '0 2px 12px rgba(255,87,34,0.35)' }}>See Training Plan</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
-            {/* Notes */}
-            <div style={{ marginBottom: '22px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '0.7rem',
-                fontWeight: '700',
-                color: '#7D9CB8',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-              }}>
-                Notes
-              </label>
-              <textarea
-                value={journalForm.notes}
-                onChange={(e) => setJournalForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Anything to add?"
-                rows={3}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  border: '1px solid rgba(125,156,184,0.3)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  color: '#E6F0FF',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                }}
-              />
-            </div>
-
-            {/* Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
-              <button
-                onClick={handleJournalSkip}
-                style={{
-                  padding: '8px 18px',
-                  border: '1px solid rgba(125,156,184,0.25)',
-                  borderRadius: '6px',
-                  backgroundColor: 'transparent',
-                  color: 'rgba(125,156,184,0.7)',
-                  fontSize: '0.8rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  letterSpacing: '0.02em',
-                }}
-              >
-                Skip
-              </button>
-              <button
-                onClick={handleJournalSave}
-                style={{
-                  padding: '9px 22px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  fontSize: '0.875rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  letterSpacing: '0.02em',
-                }}
-              >
-                Save &amp; Continue
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Dashboard Tour (for new users) */}
       <DashboardTour

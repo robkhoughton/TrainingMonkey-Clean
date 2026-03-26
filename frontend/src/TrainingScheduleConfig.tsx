@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import styles from './TrainingLoadDashboard.module.css';
 
 // ============================================================================
@@ -361,588 +362,556 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   // RENDER
   // ============================================================================
 
+  const displayLabel: React.CSSProperties = {
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  };
+
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 className={styles.cardHeader}>Training Schedule & Availability</h2>
-        {!isEditing && hasSchedule && (
-          <button
-            onClick={handleEdit}
-            style={{
-              padding: '6px 16px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              fontWeight: 600
-            }}
-          >
-            Edit Schedule
-          </button>
-        )}
-      </div>
-
-      {/* Success Message */}
-      {successMessage && (
+    <>
+      {/* ── WHITE CARD — always visible ── */}
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        border: '1px solid #d1dce8',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
+        overflow: 'hidden',
+      }}>
+        {/* Gradient header */}
         <div style={{
-          padding: '12px 16px',
-          backgroundColor: 'rgba(22,163,74,0.08)',
-          border: '1px solid rgba(22,163,74,0.3)',
-          borderLeft: '3px solid #16A34A',
-          borderRadius: '4px',
-          marginBottom: '15px',
-          color: '#16A34A',
-          fontSize: '0.875rem',
-          fontWeight: 600
+          background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}>
-          {successMessage}
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+            Training Availability
+          </span>
+          {hasSchedule && (
+            <button
+              onClick={handleEdit}
+              style={{
+                padding: '3px 10px',
+                backgroundColor: 'rgba(255,87,34,0.85)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Edit
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Error Message */}
-      {error && (
-        <div style={{
-          padding: '12px 16px',
-          backgroundColor: 'rgba(220,38,38,0.06)',
-          border: '1px solid rgba(220,38,38,0.3)',
-          borderLeft: '3px solid #dc2626',
-          borderRadius: '4px',
-          marginBottom: '15px',
-          color: '#dc2626',
-          fontSize: '0.875rem'
-        }}>
-          {error}
-        </div>
-      )}
-
-      {/* No Schedule - Show Setup Prompt */}
-      {!hasSchedule && !isEditing && (
-        <div style={{
-          textAlign: 'center',
-          padding: '40px 20px',
-          backgroundColor: '#1B2E4B',
-          borderRadius: '8px',
-          border: '2px dashed rgba(255,87,34,0.45)'
-        }}>
-          <p style={{ fontSize: '15px', marginBottom: '10px', color: '#E6F0FF', fontWeight: 600, margin: '0 0 10px 0' }}>
-            No training schedule configured
-          </p>
-          <p style={{ fontSize: '13px', marginBottom: '24px', color: '#7D9CB8', margin: '0 0 24px 0' }}>
-            Define your weekly availability so the AI can build programs that actually fit your life.
-          </p>
-          <button
-            onClick={handleEdit}
-            style={{
-              padding: '10px 28px',
-              backgroundColor: '#FF5722',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              letterSpacing: '0.06em'
-            }}
-          >
-            CONFIGURE SCHEDULE
-          </button>
-        </div>
-      )}
-
-      {/* Display Schedule (Read-Only) */}
-      {hasSchedule && !isEditing && (
-        <div>
-          {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-            <div style={{
-              padding: '20px',
-              backgroundColor: '#3498db',
-              color: 'white',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '5px' }}>
-                {schedule?.schedule?.total_hours_per_week || 0}h
-              </div>
-              <div style={{ fontSize: '14px', opacity: 0.9 }}>Total Weekly Hours</div>
-            </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: '#2ecc71',
-              color: 'white',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '5px' }}>
-                {availableDays.length}
-              </div>
-              <div style={{ fontSize: '14px', opacity: 0.9 }}>Training Days/Week</div>
-            </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: '#9b59b6',
-              color: 'white',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '5px' }}>
-                {calculateRunningHours()}h
-              </div>
-              <div style={{ fontSize: '14px', opacity: 0.9 }}>Running/Walking</div>
-            </div>
+        {/* Success toast */}
+        {successMessage && (
+          <div style={{
+            padding: '8px 16px',
+            backgroundColor: 'rgba(22,163,74,0.06)',
+            borderBottom: '1px solid rgba(22,163,74,0.2)',
+            color: '#16A34A',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+          }}>
+            {successMessage}
           </div>
+        )}
 
-          {/* Available Days */}
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '13px', marginBottom: '10px', color: '#2c3e50', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Available Training Days</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {DAYS.map(day => (
-                <span
-                  key={day}
-                  style={{
-                    padding: '6px 14px',
-                    backgroundColor: availableDays.includes(day) ? '#2ecc71' : '#e1e8ed',
-                    color: availableDays.includes(day) ? 'white' : '#95a5a6',
-                    borderRadius: '4px',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.06em'
-                  }}
-                >
-                  {day.slice(0, 3).toUpperCase()}
-                </span>
+        {/* No schedule — empty state */}
+        {!hasSchedule && (
+          <div style={{ padding: '28px 20px', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 6px', fontSize: '0.875rem', fontWeight: 600, color: '#1F2937' }}>
+              No schedule configured
+            </p>
+            <p style={{ margin: '0 0 18px', fontSize: '0.78rem', color: '#6b7280' }}>
+              Define your weekly availability so the AI can build programs that fit your life.
+            </p>
+            <button
+              onClick={handleEdit}
+              style={{
+                padding: '7px 20px',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+              }}
+            >
+              Configure Schedule
+            </button>
+          </div>
+        )}
+
+        {/* Read-only data rows */}
+        {hasSchedule && (
+          <div>
+            {/* Stat row */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              borderBottom: '1px solid #f3f4f6',
+            }}>
+              {[
+                { value: `${schedule?.schedule?.total_hours_per_week || 0}h`, label: 'Weekly' },
+                { value: `${availableDays.length}d`, label: 'Days' },
+                { value: `${calculateRunningHours()}h`, label: 'Running' },
+              ].map((stat, i) => (
+                <div key={i} style={{
+                  padding: '12px 8px',
+                  textAlign: 'center',
+                  borderRight: i < 2 ? '1px solid #f3f4f6' : undefined,
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1F2937', lineHeight: 1 }}>
+                    {stat.value}
+                  </div>
+                  <div style={{ ...displayLabel, marginTop: '3px' }}>{stat.label}</div>
+                </div>
               ))}
             </div>
-          </div>
 
-          {/* Supplemental Training */}
-          {(includeStrength || includeMobility || crossTrainingDisciplines.length > 0) && (
-            <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '13px', marginBottom: '10px', color: '#2c3e50', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Supplemental Training</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {includeStrength && (
-                  <div style={{ padding: '8px 14px', backgroundColor: '#e8f4f8', borderRadius: '4px', fontSize: '13px' }}>
-                    <strong>Strength:</strong> {strengthHours}h/week
-                  </div>
-                )}
-                {includeMobility && (
-                  <div style={{ padding: '8px 14px', backgroundColor: '#e8f4f8', borderRadius: '4px', fontSize: '13px' }}>
-                    <strong>Mobility:</strong> {mobilityHours}h/week
-                  </div>
-                )}
-                {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
-                  const disciplineInfo = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
-                  const displayValue = d.allocation_type === 'hours'
-                    ? `${d.allocation_value}h/week`
-                    : `${d.allocation_value}% (${((d.allocation_value / 100) * (schedule?.schedule?.total_hours_per_week || 0)).toFixed(1)}h/week)`;
-                  return (
-                    <div key={d.discipline} style={{ padding: '8px 14px', backgroundColor: '#e8f4f8', borderRadius: '4px', fontSize: '13px' }}>
-                      <strong>{disciplineInfo?.label}:</strong> {displayValue}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Constraints */}
-          {constraints && (
-            <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '13px', marginBottom: '10px', color: '#2c3e50', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Fixed Constraints</h3>
-              <div style={{ padding: '12px 15px', backgroundColor: '#f8f9fa', borderRadius: '4px', fontSize: '13px', color: '#555' }}>
-                {constraints}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit Form — Tactical Dark Panel */}
-      {isEditing && (
-        <div style={{
-          backgroundColor: '#1B2E4B',
-          backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
-          backgroundSize: '4px 4px',
-          border: '1px solid rgba(255,87,34,0.7)',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          maxWidth: '560px'
-        }}>
-          {/* Gradient Header Strip */}
-          <div style={{
-            background: 'linear-gradient(90deg, rgba(230,240,255,0.92) 0%, rgba(125,156,184,0.92) 50%, rgba(27,46,75,0.92) 100%)',
-            padding: '12px 24px'
-          }}>
-            <span style={{
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              letterSpacing: '0.12em',
-              color: '#1B2E4B',
-              textTransform: 'uppercase'
-            }}>
-              {hasSchedule ? 'Modify Training Schedule' : 'Configure Training Schedule'}
-            </span>
-          </div>
-
-          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-
-            {/* Total Weekly Hours */}
-            <div>
-              <label style={tacticalLabel}>
-                Total Weekly Training Hours <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                step="0.5"
-                value={totalHours}
-                onChange={(e) => setTotalHours(parseFloat(e.target.value))}
-                style={{ ...tacticalInput, width: '110px', fontWeight: 600 }}
-              />
-              <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)' }}>
-                Includes all training: running, strength, mobility, cross-training
-              </div>
-            </div>
-
-            {/* Available Training Days — button toggles */}
-            <div>
-              <label style={tacticalLabel}>
-                Training Days <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {/* Training days */}
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ ...displayLabel, marginBottom: '7px' }}>Training Days</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                 {DAYS.map(day => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => handleDayToggle(day)}
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: availableDays.includes(day) ? 'rgba(255,87,34,0.15)' : '#162440',
-                      border: availableDays.includes(day) ? '1px solid #FF5722' : '1px solid rgba(125,156,184,0.35)',
-                      color: availableDays.includes(day) ? '#FF5722' : '#7D9CB8',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.08em'
-                    }}
-                  >
+                  <span key={day} style={{
+                    padding: '3px 8px',
+                    backgroundColor: availableDays.includes(day) ? '#f0f7ff' : '#f9fafb',
+                    border: `1px solid ${availableDays.includes(day) ? '#3b82f6' : '#e5e7eb'}`,
+                    color: availableDays.includes(day) ? '#1d4ed8' : '#d1d5db',
+                    borderRadius: '4px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                  }}>
                     {day.slice(0, 3).toUpperCase()}
-                  </button>
+                  </span>
                 ))}
               </div>
             </div>
 
-            {/* Long Run Days */}
-            {availableDays.length > 0 && (
-              <div>
-                <label style={tacticalLabel}>
-                  Long Run Days <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
-                </label>
-                <div style={{ marginBottom: '10px', fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)' }}>
-                  Which days work for long runs (90+ min)?
+            {/* Long run days */}
+            {longRunDays.length > 0 && (
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{ ...displayLabel, marginBottom: '7px' }}>Long Run Days</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                  {longRunDays.map(day => (
+                    <span key={day} style={{
+                      padding: '3px 8px',
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      color: '#15803d',
+                      borderRadius: '4px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                    }}>
+                      {day.slice(0, 3).toUpperCase()}
+                    </span>
+                  ))}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {DAYS.map(day => {
-                    const isDayAvailable = availableDays.includes(day);
-                    const isSelected = longRunDays.includes(day);
+              </div>
+            )}
+
+            {/* Supplemental */}
+            {(includeStrength || includeMobility || crossTrainingDisciplines.some(d => d.enabled)) && (
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{ ...displayLabel, marginBottom: '7px' }}>Supplemental</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {includeStrength && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: '#6b7280' }}>Strength</span>
+                      <span style={{ fontWeight: 600, color: '#1F2937' }}>{strengthHours}h/wk</span>
+                    </div>
+                  )}
+                  {includeMobility && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: '#6b7280' }}>Mobility</span>
+                      <span style={{ fontWeight: 600, color: '#1F2937' }}>{mobilityHours}h/wk</span>
+                    </div>
+                  )}
+                  {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
+                    const info = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
+                    const val = d.allocation_type === 'hours' ? `${d.allocation_value}h/wk` : `${d.allocation_value}%`;
                     return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => isDayAvailable && handleLongRunDayToggle(day)}
-                        disabled={!isDayAvailable}
-                        style={{
-                          padding: '8px 14px',
-                          backgroundColor: isSelected ? 'rgba(125,156,184,0.18)' : '#162440',
-                          border: isSelected ? '1px solid #7D9CB8' : '1px solid rgba(125,156,184,0.22)',
-                          color: isSelected ? '#E6F0FF' : '#7D9CB8',
-                          borderRadius: '4px',
-                          cursor: isDayAvailable ? 'pointer' : 'default',
-                          fontSize: '0.75rem',
-                          fontWeight: isSelected ? 700 : 500,
-                          letterSpacing: '0.08em',
-                          opacity: isDayAvailable ? 1 : 0.3
-                        }}
-                      >
-                        {day.slice(0, 3).toUpperCase()}
-                      </button>
+                      <div key={d.discipline} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                        <span style={{ color: '#6b7280' }}>{info?.label}</span>
+                        <span style={{ fontWeight: 600, color: '#1F2937' }}>{val}</span>
+                      </div>
                     );
                   })}
                 </div>
               </div>
             )}
 
-            {/* Fixed Constraints */}
-            <div>
-              <label style={tacticalLabel}>
-                Constraints{' '}
-                <span style={{ color: 'rgba(125,156,184,0.5)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
-              </label>
-              <textarea
-                value={constraints}
-                onChange={(e) => setConstraints(e.target.value)}
-                style={{
-                  ...tacticalInput,
-                  width: '100%',
-                  minHeight: '80px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  boxSizing: 'border-box'
-                } as React.CSSProperties}
-                placeholder="e.g., Tuesday max 30 minutes, Need rest day after long runs, Traveling week of March 10..."
-              />
+            {/* Constraints */}
+            {constraints && (
+              <div style={{ padding: '10px 16px' }}>
+                <div style={{ ...displayLabel, marginBottom: '5px' }}>Constraints</div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>{constraints}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── CARBON MODAL — edit overlay (portalled to body to escape sticky context) ── */}
+      {isEditing && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) handleCancel(); }}
+        >
+          <div style={{
+            backgroundColor: '#1B2E4B',
+            backgroundImage: [
+              'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+              'linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+              'linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+              'linear-gradient(45deg,  rgba(255,255,255,0.04) 25%, transparent 25%)',
+            ].join(', '),
+            backgroundSize: '4px 4px',
+            border: '1px solid rgba(255,87,34,0.7)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            width: '100%',
+            maxWidth: '560px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}>
+            {/* Modal header */}
+            <div style={{
+              background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+              padding: '12px 24px',
+            }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+                {hasSchedule ? 'Modify Training Schedule' : 'Configure Training Schedule'}
+              </span>
             </div>
 
-            {/* Supplemental Training */}
-            <div style={{ borderTop: '1px solid rgba(125,156,184,0.25)', paddingTop: '20px' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '6px' }}>
-                Supplemental Training
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)', marginBottom: '16px' }}>
-                Include other training activities in your weekly program
-              </div>
-
-              {/* Strength Training */}
+            {/* Modal error */}
+            {error && (
               <div style={{
-                marginBottom: '10px',
-                padding: '14px',
-                backgroundColor: '#162440',
-                border: '1px solid rgba(125,156,184,0.22)',
-                borderRadius: '4px'
+                margin: '16px 24px 0',
+                padding: '10px 14px',
+                backgroundColor: 'rgba(220,38,38,0.06)',
+                border: '1px solid rgba(220,38,38,0.3)',
+                borderLeft: '3px solid #dc2626',
+                borderRadius: '4px',
+                color: '#dc2626',
+                fontSize: '0.8rem',
               }}>
-                <label style={{ display: 'flex', alignItems: 'center', marginBottom: includeStrength ? '12px' : 0, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={includeStrength}
-                    onChange={(e) => setIncludeStrength(e.target.checked)}
-                    style={{ marginRight: '10px', width: '15px', height: '15px', cursor: 'pointer', accentColor: '#FF5722' }}
-                  />
-                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E6F0FF' }}>Strength Training</span>
+                {error}
+              </div>
+            )}
+
+            <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+              {/* Total Weekly Hours */}
+              <div>
+                <label style={tacticalLabel}>
+                  Total Weekly Training Hours <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
                 </label>
-                {includeStrength && (
-                  <div style={{ paddingLeft: '25px' }}>
-                    <label style={{ ...tacticalLabel, marginBottom: '6px' }}>Hours / Week</label>
-                    <input
-                      type="number"
-                      min="0.5"
-                      max="20"
-                      step="0.5"
-                      value={strengthHours}
-                      onChange={(e) => setStrengthHours(parseFloat(e.target.value))}
-                      style={{ ...tacticalInput, width: '90px' }}
-                    />
-                  </div>
-                )}
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="0.5"
+                  value={totalHours}
+                  onChange={(e) => setTotalHours(parseFloat(e.target.value))}
+                  style={{ ...tacticalInput, width: '110px', fontWeight: 600 }}
+                />
+                <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)' }}>
+                  Includes all training: running, strength, mobility, cross-training
+                </div>
               </div>
 
-              {/* Mobility */}
-              <div style={{
-                marginBottom: '10px',
-                padding: '14px',
-                backgroundColor: '#162440',
-                border: '1px solid rgba(125,156,184,0.22)',
-                borderRadius: '4px'
-              }}>
-                <label style={{ display: 'flex', alignItems: 'center', marginBottom: includeMobility ? '12px' : 0, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={includeMobility}
-                    onChange={(e) => setIncludeMobility(e.target.checked)}
-                    style={{ marginRight: '10px', width: '15px', height: '15px', cursor: 'pointer', accentColor: '#FF5722' }}
-                  />
-                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E6F0FF' }}>Mobility / Yoga / Stretching</span>
+              {/* Training Days */}
+              <div>
+                <label style={tacticalLabel}>
+                  Training Days <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
                 </label>
-                {includeMobility && (
-                  <div style={{ paddingLeft: '25px' }}>
-                    <label style={{ ...tacticalLabel, marginBottom: '6px' }}>Hours / Week</label>
-                    <input
-                      type="number"
-                      min="0.5"
-                      max="10"
-                      step="0.5"
-                      value={mobilityHours}
-                      onChange={(e) => setMobilityHours(parseFloat(e.target.value))}
-                      style={{ ...tacticalInput, width: '90px' }}
-                    />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {DAYS.map(day => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => handleDayToggle(day)}
+                      style={{
+                        padding: '8px 14px',
+                        backgroundColor: availableDays.includes(day) ? 'rgba(255,87,34,0.15)' : '#162440',
+                        border: availableDays.includes(day) ? '1px solid #FF5722' : '1px solid rgba(125,156,184,0.35)',
+                        color: availableDays.includes(day) ? '#FF5722' : '#7D9CB8',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                      }}
+                    >
+                      {day.slice(0, 3).toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Long Run Days */}
+              {availableDays.length > 0 && (
+                <div>
+                  <label style={tacticalLabel}>
+                    Long Run Days <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span>
+                  </label>
+                  <div style={{ marginBottom: '10px', fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)' }}>
+                    Which days work for long runs (90+ min)?
                   </div>
-                )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {DAYS.map(day => {
+                      const isDayAvailable = availableDays.includes(day);
+                      const isLongRunDay = longRunDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => isDayAvailable && handleLongRunDayToggle(day)}
+                          disabled={!isDayAvailable}
+                          style={{
+                            padding: '8px 14px',
+                            backgroundColor: isLongRunDay ? 'rgba(125,156,184,0.18)' : '#162440',
+                            border: isLongRunDay ? '1px solid #7D9CB8' : '1px solid rgba(125,156,184,0.22)',
+                            color: isLongRunDay ? '#E6F0FF' : '#7D9CB8',
+                            borderRadius: '4px',
+                            cursor: isDayAvailable ? 'pointer' : 'default',
+                            fontSize: '0.75rem',
+                            fontWeight: isLongRunDay ? 700 : 500,
+                            letterSpacing: '0.08em',
+                            opacity: isDayAvailable ? 1 : 0.3,
+                          }}
+                        >
+                          {day.slice(0, 3).toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Constraints */}
+              <div>
+                <label style={tacticalLabel}>
+                  Constraints{' '}
+                  <span style={{ color: 'rgba(125,156,184,0.5)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
+                </label>
+                <textarea
+                  value={constraints}
+                  onChange={(e) => setConstraints(e.target.value)}
+                  style={{
+                    ...tacticalInput,
+                    width: '100%',
+                    minHeight: '80px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  } as React.CSSProperties}
+                  placeholder="e.g., Tuesday max 30 minutes, Need rest day after long runs..."
+                />
               </div>
-            </div>
 
-            {/* Cross-Training Activities */}
-            <div>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '6px' }}>
-                Cross-Training Activities
-              </div>
-              <p style={{ fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)', margin: '0 0 14px 0' }}>
-                Specify hours per week or percentage of total training time for each.
-              </p>
+              {/* Supplemental Training */}
+              <div style={{ borderTop: '1px solid rgba(125,156,184,0.25)', paddingTop: '20px' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '6px' }}>
+                  Supplemental Training
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)', marginBottom: '16px' }}>
+                  Include other activities in your weekly program
+                </div>
 
-              {AVAILABLE_DISCIPLINES.map(discipline => {
-                const isEnabled = crossTrainingDisciplines.some(d => d.discipline === discipline.key && d.enabled);
-                const config = crossTrainingDisciplines.find(d => d.discipline === discipline.key);
-
-                return (
-                  <div key={discipline.key} style={{
+                {[
+                  { label: 'Strength Training', checked: includeStrength, setChecked: setIncludeStrength, hours: strengthHours, setHours: setStrengthHours, min: 0.5, max: 20 },
+                  { label: 'Mobility / Yoga / Stretching', checked: includeMobility, setChecked: setIncludeMobility, hours: mobilityHours, setHours: setMobilityHours, min: 0.5, max: 10 },
+                ].map(item => (
+                  <div key={item.label} style={{
                     marginBottom: '10px',
                     padding: '14px',
-                    backgroundColor: isEnabled ? 'rgba(125,156,184,0.08)' : '#162440',
-                    border: isEnabled ? '1px solid rgba(125,156,184,0.45)' : '1px solid rgba(125,156,184,0.2)',
-                    borderRadius: '4px'
+                    backgroundColor: '#162440',
+                    border: '1px solid rgba(125,156,184,0.22)',
+                    borderRadius: '4px',
                   }}>
-                    <label style={{ display: 'flex', alignItems: 'center', marginBottom: isEnabled ? '12px' : 0, cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', marginBottom: item.checked ? '12px' : 0, cursor: 'pointer' }}>
                       <input
                         type="checkbox"
-                        checked={isEnabled}
-                        onChange={() => handleDisciplineToggle(discipline.key)}
+                        checked={item.checked}
+                        onChange={(e) => item.setChecked(e.target.checked)}
                         style={{ marginRight: '10px', width: '15px', height: '15px', cursor: 'pointer', accentColor: '#FF5722' }}
                       />
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E6F0FF' }}>
-                        {discipline.label}
-                      </span>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E6F0FF' }}>{item.label}</span>
                     </label>
-
-                    {isEnabled && config && (
+                    {item.checked && (
                       <div style={{ paddingLeft: '25px' }}>
-                        {/* Allocation Type Toggle */}
-                        <div style={{ display: 'flex', gap: '18px', marginBottom: '10px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.8rem', color: '#7D9CB8' }}>
-                            <input
-                              type="radio"
-                              name={`allocation-${discipline.key}`}
-                              checked={config.allocation_type === 'hours'}
-                              onChange={() => handleDisciplineUpdate(discipline.key, 'allocation_type', 'hours')}
-                              style={{ marginRight: '6px', accentColor: '#FF5722' }}
-                            />
-                            Hours / week
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.8rem', color: '#7D9CB8' }}>
-                            <input
-                              type="radio"
-                              name={`allocation-${discipline.key}`}
-                              checked={config.allocation_type === 'percentage'}
-                              onChange={() => handleDisciplineUpdate(discipline.key, 'allocation_type', 'percentage')}
-                              style={{ marginRight: '6px', accentColor: '#FF5722' }}
-                            />
-                            % of total
-                          </label>
-                        </div>
-
-                        {/* Allocation Value */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            max={config.allocation_type === 'percentage' ? 100 : 40}
-                            step={config.allocation_type === 'percentage' ? 5 : 0.5}
-                            value={config.allocation_value}
-                            onChange={(e) => handleDisciplineUpdate(discipline.key, 'allocation_value', parseFloat(e.target.value) || 0)}
-                            style={{ ...tacticalInput, width: '80px' }}
-                          />
-                          <span style={{ fontSize: '0.8rem', color: '#7D9CB8' }}>
-                            {config.allocation_type === 'hours' ? 'hrs/week' : '%'}
-                          </span>
-                        </div>
+                        <label style={{ ...tacticalLabel, marginBottom: '6px' }}>Hours / Week</label>
+                        <input
+                          type="number"
+                          min={item.min}
+                          max={item.max}
+                          step="0.5"
+                          value={item.hours}
+                          onChange={(e) => item.setHours(parseFloat(e.target.value))}
+                          style={{ ...tacticalInput, width: '90px' }}
+                        />
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Weekly Breakdown Summary */}
-            <div style={{
-              padding: '14px 16px',
-              backgroundColor: 'rgba(22,36,64,0.8)',
-              border: '1px solid rgba(125,156,184,0.3)',
-              borderRadius: '4px'
-            }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
-                Weekly Breakdown
+                ))}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.8rem', color: '#E6F0FF' }}>
-                <div>Running / Walking: <strong>{calculateRunningHours()}h</strong></div>
-                {includeStrength && <div>Strength: <strong>{strengthHours}h</strong></div>}
-                {includeMobility && <div>Mobility: <strong>{mobilityHours}h</strong></div>}
-                {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
-                  const disciplineInfo = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
-                  const displayValue = d.allocation_type === 'hours'
-                    ? `${d.allocation_value}h`
-                    : `${d.allocation_value}% (${((d.allocation_value / 100) * totalHours).toFixed(1)}h)`;
+
+              {/* Cross-Training */}
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '6px' }}>
+                  Cross-Training Activities
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)', margin: '0 0 14px 0' }}>
+                  Hours per week or percentage of total training time.
+                </p>
+                {AVAILABLE_DISCIPLINES.map(discipline => {
+                  const isEnabled = crossTrainingDisciplines.some(d => d.discipline === discipline.key && d.enabled);
+                  const config = crossTrainingDisciplines.find(d => d.discipline === discipline.key);
                   return (
-                    <div key={d.discipline}>{disciplineInfo?.label}: <strong>{displayValue}</strong></div>
+                    <div key={discipline.key} style={{
+                      marginBottom: '10px',
+                      padding: '14px',
+                      backgroundColor: isEnabled ? 'rgba(125,156,184,0.08)' : '#162440',
+                      border: isEnabled ? '1px solid rgba(125,156,184,0.45)' : '1px solid rgba(125,156,184,0.2)',
+                      borderRadius: '4px',
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'center', marginBottom: isEnabled ? '12px' : 0, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={() => handleDisciplineToggle(discipline.key)}
+                          style={{ marginRight: '10px', width: '15px', height: '15px', cursor: 'pointer', accentColor: '#FF5722' }}
+                        />
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E6F0FF' }}>{discipline.label}</span>
+                      </label>
+                      {isEnabled && config && (
+                        <div style={{ paddingLeft: '25px' }}>
+                          <div style={{ display: 'flex', gap: '18px', marginBottom: '10px' }}>
+                            {(['hours', 'percentage'] as const).map(type => (
+                              <label key={type} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.8rem', color: '#7D9CB8' }}>
+                                <input
+                                  type="radio"
+                                  name={`allocation-${discipline.key}`}
+                                  checked={config.allocation_type === type}
+                                  onChange={() => handleDisciplineUpdate(discipline.key, 'allocation_type', type)}
+                                  style={{ marginRight: '6px', accentColor: '#FF5722' }}
+                                />
+                                {type === 'hours' ? 'Hours / week' : '% of total'}
+                              </label>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max={config.allocation_type === 'percentage' ? 100 : 40}
+                              step={config.allocation_type === 'percentage' ? 5 : 0.5}
+                              value={config.allocation_value}
+                              onChange={(e) => handleDisciplineUpdate(discipline.key, 'allocation_value', parseFloat(e.target.value) || 0)}
+                              style={{ ...tacticalInput, width: '80px' }}
+                            />
+                            <span style={{ fontSize: '0.8rem', color: '#7D9CB8' }}>
+                              {config.allocation_type === 'hours' ? 'hrs/week' : '%'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid rgba(125,156,184,0.25)', paddingTop: '8px', marginTop: '4px' }}>
-                  <strong>Total: {totalHours}h/week</strong>
+              </div>
+
+              {/* Weekly Breakdown */}
+              <div style={{
+                padding: '14px 16px',
+                backgroundColor: 'rgba(22,36,64,0.8)',
+                border: '1px solid rgba(125,156,184,0.3)',
+                borderRadius: '4px',
+              }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                  Weekly Breakdown
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.8rem', color: '#E6F0FF' }}>
+                  <div>Running / Walking: <strong>{calculateRunningHours()}h</strong></div>
+                  {includeStrength && <div>Strength: <strong>{strengthHours}h</strong></div>}
+                  {includeMobility && <div>Mobility: <strong>{mobilityHours}h</strong></div>}
+                  {crossTrainingDisciplines.filter(d => d.enabled).map(d => {
+                    const info = AVAILABLE_DISCIPLINES.find(ad => ad.key === d.discipline);
+                    const val = d.allocation_type === 'hours' ? `${d.allocation_value}h` : `${d.allocation_value}% (${((d.allocation_value / 100) * totalHours).toFixed(1)}h)`;
+                    return <div key={d.discipline}>{info?.label}: <strong>{val}</strong></div>;
+                  })}
+                  <div style={{ gridColumn: '1 / -1', borderTop: '1px solid rgba(125,156,184,0.25)', paddingTop: '8px', marginTop: '4px' }}>
+                    <strong>Total: {totalHours}h/week</strong>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Form Actions */}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={handleCancel}
-                disabled={isSaving}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: 'rgba(230,240,255,0.07)',
-                  color: '#E6F0FF',
-                  border: '1px solid rgba(125,156,184,0.4)',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isSaving}
-                style={{
-                  padding: '8px 28px',
-                  backgroundColor: '#FF5722',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                {isSaving ? 'Applying...' : 'Apply'}
-              </button>
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                  style={{
+                    padding: '8px 20px',
+                    backgroundColor: 'rgba(230,240,255,0.07)',
+                    color: '#E6F0FF',
+                    border: '1px solid rgba(125,156,184,0.4)',
+                    borderRadius: '4px',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    opacity: isSaving ? 0.6 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSaving}
+                  style={{
+                    padding: '8px 28px',
+                    backgroundColor: '#FF5722',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    opacity: isSaving ? 0.6 : 1,
+                  }}
+                >
+                  {isSaving ? 'Applying...' : 'Apply'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-
-      {/* Help Text */}
-      {!isEditing && hasSchedule && (
-        <div style={{
-          marginTop: '20px',
-          padding: '12px 16px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '4px',
-          fontSize: '13px',
-          color: '#555',
-          borderLeft: '3px solid #3b82f6'
-        }}>
-          <strong>How this helps:</strong> Weekly programs respect your availability, schedule workouts on your active days, and keep total volume within your committed hours.
-        </div>
-      )}
-    </div>
+    </>
   );
 };
 

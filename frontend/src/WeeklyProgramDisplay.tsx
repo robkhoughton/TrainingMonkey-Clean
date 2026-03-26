@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './TrainingLoadDashboard.module.css';
 import ChatWidget from './ChatWidget';
+import TrainingScheduleConfig from './TrainingScheduleConfig';
 
 // ============================================================================
 // INTERFACES
@@ -15,6 +16,8 @@ interface DailyWorkout {
   intensity: string;
   key_focus: string;
   terrain_notes?: string;
+  distance_miles?: number;
+  elevation_gain_feet?: number;
 }
 
 interface AutopsyData {
@@ -22,36 +25,66 @@ interface AutopsyData {
   date: string;
 }
 
+interface WeeklySynthesisData {
+  synthesis: string | null;
+  week_start: string | null;
+  generated_at: string | null;
+  strategic_summary: string | null;
+}
+
 interface WeeklyProgram {
   week_start_date: string;
   week_summary: string;
   predicted_metrics: {
     acwr_estimate: number;
+    internal_acwr_estimate?: number;
+    external_acwr_estimate?: number;
     divergence_estimate: number;
     total_weekly_miles: number;
+    total_weekly_elevation_feet?: number;
   };
   daily_program: DailyWorkout[];
   key_workouts_this_week: string[];
   nutrition_reminder?: string;
   injury_prevention_note?: string;
-  strategic_context?: {
-    race_context_periodization: string;
-    load_management_pattern_analysis: string;
-    strategic_rationale: string;
-  };
   from_cache?: boolean;
+}
+
+interface TrainingSchedule {
+  schedule: {
+    total_hours_per_week?: number;
+    available_days?: string[];
+    long_run_days?: string[];
+    constraints?: string | Array<{ description: string }>;
+  } | null;
+  include_strength: boolean;
+  strength_hours: number;
+  include_mobility: boolean;
+  mobility_hours: number;
+  cross_training_disciplines?: Array<{
+    discipline: string;
+    enabled: boolean;
+    allocation_type: 'hours' | 'percentage';
+    allocation_value: number;
+  }>;
+  include_cross_training?: boolean;
+  cross_training_type?: string | null;
+  cross_training_hours?: number;
 }
 
 interface WeeklyProgramDisplayProps {
   program: WeeklyProgram | null;
   onRefresh: () => void;
+  trainingSchedule?: TrainingSchedule | null;
+  onScheduleChange?: () => void;
+  weeklySynthesis?: WeeklySynthesisData | null;
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, onRefresh }) => {
+const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, onRefresh, trainingSchedule, onScheduleChange, weeklySynthesis }) => {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autopsyScores, setAutopsyScores] = useState<Record<string, number>>({});
@@ -96,7 +129,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   // ============================================================================
 
   const handleRegenerate = async () => {
-    if (!window.confirm('Generate a new weekly program? This will replace the current program.')) {
+    if (!window.confirm('Generate a new weekly program? This will also refresh last week\'s synthesis.')) {
       return;
     }
 
@@ -104,14 +137,22 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
     setError(null);
 
     try {
-      const response = await fetch('/api/coach/weekly-program/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
+      // Run plan generation and synthesis refresh in parallel
+      const [programRes] = await Promise.all([
+        fetch('/api/coach/weekly-program/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }),
+        fetch('/api/coach/weekly-synthesis/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }).catch(() => null)  // synthesis failure is non-fatal
+      ]);
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!programRes.ok) {
+        const errorData = await programRes.json();
         throw new Error(errorData.error || 'Failed to generate program');
       }
 
@@ -220,7 +261,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             margin: 0,
             marginBottom: '0.25rem'
           }}>
-            Workout Plan for the Week of {formatHeaderDate(program.week_start_date)}
+            Training Plan for the Week of {formatHeaderDate(program.week_start_date)}
           </h2>
           {program.from_cache && (
             <span style={{ 
@@ -268,20 +309,52 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         </div>
       )}
 
-      {/* Week Summary */}
+      {/* At a Glance — two-column: Last Week | This Coming Week */}
       <div style={{
-        padding: '1rem',
-        backgroundColor: '#f8f9fa',
         borderRadius: '8px',
         marginBottom: '1rem',
-        border: '1px solid #e1e8ed'
+        border: '1px solid #e1e8ed',
+        overflow: 'hidden',
       }}>
-        <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '17px', color: '#2c3e50', fontWeight: '600' }}>
-          This Week at a Glance
-        </h3>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: '#555', textAlign: 'left' }}>
-          {program.week_summary}
-        </p>
+        <div style={{
+          background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+          padding: '8px 16px',
+        }}>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+            At a Glance
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: 'white' }}>
+          {/* Last Week */}
+          <div style={{ padding: '1rem', borderRight: '1px solid #e1e8ed' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.6rem' }}>
+              Last Week
+              {weeklySynthesis?.week_start && (
+                <span style={{ fontWeight: 400, marginLeft: '6px', textTransform: 'none', letterSpacing: 0 }}>
+                  · {new Date(weeklySynthesis.week_start + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              )}
+            </div>
+            {weeklySynthesis?.synthesis ? (
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#374151', textAlign: 'left', borderLeft: '3px solid #7D9CB8', paddingLeft: '0.75rem' }}>
+                {weeklySynthesis.synthesis}
+              </p>
+            ) : (
+              <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af', fontStyle: 'italic', lineHeight: '1.6' }}>
+                Synthesis generates Saturday evening after the week closes.
+              </p>
+            )}
+          </div>
+          {/* This Coming Week */}
+          <div style={{ padding: '1rem' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.6rem' }}>
+              This Coming Week
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#374151', textAlign: 'left' }}>
+              {program.week_summary}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Predicted Metrics */}
@@ -298,10 +371,28 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '3px' }}>
-            {program.predicted_metrics.acwr_estimate.toFixed(2)}
-          </div>
-          <div style={{ fontSize: '11px', opacity: 0.9 }}>Predicted ACWR</div>
+          <div style={{ fontSize: '11px', opacity: 0.75, marginBottom: '4px', letterSpacing: '0.06em' }}>Predicted ACWR</div>
+          {(program.predicted_metrics.external_acwr_estimate != null || program.predicted_metrics.internal_acwr_estimate != null) ? (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', lineHeight: 1 }}>
+                  {(program.predicted_metrics.external_acwr_estimate ?? program.predicted_metrics.acwr_estimate).toFixed(2)}
+                </div>
+                <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '2px' }}>External</div>
+              </div>
+              <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.3)' }} />
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', lineHeight: 1 }}>
+                  {(program.predicted_metrics.internal_acwr_estimate ?? program.predicted_metrics.acwr_estimate).toFixed(2)}
+                </div>
+                <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '2px' }}>Internal</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
+              {program.predicted_metrics.acwr_estimate.toFixed(2)}
+            </div>
+          )}
         </div>
 
         <div style={{
@@ -328,6 +419,11 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             {program.predicted_metrics.total_weekly_miles.toFixed(1)}
           </div>
           <div style={{ fontSize: '11px', opacity: 0.9 }}>Total Miles</div>
+          {program.predicted_metrics.total_weekly_elevation_feet != null && program.predicted_metrics.total_weekly_elevation_feet > 0 && (
+            <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '2px' }}>
+              +{program.predicted_metrics.total_weekly_elevation_feet.toLocaleString()} ft vert
+            </div>
+          )}
         </div>
       </div>
 
@@ -341,7 +437,9 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         {/* LEFT COLUMN: Daily Workout Cards */}
         <div style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
           {program.daily_program.map((workout, index) => {
-            const workoutDate = new Date(workout.date);
+            // Use noon UTC to prevent UTC→local timezone shift on date-only strings.
+            // Without this, '2026-03-24' parses as UTC midnight which becomes Mar 23 in Pacific time.
+            const workoutDate = new Date(workout.date + 'T12:00:00');
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             workoutDate.setHours(0, 0, 0, 0);
@@ -452,7 +550,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                     color: '#2c3e50',
                     lineHeight: '1.2'
                   }}>
-                    {new Date(workout.date).toLocaleDateString('en-US', { weekday: 'long' })}
+                    {new Date(workout.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
                   </div>
                   <div style={{
                     fontSize: '12px',
@@ -491,6 +589,14 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                   <div style={{ fontSize: '11px', color: '#7f8c8d' }}>
                     {workout.duration_estimate}
                   </div>
+                  {(workout.distance_miles != null && workout.distance_miles > 0) && (
+                    <div style={{ fontSize: '11px', color: '#7f8c8d', marginTop: '2px' }}>
+                      {workout.distance_miles.toFixed(1)} mi
+                      {workout.elevation_gain_feet != null && workout.elevation_gain_feet > 0
+                        ? ` · +${workout.elevation_gain_feet.toLocaleString()} ft`
+                        : ''}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -580,6 +686,12 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
               </p>
             </div>
           )}
+
+          {/* Training Availability */}
+          <TrainingScheduleConfig
+            schedule={trainingSchedule ?? null}
+            onScheduleChange={onScheduleChange ?? (() => {})}
+          />
 
           {/* Helper Note */}
           <div style={{

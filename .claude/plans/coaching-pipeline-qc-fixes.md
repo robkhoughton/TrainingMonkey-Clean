@@ -60,7 +60,7 @@ elif recent_scores[0] < recent_scores[2]:
 
 ### 1-C: Skip model alignment update on fallback autopsy (Finding 3-C)
 
-**File:** `app/llm_recommendations_module.py`
+**Files:** `app/llm_recommendations_module.py` (flag), `app/strava_app.py:save_journal_entry()` (call site guard)
 
 In `generate_basic_autopsy_fallback_enhanced()`, add a flag to the return dict:
 ```python
@@ -320,7 +320,7 @@ ALTER TABLE athlete_models
 
 - **Phase 1** — safe to ship immediately. No schema changes, all defensive fixes.
 - **Phase 2** — prompt context quality. Verify via logs that `deviation_reason` appears in autopsy context block.
-- **Phase 3** — run SQL migration first, then deploy. Verify `div_low_n`/`threshold_n` non-zero in `athlete_models` after next autopsy. Confirm `acwr_sweet_spot_confidence` no longer referenced in any gate logic.
+- **Phase 3** — run SQL migration first, then deploy. Verify `div_low_n`/`threshold_n` non-zero in `athlete_models` after next autopsy. Confirm inject gate in `get_athlete_model_context()` uses `total_autopsies < 3` (not confidence field).
 - **Phase 4** — additive. Agentic audit (4-C) must happen before expanding the `agentic_context` feature flag.
 
 ## Verification

@@ -53,6 +53,8 @@ from utils import ensure_date_serialization, aggregate_daily_activities_with_res
 from db_connection_manager import initialize_database_pool, get_database_manager
 from optimized_token_management import OptimizedTokenManager, batch_refresh_all_tokens
 from optimized_acwr_service import OptimizedACWRService, batch_recalculate_all_acwr
+from prompt_constants import format_divergence_for_prompt
+from intervals_icu_sync import run_daily_sync as intervals_icu_daily_sync
 
 # Import Strava processing functions
 from strava_training_load import (
@@ -2166,11 +2168,11 @@ def _cleanup_stale_rec_jobs():
             del _rec_jobs[jid]
 
 
-def _run_recommendation_job(job_id, user_id, use_agentic):
+def _run_recommendation_job(job_id, user_id, use_agentic, target_date=None):
     """Background thread: run generation and update job store on completion."""
     try:
         if use_agentic:
-            result = generate_recommendations_agentic(user_id=user_id)
+            result = generate_recommendations_agentic(user_id=user_id, target_date=target_date)
         else:
             result = generate_recommendations(force=True, user_id=user_id)
         with _rec_jobs_lock:
@@ -2194,6 +2196,9 @@ def generate_llm_recommendations():
     use_agentic = _is_feature_enabled('agentic_context', user_id)
     job_id = str(uuid.uuid4())
 
+    data = request.get_json(silent=True) or {}
+    target_date = data.get('target_date')  # Optional YYYY-MM-DD; None = auto-determine
+
     with _rec_jobs_lock:
         _rec_jobs[job_id] = {
             'status': 'pending',
@@ -2204,11 +2209,11 @@ def generate_llm_recommendations():
 
     thread = threading.Thread(
         target=_run_recommendation_job,
-        args=(job_id, user_id, use_agentic),
+        args=(job_id, user_id, use_agentic, target_date),
         daemon=True
     )
     thread.start()
-    logger.info(f"Started async recommendation job {job_id} for user {user_id} (agentic={use_agentic})")
+    logger.info(f"Started async recommendation job {job_id} for user {user_id} (agentic={use_agentic}, target_date={target_date})")
     return jsonify({'job_id': job_id, 'status': 'pending'}), 202
 
 
@@ -2250,21 +2255,30 @@ def recommendation_conversation_explain():
         from db_utils import get_recommendation_conversation, execute_query
         from recommendation_conversation_service import generate_why_explanation
 
-        # Return existing conversation if already generated
-        existing = get_recommendation_conversation(current_user.id, recommendation_date)
-        if existing and existing.get('messages'):
-            messages = existing['messages']
-            first_assistant = next((m['content'] for m in messages if m.get('role') == 'assistant'), None)
-            return jsonify({'explanation': first_assistant, 'conversation': messages})
-
-        # One query — all context was stored when the recommendation was generated
+        # One query — fetch recommendation with its generated_at for staleness check
         rows = execute_query(
-            """SELECT daily_recommendation, structured_output
+            """SELECT daily_recommendation, structured_output, generated_at
                FROM llm_recommendations
                WHERE user_id = %s AND target_date = %s
                ORDER BY generated_at DESC LIMIT 1""",
             (current_user.id, recommendation_date), fetch=True
         )
+
+        # Return existing conversation only if it was created AFTER the current recommendation.
+        # If the recommendation was regenerated, the old conversation is stale and must be discarded.
+        existing = get_recommendation_conversation(current_user.id, recommendation_date)
+        if existing and existing.get('messages'):
+            rec_generated_at = rows[0]['generated_at'] if rows else None
+            conv_updated_at = existing.get('updated_at')
+            conversation_is_fresh = (
+                rec_generated_at is None
+                or conv_updated_at is None
+                or conv_updated_at >= rec_generated_at
+            )
+            if conversation_is_fresh:
+                messages = existing['messages']
+                first_assistant = next((m['content'] for m in messages if m.get('role') == 'assistant'), None)
+                return jsonify({'explanation': first_assistant, 'conversation': messages})
         rec = dict(rows[0]) if rows else {}
         structured_output = rec.get('structured_output') or {}
         todays_decision = rec.get('daily_recommendation') or ''
@@ -2384,7 +2398,13 @@ def get_pending_alignment_query_endpoint():
 @login_required
 @app.route('/api/alignment-queries/<int:query_id>/respond', methods=['POST'])
 def respond_alignment_query(query_id):
-    """Mark alignment query as answered and store athlete's response text."""
+    """Mark alignment query as answered and store athlete's response text.
+
+    Also retroactively updates ai_autopsies.deviation_reason for the query's
+    activity_date so the athlete model and prompt context correctly reflect
+    prescription_mismatch (vs unknown) when the athlete's response indicates
+    disagreement with the plan rather than a physical or external constraint.
+    """
     try:
         data = request.get_json() or {}
         response_text = data.get('response', '').strip()
@@ -2392,6 +2412,47 @@ def respond_alignment_query(query_id):
             return jsonify({'error': 'response is required'}), 400
         db_utils.update_alignment_query(query_id, status='answered', response=response_text)
         logger.info(f"Alignment query {query_id} answered by user {current_user.id}")
+
+        # Retroactively classify the deviation reason from the response text so that
+        # prescription_mismatch events are distinguishable from truly unknown causes.
+        try:
+            row = db_utils.execute_query(
+                "SELECT activity_date FROM alignment_queries WHERE id = %s",
+                (query_id,),
+                fetch=True
+            )
+            if row:
+                activity_date_str = str(row[0]['activity_date'])
+                resp_lower = response_text.lower()
+                physical_kw = ('injur', 'pain', 'hurt', 'sore', 'sick', 'illness', 'sprain', 'strain')
+                external_kw = ('work', 'travel', 'weather', 'family', 'schedule', 'meeting', 'trip')
+                if any(kw in resp_lower for kw in physical_kw):
+                    new_reason = 'physical'
+                elif any(kw in resp_lower for kw in external_kw):
+                    new_reason = 'external'
+                else:
+                    # User took the time to respond but it's not physical or external —
+                    # treat as prescription mismatch (plan didn't fit their reality).
+                    new_reason = 'prescription_mismatch'
+                db_utils.execute_query(
+                    """
+                    UPDATE ai_autopsies
+                    SET deviation_reason = %s
+                    WHERE user_id = %s AND date = %s AND deviation_reason = 'unknown'
+                    """,
+                    (new_reason, current_user.id, activity_date_str),
+                    fetch=False
+                )
+                logger.info(
+                    f"respond_alignment_query: retroactively set deviation_reason="
+                    f"'{new_reason}' for user {current_user.id}, date={activity_date_str}"
+                )
+        except Exception as classify_err:
+            logger.warning(
+                f"respond_alignment_query: retroactive deviation_reason update failed "
+                f"for query {query_id}: {classify_err}"
+            )
+
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error in respond_alignment_query: {e}")
@@ -5515,6 +5576,8 @@ def save_journal_entry():
         recommendation_generated = False
         autopsy_error = None
         recommendation_error = None
+        autopsy_analysis = None
+        alignment_score = None
         
         # Calculate tomorrow's date explicitly (no timezone magic)
         tomorrow_date = date_obj + timedelta(days=1)
@@ -5832,6 +5895,9 @@ def save_journal_entry():
             response_data['user_message'] = "✅ Observations saved successfully!"
             response_data['autopsy_generated'] = False
 
+        response_data['autopsy_analysis'] = autopsy_analysis
+        response_data['alignment_score'] = alignment_score
+
         return jsonify(response_data)
 
     except Exception as e:
@@ -5841,6 +5907,81 @@ def save_journal_entry():
             'error': 'Failed to save journal entry',
             'details': str(e) if app.debug else None
         }), 500
+
+
+@login_required
+@app.route('/api/readiness', methods=['GET'])
+def get_readiness():
+    """Return today's readiness + wellness data including intervals.icu synced fields."""
+    try:
+        date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        rows = db_utils.execute_query(
+            """SELECT sleep_quality, morning_soreness, hrv_value, hrv_source,
+                      resting_hr, sleep_duration_secs, sleep_score,
+                      weight, spo2, respiration_rate, vo2max
+               FROM journal_entries
+               WHERE user_id = %s AND date = %s""",
+            (current_user.id, date_str), fetch=True
+        )
+        row = dict(rows[0]) if rows else {}
+
+        # HRV 30-day baseline
+        hrv_baseline = None
+        if row.get('hrv_value') is not None:
+            b = db_utils.execute_query(
+                """SELECT AVG(hrv_value) AS baseline FROM journal_entries
+                   WHERE user_id = %s AND date >= %s::date - INTERVAL '30 days'
+                     AND date < %s::date AND hrv_value IS NOT NULL""",
+                (current_user.id, date_str, date_str), fetch=True
+            )
+            if b and b[0]['baseline']:
+                hrv_baseline = round(float(b[0]['baseline']), 1)
+
+        # RHR 7-day baseline
+        rhr_baseline = None
+        if row.get('resting_hr') is not None:
+            b = db_utils.execute_query(
+                """SELECT AVG(resting_hr) AS baseline FROM journal_entries
+                   WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
+                     AND date < %s::date AND resting_hr IS NOT NULL""",
+                (current_user.id, date_str, date_str), fetch=True
+            )
+            if b and b[0]['baseline']:
+                rhr_baseline = round(float(b[0]['baseline']), 1)
+
+        # Weight 7-day baseline
+        weight_baseline = None
+        if row.get('weight') is not None:
+            b = db_utils.execute_query(
+                """SELECT AVG(weight) AS baseline FROM journal_entries
+                   WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
+                     AND date < %s::date AND weight IS NOT NULL""",
+                (current_user.id, date_str, date_str), fetch=True
+            )
+            if b and b[0]['baseline']:
+                weight_baseline = round(float(b[0]['baseline']), 2)
+
+        return jsonify({
+            'date': date_str,
+            'sleep_quality': row.get('sleep_quality'),
+            'morning_soreness': row.get('morning_soreness'),
+            'hrv_value': float(row['hrv_value']) if row.get('hrv_value') is not None else None,
+            'hrv_source': row.get('hrv_source'),
+            'hrv_baseline_30d': hrv_baseline,
+            'resting_hr': row.get('resting_hr'),
+            'rhr_baseline_7d': rhr_baseline,
+            'sleep_duration_secs': row.get('sleep_duration_secs'),
+            'sleep_score': row.get('sleep_score'),
+            'weight': float(row['weight']) if row.get('weight') is not None else None,
+            'weight_baseline_7d': weight_baseline,
+            'spo2': float(row['spo2']) if row.get('spo2') is not None else None,
+            'respiration_rate': float(row['respiration_rate']) if row.get('respiration_rate') is not None else None,
+            'vo2max': float(row['vo2max']) if row.get('vo2max') is not None else None,
+        })
+    except Exception as e:
+        logger.error(f"Error fetching readiness for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to fetch readiness data'}), 500
 
 
 @login_required
@@ -5870,24 +6011,41 @@ def save_readiness():
         if morning_soreness is not None and (not isinstance(morning_soreness, int) or morning_soreness < 0 or morning_soreness > 100):
             return jsonify({'success': False, 'error': 'morning_soreness must be an integer between 0 and 100'}), 400
 
+        hrv_value = data.get('hrv_value')
+        if hrv_value is not None:
+            hrv_value = float(hrv_value)
+            if hrv_value <= 0 or hrv_value > 300:
+                return jsonify({'success': False, 'error': 'hrv_value must be between 1 and 300 ms'}), 400
+
+        resting_hr = data.get('resting_hr')
+        if resting_hr is not None:
+            resting_hr = int(resting_hr)
+            if resting_hr <= 0 or resting_hr > 220:
+                return jsonify({'success': False, 'error': 'resting_hr must be between 1 and 220 bpm'}), 400
+
         query = """
-            INSERT INTO journal_entries (user_id, date, sleep_quality, morning_soreness, updated_at)
-            VALUES (%s, %s, %s, %s, NOW())
-            ON CONFLICT (user_id, date)
-            DO UPDATE SET
-                sleep_quality = EXCLUDED.sleep_quality,
-                morning_soreness = EXCLUDED.morning_soreness,
-                updated_at = NOW()
+            INSERT INTO journal_entries
+                (user_id, date, sleep_quality, morning_soreness, hrv_value, hrv_source, resting_hr, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 'manual', %s, NOW())
+            ON CONFLICT (user_id, date) DO UPDATE SET
+                sleep_quality    = COALESCE(EXCLUDED.sleep_quality,    journal_entries.sleep_quality),
+                morning_soreness = COALESCE(EXCLUDED.morning_soreness, journal_entries.morning_soreness),
+                hrv_value        = COALESCE(EXCLUDED.hrv_value,        journal_entries.hrv_value),
+                hrv_source       = COALESCE(EXCLUDED.hrv_source,       journal_entries.hrv_source),
+                resting_hr       = COALESCE(EXCLUDED.resting_hr,       journal_entries.resting_hr),
+                updated_at       = NOW()
         """
 
         db_utils.execute_query(query, (
             current_user.id,
             date_str,
             sleep_quality,
-            morning_soreness
+            morning_soreness,
+            hrv_value,
+            resting_hr
         ))
 
-        logger.info(f"Saved readiness data for user {current_user.id} on {date_str}: sleep_quality={sleep_quality}, morning_soreness={morning_soreness}")
+        logger.info(f"Saved readiness data for user {current_user.id} on {date_str}: sleep_quality={sleep_quality}, morning_soreness={morning_soreness}, hrv_value={hrv_value}, resting_hr={resting_hr}")
 
         return jsonify({'success': True})
 
@@ -6024,7 +6182,7 @@ TARGET DATE: {target_date}
 CURRENT METRICS:
 - External ACWR: {metrics.get('external_acwr', 0):.2f} (Optimal: 0.8-1.3)
 - Internal ACWR: {metrics.get('internal_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Normalized Divergence: {metrics.get('normalized_divergence', 0):.3f} (Balance zone: -0.05 to +0.05)
+- Normalized Divergence: {format_divergence_for_prompt(metrics.get('normalized_divergence'))}
 - Days Since Rest: {metrics.get('days_since_rest', 0)}
 - 7-day Avg Load: {metrics.get('seven_day_avg_load', 0):.2f} miles/day
 
@@ -6280,6 +6438,13 @@ def daily_recommendations_cron():
 
         logger.info("Starting daily recommendations generation")
 
+        # Sync intervals.icu wellness data before generating recommendations
+        try:
+            sync_result = intervals_icu_daily_sync()
+            logger.info(f"intervals.icu sync: {sync_result}")
+        except Exception as sync_err:
+            logger.error(f"intervals.icu sync failed (non-fatal): {sync_err}", exc_info=True)
+
         # Generate recommendations for TOMORROW's workout
         tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
 
@@ -6533,7 +6698,7 @@ def weekly_program_cron():
         
         if not mode:
             # Auto-detect based on day of week (0=Monday, 6=Sunday)
-            day_of_week = datetime.now().weekday()
+            day_of_week = get_app_current_date().weekday()
             if day_of_week == 6:  # Sunday
                 mode = 'full'
             elif day_of_week == 2:  # Wednesday
@@ -6545,7 +6710,7 @@ def weekly_program_cron():
         logger.info(f"Running in '{mode}' mode")
         
         # Get active users (users with activity in last 14 days)
-        cutoff_date = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+        cutoff_date = (get_app_current_date() - timedelta(days=14)).strftime('%Y-%m-%d')
         active_users = execute_query(
             """
             SELECT DISTINCT user_id,
@@ -6568,7 +6733,7 @@ def weekly_program_cron():
         logger.info(f"Found {len(active_users)} active users")
 
         # Import the generation function
-        from coach_recommendations import generate_weekly_program
+        from coach_recommendations import generate_weekly_program, save_weekly_program
         
         success_count = 0
         error_count = 0
@@ -6585,14 +6750,14 @@ def weekly_program_cron():
                 # Calculate target week start based on mode
                 if mode == 'full':
                     # Sunday generation: target upcoming Monday
-                    today = datetime.now().date()
+                    today = get_app_current_date()
                     days_until_monday = (7 - today.weekday()) % 7
                     if days_until_monday == 0:
                         days_until_monday = 7  # If today is Monday, target next Monday
                     target_week_start = today + timedelta(days=days_until_monday)
                 else:
                     # Wednesday adjustment: target current week's Monday
-                    today = datetime.now().date()
+                    today = get_app_current_date()
                     days_since_monday = today.weekday()
                     target_week_start = today - timedelta(days=days_since_monday)
                 
@@ -6619,8 +6784,14 @@ def weekly_program_cron():
                 )
 
                 if result:
+                    save_weekly_program(
+                        user_id=user_id,
+                        week_start=target_week_start,
+                        program_data=result,
+                        generation_type='scheduled'
+                    )
                     success_count += 1
-                    logger.info(f"✓ Generated weekly program for user {user_id}")
+                    logger.info(f"✓ Generated and saved weekly program for user {user_id}")
                 else:
                     error_count += 1
                     logger.warning(f"✗ Failed to generate program for user {user_id}")
@@ -6678,11 +6849,11 @@ def weekly_synthesis_cron():
 
     try:
         from coach_recommendations import generate_weekly_synthesis
-        from datetime import datetime, timedelta
+        from datetime import timedelta
+        from timezone_utils import get_app_current_date
 
         # Saturday run: synthesize the week that just ended (Mon–Sat)
-        today = datetime.utcnow().date()
-        # Week start = most recent Monday
+        today = get_app_current_date()  # Pacific time — avoids UTC midnight crossing Saturday→Sunday
         days_since_monday = today.weekday()
         week_start = today - timedelta(days=days_since_monday)
 
@@ -6697,7 +6868,7 @@ def weekly_synthesis_cron():
         for row in (users or []):
             uid = row['user_id']
             try:
-                generate_weekly_synthesis(uid, week_start.isoformat())
+                generate_weekly_synthesis(uid, week_start)
                 processed += 1
             except Exception as e:
                 logger.error(f"weekly-synthesis cron: user {uid} failed: {e}")
@@ -6725,10 +6896,10 @@ def get_weekly_synthesis():
         if week_start:
             row = db_utils.execute_query(
                 """
-                SELECT week_start, weekly_synthesis, synthesis_generated_at,
+                SELECT week_start_date, weekly_synthesis, synthesis_generated_at,
                        strategic_summary
                 FROM weekly_programs
-                WHERE user_id = %s AND week_start = %s
+                WHERE user_id = %s AND week_start_date = %s
                 LIMIT 1
                 """,
                 (user_id, week_start),
@@ -6737,11 +6908,11 @@ def get_weekly_synthesis():
         else:
             row = db_utils.execute_query(
                 """
-                SELECT week_start, weekly_synthesis, synthesis_generated_at,
+                SELECT week_start_date, weekly_synthesis, synthesis_generated_at,
                        strategic_summary
                 FROM weekly_programs
                 WHERE user_id = %s AND weekly_synthesis IS NOT NULL
-                ORDER BY week_start DESC
+                ORDER BY week_start_date DESC
                 LIMIT 1
                 """,
                 (user_id,),
@@ -6754,7 +6925,7 @@ def get_weekly_synthesis():
         r = row[0]
         return jsonify({
             'synthesis': r['weekly_synthesis'],
-            'week_start': r['week_start'].isoformat() if r['week_start'] else None,
+            'week_start': r['week_start_date'].isoformat() if r['week_start_date'] else None,
             'generated_at': r['synthesis_generated_at'].isoformat() if r['synthesis_generated_at'] else None,
             'strategic_summary': r['strategic_summary'],
         })
@@ -6764,19 +6935,59 @@ def get_weekly_synthesis():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/coach/weekly-synthesis/generate', methods=['POST'])
+@login_required
+def generate_weekly_synthesis_manual():
+    """
+    Manually trigger weekly synthesis generation for the prior week.
+    Body: { "week_start": "YYYY-MM-DD" } — the Monday of the week to synthesize (optional, defaults to last week).
+    """
+    try:
+        from coach_recommendations import generate_weekly_synthesis
+        from datetime import datetime, timedelta
+
+        user_id = current_user.id
+        data = request.get_json() or {}
+        week_start_str = data.get('week_start')
+
+        if week_start_str:
+            week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
+        else:
+            # Default: last week's Monday
+            today = get_app_current_date()
+            week_start = today - timedelta(days=today.weekday() + 7)
+
+        synthesis = generate_weekly_synthesis(user_id, week_start)
+
+        return jsonify({
+            'success': True,
+            'synthesis': synthesis,
+            'week_start': week_start.isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating weekly synthesis: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 def extract_alignment_score(autopsy_text):
     """Extract alignment score from autopsy analysis"""
     import re
 
-    # Look for alignment score in the text
-    score_match = re.search(r'alignment.*?(\d+)/10', autopsy_text, re.IGNORECASE)
-    if score_match:
-        return int(score_match.group(1))
+    # Labeled format: "ALIGNMENT_SCORE: 9.5/10"
+    labeled_match = re.search(r'ALIGNMENT_SCORE:\s*([\d.]+)/10', autopsy_text, re.IGNORECASE)
+    if labeled_match:
+        return max(1, min(10, round(float(labeled_match.group(1)))))
 
-    # Look for rating patterns
-    rating_match = re.search(r'rate.*?(\d+).*?out of.*?10', autopsy_text, re.IGNORECASE)
-    if rating_match:
-        return int(rating_match.group(1))
+    # Plain score at start of text: "9.5/10"
+    start_match = re.search(r'^\s*([\d.]+)/10', autopsy_text, re.MULTILINE)
+    if start_match:
+        return max(1, min(10, round(float(start_match.group(1)))))
+
+    # Contextual: "alignment ... X/10"
+    score_match = re.search(r'alignment.*?([\d.]+)/10', autopsy_text, re.IGNORECASE)
+    if score_match:
+        return max(1, min(10, round(float(score_match.group(1)))))
 
     # Default to 5 if no score found
     return 5
@@ -7467,11 +7678,14 @@ def validate_settings():
 @app.route('/api/user-settings', methods=['POST'])
 @login_required
 def update_user_settings():
-    """Update user settings including coaching style spectrum"""
+    """Update user settings including coaching style spectrum and athlete profile"""
     try:
         data = request.get_json()
         coaching_spectrum = data.get('coaching_style_spectrum')
         recommendation_style = data.get('recommendation_style')
+        primary_sport = data.get('primary_sport')
+        secondary_sport = data.get('secondary_sport')
+        training_experience = data.get('training_experience')
 
         if coaching_spectrum is not None:
             if not (0 <= coaching_spectrum <= 100):
@@ -7494,6 +7708,29 @@ def update_user_settings():
             """, (recommendation_style, current_user.id))
             logger.info(f"Updated recommendation style to {recommendation_style} for user {current_user.id}")
 
+        if primary_sport is not None or secondary_sport is not None or training_experience is not None:
+            valid_sports = ['trail_running', 'running', 'road_running', 'cycling', 'swimming', 'triathlon',
+                            'rowing', 'backcountry_skiing', 'strength', 'other', '']
+            valid_legacy_levels = ['beginner', 'intermediate', 'advanced', 'elite']
+            if primary_sport is not None and primary_sport not in valid_sports:
+                return jsonify({'error': 'Invalid primary sport'}), 400
+            if secondary_sport is not None and secondary_sport not in valid_sports:
+                return jsonify({'error': 'Invalid secondary sport'}), 400
+            if training_experience is not None:
+                from datetime import date as _date
+                _cur_year = _date.today().year
+                _is_year = training_experience.isdigit() and (_cur_year - 10) <= int(training_experience) <= _cur_year
+                if training_experience not in valid_legacy_levels and not _is_year:
+                    return jsonify({'error': 'Invalid experience level'}), 400
+            db_utils.execute_query("""
+                UPDATE user_settings
+                SET primary_sport = COALESCE(%s, primary_sport),
+                    secondary_sport = COALESCE(%s, secondary_sport),
+                    training_experience = COALESCE(%s, training_experience),
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (primary_sport, secondary_sport, training_experience, current_user.id))
+
         return jsonify({'success': True})
 
     except Exception as e:
@@ -7506,9 +7743,9 @@ def update_user_settings():
 def get_user_settings():
     """Get current user settings"""
     try:
-        # Remove coaching_style_description from the query
         result = db_utils.execute_query("""
-            SELECT coaching_style_spectrum, coaching_tone, recommendation_style
+            SELECT coaching_style_spectrum, coaching_tone, recommendation_style,
+                   primary_sport, secondary_sport, training_experience
             FROM user_settings
             WHERE id = %s
         """, (current_user.id,), fetch=True)
@@ -7518,13 +7755,19 @@ def get_user_settings():
             return jsonify({
                 'coaching_style_spectrum': settings.get('coaching_style_spectrum', 50),
                 'coaching_tone': settings.get('coaching_tone', 'supportive'),
-                'recommendation_style': settings.get('recommendation_style', 'balanced')
+                'recommendation_style': settings.get('recommendation_style', 'balanced'),
+                'primary_sport': settings.get('primary_sport', 'trail_running'),
+                'secondary_sport': settings.get('secondary_sport', ''),
+                'training_experience': settings.get('training_experience', 'intermediate'),
             })
         else:
             return jsonify({
                 'coaching_style_spectrum': 50,
                 'coaching_tone': 'supportive',
-                'recommendation_style': 'balanced'
+                'recommendation_style': 'balanced',
+                'primary_sport': 'trail_running',
+                'secondary_sport': '',
+                'training_experience': 'intermediate',
             })
 
     except Exception as e:
@@ -7900,6 +8143,94 @@ def update_alert_settings():
     except Exception as e:
         app.logger.error(f"Error updating alert settings: {str(e)}")
         return jsonify({'error': 'Failed to update alert settings'}), 500
+
+
+@app.route('/api/settings/integrations', methods=['GET'])
+@login_required
+def get_integrations():
+    """Return current intervals.icu connection status (never expose the raw API key)."""
+    try:
+        rows = db_utils.execute_query(
+            "SELECT intervals_icu_athlete_id, intervals_icu_api_key FROM user_settings WHERE id = %s",
+            (current_user.id,),
+            fetch=True
+        )
+        row = dict(rows[0]) if rows else {}
+        connected = bool(row.get('intervals_icu_api_key') and row.get('intervals_icu_athlete_id'))
+        return jsonify({
+            'intervals_icu': {
+                'connected': connected,
+                'athlete_id': row.get('intervals_icu_athlete_id') if connected else None
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error fetching integrations for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to fetch integrations'}), 500
+
+
+@app.route('/api/integrations/sync', methods=['POST'])
+@login_required
+def trigger_integrations_sync():
+    """Manually trigger intervals.icu wellness sync for the current user."""
+    try:
+        from datetime import date, timedelta
+        rows = db_utils.execute_query(
+            "SELECT intervals_icu_api_key, intervals_icu_athlete_id FROM user_settings WHERE id = %s",
+            (current_user.id,), fetch=True
+        )
+        row = dict(rows[0]) if rows else {}
+        api_key    = row.get('intervals_icu_api_key')
+        athlete_id = row.get('intervals_icu_athlete_id')
+
+        if not api_key or not athlete_id:
+            return jsonify({'success': False, 'error': 'intervals.icu not connected'}), 400
+
+        from intervals_icu_sync import sync_wellness_for_user
+        # Sync today and yesterday to catch overnight data
+        today     = date.today()
+        yesterday = today - timedelta(days=1)
+        synced = 0
+        for d in [yesterday, today]:
+            if sync_wellness_for_user(current_user.id, api_key, athlete_id, d):
+                synced += 1
+
+        return jsonify({'success': True, 'days_synced': synced})
+    except Exception as e:
+        logger.error(f"Manual sync error for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/settings/integrations', methods=['POST'])
+@login_required
+def save_integrations():
+    """Save or remove intervals.icu credentials."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        api_key    = data.get('intervals_icu_api_key', '').strip() or None
+        athlete_id = data.get('intervals_icu_athlete_id', '').strip() or None
+
+        # Both must be provided together, or both cleared together
+        if bool(api_key) != bool(athlete_id):
+            return jsonify({'success': False, 'error': 'Both API key and athlete ID are required'}), 400
+
+        db_utils.execute_query(
+            """UPDATE user_settings
+               SET intervals_icu_api_key    = %s,
+                   intervals_icu_athlete_id = %s
+               WHERE id = %s""",
+            (api_key, athlete_id, current_user.id)
+        )
+
+        action = "connected" if api_key else "disconnected"
+        logger.info(f"intervals.icu {action} for user {current_user.id}")
+        return jsonify({'success': True, 'connected': bool(api_key)})
+
+    except Exception as e:
+        logger.error(f"Error saving integrations for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to save integrations'}), 500
 
 
 @app.route('/api/settings/heart-rate-zones', methods=['POST'])
@@ -10663,28 +10994,8 @@ def collect_metrics():
 @app.route('/settings/profile', methods=['GET'])
 @login_required
 def settings_profile():
-    """Profile settings page"""
-    try:
-        from datetime import date
-        
-        # Load complete user settings from database
-        user_settings = db_utils.execute_query("""
-            SELECT * FROM user_settings WHERE id = %s
-        """, (current_user.id,), fetch=True)
-        
-        if user_settings and user_settings[0]:
-            user_data = user_settings[0]
-        else:
-            user_data = current_user
-        
-        return render_template('settings_profile.html', 
-                             user=user_data, 
-                             active_section='profile',
-                             today=date.today().isoformat(),
-                             user_context={'is_authenticated': True, 'user': user_data})
-    except Exception as e:
-        app.logger.error(f"Error rendering profile settings: {str(e)}")
-        return render_template('error.html', error="Failed to load profile settings"), 500
+    """Profile settings — redirected to HR Zones"""
+    return redirect('/settings/hrzones')
 
 @app.route('/settings/hrzones', methods=['GET'])
 @login_required
@@ -10709,51 +11020,48 @@ def settings_hrzones():
         app.logger.error(f"Error rendering HR zones settings: {str(e)}")
         return render_template('error.html', error="Failed to load HR zones settings"), 500
 
+@app.route('/settings/integrations', methods=['GET'])
+@login_required
+def settings_integrations():
+    """Integrations settings page (intervals.icu, etc.)"""
+    try:
+        user_settings = db_utils.execute_query(
+            "SELECT * FROM user_settings WHERE id = %s",
+            (current_user.id,), fetch=True
+        )
+        user_data = user_settings[0] if user_settings and user_settings[0] else current_user
+        connected = bool(
+            user_data.get('intervals_icu_api_key') and user_data.get('intervals_icu_athlete_id')
+            if isinstance(user_data, dict) else
+            getattr(user_data, 'intervals_icu_api_key', None) and getattr(user_data, 'intervals_icu_athlete_id', None)
+        )
+        athlete_id = (
+            user_data.get('intervals_icu_athlete_id')
+            if isinstance(user_data, dict) else
+            getattr(user_data, 'intervals_icu_athlete_id', None)
+        )
+        return render_template('settings_integrations.html',
+                               user=user_data,
+                               active_section='integrations',
+                               intervals_connected=connected,
+                               intervals_athlete_id=athlete_id,
+                               user_context={'is_authenticated': True, 'user': user_data})
+    except Exception as e:
+        app.logger.error(f"Error rendering integrations settings: {str(e)}")
+        return render_template('error.html', error="Failed to load integrations settings"), 500
+
+
 @app.route('/settings/training', methods=['GET'])
 @login_required
 def settings_training():
-    """Training settings page"""
-    try:
-        # Load complete user settings from database
-        user_settings = db_utils.execute_query("""
-            SELECT * FROM user_settings WHERE id = %s
-        """, (current_user.id,), fetch=True)
-        
-        if user_settings and user_settings[0]:
-            user_data = user_settings[0]
-        else:
-            user_data = current_user
-        
-        return render_template('settings_training.html', 
-                             user=user_data, 
-                             active_section='training',
-                             user_context={'is_authenticated': True, 'user': user_data})
-    except Exception as e:
-        app.logger.error(f"Error rendering training settings: {str(e)}")
-        return render_template('error.html', error="Failed to load training settings"), 500
+    """Training settings — redirected to Coach/Season"""
+    return redirect('/dashboard?tab=coach')
 
 @app.route('/settings/coaching', methods=['GET'])
 @login_required
 def settings_coaching():
-    """Coaching settings page"""
-    try:
-        # Load complete user settings from database
-        user_settings = db_utils.execute_query("""
-            SELECT * FROM user_settings WHERE id = %s
-        """, (current_user.id,), fetch=True)
-        
-        if user_settings and user_settings[0]:
-            user_data = user_settings[0]
-        else:
-            user_data = current_user
-        
-        return render_template('settings_coaching.html', 
-                             user=user_data, 
-                             active_section='coaching',
-                             user_context={'is_authenticated': True, 'user': user_data})
-    except Exception as e:
-        app.logger.error(f"Error rendering coaching settings: {str(e)}")
-        return render_template('error.html', error="Failed to load coaching settings"), 500
+    """Coaching settings — redirected to Coach/Season"""
+    return redirect('/dashboard?tab=coach')
 
 @app.route('/settings/acwr', methods=['GET'])
 @login_required
@@ -11319,8 +11627,27 @@ def get_race_readiness():
         race_date = datetime.strptime(primary['race_date'], '%Y-%m-%d').date()
         weeks_available = max(0, (race_date - today).days // 7)
 
-        # Current peak week capability
-        current_peak_week = 7 * chronic * acwr_ceiling
+        # Actual 7-day rolling loads from training block (26 weeks before race date)
+        block_start = (race_date - timedelta(weeks=26)).isoformat()
+        load_rows = db_utils.execute_query("""
+            SELECT
+                MAX(seven_day_avg_load) AS peak_avg,
+                (SELECT seven_day_avg_load
+                 FROM activities
+                 WHERE user_id = %s
+                 ORDER BY date DESC
+                 LIMIT 1) AS current_avg
+            FROM activities
+            WHERE user_id = %s AND date >= %s
+        """, (user_id, user_id, block_start), fetch=True)
+
+        if load_rows and load_rows[0].get('peak_avg'):
+            peak_7day_load = round(float(load_rows[0]['peak_avg']) * 7, 1)
+            current_avg = load_rows[0].get('current_avg') or 0
+            current_7day_load = round(float(current_avg) * 7, 1)
+        else:
+            peak_7day_load = 0.0
+            current_7day_load = 0.0
 
         # Project forward
         projected = chronic
@@ -11332,10 +11659,10 @@ def get_race_readiness():
             if weeks_needed > 52:
                 break
 
-        # Determine status
-        if current_peak_week >= race_total_load:
+        # Determine status based on current actual 7-day load vs race target
+        if current_7day_load >= race_total_load:
             status = 'already_ready'
-            message = f"Current training peak ({current_peak_week:.0f} load miles/week) already meets race target ({race_total_load:.0f}). Focus on maintaining and sharpening."
+            message = f"Current week ({current_7day_load:.0f} mi) meets race target ({race_total_load:.0f} mi). Focus on maintaining and sharpening."
         elif weeks_needed <= weeks_available:
             status = 'on_track'
             message = f"On track. At ACWR {acwr_ceiling}, you reach race-peak load in {weeks_needed} week{'s' if weeks_needed != 1 else ''} — {weeks_available - weeks_needed} week{'s' if weeks_available - weeks_needed != 1 else ''} to spare."
@@ -11356,7 +11683,9 @@ def get_race_readiness():
                 'race_date': primary['race_date'],
                 'race_total_load': round(race_total_load, 1),
                 'current_chronic_daily': round(chronic, 2),
-                'current_peak_week': round(current_peak_week, 1),
+                'current_7day_load': current_7day_load,
+                'peak_7day_load': peak_7day_load,
+                'block_start': block_start,
                 'weeks_needed': weeks_needed,
                 'weeks_available': weeks_available,
                 'acwr_ceiling_used': round(acwr_ceiling, 2),

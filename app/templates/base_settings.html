@@ -418,7 +418,7 @@
                 <a href="/guide" class="dashboard-tab">
                     <span>Guide</span>
                 </a>
-                <a href="/settings/profile" class="dashboard-tab active">
+                <a href="/settings/hrzones" class="dashboard-tab active">
                     <span>Settings</span>
                 </a>
             </nav>
@@ -449,17 +449,6 @@
                 <div style="border: 2px solid white; border-radius: 10px; padding: 0.5rem; background-color: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); display: inline-block; overflow: visible;">
                     <ul style="display: flex; gap: 0.5rem; list-style: none; align-items: center; margin: 0; padding: 0; flex-wrap: nowrap; overflow: visible;">
                         <li style="flex-shrink: 0;">
-                            <a href="/settings/profile" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'profile' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'profile' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'profile' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'profile' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'profile' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'profile' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
-                                {% if active_section == 'profile' %}
-                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'profile' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'profile' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'profile' %}0.02em{% else %}normal{% endif %};">Profile</span>
-                                {% if active_section == 'profile' %}
-                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                            </a>
-                        </li>
-                        <li style="flex-shrink: 0;">
                             <a href="/settings/hrzones" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'hrzones' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'hrzones' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'hrzones' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'hrzones' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'hrzones' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'hrzones' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
                                 {% if active_section == 'hrzones' %}
                                 <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
@@ -471,34 +460,23 @@
                             </a>
                         </li>
                         <li style="flex-shrink: 0;">
-                            <a href="/settings/training" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'training' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'training' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'training' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'training' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'training' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'training' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
-                                {% if active_section == 'training' %}
-                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'training' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'training' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'training' %}0.02em{% else %}normal{% endif %};">Training</span>
-                                {% if active_section == 'training' %}
-                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                            </a>
-                        </li>
-                        <li style="flex-shrink: 0;">
-                            <a href="/settings/coaching" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'alerts' or active_section == 'coaching' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'alerts' or active_section == 'coaching' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'alerts' or active_section == 'coaching' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'alerts' or active_section == 'coaching' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'alerts' or active_section == 'coaching' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'alerts' or active_section == 'coaching' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
-                                {% if active_section == 'alerts' or active_section == 'coaching' %}
-                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'alerts' or active_section == 'coaching' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'alerts' or active_section == 'coaching' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'alerts' or active_section == 'coaching' %}0.02em{% else %}normal{% endif %};">AI Personality</span>
-                                {% if active_section == 'alerts' or active_section == 'coaching' %}
-                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
-                                {% endif %}
-                            </a>
-                        </li>
-                        <li style="flex-shrink: 0;">
                             <a href="/acwr-visualization" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'acwr' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'acwr' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'acwr' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'acwr' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'acwr' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'acwr' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
                                 {% if active_section == 'acwr' %}
                                 <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
                                 {% endif %}
                                 <span style="display: block; text-align: center; font-weight: {% if active_section == 'acwr' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'acwr' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'acwr' %}0.02em{% else %}normal{% endif %};">ACWR</span>
                                 {% if active_section == 'acwr' %}
+                                <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li style="flex-shrink: 0;">
+                            <a href="/settings/integrations" style="display: inline-block; padding: 0.6rem 1rem; background: {% if active_section == 'integrations' %}rgba(255, 255, 255, 0.95){% else %}rgba(255, 255, 255, 0.7){% endif %}; color: {% if active_section == 'integrations' %}#1B2E4B{% else %}#1f2937{% endif %}; text-decoration: none; font-weight: {% if active_section == 'integrations' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'integrations' %}0.95rem{% else %}0.9rem{% endif %}; border: 2px solid {% if active_section == 'integrations' %}rgba(27, 46, 75, 0.3){% else %}transparent{% endif %}; border-radius: 8px; transition: all 0.3s ease; box-shadow: {% if active_section == 'integrations' %}0 2px 6px rgba(27, 46, 75, 0.2){% else %}0 1px 3px rgba(0, 0, 0, 0.05){% endif %}; position: relative; cursor: pointer; text-align: center; white-space: nowrap; min-width: auto;">
+                                {% if active_section == 'integrations' %}
+                                <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
+                                {% endif %}
+                                <span style="display: block; text-align: center; font-weight: {% if active_section == 'integrations' %}700{% else %}500{% endif %}; font-size: {% if active_section == 'integrations' %}0.95rem{% else %}0.9rem{% endif %}; letter-spacing: {% if active_section == 'integrations' %}0.02em{% else %}normal{% endif %};">Integrations</span>
+                                {% if active_section == 'integrations' %}
                                 <div style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid white; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); z-index: 10;"></div>
                                 {% endif %}
                             </a>

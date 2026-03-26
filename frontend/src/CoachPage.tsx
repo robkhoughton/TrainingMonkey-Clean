@@ -4,23 +4,16 @@ import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from 
 import WeeklyProgramDisplay from './WeeklyProgramDisplay';
 import TimelineVisualization from './TimelineVisualization';
 import RaceHistoryPage from './RaceHistoryPage';
-import TrainingSchedulePage from './TrainingSchedulePage';
 import SeasonPage from './SeasonPage';
 import YTMSpinner from './YTMSpinner';
 
 // ============================================================================
-// STRATEGIC CONTEXT DISPLAY COMPONENT (Collapsible Sections)
+// STRATEGIC CONTEXT DISPLAY COMPONENT (Collapsible Sections) — REMOVED
+// strategic_context fields were display-only and consumed ~600 words of LLM
+// output budget with no downstream use. week_summary covers the display need.
 // ============================================================================
 
-interface StrategicContextProps {
-  strategicContext: {
-    race_context_periodization: string;
-    load_management_pattern_analysis: string;
-    strategic_rationale: string;
-  };
-}
-
-const StrategicContextDisplay: React.FC<StrategicContextProps> = ({ strategicContext }) => {
+const StrategicContextDisplay: React.FC<{ strategicContext: Record<string, string> }> = ({ strategicContext }) => {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   // Debug: log the strategic context to see what we're receiving
@@ -190,7 +183,9 @@ export interface RaceReadiness {
   race_name: string;
   race_date: string;
   race_total_load: number;
-  current_peak_week: number;
+  current_7day_load: number;
+  peak_7day_load: number;
+  block_start: string;
   weeks_needed: number;
   weeks_available: number;
   acwr_ceiling_used: number;
@@ -224,13 +219,15 @@ interface TrainingSchedule {
 }
 
 export interface AthleteModel {
-  acwr_sweet_spot_low: number | null;
-  acwr_sweet_spot_high: number | null;
-  acwr_sweet_spot_confidence: number | null;  // 0.0–1.0
   avg_lifetime_alignment: number | null;
-  recent_alignment_trend: number[] | null;
+  recent_alignment_trend: string | null;
   total_autopsies: number;
   last_autopsy_date: string | null;
+  typical_divergence_low: number | null;
+  divergence_injury_threshold: number | null;
+  journal_count: number;
+  activity_count: number;
+  journal_coverage_pct: number;
 }
 
 interface DailyWorkout {
@@ -256,12 +253,29 @@ interface WeeklyProgram {
   key_workouts_this_week: string[];
   nutrition_reminder?: string;
   injury_prevention_note?: string;
-  strategic_context?: {
-    race_context_periodization: string;
-    load_management_pattern_analysis: string;
-    strategic_rationale: string;
-  };
   from_cache?: boolean;
+}
+
+interface TrainingSchedule {
+  schedule: {
+    total_hours_per_week?: number;
+    available_days?: string[];
+    long_run_days?: string[];
+    constraints?: string | Array<{ description: string }>;
+  } | null;
+  include_strength: boolean;
+  strength_hours: number;
+  include_mobility: boolean;
+  mobility_hours: number;
+  cross_training_disciplines?: Array<{
+    discipline: string;
+    enabled: boolean;
+    allocation_type: 'hours' | 'percentage';
+    allocation_value: number;
+  }>;
+  include_cross_training?: boolean;
+  cross_training_type?: string | null;
+  cross_training_hours?: number;
 }
 
 interface TrainingStage {
@@ -314,7 +328,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
 
   const cfg = readiness ? statusConfig[readiness.status] : null;
   const fillPct = readiness
-    ? Math.min(100, Math.round((readiness.current_peak_week / readiness.race_total_load) * 100))
+    ? Math.min(100, Math.round((readiness.current_7day_load / readiness.race_total_load) * 100))
     : 0;
 
   return (
@@ -376,34 +390,133 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
               {readiness.message}
             </p>
 
-            {/* Load progress bar */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', textAlign: 'left' }}>
-                  Current Peak Week
-                </span>
-                <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase' }}>
-                  Race Target
-                </span>
-              </div>
-              <div style={{ position: 'relative', height: '10px', backgroundColor: '#e5e7eb', borderRadius: '5px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${fillPct}%`,
-                  backgroundColor: cfg!.accent,
-                  borderRadius: '5px',
-                  transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: cfg!.accent, fontVariantNumeric: 'tabular-nums' }}>
-                  {readiness.current_peak_week} mi
-                </span>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
-                  {readiness.race_total_load} mi
-                </span>
-              </div>
-            </div>
+            {/* Peak Week bar */}
+            {(() => {
+              const peakTarget = readiness.race_total_load;
+              const currentMi = readiness.current_7day_load;
+              const peakMi = readiness.peak_7day_load;
+              const currentPct = Math.min(100, (currentMi / peakTarget) * 100);
+              const peakPct = Math.min(100, (peakMi / peakTarget) * 100);
+              const tickInterval = peakTarget <= 30 ? 5 : peakTarget <= 60 ? 10 : peakTarget <= 120 ? 25 : 50;
+              const ticks: number[] = [];
+              for (let t = 0; t <= peakTarget; t += tickInterval) ticks.push(t);
+              if (ticks[ticks.length - 1] !== peakTarget) ticks.push(peakTarget);
+
+              const TRACK_H = 14;
+              const TICK_BELOW = 5;
+              const PEAK_AREA_H = 26; // height reserved above track for peak marker
+
+              return (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase' }}>
+                      Peak Week
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#9ca3af', fontStyle: 'italic' }}>
+                      Now: <strong style={{ color: cfg!.accent, fontStyle: 'normal' }}>{currentMi} mi</strong>
+                      {peakMi > currentMi && (
+                        <span style={{ marginLeft: '8px' }}>Block peak: <strong style={{ color: '#1B2E4B', fontStyle: 'normal' }}>{peakMi} mi</strong></span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Peak marker area above the track */}
+                  <div style={{ position: 'relative', height: `${PEAK_AREA_H}px` }}>
+                    {peakMi > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        left: `${peakPct}%`,
+                        bottom: 0,
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '1px',
+                      }}>
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: '700',
+                          color: '#1B2E4B',
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.02em',
+                        }}>
+                          {peakMi} mi
+                        </span>
+                        {/* Inverted triangle */}
+                        <div style={{
+                          width: 0, height: 0,
+                          borderLeft: '5px solid transparent',
+                          borderRight: '5px solid transparent',
+                          borderTop: '6px solid #1B2E4B',
+                        }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Track + ticks in overflow-visible wrapper */}
+                  <div style={{ position: 'relative', paddingBottom: `${TICK_BELOW}px` }}>
+                    <div style={{
+                      position: 'relative',
+                      height: `${TRACK_H}px`,
+                      background: 'linear-gradient(180deg, #f0f3f7 0%, #e5e9ef 100%)',
+                      borderRadius: `${TRACK_H / 2}px`,
+                      boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.10), inset 0 1px 1px rgba(0,0,0,0.06)',
+                      border: '1px solid #d1d9e0',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0, bottom: 0,
+                        width: `${currentPct}%`,
+                        background: `linear-gradient(90deg, ${cfg!.accent}bb 0%, ${cfg!.accent} 100%)`,
+                        borderRadius: `${TRACK_H / 2}px`,
+                        transition: 'width 0.7s cubic-bezier(0.4,0,0.2,1)',
+                        boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.25)',
+                      }} />
+                    </div>
+                    {/* Tick stems extending below track */}
+                    {ticks.slice(1, -1).map(t => {
+                      const pct = (t / peakTarget) * 100;
+                      return (
+                        <div key={t} style={{
+                          position: 'absolute',
+                          left: `${pct}%`,
+                          top: `${TRACK_H - 2}px`,
+                          height: `${TICK_BELOW + 2}px`,
+                          width: '1px',
+                          backgroundColor: '#c5cdd6',
+                          transform: 'translateX(-50%)',
+                        }} />
+                      );
+                    })}
+                  </div>
+
+                  {/* Tick labels */}
+                  <div style={{ position: 'relative', height: '16px', marginTop: '2px' }}>
+                    {ticks.map((t, i) => {
+                      const pct = (t / peakTarget) * 100;
+                      const isFirst = i === 0;
+                      const isLast = i === ticks.length - 1;
+                      return (
+                        <div key={t} style={{
+                          position: 'absolute',
+                          left: `${pct}%`,
+                          transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
+                          fontSize: '10px',
+                          fontWeight: isLast ? '700' : '400',
+                          color: isLast ? '#1B2E4B' : '#9ca3af',
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1,
+                        }}>
+                          {t === 0 ? '0' : isLast ? `${t} mi` : `${t}`}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Metric row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1px', backgroundColor: '#e5e7eb' }}>
@@ -611,154 +724,335 @@ export const WeeklySynthesisCard: React.FC<{
 // ============================================================================
 
 export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
-  const CALIBRATION_TARGET = 20;
-
-  const confidencePct = model?.acwr_sweet_spot_confidence != null
-    ? Math.round(model.acwr_sweet_spot_confidence * 100)
-    : null;
-
-  const isLearning = !model || confidencePct == null || confidencePct < 15;
   const autopsyCount = model?.total_autopsies ?? 0;
-  const progressPct = Math.min(100, Math.round((autopsyCount / CALIBRATION_TARGET) * 100));
+  const journalCount = model?.journal_count ?? 0;
+  const activityCount = model?.activity_count ?? 0;
+  const coveragePct = model?.journal_coverage_pct ?? 0;
 
-  const trendArr = model?.recent_alignment_trend;
+  // Calibration state: based on real data, not autopsy count proxy
+  const divLow = model?.typical_divergence_low ?? null;
+  const divThreshold = model?.divergence_injury_threshold ?? null;
+  const hasEnvelope = divLow !== null && divLow !== -0.05;
+  const hasThreshold = divThreshold !== null && divThreshold !== 0.15;
+  const isCalibrated = hasEnvelope && hasThreshold && autopsyCount >= 10;
+  const isLearning = autopsyCount >= 5;
+
+  // Alignment
+  const trend = model?.recent_alignment_trend ?? null;
   let trendLabel = 'Insufficient data';
   let trendColor = '#6b7280';
-  if (trendArr && trendArr.length >= 2) {
-    const delta = trendArr[trendArr.length - 1] - trendArr[0];
-    if (delta > 0.3) { trendLabel = 'Improving'; trendColor = '#16a34a'; }
-    else if (delta < -0.3) { trendLabel = 'Declining'; trendColor = '#dc2626'; }
-    else { trendLabel = 'Stable'; trendColor = '#7D9CB8'; }
-  }
+  if (trend === 'improving') { trendLabel = 'Improving ↑'; trendColor = '#16a34a'; }
+  else if (trend === 'declining') { trendLabel = 'Declining ↓'; trendColor = '#dc2626'; }
+  else if (trend === 'stable') { trendLabel = 'Stable'; trendColor = '#7D9CB8'; }
 
-  const metrics = [
-    {
-      label: 'ACWR SWEET SPOT',
-      value: (model?.acwr_sweet_spot_low != null && model?.acwr_sweet_spot_high != null)
-        ? `${model.acwr_sweet_spot_low} – ${model.acwr_sweet_spot_high}`
-        : '—',
-      sub: 'Your personal optimal load ratio',
-      accent: '#7D9CB8',
-      valueColor: '#1B2E4B',
-    },
-    {
-      label: 'MODEL CONFIDENCE',
-      value: confidencePct != null ? `${confidencePct}%` : '—',
-      sub: `${autopsyCount} workout${autopsyCount !== 1 ? 's' : ''} analyzed`,
-      accent: '#6B8F7F',
-      valueColor: '#1B2E4B',
-    },
-    {
-      label: 'ALIGNMENT TREND',
-      value: trendLabel,
-      sub: 'How closely you follow the plan',
-      accent: trendColor,
-      valueColor: trendColor,
-    },
-    {
-      label: 'AVG ALIGNMENT',
-      value: model?.avg_lifetime_alignment != null ? `${model.avg_lifetime_alignment}/10` : '—',
-      sub: 'Lifetime plan adherence score',
-      accent: '#1B2E4B',
-      valueColor: '#1B2E4B',
-    },
+  // Coverage bar color
+  const coverageColor = coveragePct >= 70 ? '#16a34a' : coveragePct >= 40 ? '#d97706' : '#9ca3af';
+
+  // Milestones for gamification
+  const milestones = [
+    { label: 'Baseline', threshold: 5, unlocks: 'Training window calibration' },
+    { label: 'Learning', threshold: 10, unlocks: 'Breakdown threshold' },
+    { label: 'Calibrated', threshold: 20, unlocks: 'Full envelope characterization' },
   ];
+  const nextMilestone = milestones.find(m => autopsyCount < m.threshold);
+  const toNext = nextMilestone ? nextMilestone.threshold - autopsyCount : 0;
+
+  const badgeStyle = {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    padding: '4px 10px', borderRadius: '20px',
+    backgroundColor: isCalibrated ? 'rgba(22,163,74,0.2)' : isLearning ? 'rgba(125,156,184,0.2)' : 'rgba(217,119,6,0.2)',
+    border: `1px solid ${isCalibrated ? 'rgba(22,163,74,0.5)' : isLearning ? 'rgba(125,156,184,0.5)' : 'rgba(217,119,6,0.5)'}`,
+  };
+  const badgeDot = isCalibrated ? '#16a34a' : isLearning ? '#7D9CB8' : '#f59e0b';
+  const badgeText = isCalibrated ? 'Calibrated' : isLearning ? 'Learning' : 'Getting Started';
+  const badgeTextColor = isCalibrated ? '#4ade80' : isLearning ? '#7D9CB8' : '#fcd34d';
 
   return (
-    <div style={{
-      width: '100%',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.10)',
-    }}>
-      {/* Header bar */}
+    <div style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.10)' }}>
+
+      {/* Header */}
       <div style={{
         background: 'linear-gradient(90deg, #1B2E4B 0%, #2d4a6e 100%)',
         padding: '0.75rem 1.25rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
-          <div style={{ fontSize: '10px', letterSpacing: '0.15em', color: '#7D9CB8', fontWeight: '700', textTransform: 'uppercase', textAlign: 'left' }}>
+          <div style={{ fontSize: '10px', letterSpacing: '0.15em', color: '#7D9CB8', fontWeight: '700', textTransform: 'uppercase' }}>
             Athlete Model
           </div>
-          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff', marginTop: '1px', textAlign: 'left' }}>
+          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff', marginTop: '1px' }}>
             What Your Coach Has Learned
           </div>
         </div>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '4px 10px',
-          borderRadius: '20px',
-          backgroundColor: isLearning ? 'rgba(217, 119, 6, 0.2)' : 'rgba(22, 163, 74, 0.2)',
-          border: `1px solid ${isLearning ? 'rgba(217,119,6,0.5)' : 'rgba(22,163,74,0.5)'}`,
-        }}>
-          <div style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            backgroundColor: isLearning ? '#f59e0b' : '#16a34a',
-          }} />
-          <span style={{
-            fontSize: '11px', fontWeight: '600', letterSpacing: '0.08em',
-            color: isLearning ? '#fcd34d' : '#4ade80',
-            textTransform: 'uppercase',
-          }}>
-            {isLearning ? 'Calibrating' : 'Calibrated'}
+        <div style={badgeStyle}>
+          <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: badgeDot }} />
+          <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.08em', color: badgeTextColor, textTransform: 'uppercase' }}>
+            {badgeText}
           </span>
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ backgroundColor: 'white', padding: isLearning ? '1.25rem' : '0' }}>
-        {isLearning ? (
-          <div>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '14px', color: '#374151', lineHeight: '1.6', textAlign: 'left' }}>
-              Your coach is building a calibrated model of how you respond to training load. Post-workout analyses unlock progressively sharper recommendations.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ flex: 1, height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+      <div style={{ backgroundColor: 'white' }}>
+
+        {/* ── Section 1: Coach Learning (always shown) ── */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+            Coach Learning
+          </div>
+
+          {/* ── Combined confidence inputs ── */}
+          {(() => {
+            const journalScore = Math.min(100, coveragePct);
+            const autopsyScore = Math.min(100, Math.round((autopsyCount / 20) * 100));
+            const compositeScore = Math.round((journalScore * 0.5) + (autopsyScore * 0.5));
+            const confLabel = compositeScore >= 70 ? 'High' : compositeScore >= 40 ? 'Building' : 'Low';
+            const confColor = compositeScore >= 70 ? '#16a34a' : compositeScore >= 40 ? '#d97706' : '#9ca3af';
+
+            const TRACK_H = 14;
+            const TICK_BELOW = 5;
+
+            // Shared bar renderer: track + fill + tick stems + tick labels
+            const renderBar = (
+              fillPct: number,
+              fillColor: string,
+              ticks: { pos: number; label: string; bold?: boolean; color?: string }[],
+              extraInner?: React.ReactNode,
+            ) => (
+              <div style={{ position: 'relative', paddingBottom: `${TICK_BELOW}px` }}>
+                {/* Track */}
                 <div style={{
-                  height: '100%',
-                  width: `${progressPct}%`,
-                  background: 'linear-gradient(90deg, #7D9CB8 0%, #6B8F7F 100%)',
-                  borderRadius: '3px',
-                }} />
+                  position: 'relative', height: `${TRACK_H}px`,
+                  background: 'linear-gradient(180deg, #f0f3f7 0%, #e5e9ef 100%)',
+                  borderRadius: `${TRACK_H / 2}px`,
+                  boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.10), inset 0 1px 1px rgba(0,0,0,0.06)',
+                  border: '1px solid #d1d9e0',
+                  overflow: 'hidden',
+                }}>
+                  {extraInner}
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: `${Math.min(100, fillPct)}%`,
+                    background: `linear-gradient(90deg, ${fillColor}bb 0%, ${fillColor} 100%)`,
+                    borderRadius: `${TRACK_H / 2}px`,
+                    transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
+                    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.25)',
+                    zIndex: 1,
+                  }} />
+                </div>
+                {/* Tick stems (skip first and last) */}
+                {ticks.slice(1, -1).map(({ pos }) => (
+                  <div key={pos} style={{
+                    position: 'absolute',
+                    left: `${pos}%`,
+                    top: `${TRACK_H - 2}px`,
+                    height: `${TICK_BELOW + 2}px`,
+                    width: '1px',
+                    backgroundColor: '#c5cdd6',
+                    transform: 'translateX(-50%)',
+                  }} />
+                ))}
               </div>
-              <span style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                {autopsyCount} / {CALIBRATION_TARGET} analyses
-              </span>
+            );
+
+            const renderLabels = (
+              ticks: { pos: number; label: string; bold?: boolean; color?: string }[],
+            ) => (
+              <div style={{ position: 'relative', height: '16px', marginTop: '2px', marginBottom: '2px' }}>
+                {ticks.map(({ pos, label, bold, color }, i) => {
+                  const isFirst = i === 0;
+                  const isLast = i === ticks.length - 1;
+                  return (
+                    <div key={pos} style={{
+                      position: 'absolute', left: `${pos}%`,
+                      transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
+                      fontSize: '10px',
+                      fontWeight: bold ? '700' : '400',
+                      color: color ?? '#9ca3af',
+                      whiteSpace: 'nowrap', lineHeight: 1,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>
+                      {label}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+
+            // Journal ticks
+            const journalTicks = [
+              { pos: 0,   label: '0%' },
+              { pos: 25,  label: '25%' },
+              { pos: 50,  label: '50%' },
+              { pos: 75,  label: '75%' },
+              { pos: 100, label: '100%' },
+            ];
+
+            // Autopsies: uniform 0,5,10,15,20 — bar saturates at 20, count shown in header
+            const autopsyTicks = [
+              { pos: 0,   label: '0' },
+              { pos: 25,  label: '5',  bold: autopsyCount >= 5,  color: autopsyCount >= 5  ? '#7D9CB8' : '#9ca3af' },
+              { pos: 50,  label: '10', bold: autopsyCount >= 10, color: autopsyCount >= 10 ? '#6B8F7F' : '#9ca3af' },
+              { pos: 75,  label: '15', bold: autopsyCount >= 15, color: autopsyCount >= 15 ? '#6B8F7F' : '#9ca3af' },
+              { pos: 100, label: '20' },
+            ];
+
+            return (
+              <>
+                {/* Model Confidence — prominent band */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: '#1B2E4B',
+                  marginBottom: '16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* Signal bars — larger */}
+                    <div style={{ display: 'flex', gap: '3px', alignItems: 'flex-end' }}>
+                      {[25, 50, 75, 100].map((threshold, i) => (
+                        <div key={threshold} style={{
+                          width: '5px',
+                          height: `${9 + i * 4}px`,
+                          borderRadius: '2px',
+                          backgroundColor: compositeScore >= threshold ? confColor : 'rgba(255,255,255,0.15)',
+                          transition: 'background-color 0.3s ease',
+                        }} />
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontWeight: '600', marginBottom: '1px' }}>
+                        Model Confidence
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: confColor, letterSpacing: '0.04em' }}>
+                        {confLabel}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: '800', color: confColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                    {compositeScore}%
+                  </div>
+                </div>
+
+                {/* Journal Coverage */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
+                    <span style={{ fontSize: '12px', color: '#374151', fontWeight: '600' }}>
+                      Journal Coverage
+                      <span style={{ fontSize: '10px', fontWeight: '400', color: '#9ca3af', marginLeft: '5px' }}>last 30 days</span>
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: coverageColor, fontVariantNumeric: 'tabular-nums' }}>
+                      {journalCount}/{activityCount} · {coveragePct}%
+                    </span>
+                  </div>
+                  {renderBar(coveragePct, coverageColor, journalTicks)}
+                  {renderLabels(journalTicks)}
+                </div>
+
+                {/* Autopsies */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
+                    <span style={{ fontSize: '12px', color: '#374151', fontWeight: '600' }}>
+                      Autopsies
+                      <span style={{ fontSize: '10px', fontWeight: '400', color: '#9ca3af', marginLeft: '5px' }}>workout analyses</span>
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
+                      {autopsyCount >= 20 ? `${autopsyCount} (max)` : `${autopsyCount} / 20`}
+                    </span>
+                  </div>
+                  {renderBar(autopsyScore, '#7D9CB8', autopsyTicks)}
+                  {renderLabels(autopsyTicks)}
+                  {nextMilestone ? (
+                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                      {toNext} more unlock{toNext === 1 ? 's' : ''}: {nextMilestone.unlocks}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px' }}>
+                      Full envelope characterized
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+
+        {/* ── Section 2: Training Envelope (shown when calibrated) ── */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+            Training Envelope
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', backgroundColor: '#f3f4f6', borderRadius: '6px', overflow: 'hidden' }}>
+
+            {/* Productive window */}
+            <div style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderLeft: '3px solid #7D9CB8' }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.1em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>
+                Productive Window
+              </div>
+              {hasEnvelope ? (
+                <>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
+                    0.000 to {divLow!.toFixed(3)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Your personal training range</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#9ca3af' }}>Calibrating…</div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Needs {Math.max(0, 5 - autopsyCount)} more autopsies</div>
+                </>
+              )}
+            </div>
+
+            {/* Breakdown threshold */}
+            <div style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderLeft: '3px solid #ca8a04' }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.1em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>
+                Breakdown Threshold
+              </div>
+              {hasThreshold ? (
+                <>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#713f12', fontVariantNumeric: 'tabular-nums' }}>
+                    -{divThreshold!.toFixed(3)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Beyond this, distress has followed</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#9ca3af' }}>Not yet set</div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Needs 3 physical distress events</div>
+                </>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── Section 3: Plan Execution ── */}
+        <div style={{ padding: '1rem 1.25rem' }}>
+          <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+            Plan Execution
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', backgroundColor: '#f3f4f6', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderLeft: '3px solid #1B2E4B' }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.1em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>
+                Avg Alignment
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
+                {model?.avg_lifetime_alignment != null ? `${model.avg_lifetime_alignment}/10` : '—'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Lifetime plan adherence</div>
+            </div>
+            <div style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderLeft: `3px solid ${trendColor}` }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.1em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>
+                Alignment Trend
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: trendColor }}>
+                {trendLabel}
+              </div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>Last 5 autopsied workouts</div>
             </div>
           </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', backgroundColor: '#e5e7eb' }}>
-            {metrics.map((m) => (
-              <div key={m.label} style={{
-                backgroundColor: 'white',
-                padding: '1rem 1.25rem',
-                borderLeft: `3px solid ${m.accent}`,
-              }}>
-                <div style={{
-                  fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700',
-                  color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left',
-                }}>
-                  {m.label}
-                </div>
-                <div style={{
-                  fontSize: '26px', fontWeight: '700', lineHeight: '1',
-                  color: m.valueColor, marginBottom: '0.4rem', textAlign: 'left',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
-                  {m.value}
-                </div>
-                <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'left' }}>
-                  {m.sub}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
+
       </div>
     </div>
   );
@@ -1018,6 +1312,8 @@ const CoachPage: React.FC = () => {
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
   const [weeklySynthesis, setWeeklySynthesis] = useState<WeeklySynthesisData | null>(null);
 
+  const [trainingSchedule, setTrainingSchedule] = useState<TrainingSchedule | null>(null);
+
   // Schedule review state
   const [scheduleReviewStatus, setScheduleReviewStatus] = useState<{
     needs_review: boolean;
@@ -1054,7 +1350,8 @@ const CoachPage: React.FC = () => {
         athleteModelRes,
         revisionRes,
         readinessRes,
-        synthesisRes
+        synthesisRes,
+        scheduleRes
       ] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/training-stage'),
@@ -1063,7 +1360,8 @@ const CoachPage: React.FC = () => {
         fetch('/api/athlete-model'),
         fetch('/api/coach/revision-proposal', { credentials: 'include' }),
         fetch('/api/coach/race-readiness'),
-        fetch('/api/coach/weekly-synthesis')
+        fetch('/api/coach/weekly-synthesis'),
+        fetch('/api/coach/training-schedule')
       ]);
 
       // Check for critical errors (race goals is essential)
@@ -1141,6 +1439,12 @@ const CoachPage: React.FC = () => {
         if (!synthData.error) {
           setWeeklySynthesis(synthData);
         }
+      }
+
+      // Parse training schedule
+      if (scheduleRes.ok) {
+        const scheduleData = await scheduleRes.json();
+        setTrainingSchedule(scheduleData.schedule || null);
       }
 
       // Phase E: parse revision proposal
@@ -1852,21 +2156,20 @@ const CoachPage: React.FC = () => {
       ============================================================ */}
       {activeSubTab === 'week' && (
         <>
-          {/* 7-Day Workout Plan */}
           <div className={styles.card} style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem' }}>
-            <WeeklyProgramDisplay program={weeklyProgram} onRefresh={fetchCoachData} />
+            <WeeklyProgramDisplay
+              program={weeklyProgram}
+              onRefresh={fetchCoachData}
+              trainingSchedule={trainingSchedule}
+              weeklySynthesis={weeklySynthesis}
+              onScheduleChange={() => {
+                fetch('/api/coach/training-schedule')
+                  .then(r => r.json())
+                  .then(d => setTrainingSchedule(d.schedule || null))
+                  .catch(() => {});
+              }}
+            />
           </div>
-
-          {/* Strategic Analysis & Context */}
-          {weeklyProgram?.strategic_context && (
-            <StrategicContextDisplay strategicContext={weeklyProgram.strategic_context} />
-          )}
-
-          {/* Weekly Synthesis - retrospective narrative */}
-          <WeeklySynthesisCard data={weeklySynthesis} />
-
-          {/* Training Schedule - configuration for the plan */}
-          <TrainingSchedulePage />
         </>
       )}
       {activeSubTab === 'season' && <SeasonPage />}

@@ -4,27 +4,47 @@
 
 ---
 
-## Phase 1: Context Gathering (MANDATORY FIRST)
+## Phase 0: Collect Observable Evidence (MANDATORY BEFORE TOUCHING CODE)
+
+**Do not open any source files until this phase is complete.**
+
+Ask the user for all available runtime evidence:
+
+- [ ] **Browser console errors** — exact error messages and stack traces
+- [ ] **Network tab** — which requests are failing, HTTP status codes, response bodies
+- [ ] **Server logs** — any exceptions or error lines from Cloud Run / Flask
+- [ ] **Database state** — query the relevant table(s) directly (Cloud SQL Editor) to confirm what data exists vs what's expected
+
+If the user hasn't provided these, ask explicitly:
+> "Before I look at the code, can you share: (1) browser console errors, (2) the failing network request and its response body, and (3) any server log output?"
+
+**Gate**: You may not proceed to Phase 1 until you have at least one piece of runtime evidence (error message, log line, or DB query result). Code reading without evidence produces speculation, not diagnosis.
+
+**OUTPUT REQUIRED**: Summarize the concrete errors/data collected. State what is known vs unknown.
+
+---
+
+## Phase 1: Context Gathering
 
 ### 1.1 Read Project Guidelines
 - [ ] Read `.claude/CLAUDE.md` - Problem-Solving Philosophy section
-- [ ] Read `.cursorrules` if exists
 - [ ] Quote relevant guidance that applies to this issue
 - [ ] Identify anti-patterns to avoid (from guidelines)
 
 ### 1.2 Define the Symptom Precisely
-Answer these questions explicitly:
-- **Observable Problem**: What exactly is wrong? (be specific)
-- **Location**: Where does it manifest? (UI, API, database, etc.)
+Answer these questions using Phase 0 evidence (not speculation):
+- **Observable Problem**: What exactly is wrong? (use actual error messages)
+- **Location**: Where does it manifest? (confirmed by logs/network, not assumed)
 - **Expected vs Actual**: What should happen vs what's happening?
 - **Scope**: Is this isolated or systemic?
 
-### 1.3 Map All Instances
-Create complete inventory:
-- [ ] List every file/function that calculates/handles this value
-- [ ] List every API endpoint that provides this data
-- [ ] List every UI component that displays this value
-- [ ] Document the complete data flow (source → transformations → destination)
+### 1.3 Map Only the Relevant Code Path
+Using the evidence from Phase 0, trace only the specific failing path:
+- [ ] Identify the failing endpoint / function from the error
+- [ ] Read that code and its direct dependencies
+- [ ] Document the data flow only as far as the evidence points
+
+Do not map the entire feature. Follow the error, not your intuition.
 
 **OUTPUT REQUIRED**: Present findings before proceeding to Phase 2.
 
@@ -151,16 +171,18 @@ Ask user:
 
 ## Red Flags - Abort and Reassess
 
-If you find yourself doing ANY of these, STOP and return to Phase 2:
+If you find yourself doing ANY of these, STOP and return to the appropriate phase:
 
-❌ Copying code from one location to another
-❌ Adding conditional logic to "synchronize" values
-❌ Creating a second calculation of the same value
-❌ Implementing a workaround instead of fixing the root cause
-❌ Adding try-catch to suppress errors without understanding them
-❌ Making client-side compensations for server-side issues
+❌ Proposing a hypothesis before seeing an actual error message → return to Phase 0
+❌ Reading code to find the cause before confirming what's failing → return to Phase 0
+❌ Saying "the likely cause is..." without log/network/DB evidence → return to Phase 0
+❌ Copying code from one location to another → return to Phase 2
+❌ Adding conditional logic to "synchronize" values → return to Phase 2
+❌ Implementing a workaround instead of fixing the root cause → return to Phase 2
+❌ Adding try-catch to suppress errors without understanding them → return to Phase 2
+❌ Making client-side compensations for server-side issues → return to Phase 2
 
-**These are symptoms you haven't found the root cause yet.**
+**Speculation without evidence wastes time and misdirects investigation.**
 
 ---
 

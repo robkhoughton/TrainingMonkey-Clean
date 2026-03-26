@@ -179,11 +179,38 @@ interface MorningReadinessCardProps {
   onSaved: () => void;
 }
 
+interface WellnessData {
+  hrv_value: number | null;
+  hrv_baseline_30d: number | null;
+  resting_hr: number | null;
+  rhr_baseline_7d: number | null;
+  sleep_duration_secs: number | null;
+  sleep_score: number | null;
+  weight: number | null;
+  weight_baseline_7d: number | null;
+  spo2: number | null;
+  respiration_rate: number | null;
+  vo2max: number | null;
+  hrv_source: string | null;
+}
+
 const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, onSaved }) => {
   const [sleepQuality, setSleepQuality] = useState<number>(3);
   const [morningSoreness, setMorningSoreness] = useState<number>(0);
+  const [wellness, setWellness] = useState<WellnessData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/readiness?date=${todayStr}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.sleep_quality !== undefined) setSleepQuality(data.sleep_quality ?? 3);
+        if (data.morning_soreness !== undefined) setMorningSoreness(data.morning_soreness ?? 0);
+        setWellness(data);
+      })
+      .catch(() => {});
+  }, [todayStr]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -292,6 +319,86 @@ const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, o
       >
         {isSaving ? 'Saving...' : 'Save'}
       </button>
+
+      {/* intervals.icu wellness data */}
+      {wellness && wellness.hrv_source === 'intervals_icu' && (
+        <div style={{
+          marginTop: '16px',
+          paddingTop: '14px',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '10px', fontWeight: '500', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Synced from intervals.icu
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+
+            {wellness.hrv_value !== null && (() => {
+              const ratio = wellness.hrv_baseline_30d ? wellness.hrv_value / wellness.hrv_baseline_30d : null;
+              const color = ratio ? (ratio < 0.85 ? '#d97706' : ratio > 1.15 ? '#6B8F7F' : '#374151') : '#374151';
+              const tag   = ratio ? (ratio < 0.85 ? ' ↓' : ratio > 1.15 ? ' ↑' : '') : '';
+              return (
+                <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>HRV</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '600', color }}>{wellness.hrv_value.toFixed(0)}ms{tag}</div>
+                  {wellness.hrv_baseline_30d && <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>avg {wellness.hrv_baseline_30d.toFixed(0)}ms</div>}
+                </div>
+              );
+            })()}
+
+            {wellness.resting_hr !== null && (() => {
+              const diff  = wellness.rhr_baseline_7d ? ((wellness.resting_hr - wellness.rhr_baseline_7d) / wellness.rhr_baseline_7d) * 100 : null;
+              const color = diff !== null ? (diff >= 10 ? '#d97706' : diff >= 5 ? '#d97706' : '#374151') : '#374151';
+              const tag   = diff !== null ? (diff >= 5 ? ' ↑' : diff <= -5 ? ' ↓' : '') : '';
+              return (
+                <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>Resting HR</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '600', color }}>{wellness.resting_hr}bpm{tag}</div>
+                  {wellness.rhr_baseline_7d && <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>avg {wellness.rhr_baseline_7d.toFixed(0)}bpm</div>}
+                </div>
+              );
+            })()}
+
+            {wellness.sleep_duration_secs !== null && (() => {
+              const hrs   = wellness.sleep_duration_secs / 3600;
+              const color = hrs < 6 ? '#d97706' : hrs < 7 ? '#d97706' : '#374151';
+              return (
+                <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>Sleep</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '600', color }}>{hrs.toFixed(1)}hrs</div>
+                  {wellness.sleep_score !== null && <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>score {wellness.sleep_score}/100</div>}
+                </div>
+              );
+            })()}
+
+            {wellness.weight !== null && (
+              <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>Weight</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#374151' }}>{wellness.weight.toFixed(1)}kg</div>
+                {wellness.weight_baseline_7d && (
+                  <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                    {(wellness.weight - wellness.weight_baseline_7d) >= 0 ? '+' : ''}{(wellness.weight - wellness.weight_baseline_7d).toFixed(1)}kg
+                  </div>
+                )}
+              </div>
+            )}
+
+            {wellness.spo2 !== null && wellness.spo2 < 95 && (
+              <div style={{ background: 'white', border: '1px solid #fca5a5', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>SpO2</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#dc2626' }}>{wellness.spo2.toFixed(0)}%</div>
+              </div>
+            )}
+
+            {wellness.vo2max !== null && (
+              <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', minWidth: '80px' }}>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '2px' }}>VO2max</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: '#374151' }}>{wellness.vo2max.toFixed(0)}</div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -440,7 +547,7 @@ const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structu
     }}>
       {/* State: idle */}
       {state.status === 'idle' && (
-        <div style={{ marginTop: '8px' }}>
+        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             onClick={handleWhyClick}
             style={{
@@ -456,6 +563,22 @@ const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structu
           >
             Why this recommendation?
           </button>
+          <a
+            href="/?tab=coach"
+            style={{
+              backgroundColor: 'transparent',
+              color: '#6b7280',
+              border: '1px solid #d1d5db',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '0.75rem',
+              fontWeight: '600',
+              textDecoration: 'none',
+              display: 'inline-block'
+            }}
+          >
+            Week Plan
+          </a>
         </div>
       )}
 
@@ -1181,16 +1304,18 @@ const JournalPage: React.FC = () => {
   };
 
   // Generate recommendation on demand (async — POST returns 202 + job_id, then poll)
-  const handleGenerateRecommendation = async () => {
+  const handleGenerateRecommendation = async (forDate?: string) => {
     const POLL_INTERVAL_MS = 2000;
     const TIMEOUT_MS = 90000;
     try {
       setIsGenerating(true);
 
+      const body = forDate ? JSON.stringify({ target_date: forDate }) : undefined;
       const startResponse = await fetch('/api/llm-recommendations/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
+        credentials: 'include',
+        body
       });
       if (!startResponse.ok) {
         const result = await startResponse.json();
@@ -1535,13 +1660,11 @@ const JournalPage: React.FC = () => {
                             </div>
 
                             {/* Phase 5: Why This Recommendation Panel */}
-                            {entry.structured_output && (
-                              <WhyRecommendationPanel
-                                structuredOutput={entry.structured_output}
-                                targetDate={entry.recommendation_target_date || ''}
-                                todaysDecision={entry.todays_decision || ''}
-                              />
-                            )}
+                            <WhyRecommendationPanel
+                              structuredOutput={entry.structured_output || {}}
+                              targetDate={entry.recommendation_target_date || entry.date}
+                              todaysDecision={entry.todays_decision || ''}
+                            />
                           </div>
                         ) : (
                           /* No recommendation yet - prompt to complete journal */
@@ -1598,7 +1721,7 @@ const JournalPage: React.FC = () => {
                           {(!entry.todays_decision || entry.todays_decision.includes('No recommendation available')) ? (
                             (entry.is_today || entry.is_tomorrow) ? (
                               <button
-                                onClick={handleGenerateRecommendation}
+                                onClick={() => handleGenerateRecommendation(entry.date)}
                                 disabled={isGenerating}
                                 style={{
                                   backgroundColor: '#3b82f6',
@@ -1631,13 +1754,11 @@ const JournalPage: React.FC = () => {
                               </div>
 
                               {/* Phase 5: Why This Recommendation Panel for regular rows */}
-                              {entry.structured_output && (
-                                <WhyRecommendationPanel
-                                  structuredOutput={entry.structured_output}
-                                  targetDate={entry.recommendation_target_date || ''}
-                                  todaysDecision={entry.todays_decision || ''}
-                                />
-                              )}
+                              <WhyRecommendationPanel
+                                structuredOutput={entry.structured_output || {}}
+                                targetDate={entry.recommendation_target_date || entry.date}
+                                todaysDecision={entry.todays_decision || ''}
+                              />
                             </>
                           )}
                         </div>
@@ -1775,22 +1896,122 @@ const JournalPage: React.FC = () => {
 
                     {/* Notes */}
                     <td style={{ padding: '12px 8px', verticalAlign: 'top' }}>
-                      <textarea
-                        value={entry.observations.notes || ''}
-                        onChange={(e) => handleObservationChange(entry.date, 'notes', e.target.value)}
-                        placeholder="Training notes..."
-                        style={{
-                          height: '100px',
-                          padding: '6px',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
-                          resize: 'vertical',
-                          width: '350px',
-                          minWidth: '350px',
-                          maxWidth: '450px'
-                        }}
-                      />
+                      {(() => {
+                        const text = entry.observations.notes || '';
+                        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+                        const wordCount = words.length;
+                        const lower = text.toLowerCase();
+
+                        const physioKeywords = [
+                          'legs', 'leg', 'breathing', 'breath', 'lungs', 'lung',
+                          'heart', 'heavy', 'sharp', 'tight', 'fatigued', 'fatigue',
+                          'strong', 'flat', 'dead', 'muscles', 'muscle', 'tired',
+                          'fresh', 'stiff', 'sore', 'weak', 'powerful', 'labored',
+                          'sluggish', 'snappy', 'responsive', 'burn', 'burning',
+                          'ache', 'pain', 'effort', 'exhausted', 'energized',
+                        ];
+                        const exoKeywords = [
+                          'sleep', 'slept', 'nutrition', 'fuel', 'fueling', 'stress',
+                          'heat', 'cold', 'altitude', 'hydration', 'hydrated',
+                          'dehydrated', 'alcohol', 'food', 'eating', 'ate',
+                          'drank', 'drink', 'weather', 'conditions', 'sick',
+                          'illness', 'coffee', 'work', 'travel', 'humidity',
+                          'humid', 'wind', 'rain', 'snow', 'hot', 'nausea',
+                          'stomach', 'busy', 'late', 'early',
+                        ];
+
+                        const physioHits = physioKeywords.filter(k => lower.includes(k)).length;
+                        const exoHits   = exoKeywords.filter(k => lower.includes(k)).length;
+
+                        // 4 bars — each one a progressively harder threshold
+                        const bars = [
+                          wordCount >= 8  || physioHits > 0 || exoHits > 0,
+                          wordCount >= 16 || (physioHits > 0 && exoHits > 0),
+                          (wordCount >= 16 && (physioHits > 0 || exoHits > 0)) || wordCount >= 24 || physioHits >= 2 || exoHits >= 2,
+                          wordCount >= 24 && physioHits > 0 && exoHits > 0,
+                        ];
+                        const level = bars.filter(Boolean).length;
+
+                        const levelConfig = [
+                          { label: 'No Signal',   color: '#9ca3af' },
+                          { label: 'Baseline',    color: '#f59e0b' },
+                          { label: 'Developing',  color: '#d97706' },
+                          { label: 'Clear',       color: '#6B8F7F' },
+                          { label: 'Diagnostic',  color: '#16a34a' },
+                        ];
+                        const hints = [
+                          '— keep writing',
+                          '— describe how you felt physically',
+                          '— add a context factor (sleep, heat, stress…)',
+                          '— add more depth',
+                          '',
+                        ];
+                        const cfg = levelConfig[level];
+
+                        return (
+                          <>
+                            <textarea
+                              value={text}
+                              onChange={(e) => handleObservationChange(entry.date, 'notes', e.target.value)}
+                              placeholder="Training notes..."
+                              style={{
+                                height: '100px',
+                                padding: '6px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                fontSize: '0.875rem',
+                                resize: 'vertical',
+                                width: '350px',
+                                minWidth: '350px',
+                                maxWidth: '450px',
+                                display: 'block',
+                              }}
+                            />
+                            {text.trim().length > 0 && (
+                              <div style={{
+                                marginTop: '5px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}>
+                                {/* Signal bars */}
+                                <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', flexShrink: 0 }}>
+                                  {[0, 1, 2, 3].map(i => (
+                                    <div key={i} style={{
+                                      width: '4px',
+                                      height: `${8 + i * 4}px`,
+                                      borderRadius: '2px',
+                                      backgroundColor: bars[i] ? cfg.color : '#e5e7eb',
+                                      transition: 'background-color 0.18s ease',
+                                    }} />
+                                  ))}
+                                </div>
+                                {/* Label */}
+                                <span style={{
+                                  fontSize: '10px',
+                                  fontWeight: '700',
+                                  color: cfg.color,
+                                  letterSpacing: '0.08em',
+                                  textTransform: 'uppercase',
+                                  flexShrink: 0,
+                                }}>
+                                  {cfg.label}
+                                </span>
+                                {/* Hint */}
+                                {level < 4 && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    color: '#9ca3af',
+                                    fontStyle: 'italic',
+                                  }}>
+                                    {hints[level]}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </td>
 
                     {/* Alignment Score Column */}
@@ -1838,16 +2059,37 @@ const JournalPage: React.FC = () => {
                           );
                         }
 
-                        // State 1: Unsaved changes or not yet saved — show Save
+                        // State 1: Unsaved changes or not yet saved — show Save (+ Rest Day for today)
                         if (hasUnsaved || (!isSaved && !isCurrentlySaving)) {
                           return (
-                            <button
-                              onClick={() => handleSave(entry.date)}
-                              disabled={isCurrentlySaving}
-                              className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
-                            >
-                              {isCurrentlySaving ? '💾 Saving...' : '💾 Save'}
-                            </button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                              <button
+                                onClick={() => handleSave(entry.date)}
+                                disabled={isCurrentlySaving}
+                                className={`${styles.journalButton} ${isCurrentlySaving ? styles.buttonSaving : styles.buttonSave}`}
+                              >
+                                {isCurrentlySaving ? 'Saving...' : 'Save'}
+                              </button>
+                              {isToday && noActivityYet && (
+                                <button
+                                  onClick={() => handleMarkRestDay(entry.date)}
+                                  disabled={isCurrentlySaving}
+                                  style={{
+                                    backgroundColor: 'transparent',
+                                    color: '#9333ea',
+                                    border: '1px solid #9333ea',
+                                    borderRadius: '4px',
+                                    padding: '3px 8px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Rest Day
+                                </button>
+                              )}
+                            </div>
                           );
                         }
 
@@ -1985,7 +2227,7 @@ const JournalPage: React.FC = () => {
                   fontSize: '1.5rem',
                   fontWeight: '700'
                 }}>
-                  🔍 AI Training Analysis
+                  AI Training Analysis
                 </h2>
                 <div style={{
                   fontSize: '1.1rem',
@@ -2036,12 +2278,31 @@ const JournalPage: React.FC = () => {
             }}>
               {(() => {
                 const text = modalAutopsy.ai_autopsy.autopsy_analysis || '';
-                const paragraphs = text.split('\n\n').filter(p => p.trim());
-                
-                // Split paragraphs in half
+                const rawParagraphs = text.split('\n\n').filter(p => p.trim());
+
+                // Strip noise: --- separators, standalone alignment score lines,
+                // and LLM preamble headers that duplicate modal header info
+                const paragraphs = rawParagraphs.filter(p => {
+                  const t = p.trim();
+                  if (/^-{2,}$/.test(t)) return false;                        // --- separators
+                  if (/^ALIGNMENT_SCORE:\s*\d/i.test(t)) return false;        // ALIGNMENT_SCORE: 7/10
+                  if (/^\d+\/10$/.test(t)) return false;                      // standalone 7/10
+                  if (/^TRAINING AUTOPSY ANALYSIS/i.test(t)) return false;    // LLM preamble header
+                  return true;
+                });
+
+                // Split at section boundaries — find the section header closest to midpoint
+                const sectionIndices = paragraphs.reduce<number[]>((acc, p, i) => {
+                  if (p.match(/^[A-Z\s&':]+:/) && i > 0) acc.push(i);
+                  return acc;
+                }, []);
                 const midpoint = Math.ceil(paragraphs.length / 2);
-                const column1 = paragraphs.slice(0, midpoint);
-                const column2 = paragraphs.slice(midpoint);
+                const splitAt = sectionIndices.length > 0
+                  ? sectionIndices.reduce((prev, curr) =>
+                      Math.abs(curr - midpoint) < Math.abs(prev - midpoint) ? curr : prev)
+                  : midpoint;
+                const column1 = paragraphs.slice(0, splitAt);
+                const column2 = paragraphs.slice(splitAt);
                 
                 return (
                   <div style={{

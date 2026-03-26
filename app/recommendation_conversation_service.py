@@ -7,7 +7,7 @@ from llm_recommendations_module import (
     get_api_key, MODEL_HAIKU, MODEL_SONNET,
     get_user_coaching_spectrum, get_coaching_tone_instructions,
 )
-from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
+from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA, format_divergence_for_prompt
 from db_utils import (
     get_recommendation_conversation,
     upsert_recommendation_conversation,

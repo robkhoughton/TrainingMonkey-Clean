@@ -2,6 +2,8 @@
 
 ## Project Overview
 
+**Purpose:** Your Training Monkey monitors your Strava training load, generates a daily AI coaching recommendation tailored to your fitness state and race goals, and learns from your actual workout responses over time to personalize its guidance.
+
 TrainingMonkey is a training analytics platform for endurance athletes. It integrates with Strava to provide:
 - Training load monitoring (ACWR/TRIMP metrics)
 - AI-powered coaching recommendations
@@ -90,6 +92,10 @@ Detailed standards are organized in `.claude/rules/`:
 - **Build Script**: `scripts/build_and_copy.bat`
 
 ## Visual Development
+
+### Frontend Work
+**Always invoke `/frontend-design` before writing any new frontend component or making significant UI changes.**
+Do not proceed with frontend implementation without first invoking this skill.
 
 ### Design Principles
 - Brand framework (single source of truth): `docs/branding/YOUR_TRAINING_MONKEY_BRAND_FRAMEWORK.md`

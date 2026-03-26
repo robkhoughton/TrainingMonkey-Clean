@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta
 import time
 from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
-from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
+from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA, format_divergence_for_prompt
 
 # Import database utilities
 from db_utils import (
@@ -30,6 +30,7 @@ from db_utils import (
     get_current_week_context,  # Phase B: Macro→Meso→Micro injection
     append_deviation_log,      # Phase C: Deviation classification
     set_revision_pending,      # Phase C: Deviation classification
+    get_answered_alignment_queries,  # Phase D: preference feedback injection
 )
 
 # Setup logging - write to stdout for Cloud Logging visibility
@@ -587,7 +588,7 @@ def create_autopsy_prompt(date_str, prescribed_action, actual_activities, observ
 **Athlete Metrics Context:**
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f}
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} [{NORMALIZED_DIVERGENCE_FORMULA}]
+- Normalized Divergence: {format_divergence_for_prompt(current_metrics.get('normalized_divergence'))}
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 ### PRESCRIBED VS ACTUAL COMPARISON
@@ -769,7 +770,12 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
 
         if existing_recommendation:
             logger.info(f"Recommendation already exists for target_date {target_date}, skipping generation to preserve historical record")
-            return get_latest_recommendation(user_id)
+            result = execute_query(
+                "SELECT * FROM llm_recommendations WHERE user_id = %s AND target_date = %s ORDER BY generated_at DESC LIMIT 1",
+                (user_id, target_date),
+                fetch=True
+            )
+            return dict(result[0]) if result and result[0] else get_latest_recommendation(user_id)
 
         # For historical record keeping - no expiration for date-specific recommendations
         valid_until = None
@@ -955,23 +961,160 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 
     # Get morning readiness for current date (Phase 6B)
     readiness_data = execute_query(
-        "SELECT sleep_quality, morning_soreness FROM journal_entries WHERE user_id = %s AND date = %s",
+        """SELECT sleep_quality, morning_soreness, hrv_value, resting_hr,
+                  sleep_duration_secs, sleep_score, weight, spo2, respiration_rate
+           FROM journal_entries WHERE user_id = %s AND date = %s""",
         (user_id, current_date),
+        fetch=True
+    )
+
+    # HRV 30-day baseline (require ≥7 readings)
+    hrv_baseline_data = execute_query(
+        """SELECT AVG(hrv_value) AS hrv_baseline, COUNT(hrv_value) AS hrv_count
+           FROM journal_entries
+           WHERE user_id = %s
+             AND date >= %s::date - INTERVAL '30 days'
+             AND date < %s::date
+             AND hrv_value IS NOT NULL""",
+        (user_id, current_date, current_date),
+        fetch=True
+    )
+
+    # RHR 7-day baseline (require ≥3 readings)
+    rhr_baseline_data = execute_query(
+        """SELECT AVG(resting_hr) AS rhr_baseline, COUNT(resting_hr) AS rhr_count
+           FROM journal_entries
+           WHERE user_id = %s
+             AND date >= %s::date - INTERVAL '7 days'
+             AND date < %s::date
+             AND resting_hr IS NOT NULL""",
+        (user_id, current_date, current_date),
         fetch=True
     )
 
     readiness_context = ""
     if readiness_data and readiness_data[0]:
         row = dict(readiness_data[0])
-        sq = row.get('sleep_quality')
-        ms = row.get('morning_soreness')
-        if sq is not None or ms is not None:
-            parts = []
-            if sq is not None:
-                sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
-                parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
-            if ms is not None:
-                parts.append(f"Morning soreness: {ms}/100")
+        sq               = row.get('sleep_quality')
+        ms               = row.get('morning_soreness')
+        hrv_value        = row.get('hrv_value')
+        rhr_value        = row.get('resting_hr')
+        sleep_secs       = row.get('sleep_duration_secs')
+        sleep_score      = row.get('sleep_score')
+        weight           = row.get('weight')
+        spo2             = row.get('spo2')
+        respiration_rate = row.get('respiration_rate')
+
+        parts = []
+
+        # Sleep — prefer objective duration over subjective quality when available
+        if sleep_secs is not None:
+            hours = float(sleep_secs) / 3600
+            if hours < 6:
+                sleep_status = "significant deficit"
+            elif hours < 7:
+                sleep_status = "suboptimal"
+            else:
+                sleep_status = "adequate"
+            score_str = f", score: {sleep_score}/100" if sleep_score is not None else ""
+            parts.append(f"Sleep: {hours:.1f}hrs ({sleep_status}{score_str})")
+        elif sq is not None:
+            sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
+            parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
+
+        if ms is not None:
+            parts.append(f"Morning soreness: {ms}/100")
+
+        # HRV context
+        if hrv_value is not None:
+            hrv_baseline = hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None
+            hrv_count    = hrv_baseline_data[0]['hrv_count']    if hrv_baseline_data and hrv_baseline_data[0] else 0
+            if hrv_baseline and hrv_count >= 7:
+                ratio     = float(hrv_value) / float(hrv_baseline)
+                pct_diff  = (ratio - 1.0) * 100
+                direction = "suppressed" if ratio < 0.85 else ("elevated" if ratio > 1.15 else "normal range")
+                parts.append(
+                    f"HRV: {hrv_value:.0f}ms "
+                    f"(30-day baseline: {hrv_baseline:.0f}ms, "
+                    f"{abs(pct_diff):.0f}% {'below' if pct_diff < 0 else 'above'} baseline — {direction})"
+                )
+            else:
+                readings_needed = max(0, 7 - (hrv_count or 0))
+                parts.append(f"HRV: {hrv_value:.0f}ms (building baseline — {readings_needed} more readings needed)")
+
+        # Resting HR context
+        if rhr_value is not None:
+            rhr_baseline = rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None
+            rhr_count    = rhr_baseline_data[0]['rhr_count']    if rhr_baseline_data and rhr_baseline_data[0] else 0
+            if rhr_baseline and rhr_count >= 3:
+                rhr_diff = rhr_value - float(rhr_baseline)
+                pct_diff = (rhr_diff / float(rhr_baseline)) * 100
+                if pct_diff >= 10:
+                    status = "significantly elevated"
+                elif pct_diff >= 5:
+                    status = "elevated"
+                elif pct_diff <= -5:
+                    status = "below baseline"
+                else:
+                    status = "normal range"
+                parts.append(
+                    f"Resting HR: {rhr_value}bpm "
+                    f"(7-day baseline: {rhr_baseline:.0f}bpm, "
+                    f"{abs(pct_diff):.0f}% {'above' if rhr_diff > 0 else 'below'} baseline — {status})"
+                )
+            else:
+                parts.append(f"Resting HR: {rhr_value}bpm (building baseline)")
+
+        # Weight — inject only when we have enough history to show context
+        if weight is not None:
+            weight_baseline_data = execute_query(
+                """SELECT AVG(weight) AS weight_avg
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= %s::date - INTERVAL '7 days'
+                     AND date < %s::date
+                     AND weight IS NOT NULL""",
+                (user_id, current_date, current_date),
+                fetch=True
+            )
+            weight_avg = weight_baseline_data[0]['weight_avg'] if weight_baseline_data and weight_baseline_data[0] else None
+            if weight_avg:
+                delta = float(weight) - float(weight_avg)
+                pct   = (delta / float(weight_avg)) * 100
+                if pct <= -2:
+                    note = " — possible dehydration, monitor"
+                elif pct >= 2:
+                    note = " — above 7-day avg"
+                else:
+                    note = ""
+                parts.append(f"Weight: {weight:.1f}kg (7-day avg: {float(weight_avg):.1f}kg, {delta:+.1f}kg{note})")
+            else:
+                parts.append(f"Weight: {weight:.1f}kg")
+
+        # spO2 — only inject when below 95%
+        if spo2 is not None and float(spo2) < 95:
+            parts.append(f"SpO2: {spo2:.0f}% — low, possible altitude effect or illness")
+
+        # Respiration — only inject when elevated vs 7-day baseline
+        if respiration_rate is not None:
+            resp_baseline_data = execute_query(
+                """SELECT AVG(respiration_rate) AS resp_avg
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= %s::date - INTERVAL '7 days'
+                     AND date < %s::date
+                     AND respiration_rate IS NOT NULL""",
+                (user_id, current_date, current_date),
+                fetch=True
+            )
+            resp_avg = resp_baseline_data[0]['resp_avg'] if resp_baseline_data and resp_baseline_data[0] else None
+            if resp_avg and float(respiration_rate) > float(resp_avg) * 1.15:
+                parts.append(
+                    f"Respiration: {respiration_rate:.0f} breaths/min "
+                    f"(7-day avg: {float(resp_avg):.0f} — elevated, possible illness or stress)"
+                )
+
+        if parts:
             readiness_context = "\n### MORNING READINESS\n" + "\n".join(f"- {p}" for p in parts) + "\n"
 
     # Build autopsy context section if insights available
@@ -1096,7 +1239,7 @@ Assessment Category: {assessment_category}
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
 - Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
-- Normalized Divergence: {formatted_metrics['normalized_divergence']} [{NORMALIZED_DIVERGENCE_FORMULA}]
+- Normalized Divergence: {format_divergence_for_prompt(current_metrics.get('normalized_divergence'))}
 - 7-day Average Load: {formatted_metrics['seven_day_avg_load']} miles/day
 - 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
 - Days Since Rest: {formatted_metrics['days_since_rest']}
@@ -2034,15 +2177,22 @@ def parse_enhanced_autopsy_response(response):
     try:
         import re
 
-        # Extract alignment score
-        score_match = re.search(r'ALIGNMENT_SCORE:\s*(\d+)/10', response, re.IGNORECASE)
-        alignment_score = int(score_match.group(1)) if score_match else 5
+        # Extract alignment score — handle two LLM output patterns:
+        #   1. Labeled:  "ALIGNMENT_SCORE: 9/10"  (required format)
+        #   2. Unlabeled: "9.5/10" as first line  (LLM sometimes skips the label)
+        # Both patterns accept decimals (e.g. 9.5) and convert to nearest integer.
+        score_match = re.search(r'ALIGNMENT_SCORE:\s*([\d.]+)/10', response, re.IGNORECASE)
+        if not score_match:
+            score_match = re.search(r'^\s*([\d.]+)/10', response, re.MULTILINE)
+        alignment_score = round(float(score_match.group(1))) if score_match else 5
 
         # Ensure score is in valid range
         alignment_score = max(1, min(10, alignment_score))
 
-        # Clean up the response text for storage
-        cleaned_analysis = response.replace('ALIGNMENT_SCORE:', '').strip()
+        # Remove the score prefix from the stored analysis text so the banner
+        # is the single source of truth and the text doesn't repeat it.
+        cleaned_analysis = re.sub(r'ALIGNMENT_SCORE:\s*[\d.]+/10\s*', '', response, flags=re.IGNORECASE).strip()
+        cleaned_analysis = re.sub(r'^[\d.]+/10\s*', '', cleaned_analysis).strip()
         cleaned_analysis = process_markdown(cleaned_analysis)
 
         return {
@@ -2417,6 +2567,7 @@ def get_recent_autopsy_insights(user_id, days=3):
         reason_breakdown = {
             'physical': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'physical'),
             'external': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'external'),
+            'prescription_mismatch': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'prescription_mismatch'),
             'unknown': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'unknown'),
         }
 
@@ -2589,7 +2740,7 @@ USER OBSERVATIONS: {observations_text}
 CURRENT TRAINING METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f}
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f}
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f}
+- Normalized Divergence: {format_divergence_for_prompt(current_metrics.get('normalized_divergence'))}
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 
 ### TRAINING REFERENCE FRAMEWORK
@@ -2646,43 +2797,29 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     # Get weekly program context from Coach page
     weekly_program_context = ""
     try:
-        from coach_recommendations import get_weekly_program
-        from datetime import datetime, timedelta
-        
-        # Find which week the target date falls into
-        target_date_obj = datetime.strptime(target_date_str, '%Y-%m-%d').date()
-        # Get the Monday of the week containing target_date
-        days_since_monday = target_date_obj.weekday()
-        week_start = target_date_obj - timedelta(days=days_since_monday)
-        
-        weekly_program = get_weekly_program(user_id, week_start)
-        
-        if weekly_program and not weekly_program.get('error'):
-            # Find the specific day's plan
+        from llm_context_tools import get_weekly_program_day
+        from datetime import datetime
+
+        daily_plan = get_weekly_program_day(user_id, target_date_str)
+
+        if daily_plan:
+            target_date_obj = datetime.strptime(target_date_str, '%Y-%m-%d').date()
             day_name = target_date_obj.strftime('%A')
-            daily_plan = None
-            for day in weekly_program.get('daily_program', []):
-                if day.get('day') == day_name:
-                    daily_plan = day
-                    break
-            
-            if daily_plan:
-                weekly_program_context = f"""
-COACH PAGE WEEKLY PLAN FOR {target_date_str} ({day_name}):
+            weekly_program_context = f"""
+YOUR MONKEY'S WEEK PLAN FOR {target_date_str} ({day_name}):
 - Planned Workout: {daily_plan.get('workout_type', 'N/A')}
 - Description: {daily_plan.get('description', 'N/A')}
 - Duration: {daily_plan.get('duration_estimate', 'N/A')}
 - Intensity: {daily_plan.get('intensity', 'N/A')}
 - Key Focus: {daily_plan.get('key_focus', 'N/A')}
 
-CRITICAL: Your Daily Recommendation must be CONSISTENT with the Coach page weekly plan above. 
+CRITICAL: Your Daily Recommendation must be CONSISTENT with the week plan above.
+When referencing the plan, choose naturally from: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", or "your weekly training plan calls for".
 If current metrics suggest adjusting the plan (e.g., rest day due to high ACWR), explain the deviation clearly.
 Otherwise, provide tactical execution guidance for the planned workout."""
-            else:
-                weekly_program_context = f"\nNOTE: Weekly program exists but no specific plan found for {day_name}"
         else:
             weekly_program_context = "\nNOTE: No weekly program available from Coach page. Provide standalone recommendation."
-            
+
     except Exception as e:
         logger.warning(f"Could not fetch weekly program context: {str(e)}")
         weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
@@ -2698,6 +2835,27 @@ RECENT JOURNAL NOTES (Last 3 Days):
 CRITICAL: If notes mention injury, pain, rehabilitation, medical issues, or reasons for
 deviating from prescription, these override normal training progression logic.
 """
+
+    # Athlete preference feedback from alignment query responses (last 30 days)
+    preference_context = ""
+    try:
+        answered_queries = get_answered_alignment_queries(user_id, days=30)
+        if answered_queries:
+            lines = []
+            for q in answered_queries:
+                date_val = q.get('activity_date', '')
+                date_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val)
+                lines.append(f"  {date_str} (alignment {q.get('alignment_score', '?')}/10): {q['response']}")
+            preference_context = f"""
+ATHLETE PREFERENCE FEEDBACK (responses to off-plan queries):
+{chr(10).join(lines)}
+
+CRITICAL: These are the athlete's own words explaining why the prescription didn't fit
+their reality. Treat repeated themes (terrain, environment, schedule constraints) as
+HARD CONSTRAINTS — adjust future prescriptions to work within them, not against them.
+"""
+    except Exception as pref_err:
+        logger.warning(f"Could not load preference feedback for user {user_id}: {pref_err}")
 
     autopsy_context = ""
     if autopsy_insights:
@@ -2771,7 +2929,7 @@ DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 CURRENT METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
-- Normalized Divergence: {current_metrics.get('normalized_divergence') or 0:.3f} [{NORMALIZED_DIVERGENCE_FORMULA}]
+- Normalized Divergence: {format_divergence_for_prompt(current_metrics.get('normalized_divergence'))}
 - Days Since Rest: {current_metrics.get('days_since_rest') or 0}
 - 7-day Avg Load: {current_metrics.get('seven_day_avg_load') or 0:.2f} miles/day
 
@@ -2784,6 +2942,8 @@ CURRENT METRICS:
 {weekly_program_context}
 
 {notes_context}
+
+{preference_context}
 
 {autopsy_context}
 
@@ -2798,12 +2958,27 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
 1. INJURY/MEDICAL STATUS (from autopsy or notes) - HIGHEST PRIORITY
    - If injury/pain/rehabilitation mentioned → Conservative protocol overrides all other metrics
    - Ignore ACWR optimization when injury present
-2. AUTOPSY-SPECIFIC GUIDANCE (from Key Learning above)
+2. ATHLETE PREFERENCE FEEDBACK (from off-plan query responses above)
+   - If the athlete has explicitly stated a prescription element is incompatible with their
+     environment or life, treat it as a HARD CONSTRAINT — same weight as a medical constraint
+   - Examples: "I live in the mountains" → vert restrictions are not viable; prescribe for
+     mountain terrain. "I can't avoid hills" → stop prescribing flat routes.
+   - Repeated themes across multiple responses = persistent constraint, not a one-off.
+3. AUTOPSY-SPECIFIC GUIDANCE (from Key Learning above)
    - Apply the exact strategy changes recommended in autopsy analysis
    - Don't assume low alignment = simplify; read what autopsy actually says
-3. CURRENT METRICS (ACWR, divergence, days since rest)
+3. WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED
+   - The Coach page weekly plan is the primary prescription. Deviation requires a hard threshold to be breached.
+   - VALID reasons to deviate: ACWR exceeds athlete's high-risk threshold, or divergence is NEGATIVE beyond the athlete's personal breakdown threshold, or active injury.
+   - INVALID reasons to deviate (do NOT modify the plan for these):
+     * Positive divergence — positive divergence means MORE available capacity (recovery zone), never less. It is a green light for the planned workout, not a reason to downgrade.
+     * TRIMP from prior day that is elevated but within normal range — terrain-driven TRIMP inflation is expected and does not warrant plan modification.
+     * Starting energy 3/5 or higher — normal daily variation, not a flag.
+     * "Fatigue carryover" reasoning without a threshold breach — fatigue is expected in a training week.
+   - If no threshold is breached, Decision MUST be "Proceed as planned."
+4. CURRENT METRICS (ACWR, divergence, days since rest)
    - Only apply normal training progression if no injury/medical issues present
-4. ATHLETE RISK TOLERANCE
+5. ATHLETE RISK TOLERANCE
    - Respect personalized thresholds, but medical safety always trumps risk tolerance
 
 REQUIRED OUTPUT FORMAT (CRITICAL - FOLLOW EXACTLY):
@@ -2813,7 +2988,7 @@ Your response must have exactly ONE section with this header on its own line:
 DAILY RECOMMENDATION
 
 [Write a training prescription as flowing prose — no bullet points, no numbered lines, no headers within the section. Cover these elements in order:
-1. The planned workout from COACH PAGE WEEKLY PLAN (type, distance, terrain, vert). If no plan exists, note that and prescribe from metrics.
+1. The planned workout from the week plan (type, distance, terrain, vert) — reference it using one of: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", "your weekly training plan calls for". If no plan exists, note that and prescribe from metrics.
 2. The training stage and what it means for today's effort.
 3. Alignment: cite the K-of-N figure from ALIGNMENT data above and what it says about recent execution.
 4. Metrics: cite External ACWR, Internal ACWR, and Divergence values. Interpret each using the athlete's personal thresholds from ATHLETE MODEL — where are they in their productive training window?
@@ -3331,6 +3506,28 @@ def generate_recommendations_agentic(user_id, target_date=None):
                 target_date = current_date_str
                 logger.info(f"[AGENTIC] Targeting today: {target_date} (has_activity={has_activity_today}, has_journal={has_journal_today})")
 
+        # Guard: if a recommendation already exists for this target_date, return it
+        # without regenerating. This mirrors the guard in generate_recommendations()
+        # and prevents today's prescription from being overwritten with context from
+        # journal notes that were saved AFTER the activity — which would create a
+        # temporally-confused "prescribed action" for the autopsy generator.
+        existing_rec = execute_query(
+            "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
+            (user_id, target_date),
+            fetch=True
+        )
+        if existing_rec:
+            logger.info(
+                f"[AGENTIC] Recommendation already exists for target_date {target_date}, "
+                f"skipping generation to preserve historical record"
+            )
+            result = execute_query(
+                "SELECT * FROM llm_recommendations WHERE user_id = %s AND target_date = %s ORDER BY generated_at DESC LIMIT 1",
+                (user_id, target_date),
+                fetch=True
+            )
+            return dict(result[0]) if result and result[0] else get_latest_recommendation(user_id)
+
         # ------------------------------------------------------------------ #
         # Get current metrics (minimal context for Turn 1)                    #
         # ------------------------------------------------------------------ #
@@ -3363,22 +3560,133 @@ def generate_recommendations_agentic(user_id, target_date=None):
         # Morning readiness — same query as standard path
         try:
             readiness_data = execute_query(
-                "SELECT sleep_quality, morning_soreness FROM journal_entries "
-                "WHERE user_id = %s AND date = %s",
+                """SELECT sleep_quality, morning_soreness, hrv_value, resting_hr,
+                          sleep_duration_secs, sleep_score, weight, spo2, respiration_rate
+                   FROM journal_entries WHERE user_id = %s AND date = %s""",
                 (user_id, target_date),
+                fetch=True
+            )
+            hrv_baseline_data = execute_query(
+                """SELECT AVG(hrv_value) AS hrv_baseline, COUNT(hrv_value) AS hrv_count
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= %s::date - INTERVAL '30 days'
+                     AND date < %s::date
+                     AND hrv_value IS NOT NULL""",
+                (user_id, target_date, target_date),
+                fetch=True
+            )
+            rhr_baseline_data = execute_query(
+                """SELECT AVG(resting_hr) AS rhr_baseline, COUNT(resting_hr) AS rhr_count
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= %s::date - INTERVAL '7 days'
+                     AND date < %s::date
+                     AND resting_hr IS NOT NULL""",
+                (user_id, target_date, target_date),
                 fetch=True
             )
             if readiness_data and readiness_data[0]:
                 row = dict(readiness_data[0])
-                sq = row.get('sleep_quality')
-                ms = row.get('morning_soreness')
-                if sq is not None or ms is not None:
+                sq               = row.get('sleep_quality')
+                ms               = row.get('morning_soreness')
+                hrv_value        = row.get('hrv_value')
+                rhr_value        = row.get('resting_hr')
+                sleep_secs       = row.get('sleep_duration_secs')
+                sleep_score      = row.get('sleep_score')
+                weight           = row.get('weight')
+                spo2             = row.get('spo2')
+                respiration_rate = row.get('respiration_rate')
+                r_parts          = []
+
+                if sleep_secs is not None:
+                    hours = float(sleep_secs) / 3600
+                    if hours < 6:
+                        sleep_status = "significant deficit"
+                    elif hours < 7:
+                        sleep_status = "suboptimal"
+                    else:
+                        sleep_status = "adequate"
+                    score_str = f", score: {sleep_score}/100" if sleep_score is not None else ""
+                    r_parts.append(f"Sleep: {hours:.1f}hrs ({sleep_status}{score_str})")
+                elif sq is not None:
                     sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
-                    r_parts = []
-                    if sq is not None:
-                        r_parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
-                    if ms is not None:
-                        r_parts.append(f"Morning soreness: {ms}/100")
+                    r_parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
+                if ms is not None:
+                    r_parts.append(f"Morning soreness: {ms}/100")
+
+                if hrv_value is not None:
+                    hrv_baseline = hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None
+                    hrv_count    = hrv_baseline_data[0]['hrv_count']    if hrv_baseline_data and hrv_baseline_data[0] else 0
+                    if hrv_baseline and hrv_count >= 7:
+                        ratio     = float(hrv_value) / float(hrv_baseline)
+                        pct_diff  = (ratio - 1.0) * 100
+                        direction = "suppressed" if ratio < 0.85 else ("elevated" if ratio > 1.15 else "normal range")
+                        r_parts.append(
+                            f"HRV: {hrv_value:.0f}ms "
+                            f"(30-day baseline: {hrv_baseline:.0f}ms, "
+                            f"{abs(pct_diff):.0f}% {'below' if pct_diff < 0 else 'above'} baseline — {direction})"
+                        )
+                    else:
+                        readings_needed = max(0, 7 - (hrv_count or 0))
+                        r_parts.append(f"HRV: {hrv_value:.0f}ms (building baseline — {readings_needed} more readings needed)")
+
+                if rhr_value is not None:
+                    rhr_baseline = rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None
+                    rhr_count    = rhr_baseline_data[0]['rhr_count']    if rhr_baseline_data and rhr_baseline_data[0] else 0
+                    if rhr_baseline and rhr_count >= 3:
+                        rhr_diff = rhr_value - float(rhr_baseline)
+                        pct_diff = (rhr_diff / float(rhr_baseline)) * 100
+                        if pct_diff >= 10:
+                            status = "significantly elevated"
+                        elif pct_diff >= 5:
+                            status = "elevated"
+                        elif pct_diff <= -5:
+                            status = "below baseline"
+                        else:
+                            status = "normal range"
+                        r_parts.append(
+                            f"Resting HR: {rhr_value}bpm "
+                            f"(7-day baseline: {rhr_baseline:.0f}bpm, "
+                            f"{abs(pct_diff):.0f}% {'above' if rhr_diff > 0 else 'below'} baseline — {status})"
+                        )
+                    else:
+                        r_parts.append(f"Resting HR: {rhr_value}bpm (building baseline)")
+
+                if weight is not None:
+                    weight_baseline_data = execute_query(
+                        """SELECT AVG(weight) AS weight_avg FROM journal_entries
+                           WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
+                             AND date < %s::date AND weight IS NOT NULL""",
+                        (user_id, target_date, target_date), fetch=True
+                    )
+                    weight_avg = weight_baseline_data[0]['weight_avg'] if weight_baseline_data and weight_baseline_data[0] else None
+                    if weight_avg:
+                        delta = float(weight) - float(weight_avg)
+                        pct   = (delta / float(weight_avg)) * 100
+                        note  = " — possible dehydration, monitor" if pct <= -2 else (" — above 7-day avg" if pct >= 2 else "")
+                        r_parts.append(f"Weight: {weight:.1f}kg (7-day avg: {float(weight_avg):.1f}kg, {delta:+.1f}kg{note})")
+                    else:
+                        r_parts.append(f"Weight: {weight:.1f}kg")
+
+                if spo2 is not None and float(spo2) < 95:
+                    r_parts.append(f"SpO2: {spo2:.0f}% — low, possible altitude effect or illness")
+
+                if respiration_rate is not None:
+                    resp_baseline_data = execute_query(
+                        """SELECT AVG(respiration_rate) AS resp_avg FROM journal_entries
+                           WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
+                             AND date < %s::date AND respiration_rate IS NOT NULL""",
+                        (user_id, target_date, target_date), fetch=True
+                    )
+                    resp_avg = resp_baseline_data[0]['resp_avg'] if resp_baseline_data and resp_baseline_data[0] else None
+                    if resp_avg and float(respiration_rate) > float(resp_avg) * 1.15:
+                        r_parts.append(
+                            f"Respiration: {respiration_rate:.0f} breaths/min "
+                            f"(7-day avg: {float(resp_avg):.0f} — elevated, possible illness or stress)"
+                        )
+
+                if r_parts:
                     static_context_parts.append(
                         "### MORNING READINESS\n" + "\n".join(f"- {p}" for p in r_parts)
                     )
@@ -3445,7 +3753,16 @@ def generate_recommendations_agentic(user_id, target_date=None):
             "training load science (ACWR, TRIMP, divergence). "
             "You have access to tools that can retrieve specific athlete data. "
             "Request ONLY the data you need to generate a high-quality daily "
-            "training recommendation. Do not request redundant data."
+            "training recommendation. Do not request redundant data.\n\n"
+            "WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED: "
+            "The Coach page weekly plan is the primary prescription. "
+            "VALID reasons to deviate: ACWR exceeds athlete's high-risk threshold, "
+            "OR divergence is NEGATIVE beyond the athlete's personal breakdown threshold, "
+            "OR active injury. "
+            "INVALID reasons to deviate: positive divergence (means MORE available capacity — "
+            "never a reason to downgrade intensity), terrain-elevated TRIMP from prior day, "
+            "starting energy 3/5 or higher, or generic 'fatigue carryover' without a threshold breach. "
+            "If no threshold is breached, Decision MUST be 'Proceed as planned.'"
             + (f"\n\n{tone_instructions}" if tone_instructions else "")
             + (f"\n\n{static_context_block}" if static_context_block else "")
         )

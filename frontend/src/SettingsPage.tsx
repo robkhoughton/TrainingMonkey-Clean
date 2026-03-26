@@ -11,27 +11,20 @@ export const SettingsPage: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const tab = urlParams.get('tab');
     
-    let redirectPath = '/settings/profile'; // default
-    
+    let redirectPath = '/settings/hrzones'; // default
+
     switch (tab) {
-      case 'profile':
-        redirectPath = '/settings/profile';
-        break;
       case 'hrzones':
         redirectPath = '/settings/hrzones';
-        break;
-      case 'training':
-        redirectPath = '/settings/training';
-        break;
-      case 'alerts':
-      case 'coaching':
-        redirectPath = '/settings/coaching';
         break;
       case 'acwr':
         redirectPath = '/settings/acwr';
         break;
+      case 'integrations':
+        redirectPath = '/settings/integrations';
+        break;
       default:
-        redirectPath = '/settings/profile';
+        redirectPath = '/settings/hrzones';
     }
     
     // Redirect to the new settings page

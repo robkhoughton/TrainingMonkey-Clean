@@ -1,201 +1,366 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import YTMSpinner from './YTMSpinner';
 import styles from './TrainingLoadDashboard.module.css';
+
+// ─── Design tokens (match tactical dark system) ────────────────────────────
+
+const CARBON: React.CSSProperties = {
+  backgroundColor: '#1B2E4B',
+  backgroundImage: [
+    'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+    'linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+    'linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
+    'linear-gradient(45deg,  rgba(255,255,255,0.04) 25%, transparent 25%)',
+  ].join(', '),
+  backgroundSize: '4px 4px',
+};
+
+const FIELD_LABEL: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '8px',
+  fontSize: '0.72rem',
+  fontWeight: 700,
+  color: '#7D9CB8',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+};
+
+const PROCESSING_MESSAGES = [
+  'Saving observations...',
+  'Analyzing your workout...',
+  'Building tomorrow\'s plan...',
+  'Finalizing...',
+];
+
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+type Phase = 'form' | 'processing' | 'autopsy';
+
+interface AutopsyData {
+  analysis: string;
+  score: number | null;
+}
+
+interface QuickJournalModalProps {
+  date: string;
+  onDone: () => void;
+}
 
 // ─── Quick Journal Modal ───────────────────────────────────────────────────
 
-interface QuickJournalModalProps {
-  date: string;           // YYYY-MM-DD
-  onDone: () => void;     // called on submit OR skip
-}
-
 const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone }) => {
+  const navigate = useNavigate();
+  const [phase, setPhase] = useState<Phase>('form');
   const [energy, setEnergy] = useState<number | null>(null);
-  const [rpe, setRpe] = useState<number | null>(null);
-  const [pain, setPain] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [rpe, setRpe]       = useState<number | null>(null);
+  const [pain, setPain]     = useState<number | null>(null);
+  const [statusMsg, setStatusMsg] = useState(PROCESSING_MESSAGES[0]);
+  const [autopsyData, setAutopsyData] = useState<AutopsyData | null>(null);
+  const msgIdxRef = useRef(0);
 
   const complete = energy !== null && rpe !== null && pain !== null;
 
+  // Cycle processing messages
+  useEffect(() => {
+    if (phase !== 'processing') return;
+    msgIdxRef.current = 0;
+    setStatusMsg(PROCESSING_MESSAGES[0]);
+    const timer = setInterval(() => {
+      msgIdxRef.current = Math.min(msgIdxRef.current + 1, PROCESSING_MESSAGES.length - 1);
+      setStatusMsg(PROCESSING_MESSAGES[msgIdxRef.current]);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [phase]);
+
   const handleSubmit = async () => {
-    if (!complete || submitting) return;
-    setSubmitting(true);
+    if (!complete) return;
+    setPhase('processing');
     try {
-      await fetch('/api/journal', {
+      const res = await fetch('/api/journal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          energy_level: energy,
-          rpe_score: rpe,
-          pain_percentage: pain,
-        }),
+        body: JSON.stringify({ date, energy_level: energy, rpe_score: rpe, pain_percentage: pain }),
       });
+      const data = await res.json();
+      if (data.autopsy_analysis) {
+        setAutopsyData({ analysis: data.autopsy_analysis, score: data.alignment_score ?? null });
+        setPhase('autopsy');
+      } else {
+        navigate('/journal');
+      }
     } catch (_) {
-      // Non-blocking — don't prevent the user from continuing
-    } finally {
-      onDone();
+      onDone(); // network error — close modal, stay on dashboard
     }
   };
 
-  const btnBase: React.CSSProperties = {
-    padding: '6px 0',
-    minWidth: '36px',
-    border: '1px solid #d1d5db',
-    borderRadius: '4px',
-    fontSize: '13px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
-    background: 'white',
-    color: '#374151',
+  const scoreColor = (score: number | null) => {
+    if (score === null) return '#7D9CB8';
+    if (score >= 7) return '#16A34A';
+    if (score >= 4) return '#f59e0b';
+    return '#dc2626';
   };
 
-  const btnActive: React.CSSProperties = {
-    ...btnBase,
-    background: '#1B2E4B',
-    color: 'white',
-    borderColor: '#1B2E4B',
+  // ── Shared selector button styles ────────────────────────────────────────
+
+  const btnOff: React.CSSProperties = {
+    padding: '6px 0',
+    minWidth: '38px',
+    background: 'rgba(230,240,255,0.05)',
+    border: '1px solid rgba(125,156,184,0.22)',
+    borderRadius: '4px',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#7D9CB8',
+    cursor: 'pointer',
+    transition: 'all 0.13s',
   };
+  const btnOn: React.CSSProperties = {
+    ...btnOff,
+    background: 'rgba(255,87,34,0.14)',
+    border: '1px solid rgba(255,87,34,0.55)',
+    color: '#E6F0FF',
+    boxShadow: '0 0 8px rgba(255,87,34,0.18)',
+  };
+  const btnPainOff: React.CSSProperties = {
+    ...btnOff,
+    border: '1px solid rgba(220,38,38,0.3)',
+    color: '#fca5a5',
+  };
+  const btnPainOn: React.CSSProperties = {
+    ...btnPainOff,
+    background: 'rgba(220,38,38,0.18)',
+    border: '1px solid rgba(220,38,38,0.7)',
+    boxShadow: '0 0 8px rgba(220,38,38,0.2)',
+  };
+
+  // ── Shared container ─────────────────────────────────────────────────────
 
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.65)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '20px',
       zIndex: 1000,
-      animation: 'ytm-backdrop-in 0.18s ease',
     }}>
       <style>{`
-        @keyframes ytm-backdrop-in { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes ytm-sheet-up { from { transform: translateY(40px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+        @keyframes ytm-modal-in {
+          from { opacity: 0; transform: scale(0.97) translateY(10px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes ytm-phase-fade {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
 
       <div style={{
-        background: 'white',
-        borderRadius: '12px 12px 0 0',
-        width: '100%', maxWidth: '560px',
+        ...CARBON,
+        border: '1px solid rgba(255,87,34,0.65)',
+        borderRadius: '8px',
         overflow: 'hidden',
-        animation: 'ytm-sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)',
-        boxShadow: '0 -8px 32px rgba(0,0,0,0.18)',
+        width: '100%',
+        maxWidth: '560px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        animation: 'ytm-modal-in 0.24s cubic-bezier(0.22,1,0.36,1)',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,87,34,0.1)',
       }}>
-        {/* Header */}
-        <div style={{
-          background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
-          padding: '0.875rem 1.25rem',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontSize: '10px', letterSpacing: '0.14em', fontWeight: '700', color: '#7D9CB8', textTransform: 'uppercase' }}>
-              Sync Complete
+
+        {/* ── FORM PHASE ──────────────────────────────────────────────── */}
+        {phase === 'form' && (
+          <div style={{ animation: 'ytm-phase-fade 0.18s ease' }}>
+
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+              padding: '12px 24px',
+            }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+                Post-Workout Debrief
+              </span>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'white', marginTop: '2px' }}>
+                How was today's session?
+              </div>
             </div>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: 'white', marginTop: '1px' }}>
-              How was today's session?
+
+            {/* Fields */}
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+              {/* Energy */}
+              <div>
+                <span style={FIELD_LABEL}>Energy going in</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {([
+                    [1, 'Barely out of bed'],
+                    [2, 'Low'],
+                    [3, 'Normal'],
+                    [4, 'High'],
+                    [5, 'Fired up'],
+                  ] as [number, string][]).map(([v, sub]) => (
+                    <button key={v} onClick={() => setEnergy(v)} title={sub}
+                      style={energy === v ? btnOn : btnOff}>
+                      {v}
+                    </button>
+                  ))}
+                  {energy !== null && (
+                    <span style={{ fontSize: '11px', color: '#7D9CB8', marginLeft: '4px', fontStyle: 'italic' }}>
+                      {['', 'Barely out of bed', 'Low', 'Normal', 'High', 'Fired up'][energy]}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* RPE */}
+              <div>
+                <span style={FIELD_LABEL}>Effort (RPE)</span>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {[1,2,3,4,5,6,7,8,9,10].map(v => (
+                    <button key={v} onClick={() => setRpe(v)} style={rpe === v ? btnOn : btnOff}>{v}</button>
+                  ))}
+                  {rpe !== null && (
+                    <span style={{ fontSize: '11px', color: '#7D9CB8', marginLeft: '4px', fontStyle: 'italic' }}>
+                      {rpe <= 3 ? 'Easy' : rpe <= 5 ? 'Moderate' : rpe <= 7 ? 'Hard' : rpe <= 9 ? 'Very hard' : 'Max effort'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Pain */}
+              <div>
+                <span style={FIELD_LABEL}>Pain — % of time thinking about it</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[0, 20, 40, 60, 80, 100].map(v => (
+                    <button key={v} onClick={() => setPain(v)}
+                      style={pain === v
+                        ? (v >= 60 ? btnPainOn  : btnOn)
+                        : (v >= 60 ? btnPainOff : btnOff)
+                      }>
+                      {v}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
+                <button onClick={onDone} style={{
+                  fontSize: '12px', color: 'rgba(230,240,255,0.35)',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+                }}>
+                  Skip for now
+                </button>
+                <button onClick={handleSubmit} disabled={!complete} style={{
+                  padding: '9px 28px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: complete ? 'pointer' : 'not-allowed',
+                  background: complete ? '#FF5722' : 'rgba(230,240,255,0.07)',
+                  color: complete ? 'white' : 'rgba(230,240,255,0.25)',
+                  transition: 'background 0.2s, box-shadow 0.2s',
+                  boxShadow: complete ? '0 2px 12px rgba(255,87,34,0.35)' : 'none',
+                }}>
+                  Log Debrief
+                </button>
+              </div>
+
             </div>
           </div>
-          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>{date}</div>
-        </div>
+        )}
 
-        {/* Fields */}
-        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-
-          {/* Energy */}
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
-              Energy going in
+        {/* ── PROCESSING PHASE ─────────────────────────────────────────── */}
+        {phase === 'processing' && (
+          <div style={{
+            padding: '52px 24px 48px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px',
+            animation: 'ytm-phase-fade 0.2s ease',
+          }}>
+            <YTMSpinner size={80} />
+            <div style={{
+              color: '#7D9CB8',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              opacity: 0.9,
+            }}>
+              {statusMsg}
             </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              {[
-                { v: 1, label: '1', sub: 'Barely out of bed' },
-                { v: 2, label: '2', sub: 'Low' },
-                { v: 3, label: '3', sub: 'Normal' },
-                { v: 4, label: '4', sub: 'High' },
-                { v: 5, label: '5', sub: 'Fired up' },
-              ].map(({ v, label, sub }) => (
-                <button
-                  key={v}
-                  onClick={() => setEnergy(v)}
-                  title={sub}
-                  style={energy === v ? btnActive : btnBase}
-                >
-                  {label}
-                </button>
-              ))}
-              {energy !== null && (
-                <span style={{ fontSize: '12px', color: '#6b7280', alignSelf: 'center', marginLeft: '6px' }}>
-                  {['', 'Barely out of bed', 'Low', 'Normal', 'High', 'Fired up'][energy]}
+          </div>
+        )}
+
+        {/* ── AUTOPSY PHASE ────────────────────────────────────────────── */}
+        {phase === 'autopsy' && autopsyData && (() => {
+          const color = scoreColor(autopsyData.score);
+          return (
+            <div style={{ animation: 'ytm-phase-fade 0.22s ease' }}>
+
+              {/* Header */}
+              <div style={{
+                background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+                padding: '12px 24px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+                  Workout Autopsy
                 </span>
-              )}
-            </div>
-          </div>
+                {autopsyData.score !== null && (
+                  <span style={{
+                    fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em',
+                    color: color,
+                    border: `1px solid ${color}`,
+                    padding: '2px 10px', borderRadius: '10px',
+                    background: `${color}18`,
+                  }}>
+                    {autopsyData.score}/10
+                  </span>
+                )}
+              </div>
 
-          {/* RPE */}
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
-              How hard did it feel (RPE)
-            </div>
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-              {[1,2,3,4,5,6,7,8,9,10].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setRpe(v)}
-                  style={rpe === v ? btnActive : btnBase}
-                >
-                  {v}
-                </button>
-              ))}
-              {rpe !== null && (
-                <span style={{ fontSize: '12px', color: '#6b7280', alignSelf: 'center', marginLeft: '4px' }}>
-                  {rpe <= 3 ? 'Easy' : rpe <= 5 ? 'Moderate' : rpe <= 7 ? 'Hard' : rpe <= 9 ? 'Very hard' : 'Max effort'}
-                </span>
-              )}
-            </div>
-          </div>
+              {/* Autopsy content */}
+              <div style={{ padding: '20px 24px 24px' }}>
+                <div style={{
+                  color: '#CBD5E1',
+                  fontSize: '0.875rem',
+                  lineHeight: '1.75',
+                  maxHeight: '48vh',
+                  overflowY: 'auto',
+                  paddingRight: '6px',
+                }}>
+                  {autopsyData.analysis.split('\n').filter(l => l.trim()).map((line, i) => (
+                    <p key={i} style={{ margin: '0 0 10px 0' }}>{line}</p>
+                  ))}
+                </div>
 
-          {/* Pain */}
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.5rem', textAlign: 'left' }}>
-              Pain — % of time thinking about it
-            </div>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {[0, 20, 40, 60, 80, 100].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setPain(v)}
-                  style={pain === v ? { ...btnActive, borderColor: v >= 60 ? '#dc2626' : '#1B2E4B', background: v >= 60 ? '#dc2626' : '#1B2E4B' } : { ...btnBase, borderColor: v >= 60 ? '#fca5a5' : '#d1d5db', color: v >= 60 ? '#dc2626' : '#374151' }}
-                >
-                  {v}%
-                </button>
-              ))}
-            </div>
-          </div>
+                {/* CTA */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '20px', borderTop: '1px solid rgba(125,156,184,0.15)', marginTop: '16px' }}>
+                  <button onClick={() => navigate('/journal')} style={{
+                    padding: '9px 28px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    background: '#FF5722',
+                    color: 'white',
+                    boxShadow: '0 2px 12px rgba(255,87,34,0.35)',
+                  }}>
+                    See Training Plan
+                  </button>
+                </div>
+              </div>
 
-          {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.25rem' }}>
-            <button
-              onClick={onDone}
-              style={{ fontSize: '13px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }}
-            >
-              Skip for now
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={!complete || submitting}
-              style={{
-                padding: '8px 24px',
-                borderRadius: '4px',
-                border: 'none',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: complete ? 'pointer' : 'not-allowed',
-                background: complete ? '#1B2E4B' : '#e5e7eb',
-                color: complete ? 'white' : '#9ca3af',
-                transition: 'background 0.2s, color 0.2s',
-              }}
-            >
-              {submitting ? 'Saving...' : 'Save debrief'}
-            </button>
-          </div>
-        </div>
+            </div>
+          );
+        })()}
+
       </div>
     </div>
   );

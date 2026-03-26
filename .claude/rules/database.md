@@ -213,6 +213,18 @@ date_string = today.strftime('%Y-%m-%d')  # '2025-01-15'
 # PostgreSQL handles timezone conversion with TIMESTAMP WITH TIME ZONE
 ```
 
+**Cron handlers only**: Cloud Run executes in UTC; Cloud Scheduler fires on PDT schedules.
+An evening PDT cron (e.g. Saturday 7 PM PDT = Sunday 2 AM UTC) will get the wrong date
+from `datetime.now().date()`. Use `get_app_current_date()` instead — same `date` type,
+same format, correct Pacific timezone:
+
+```python
+from timezone_utils import get_app_current_date
+today = get_app_current_date()  # date object, Pacific time
+```
+
+This is a timezone source fix, not a format change. All formatting (`strftime`, `%s` params) is unchanged.
+
 ## Schema Discovery
 
 Before writing queries, verify column names exist. The schema has evolved and some expected columns may not exist or may be in a different table.

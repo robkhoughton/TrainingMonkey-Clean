@@ -1600,6 +1600,39 @@ def get_pending_alignment_query(user_id):
         return None
 
 
+def get_answered_alignment_queries(user_id, days=30):
+    """Return recent answered alignment queries with response text.
+
+    Used to inject athlete preference feedback into recommendation prompts so
+    the coach can honour environment/prescription constraints the athlete has
+    explicitly stated (e.g. 'I live in the mountains — I can't avoid vert').
+
+    Returns a list of dicts with keys: activity_date, alignment_score, response.
+    Ordered oldest-first so the prompt reads chronologically.
+    """
+    try:
+        cutoff_date = (datetime.utcnow().date() - timedelta(days=days)).strftime('%Y-%m-%d')
+        rows = execute_query(
+            """
+            SELECT activity_date, alignment_score, response
+            FROM alignment_queries
+            WHERE user_id = %s
+              AND status = 'answered'
+              AND response IS NOT NULL
+              AND response != ''
+              AND activity_date >= %s
+            ORDER BY activity_date ASC
+            LIMIT 10
+            """,
+            (user_id, cutoff_date),
+            fetch=True
+        )
+        return [dict(r) for r in rows] if rows else []
+    except Exception as e:
+        logger.error(f"db_utils: get_answered_alignment_queries failed for user {user_id}: {e}")
+        return []
+
+
 def update_alignment_query(query_id, status, response=None, snooze_until=None):
     """Update status, response, and/or snooze_until on an alignment_queries row.
 
@@ -1665,4 +1698,5 @@ __all__ = [
     # Plan Execution Loop — Phase D
     'get_pending_alignment_query',
     'update_alignment_query',
+    'get_answered_alignment_queries',
 ]

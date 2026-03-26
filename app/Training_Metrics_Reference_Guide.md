@@ -84,6 +84,8 @@ Normalized Divergence = (External ACWR - Internal ACWR) / ((External ACWR + Inte
 
 #### Interpretation Guidelines:
 
+These hard-coded population statistics needed to be updated to reflect athlete model (03/21/2026)
+
 | Divergence Range | Classification | Interpretation |
 |------------------|----------------|----------------|
 | < -0.15 | High Overtraining Risk | Internal stress is significantly higher than external work. Indicates poor efficiency, accumulated fatigue, or overtraining. |
@@ -146,15 +148,15 @@ This provides a more complete picture of the total external work performed durin
 | 4     | Hard        | Zone 4            | 16-18 RPE      |
 | 5     | Maximum     | Zone 5            | 19-20 RPE      |
 
-### Niggle Score (1-5)
+### Pain Score (% of time athlete is thinking about pain)
 
-| Score | Description | Interpretation |
-|-------|-------------|----------------|
-| 1   | Excellent | Pain free |
-| 2   | Good | Low level pain (discomfort) during short portion of activity |
-| 3   | Okay | Some pain sporadically through activity |
-| 4   | Marginal | Persistent pain |
-| 5   | Poor | Pain on my mind 100% of the time |
+| Score | Description | Interpretation                                               |
+| ----- | ----------- | ------------------------------------------------------------ |
+| 0     | Excellent   | Pain free                                                    |
+| 20    | Good        | Low level pain (discomfort) during short portion of activity |
+| 40    | Okay        | Some pain sporadically through activity                      |
+| 60    | Marginal    | Persistent pain                                              |
+| 80    | Poor        | Pain on my mind 100% of the time                             |
 
 
 ## Optimal Ranges for Health and Performance

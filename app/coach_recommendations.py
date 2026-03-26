@@ -27,6 +27,8 @@ from db_utils import execute_query, upsert_week_strategic_summary
 from llm_recommendations_module import (
     call_anthropic_api,
     load_training_guide,
+    _select_guide_sections,
+    get_athlete_model_context,
     get_user_coaching_spectrum,
     get_coaching_tone_instructions,
     get_user_recommendation_style,
@@ -36,7 +38,8 @@ from llm_recommendations_module import (
     get_recent_autopsy_insights,
     MODEL_HAIKU,
 )
-from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA
+from acwr_configuration_service import ACWRConfigurationService
+from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA, format_divergence_for_prompt
 
 # Setup logging
 logging.basicConfig(
@@ -421,6 +424,115 @@ def format_journal_observations_for_prompt(observations: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def get_prior_week_summaries(user_id: int, target_week_start, n: int = 3) -> list:
+    """Return last n completed weeks of strategic_summary + synthesis for training arc context."""
+    rows = execute_query(
+        """
+        SELECT week_start_date, strategic_summary, weekly_synthesis
+        FROM weekly_programs
+        WHERE user_id = %s
+          AND week_start_date < %s
+          AND strategic_summary IS NOT NULL
+        ORDER BY week_start_date DESC
+        LIMIT %s
+        """,
+        (user_id, str(target_week_start), n),
+        fetch=True
+    )
+    return rows or []
+
+
+def _divergence_trend_label(activities: list, days: int = 7) -> str:
+    """Return directional divergence trajectory label from recent activity data.
+
+    Compares first-half vs second-half of recent divergence readings to determine
+    whether internal stress is accumulating, clearing, or stable.
+    Returns one of: 'accumulating (trending negative, Δ{x})',
+                    'clearing (trending positive, Δ{x})',
+                    'balanced (stable, Δ{x})', or 'insufficient data'.
+    """
+    cutoff = str(date.today() - timedelta(days=days))
+    recent = []
+    for a in activities:
+        a_date = a.get('date')
+        div = a.get('normalized_divergence')
+        if a_date and str(a_date) >= cutoff and div is not None:
+            try:
+                recent.append(float(div))
+            except (TypeError, ValueError):
+                pass
+    if len(recent) < 3:
+        return 'insufficient data'
+    mid = len(recent) // 2
+    first_avg = sum(recent[:mid]) / mid
+    second_avg = sum(recent[mid:]) / (len(recent) - mid)
+    delta = second_avg - first_avg
+    if delta < -0.05:
+        return f'accumulating (trending negative, \u0394{delta:.2f})'
+    elif delta > 0.05:
+        return f'clearing (trending positive, \u0394{delta:.2f})'
+    return f'balanced (stable, \u0394{delta:.2f})'
+
+
+def _derive_assessment_category(pattern_flags: dict, current_metrics: dict, thresholds: dict) -> str:
+    """Map current athlete state to one of six assessment categories for guide filtering.
+
+    Priority order mirrors the risk hierarchy used in daily recommendations.
+    Uses athlete-personalized thresholds from apply_athlete_model_to_thresholds().
+    """
+    red_flags = pattern_flags.get('red_flags', [])
+    warnings = pattern_flags.get('warnings', [])
+    divergence = current_metrics.get('normalized_divergence') or 0.0
+
+    if any('ACWR elevation' in f or 'mandatory' in f.lower() for f in red_flags):
+        return 'mandatory_rest'
+    if any('DIVERGENCE DRIFT' in f for f in red_flags):
+        return 'overtraining_risk'
+    if (current_metrics.get('external_acwr') or 0) > thresholds.get('acwr_high_risk', 1.5):
+        return 'high_acwr_risk'
+    if any('insufficient' in f.lower() for f in red_flags + warnings):
+        return 'recovery_needed'
+    if divergence > abs(thresholds.get('divergence_overtraining', 0.15)):
+        return 'undertraining_opportunity'
+    return 'normal_progression'
+
+
+def format_training_progression_for_prompt(prior_weeks: list) -> str:
+    """Format last N weeks of strategic_summary + synthesis as a compact training arc block."""
+    if not prior_weeks:
+        return "No prior week data available."
+    lines = []
+    for row in reversed(prior_weeks):  # oldest first
+        d = dict(row)
+        week_date = d.get('week_start_date')
+        if hasattr(week_date, 'strftime'):
+            week_label = week_date.strftime('%b %d')
+        else:
+            week_label = str(week_date)
+        summary = d.get('strategic_summary') or {}
+        if isinstance(summary, str):
+            try:
+                summary = json.loads(summary)
+            except (json.JSONDecodeError, ValueError):
+                summary = {}
+        stage = summary.get('training_stage', '?')
+        intensity = summary.get('weekly_intensity_target', '?')
+        load_low = summary.get('load_target_low', '?')
+        load_high = summary.get('load_target_high', '?')
+        key_sessions = summary.get('key_sessions', [])
+        ks_str = ', '.join(
+            f"{s.get('day','?')} — {s.get('type','?')}" for s in key_sessions
+        ) if key_sessions else 'none'
+        synthesis = d.get('weekly_synthesis') or ''
+        # One-sentence snippet: first sentence of synthesis
+        snippet = synthesis.split('.')[0].strip() + '.' if synthesis else 'no synthesis'
+        lines.append(
+            f"{week_label} ({stage}/{intensity}, ACWR {load_low}–{load_high}): "
+            f"Key: {ks_str} | {snippet}"
+        )
+    return "\n".join(lines)
+
+
 def build_weekly_program_prompt(
     user_id: int,
     target_week_start: date
@@ -432,7 +544,7 @@ def build_weekly_program_prompt(
         Prompt string for Claude API
     """
     logger.info(f"Building weekly program prompt for user {user_id}, week starting {target_week_start}")
-    
+
     # Fetch all context data
     current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
     activities = UnifiedMetricsService.get_recent_activities_for_analysis(days=28, user_id=user_id)
@@ -442,114 +554,170 @@ def build_weekly_program_prompt(
     training_schedule = get_training_schedule(user_id)
     training_stage = get_current_training_stage(user_id)
     journal_obs = get_recent_journal_observations(user_id)
-    training_guide = load_training_guide()
-    
+
     # Get personalization data (from Dashboard LLM system)
     risk_tolerance = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(risk_tolerance)
     thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
-    autopsy_insights = get_recent_autopsy_insights(user_id, days=7)
+    autopsy_insights = get_recent_autopsy_insights(user_id, days=28)
     pattern_flags = analyze_pattern_flags(activities, current_metrics, user_id, thresholds)
-    
+
+    # Filter training guide to state-relevant sections
+    assessment_category = _derive_assessment_category(pattern_flags, current_metrics, thresholds)
+    training_guide = _select_guide_sections(load_training_guide(), assessment_category)
+    logger.info(f"Training guide filtered for category: {assessment_category}")
+
     # Get coaching tone
     spectrum_value = get_user_coaching_spectrum(user_id)
     tone_instructions = get_coaching_tone_instructions(spectrum_value)
 
+    # Get athlete model context block (personalized divergence window, alignment history)
+    athlete_model_context = get_athlete_model_context(user_id)
+
+    # Get user's ACWR configuration for accurate load window labels
+    try:
+        acwr_config = ACWRConfigurationService().get_user_configuration(user_id)
+        chronic_days = acwr_config['chronic_period_days'] if acwr_config else 28
+        decay_rate = acwr_config['decay_rate'] if acwr_config else None
+    except Exception:
+        chronic_days = 28
+        decay_rate = None
+
     # Get athlete profile fields not covered by other fetches
     athlete_profile_data = execute_query(
-        "SELECT training_experience, age FROM users WHERE id = %s",
+        "SELECT training_experience, age FROM user_settings WHERE id = %s",
         (user_id,),
         fetch=True
     )
 
-    # Get most recent weekly synthesis (prior week) to inform this week's planning
-    synthesis_rows = execute_query(
+    # Get prior week: strategic_summary + synthesis in one query
+    prior_week_rows = execute_query(
         """
-        SELECT weekly_synthesis, week_start_date
+        SELECT strategic_summary, weekly_synthesis, deviation_log, week_start_date
         FROM weekly_programs
         WHERE user_id = %s
           AND week_start_date < %s
-          AND weekly_synthesis IS NOT NULL
+          AND strategic_summary IS NOT NULL
         ORDER BY week_start_date DESC
         LIMIT 1
         """,
-        (user_id, target_week_start),
+        (user_id, str(target_week_start)),
         fetch=True
     )
-    prior_synthesis = synthesis_rows[0] if synthesis_rows else None
+    prior_week = prior_week_rows[0] if prior_week_rows else None
 
-    prior_deviation_rows = execute_query(
-        """
-        SELECT deviation_log, week_start_date
-        FROM weekly_programs
-        WHERE user_id = %s
-          AND week_start_date < %s
-          AND deviation_log IS NOT NULL
-        ORDER BY week_start_date DESC
-        LIMIT 1
-        """,
-        (user_id, target_week_start),
-        fetch=True
-    )
-    prior_deviation_log = prior_deviation_rows[0]['deviation_log'] if prior_deviation_rows else []
+    # Get last 3 weeks of strategic summaries for training arc context
+    prior_weeks = get_prior_week_summaries(user_id, target_week_start, n=3)
+
     athlete_experience = athlete_profile_data[0]['training_experience'].capitalize() if (athlete_profile_data and athlete_profile_data[0].get('training_experience')) else "Intermediate"
     athlete_age = athlete_profile_data[0]['age'] if (athlete_profile_data and athlete_profile_data[0].get('age')) else None
-    
+
     # Build prompt sections
     week_end = target_week_start + timedelta(days=6)
-    
+
     # Format metrics with proper handling of None/missing values
     def format_metric(value, format_spec):
         """Format a metric value or return 'N/A' if not a number."""
         if value is not None and isinstance(value, (int, float)):
             return format(value, format_spec)
         return 'N/A'
-    
+
     ext_acwr = format_metric(current_metrics.get('external_acwr'), '.2f')
     int_acwr = format_metric(current_metrics.get('internal_acwr'), '.2f')
-    norm_div = format_metric(current_metrics.get('normalized_divergence'), '.3f')
+    norm_div = format_divergence_for_prompt(current_metrics.get('normalized_divergence'))
     seven_day = format_metric(current_metrics.get('seven_day_avg'), '.1f')
     twentyeight_day = format_metric(current_metrics.get('twentyeight_day_avg'), '.1f')
+    days_since_rest = current_metrics.get('days_since_rest', 'N/A')
+
+    # Format personalized divergence thresholds
+    div_moderate_risk = thresholds.get('divergence_moderate_risk', -0.05)
+    div_overtraining = thresholds.get('divergence_overtraining', -0.15)
+
+    # Divergence trajectory from recent activity data
+    div_trend = _divergence_trend_label(activities or [], days=7)
+
+    # Format prior week structured targets
+    if prior_week:
+        pw = dict(prior_week)
+        pw_summary = pw.get('strategic_summary') or {}
+        if isinstance(pw_summary, str):
+            try:
+                pw_summary = json.loads(pw_summary)
+            except (json.JSONDecodeError, ValueError):
+                pw_summary = {}
+        pw_date = pw.get('week_start_date')
+        pw_label = pw_date.strftime('%b %d') if hasattr(pw_date, 'strftime') else str(pw_date)
+        pw_stage = pw_summary.get('training_stage', '?')
+        pw_intensity = pw_summary.get('weekly_intensity_target', '?')
+        pw_load_low = pw_summary.get('load_target_low', '?')
+        pw_load_high = pw_summary.get('load_target_high', '?')
+        pw_key = ', '.join(
+            f"{s.get('day','?')} — {s.get('type','?')}"
+            for s in (pw_summary.get('key_sessions') or [])
+        ) or 'none'
+        pw_notes = pw_summary.get('strategic_notes', '')
+        pw_synthesis = pw.get('weekly_synthesis') or ''
+        pw_deviations = len(pw.get('deviation_log') or [])
+        prior_week_section = (
+            f"Week of {pw_label}: Stage={pw_stage} | Intensity={pw_intensity} | "
+            f"ACWR target={pw_load_low}–{pw_load_high}\n"
+            f"Key sessions: {pw_key}\n"
+            f"Notes: \"{pw_notes}\"\n"
+            f"Deviations logged: {pw_deviations}\n"
+            f"Synthesis: {pw_synthesis}"
+        )
+    else:
+        prior_week_section = "No prior week data available — this is either the first week or synthesis has not yet run."
+
+    decay_str = f" | Decay rate: {decay_rate:.3f}" if decay_rate is not None else ""
     
     prompt = f"""You are an expert ultra-trail running coach creating a divergence-optimized weekly training program.
 
-**ATHLETE PROFILE & CURRENT STATUS**
+**ATHLETE PROFILE**
 
 Training Week: {target_week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}
 Athlete Age: {f"{athlete_age} years old" if athlete_age else "Not specified"}
 Experience Level: {athlete_experience}
-
-ATHLETE RISK TOLERANCE: {risk_tolerance.upper()} ({thresholds['description']})
+Risk Tolerance: {risk_tolerance.upper()} ({thresholds['description']})
 - ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
-- Divergence Overtraining Risk: <{thresholds['divergence_overtraining']}
+
+**PRIMARY METRICS**
 
 DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
-Current Training Metrics (Last 28 Days):
-- External ACWR: {ext_acwr}
-- Internal ACWR: {int_acwr}
-- Normalized Divergence: {norm_div}
-- Days Since Rest: {current_metrics.get('days_since_rest', 'N/A')}
-- 7-Day Avg Training Load: {seven_day} miles
-- 28-Day Avg Training Load: {twentyeight_day} miles
+PRIMARY SIGNAL — Normalized Divergence: {norm_div}
+(Positive = untapped capacity; Negative = internal stress accumulating)
+Productive window: divergence > {div_moderate_risk:.3f} | Breakdown floor: {div_overtraining:.3f}
+Recent trajectory (7d): {div_trend}
+
+External ACWR: {ext_acwr} | Internal ACWR: {int_acwr} | Days Since Rest: {days_since_rest}
+Acute load (7d): {seven_day} mi | Chronic load ({chronic_days}d): {twentyeight_day} mi{decay_str}
+
+**ATHLETE MODEL**
+
+{athlete_model_context if athlete_model_context else "Athlete model not yet available — using population defaults."}
 
 **PATTERN ANALYSIS**
 
 Red Flags: {', '.join(pattern_flags['red_flags']) if pattern_flags.get('red_flags') else 'None detected'}
 Positive Patterns: {', '.join(pattern_flags['positive_patterns']) if pattern_flags.get('positive_patterns') else 'None identified'}
 Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags.get('warnings') else 'None'}
+Guide context: {assessment_category}
 
-**AUTOPSY LEARNING**
+**AUTOPSY LEARNING (last 28 days)**
 
-{f"Recent Analyses: {autopsy_insights['count']} autopsies, Average Alignment: {autopsy_insights['avg_alignment']}/10" if autopsy_insights else "No recent autopsy data available"}
-{(lambda rb: f"Deviation Causes: {', '.join(f'{v} {k}' for k, v in rb.items() if v > 0) or 'none classified'}")(autopsy_insights['reason_breakdown']) if autopsy_insights and autopsy_insights.get('reason_breakdown') else ""}
-{f"Key Learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
+{f"Analyses: {autopsy_insights['count']} autopsies | Avg Alignment: {autopsy_insights['avg_alignment']}/10 | Trend: {autopsy_insights.get('alignment_trend', [])}" if autopsy_insights else "No autopsy data available"}
+{(lambda rb: f"Deviation causes: {', '.join(f'{v} {k}' for k, v in rb.items() if v > 0) or 'none classified'}")(autopsy_insights['reason_breakdown']) if autopsy_insights and autopsy_insights.get('reason_breakdown') else ""}
+{f"Key learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
 
-**LAST WEEK IN REVIEW**
+**PRIOR WEEK PLAN TARGETS**
 
-{f"Week of {prior_synthesis['week_start_date'].strftime('%B %d')}:{chr(10)}{prior_synthesis['weekly_synthesis']}" if prior_synthesis else "No prior week synthesis available — this is either the first week or synthesis has not yet run."}
-{f"Prior week deviations: {len(prior_deviation_log)} logged" if prior_deviation_log else "No deviation log available."}
+{prior_week_section}
+
+**TRAINING ARC (last 3 weeks)**
+
+{format_training_progression_for_prompt(prior_weeks)}
 
 **RACE GOALS**
 
@@ -588,12 +756,12 @@ Generate a divergence-optimized 7-day training program for the week of {target_w
 
 **KEY PRINCIPLES:**
 
-1. **Divergence Optimization**: Target normalized divergence between -0.15 and +0.15 for the week
-2. **ACWR Management**: Keep external ACWR between 0.8-1.3 (optimal) or provide rationale if exceeding
-3. **Training Stage Alignment**: Structure workouts appropriate for current stage
-4. **Schedule Integration**: Respect athlete's availability and time constraints
-5. **Progressive Loading**: Build smartly toward race goals while managing fatigue
-6. **Recovery Integration**: Plan rest/easy days based on current metrics and recent response
+1. **Divergence-First Planning**: Primary target is normalized divergence above {div_moderate_risk:.3f} (productive window). Below {div_overtraining:.3f} = breakdown risk — reduce load or intensity. Use the athlete model's personalized window, not population defaults.
+2. **ACWR Safety Rails**: Keep external ACWR 0.8–1.3; never exceed {thresholds['acwr_high_risk']} for this athlete.
+3. **Training Arc Continuity**: Build on the prior week's prescription. Assess whether to progress, consolidate, or recover based on the training arc and synthesis.
+4. **Schedule Integration**: Respect athlete's availability and time constraints.
+5. **Race Goal Alignment**: Structure the week toward the primary race goal given current stage and weeks remaining.
+6. **Recovery Integration**: Plan rest/easy days based on current divergence trajectory and days since rest.
 
 **REQUIRED OUTPUT FORMAT (JSON):**
 
@@ -601,9 +769,11 @@ Return your response as a valid JSON object with this exact structure:
 
 {{
   "week_start_date": "{target_week_start.isoformat()}",
-  "week_summary": "Brief overview of the week's focus and rationale (2-3 sentences)",
+  "week_summary": "2-3 sentences: this week's focus, why, and how it builds toward the race goal.",
   "predicted_metrics": {{
     "acwr_estimate": 1.05,
+    "external_acwr_estimate": 1.05,
+    "internal_acwr_estimate": 0.98,
     "divergence_estimate": 0.02,
     "total_weekly_miles": 45
   }},
@@ -615,34 +785,31 @@ Return your response as a valid JSON object with this exact structure:
       "description": "6 miles easy, conversational pace, flat terrain",
       "duration_estimate": "60-70 minutes",
       "intensity": "Low",
+      "distance_miles": 6.0,
+      "elevation_gain_feet": 200,
       "key_focus": "Recovery from weekend, maintain aerobic base",
       "terrain_notes": "Flat trails or road"
-    }},
-    // ... continue for all 7 days (Monday-Sunday)
+    }}
   ],
   "key_workouts_this_week": [
     "Tuesday: Long run building toward race distance",
     "Thursday: Tempo work for lactate threshold development"
   ],
   "nutrition_reminder": "Brief nutrition guidance for this week's training load",
-  "injury_prevention_note": "Key consideration for staying healthy this week",
-  "strategic_context": {{
-    "race_context_periodization": "150-200 words. Explain where athlete is in training cycle (Week X of Y to [Race Name]). Describe current training phase goals. Explain how this week builds toward race readiness and upcoming phase transitions. Frame B/C races as checkpoints. Reference race-specific preparation elements being developed.",
-    "load_management_pattern_analysis": "200-250 words. State athlete's PERSONALIZED THRESHOLDS (use actual values: ACWR >{thresholds['acwr_high_risk']}, Divergence <{thresholds['divergence_overtraining']}, Max Days Rest: {thresholds['days_since_rest_max']}). Provide ACWR strategy with current→predicted trajectory. Include PATTERN ANALYSIS using this exact format: '✅ POSITIVE PATTERNS: [list]', '⚠️ WARNINGS: [list]', '🚫 RED FLAGS: [list]'. If autopsy data available, include: 'AUTOPSY LEARNING ({autopsy_insights['count'] if autopsy_insights else 0} recent analyses, avg alignment: {autopsy_insights['avg_alignment'] if autopsy_insights else 'N/A'}/10): [insights]'",
-    "strategic_rationale": "200 words. Explain physiological targets this week (what adaptations). Reference specific Training Guide principles being applied (quote section). Explain why workouts structured this way for athlete's {risk_tolerance} risk profile. Include recovery strategy rationale based on athlete's patterns. Apply the coaching tone specified above throughout."
-  }}
+  "injury_prevention_note": "Key consideration for staying healthy this week"
 }}
 
 **IMPORTANT:**
 - Return ONLY the JSON object, no markdown formatting, no extra text
-- Ensure all 7 days (Monday-Sunday) are included
+- Ensure all 7 days (Monday-Sunday) are included in daily_program
 - Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training
 - Intensity levels: Low, Moderate, High
-- Be specific with distances, paces, and rationale
+- Be specific with distances, paces, and terrain rationale
 - Ensure the program is realistic for the athlete's current fitness and schedule
+- For external_acwr_estimate and internal_acwr_estimate: use the External ACWR and Internal ACWR values provided in the athlete metrics above as your starting point, adjusted for the planned weekly load
 
 Generate the weekly program now:"""
-    
+
     return prompt
 
 
@@ -675,27 +842,6 @@ def parse_weekly_program_response(response_text: str) -> Dict:
         # Validate daily_program has 7 days
         if len(program['daily_program']) != 7:
             logger.warning(f"Expected 7 days in program, got {len(program['daily_program'])}")
-        
-        # Provide default strategic_context if missing (for backward compatibility)
-        if 'strategic_context' not in program:
-            logger.warning("No strategic_context in response, using defaults")
-            program['strategic_context'] = {
-                'race_context_periodization': "Continue training aligned with your current training stage and race timeline. Focus on progressive development appropriate for your phase.",
-                'load_management_pattern_analysis': "Manage ACWR within optimal ranges (0.8-1.3) to balance adaptation with injury prevention. Monitor training response patterns through daily observations.",
-                'strategic_rationale': "Apply evidence-based training principles from the Training Reference Guide to build fitness systematically while managing fatigue and injury risk."
-            }
-        
-        # Handle legacy field names (convert old format to new format)
-        if 'strategic_context' in program:
-            sc = program['strategic_context']
-            # If old field names exist, map them to new names
-            if 'weekly_focus' in sc and 'race_context_periodization' not in sc:
-                logger.warning("Converting legacy strategic_context field names to new format")
-                program['strategic_context'] = {
-                    'race_context_periodization': sc.get('weekly_focus', ''),
-                    'load_management_pattern_analysis': sc.get('load_management_strategy', ''),
-                    'strategic_rationale': sc.get('pattern_insights', '')
-                }
         
         logger.info("Successfully parsed weekly program JSON")
         return program
@@ -775,6 +921,9 @@ def generate_weekly_program(
             # Ensure day name matches the date
             workout['day'] = days_of_week[i]
         
+        # Override LLM-generated totals with server-side sums of structured per-day fields
+        _apply_structured_totals(program)
+
         # Ensure week_start_date matches target
         program['week_start_date'] = target_week_start.strftime('%Y-%m-%d')
         
@@ -1044,12 +1193,13 @@ def get_or_generate_weekly_program(
         cached = get_cached_weekly_program(user_id, week_start)
         if cached:
             cached['from_cache'] = True
+            _apply_structured_totals(cached)
             return cached
-    
+
     # Generate new program
     logger.info(f"Generating new weekly program for user {user_id}, week {week_start}")
     program = generate_weekly_program(user_id, week_start)
-    
+
     # Save to database
     try:
         save_weekly_program(user_id, week_start, program)
@@ -1060,6 +1210,23 @@ def get_or_generate_weekly_program(
         program['from_cache'] = False
 
     return program
+
+
+def _apply_structured_totals(program: Dict) -> None:
+    """Override LLM-guessed totals with server-side sums of per-day structured fields.
+
+    Mutates program in-place. No-ops if daily_program has no distance_miles data
+    (old plans without structured fields retain their LLM-generated values).
+    """
+    daily = program.get('daily_program', [])
+    total_miles = sum(float(w.get('distance_miles') or 0) for w in daily)
+    total_vert = sum(float(w.get('elevation_gain_feet') or 0) for w in daily)
+    if 'predicted_metrics' not in program:
+        program['predicted_metrics'] = {}
+    if total_miles > 0:
+        program['predicted_metrics']['total_weekly_miles'] = round(total_miles, 1)
+    if total_vert > 0:
+        program['predicted_metrics']['total_weekly_elevation_feet'] = round(total_vert)
 
 
 def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
@@ -1137,7 +1304,7 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
 
         metrics_section = (
             f"End-of-week ACWR: {metrics.get('external_acwr', 'N/A')}\n"
-            f"Divergence: {metrics.get('normalized_divergence', 'N/A')}\n"
+            f"Divergence: {format_divergence_for_prompt(metrics.get('normalized_divergence'))}\n"
             f"Days since rest: {metrics.get('days_since_rest', 'N/A')}"
         ) if metrics else "Metrics unavailable."
 
