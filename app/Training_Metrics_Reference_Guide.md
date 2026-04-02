@@ -14,6 +14,8 @@
 2. Limit high-intensity sessions (TRIMP > 70) to 2-3 per week
 3. Maintain 80/20 intensity distribution (80% easy, 20% moderate-hard)
 4. Plan step-back weeks when ACWR trends > 1.2 for 7+ days
+5. **Long Run Distance Ceiling**: Look back 30 days. Prescribed long run = longest recent run × 1.10, and must not exceed 1/3 of planned total weekly mileage. Whichever constraint is more restrictive applies.
+6. **Hard Session Recovery Buffer**: High-intensity sessions (Tempo, Interval, Speed Work, Hill Repeats, or any Long Run) require 48 hours of recovery before the next hard session. Never schedule two hard sessions on consecutive days.
 
 ## Advanced Pattern Recognition
 
@@ -22,8 +24,8 @@
 - **Divergence Drift**: Normalized divergence trending negative (each day worse than previous) for 5+ days
 - **HR Drift**: Increasing resting HR or decreased HRV trends
 - **Volume Sensitivity**: >15% weekly load increases causing immediate ACWR spike
-- **Intensity Clustering**: >2 consecutive days TRIMP >70 without intermediate recovery
-- **Recovery Failure**: TRIMP >70 sessions followed by divergence remaining <-0.05 for 48+ hours
+- **Intensity Clustering**: Any two hard sessions (TRIMP >70) within 48 hours of each other without intermediate recovery
+- **Recovery Failure**: TRIMP >70 sessions followed by divergence remaining below the athlete's personalized productive window edge (typical_divergence_low / divergence_moderate_risk threshold) for 48+ hours. Use athlete model value, not the population default of -0.05.
 
 ### Positive Adaptation Patterns:
 - **Efficient Loading**: Consistent positive divergence (0.05-0.15) with stable ACWR

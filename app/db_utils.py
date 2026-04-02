@@ -490,20 +490,10 @@ def save_llm_recommendation(recommendation):
             json.dumps(raw_structured) if isinstance(raw_structured, dict) else raw_structured
         )
 
-        # CRITICAL FIX: Include target_date and autopsy tracking in the INSERT statement
-        query = """
-            INSERT INTO llm_recommendations (
-                generation_date, target_date, valid_until, data_start_date, data_end_date,
-                metrics_snapshot, daily_recommendation, weekly_recommendation,
-                pattern_insights, raw_response, user_id,
-                is_autopsy_informed, autopsy_count, avg_alignment_score, structured_output
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-
-        # CRITICAL FIX: Include target_date and autopsy tracking in the parameters
+        target_date = recommendation.get('target_date')
         params = (
             recommendation['generation_date'],
-            recommendation.get('target_date'),  # ADD: target_date parameter
+            target_date,
             recommendation['valid_until'],
             recommendation['data_start_date'],
             recommendation['data_end_date'],
@@ -513,15 +503,32 @@ def save_llm_recommendation(recommendation):
             recommendation['pattern_insights'],
             recommendation['raw_response'],
             user_id,
-            recommendation.get('is_autopsy_informed', False),  # NEW: autopsy tracking
-            recommendation.get('autopsy_count', 0),  # NEW: autopsy count
-            recommendation.get('avg_alignment_score'),  # NEW: average alignment score
-            structured_output_json  # Phase 1: structured output JSONB
+            recommendation.get('is_autopsy_informed', False),
+            recommendation.get('autopsy_count', 0),
+            recommendation.get('avg_alignment_score'),
+            structured_output_json
         )
 
-        result = execute_query(query, params)
-        logger.info(f"Saved LLM recommendation to database for user {user_id} with target_date {recommendation.get('target_date')}")
-        return result
+        # DELETE then INSERT using execute_query (pool-with-direct-fallback, always works).
+        if target_date and user_id:
+            execute_query(
+                "DELETE FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
+                (user_id, target_date)
+            )
+        execute_query(
+            """
+            INSERT INTO llm_recommendations (
+                generation_date, target_date, valid_until, data_start_date, data_end_date,
+                metrics_snapshot, daily_recommendation, weekly_recommendation,
+                pattern_insights, raw_response, user_id,
+                is_autopsy_informed, autopsy_count, avg_alignment_score, structured_output
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            params
+        )
+
+        logger.info(f"Saved LLM recommendation to database for user {user_id} with target_date {target_date}")
+        return True
 
     except Exception as e:
         logger.error(f"Error saving LLM recommendation: {str(e)}")
@@ -569,6 +576,8 @@ def upsert_athlete_model(user_id, model_data):
             'last_autopsy_date', 'injury_notes', 'preference_notes',
             'early_warning_active', 'early_warning_message',
             'div_low_n', 'threshold_n',
+            'hrv_suppression_threshold', 'hrv_baseline_30d',
+            'rhr_elevation_threshold', 'rhr_baseline_7d',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}
@@ -1331,7 +1340,8 @@ def get_current_week_context(user_id):
             """
             SELECT id, week_start_date,
                    strategic_summary, deviation_log,
-                   revision_pending, revision_proposal
+                   revision_pending, revision_proposal,
+                   program_json
             FROM weekly_programs
             WHERE user_id = %s
               AND week_start_date <= CURRENT_DATE

@@ -21,7 +21,7 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 
 # Import existing modules
-from timezone_utils import get_app_current_date
+from timezone_utils import get_app_current_date, get_current_week_start
 from unified_metrics_service import UnifiedMetricsService
 from db_utils import execute_query, upsert_week_strategic_summary
 from llm_recommendations_module import (
@@ -548,6 +548,23 @@ def build_weekly_program_prompt(
     # Fetch all context data
     current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
     activities = UnifiedMetricsService.get_recent_activities_for_analysis(days=28, user_id=user_id)
+
+    # Compute long run ceiling from last 30 days of running activities
+    activities_30d = execute_query(
+        """
+        SELECT distance_miles FROM activities
+        WHERE user_id = %s
+          AND date >= CURRENT_DATE - INTERVAL '30 days'
+          AND (sport_type = 'running' OR sport_type IS NULL)
+          AND distance_miles IS NOT NULL AND distance_miles > 0
+        ORDER BY distance_miles DESC
+        LIMIT 1
+        """,
+        (user_id,),
+        fetch=True
+    )
+    max_30d_long_run = float(activities_30d[0]['distance_miles']) if activities_30d else None
+    long_run_ceiling = round(max_30d_long_run * 1.1, 1) if max_30d_long_run else None
     race_goals = get_race_goals(user_id)
     race_history = get_race_history(user_id)
     perf_trend = calculate_performance_trend(race_history)
@@ -762,6 +779,8 @@ Generate a divergence-optimized 7-day training program for the week of {target_w
 4. **Schedule Integration**: Respect athlete's availability and time constraints.
 5. **Race Goal Alignment**: Structure the week toward the primary race goal given current stage and weeks remaining.
 6. **Recovery Integration**: Plan rest/easy days based on current divergence trajectory and days since rest.
+7. **Long Run Distance Ceiling (HARD CONSTRAINT)**: {f"The athlete's longest run in the past 30 days is {max_30d_long_run:.1f} miles. The prescribed long run must not exceed {long_run_ceiling:.1f} miles ({max_30d_long_run:.1f} × 1.10). It must also not exceed 1/3 of your planned total weekly mileage — check this after setting weekly volume and reduce if needed." if long_run_ceiling else "No recent long run data available — be conservative; prescribe no more than 10 miles for a long run until training history is established."}
+8. **Hard Session Recovery Buffer (HARD CONSTRAINT)**: High-intensity sessions (Tempo Run, Interval/Speed Work, Hill Repeats) and Long Runs all require 48 hours of recovery before the next hard session. Never place two hard sessions on consecutive days. A Long Run on Saturday means Friday must be Easy/Recovery/Rest, and Sunday must be Easy/Recovery/Rest.
 
 **REQUIRED OUTPUT FORMAT (JSON):**
 
@@ -779,7 +798,7 @@ Return your response as a valid JSON object with this exact structure:
   }},
   "daily_program": [
     {{
-      "day": "Monday",
+      "day": "Sunday",
       "date": "{target_week_start.isoformat()}",
       "workout_type": "Easy Run",
       "description": "6 miles easy, conversational pace, flat terrain",
@@ -801,7 +820,7 @@ Return your response as a valid JSON object with this exact structure:
 
 **IMPORTANT:**
 - Return ONLY the JSON object, no markdown formatting, no extra text
-- Ensure all 7 days (Monday-Sunday) are included in daily_program
+- Ensure all 7 days (Sunday-Saturday) are included in daily_program
 - Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training
 - Intensity levels: Low, Moderate, High
 - Be specific with distances, paces, and terrain rationale
@@ -874,25 +893,15 @@ def generate_weekly_program(
     
     Args:
         user_id: User ID
-        target_week_start: Monday of target week (defaults to current week's Monday)
+        target_week_start: Sunday of target week (defaults to current or most recent Sunday)
         force_regenerate: If True, bypass cache and regenerate (used for mid-week adjustments)
-    
+
     Returns:
         Dictionary containing program data and metadata
     """
-    # Default to appropriate week's Monday if not specified
+    # Default to the current week's Sunday (week structure is Sunday-Saturday)
     if target_week_start is None:
-        current_date = get_app_current_date()
-        day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
-
-        # On Sunday, target the upcoming week (next Monday) since current week is almost over
-        # On all other days, target the current week's Monday
-        if day_of_week == 6:  # Sunday
-            # Target next Monday (1 day ahead)
-            target_week_start = current_date + timedelta(days=1)
-        else:
-            # Target current week's Monday
-            target_week_start = current_date - timedelta(days=day_of_week)
+        target_week_start = get_current_week_start()
     
     logger.info(f"Generating weekly program for user {user_id}, week starting {target_week_start}")
     
@@ -912,13 +921,12 @@ def generate_weekly_program(
         program = parse_weekly_program_response(response_text)
         
         # Fix dates to match week_start_date (LLM might generate incorrect dates)
-        # Calculate correct dates for Monday-Sunday of the target week
-        days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        # Calculate correct dates for Sunday-Saturday of the target week
+        days_of_week = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
         for i, workout in enumerate(program.get('daily_program', [])):
-            # Calculate correct date: Monday + i days
             correct_date = target_week_start + timedelta(days=i)
             workout['date'] = correct_date.strftime('%Y-%m-%d')
-            # Ensure day name matches the date
+            # Ensure day name matches the actual calendar date
             workout['day'] = days_of_week[i]
         
         # Override LLM-generated totals with server-side sums of structured per-day fields
@@ -951,7 +959,7 @@ def _extract_and_store_strategic_summary(user_id: int, week_start, program_data:
 
     Args:
         user_id: User ID (used for logging only here).
-        week_start: Monday date of the target week.
+        week_start: Sunday date of the target week.
         program_data: Full program dict from generate_weekly_program.
     """
     # Build a compact text representation of the plan for Haiku to parse
@@ -1053,7 +1061,7 @@ def save_weekly_program(
     
     Args:
         user_id: User ID
-        week_start: Monday of the week
+        week_start: Sunday of the week
         program_data: Program dictionary from generate_weekly_program
         generation_type: 'scheduled' or 'manual'
     
@@ -1118,7 +1126,7 @@ def get_cached_weekly_program(
     
     Args:
         user_id: User ID
-        week_start: Monday of target week
+        week_start: Sunday of target week
     
     Returns:
         Program dictionary or None if not cached/expired
@@ -1168,25 +1176,15 @@ def get_or_generate_weekly_program(
     
     Args:
         user_id: User ID
-        week_start: Monday of target week (defaults to current week's Monday)
+        week_start: Sunday of target week (defaults to current or most recent Sunday)
         force_regenerate: Force new generation even if cached
-    
+
     Returns:
         Program dictionary with metadata
     """
-    # Default to appropriate week's Monday
+    # Default to the current week's Sunday (week structure is Sunday-Saturday)
     if week_start is None:
-        current_date = get_app_current_date()
-        day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
-
-        # On Sunday, target the upcoming week (next Monday) since current week is almost over
-        # On all other days, target the current week's Monday
-        if day_of_week == 6:  # Sunday
-            # Target next Monday (1 day ahead)
-            week_start = current_date + timedelta(days=1)
-        else:
-            # Target current week's Monday
-            week_start = current_date - timedelta(days=day_of_week)
+        week_start = get_current_week_start()
 
     # Check cache first
     if not force_regenerate:

@@ -53,45 +53,21 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo Updating Cloud Run service...
-gcloud run services update %SERVICE_NAME% --region=%REGION% --image %IMAGE_NAME%:%BUILD_TIME% --timeout=300
+call gcloud run services update %SERVICE_NAME% --region=%REGION% --image %IMAGE_NAME%:%BUILD_TIME% --timeout=300
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Cloud Run update failed!
-    cd ..
     pause
     exit /b 1
 )
 
 echo.
-echo Waiting for deployment to complete...
-timeout /t 10 /nobreak > nul
-
-echo Testing deployment...
-for /f "tokens=*" %%i in ('gcloud run services describe %SERVICE_NAME% --region=%REGION% --format="value(status.url)"') do set SERVICE_URL=%%i
-
-if defined SERVICE_URL (
-    echo Service URL: %SERVICE_URL%
-    echo Testing health endpoint...
-    curl -f %SERVICE_URL%/health
-    if %ERRORLEVEL% neq 0 (
-        echo WARNING: Health check failed - but deployment may still be starting
-    ) else (
-        echo SUCCESS: Health check passed!
-    )
-) else (
-    echo ERROR: Could not get service URL
-)
-
-echo.
-echo Returning to original directory...
-cd ..
-
-echo.
 echo ==============================================
 echo DEPLOYMENT COMPLETE
 echo ==============================================
-echo Build: %BUILD_TIME%
-echo Image: %IMAGE_NAME%:%BUILD_TIME%
-echo Service: %SERVICE_URL%
+echo Deployed: %date% %time%
+echo Build:    %BUILD_TIME%
+echo Image:    %IMAGE_NAME%:%BUILD_TIME%
 echo ==============================================
+echo.
 
 pause

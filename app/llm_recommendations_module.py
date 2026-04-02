@@ -43,7 +43,7 @@ logger = logging.getLogger('llm_recommendations')
 
 # Constants
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = "claude-sonnet-4-5"  # Claude Sonnet 4.5 - current balanced model
+DEFAULT_MODEL = "claude-sonnet-4-6"  # Claude Sonnet 4.6 - current balanced model
 DEFAULT_VALID_DAYS = 1
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 ACTIVITY_ANALYSIS_DAYS = 28
@@ -695,7 +695,7 @@ Actual: {actual_activities[:100]}..."""
     return fallback
 
 
-def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
+def generate_recommendations(force=False, user_id=None, target_tomorrow=False, target_date=None):
     """Generate enhanced training recommendations using the training guide with fresh metrics.
     
     Args:
@@ -741,41 +741,42 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False):
             logger.error("Training guide not available - falling back to basic recommendations")
             return None
 
-        # CRITICAL FIX: Proper target_date logic based on activity status
-        has_activity_today = check_activity_for_date(user_id, current_date_str)
-
-        # NEW: If target_tomorrow is explicitly requested (rest day), always target tomorrow
-        if target_tomorrow:
-            target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
-            logger.info(f"REST DAY: Explicitly targeting tomorrow: {target_date}")
-        elif has_activity_today and check_journal_for_date(user_id, current_date_str):
-            # User has worked out today AND completed journal → recommendation is for TOMORROW
-            target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
-            logger.info(f"User {user_id} has activity + journal for {current_date_str}, targeting tomorrow: {target_date}")
+        # Determine target_date for this recommendation
+        if target_date:
+            # Explicit date provided (e.g., Refresh Rec button) — use it directly
+            logger.info(f"Using explicitly provided target_date: {target_date}")
         else:
-            # No activity today, or activity exists but journal not yet complete → TODAY
-            target_date = current_date_str
-            logger.info(f"User {user_id} targeting today: {target_date} (has_activity={has_activity_today}, journal_complete={check_journal_for_date(user_id, current_date_str)})")
+            # Auto-determine: today unless activity+journal complete → tomorrow
+            has_activity_today = check_activity_for_date(user_id, current_date_str)
+            if target_tomorrow:
+                target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                logger.info(f"REST DAY: Explicitly targeting tomorrow: {target_date}")
+            elif has_activity_today and check_journal_for_date(user_id, current_date_str):
+                target_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                logger.info(f"User {user_id} has activity + journal for {current_date_str}, targeting tomorrow: {target_date}")
+            else:
+                target_date = current_date_str
+                logger.info(f"User {user_id} targeting today: {target_date}")
 
-        # CRITICAL FIX: Check if recommendation already exists for this target_date
-        # This prevents overwriting historical recommendations
+        # Check if recommendation already exists for this target_date.
+        # Skip generation to preserve historical record UNLESS this is an explicit
+        # force-regeneration (force=True with a specific target_date from Refresh Rec).
         existing_recommendation = execute_query(
-            """
-            SELECT id FROM llm_recommendations 
-            WHERE user_id = %s AND target_date = %s
-            """,
+            "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
             (user_id, target_date),
             fetch=True
         )
 
-        if existing_recommendation:
-            logger.info(f"Recommendation already exists for target_date {target_date}, skipping generation to preserve historical record")
+        if existing_recommendation and not (force and target_date):
+            logger.info(f"Recommendation already exists for target_date {target_date}, skipping to preserve historical record")
             result = execute_query(
                 "SELECT * FROM llm_recommendations WHERE user_id = %s AND target_date = %s ORDER BY generated_at DESC LIMIT 1",
                 (user_id, target_date),
                 fetch=True
             )
             return dict(result[0]) if result and result[0] else get_latest_recommendation(user_id)
+        elif existing_recommendation and force and target_date:
+            logger.info(f"Force-regenerating recommendation for target_date {target_date} (Refresh Rec)")
 
         # For historical record keeping - no expiration for date-specific recommendations
         valid_until = None
@@ -888,7 +889,7 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 
     # Get athlete experience level and age from user profile
     athlete_experience = execute_query(
-        "SELECT training_experience, age FROM users WHERE id = %s",
+        "SELECT training_experience, age FROM user_settings WHERE id = %s",
         (user_id,),
         fetch=True
     )
@@ -955,9 +956,12 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     # Filter the training guide to sections relevant to this assessment category
     filtered_guide = _select_guide_sections(training_guide, assessment_category) if training_guide else training_guide
 
+    # Fetch athlete model once; reused by both the prompt context block and readiness state.
+    _cached_athlete_model = get_athlete_model(user_id)
+
     # Build athlete model context for prompt injection (Phase 3)
     # Only injected when confidence > 0.15 (get_athlete_model_context handles threshold)
-    athlete_model_context = get_athlete_model_context(user_id)
+    athlete_model_context = get_athlete_model_context(user_id, athlete_model=_cached_athlete_model)
 
     # Get morning readiness for current date (Phase 6B)
     readiness_data = execute_query(
@@ -1117,6 +1121,20 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         if parts:
             readiness_context = "\n### MORNING READINESS\n" + "\n".join(f"- {p}" for p in parts) + "\n"
 
+        # Readiness state synthesis (always compute when readiness row exists)
+        _rs = compute_readiness_state(
+            readiness_row=row,
+            hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
+            hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
+            rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
+            rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
+            athlete_model=_cached_athlete_model,
+        )
+        if readiness_context:
+            readiness_context += f"**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
+        else:
+            readiness_context = f"\n### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
+
     # Build autopsy context section if insights available
     autopsy_context = ""
     if autopsy_insights and autopsy_insights.get('count', 0) > 0:
@@ -1177,27 +1195,88 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
             else:
                 key_sessions_str = "none specified"
 
-            # Match today's day against key_sessions
-            today_session = next(
-                (s for s in key_sessions if s.get('day', '').lower() == day_of_week.lower()),
+            # Build full daily program summary from program_json
+            program_json = week_ctx.get('program_json') or {}
+            if isinstance(program_json, str):
+                try:
+                    program_json = json.loads(program_json)
+                except Exception:
+                    program_json = {}
+
+            daily_program = program_json.get('daily_program', [])
+
+            # Find today's prescription from the daily program (more detailed than key_sessions)
+            today_full = next(
+                (d for d in daily_program if d.get('day', '').lower() == day_of_week.lower()),
                 None
             )
-            if today_session:
-                todays_prescribed = f"{today_session.get('type', 'session')}"
-                if today_session.get('notes'):
-                    todays_prescribed += f" ({today_session['notes']})"
+
+            # Fall back to key_sessions if daily_program missing today
+            if today_full:
+                workout_type = today_full.get('workout_type', 'session')
+                description = today_full.get('description', '')
+                dist = today_full.get('distance_miles')
+                elev = today_full.get('elevation_gain_feet')
+                intensity = today_full.get('intensity', '')
+                key_focus = today_full.get('key_focus', '')
+                parts = [workout_type]
+                if description:
+                    parts.append(description)
+                if dist:
+                    parts.append(f"{dist:.1f} mi")
+                if elev:
+                    parts.append(f"+{int(elev)} ft")
+                if intensity:
+                    parts.append(f"intensity: {intensity}")
+                todays_prescribed = " — ".join(parts)
+                if key_focus:
+                    todays_prescribed += f" | Focus: {key_focus}"
             else:
-                todays_prescribed = "filler day"
+                today_session = next(
+                    (s for s in key_sessions if s.get('day', '').lower() == day_of_week.lower()),
+                    None
+                )
+                if today_session:
+                    todays_prescribed = today_session.get('type', 'session')
+                    if today_session.get('notes'):
+                        todays_prescribed += f" ({today_session['notes']})"
+                else:
+                    todays_prescribed = "filler/recovery day"
+
+            # Build the full week schedule string
+            if daily_program:
+                week_schedule_lines = []
+                for d in daily_program:
+                    day_name = d.get('day', '?')
+                    wtype = d.get('workout_type', 'Unknown')
+                    d_mi = d.get('distance_miles')
+                    d_elev = d.get('elevation_gain_feet')
+                    d_int = d.get('intensity', '')
+                    marker = " ← TODAY" if day_name.lower() == day_of_week.lower() else ""
+                    dist_str = f"{d_mi:.1f} mi" if d_mi else ""
+                    elev_str = f"+{int(d_elev)} ft" if d_elev else ""
+                    detail = ", ".join(filter(None, [dist_str, elev_str, d_int]))
+                    week_schedule_lines.append(f"  {day_name}: {wtype} ({detail}){marker}")
+                week_schedule_str = "\n".join(week_schedule_lines)
+            else:
+                week_schedule_str = f"  Key sessions: {key_sessions_str}"
 
             weekly_context_block = f"""
-### WEEKLY CONTEXT (week of {week_start})
-Training stage: {training_stage} | Intensity target: {intensity_target} | Load range: {load_low}–{load_high} ACWR
-Key sessions this week: {key_sessions_str}
-Today is {day_of_week}. Today's prescribed session: {todays_prescribed}
+### WEEKLY PROGRAM (week of {week_start})
+Training stage: {training_stage} | Intensity target: {intensity_target} | Target load: {load_low}–{load_high} ACWR
 Strategic notes: {strategic_notes}
-Safety constraints (ACWR thresholds, injury flags) take precedence over plan targets.
+
+Full week schedule:
+{week_schedule_str}
+
+**Today ({day_of_week}) prescribed: {todays_prescribed}**
+
+EQUAL WEIGHT RULE: The weekly program prescription and autopsy/readiness data carry equal weight.
+- If metrics SUPPORT the prescription: confirm it and execute.
+- If metrics CONFLICT with the prescription: you may deviate, but you MUST explicitly state in your DAILY RECOMMENDATION: (1) what the weekly plan prescribes, (2) what you are recommending instead, (3) the specific metric or autopsy finding that justifies the deviation.
+Safety constraints (ACWR thresholds, injury flags) still take precedence over both.
 """
-            # 2-C: Append deviation log / revision pending summary when present
+            # Append deviation log / revision pending summary when present
             deviation_log = week_ctx.get('deviation_log') or []
             revision_pending = week_ctx.get('revision_pending') or False
             if deviation_log or revision_pending:
@@ -1289,7 +1368,10 @@ Using the Training Reference Framework above and applying the specified coaching
 - Interpret metrics relative to this athlete's personalized thresholds
 - Include forward-looking trend analysis based on recent patterns
 
-PLAN OVERRIDE RULE: If today's prescribed session (from WEEKLY CONTEXT) conflicts with your recommendation (e.g., you recommend recovery but the plan calls for a key session), explicitly state the conflict and safety rationale in your DAILY RECOMMENDATION. Example: "Your plan calls for [X] today, but [metric reason] means today should be [Y] instead."
+WEEKLY PLAN RULE: The weekly program prescription and the autopsy/readiness data carry EQUAL WEIGHT. Begin your DAILY RECOMMENDATION by stating what the weekly plan prescribes for today. Then either:
+- CONFIRM: "The weekly plan calls for [X]. Your metrics support this — [reason]." Then give execution details.
+- DEVIATE: "The weekly plan calls for [X]. Based on [specific metric/autopsy finding], I'm recommending [Y] instead." Then explain the deviation clearly.
+Never silently ignore the weekly plan. Every recommendation must acknowledge it.
 
 CRITICAL REQUIREMENTS:
 - Use the ATHLETE'S PERSONALIZED THRESHOLDS, not the standard guide thresholds
@@ -1297,6 +1379,7 @@ CRITICAL REQUIREMENTS:
 - Keep each section focused and actionable
 - Reference specific numbers from the metrics and use established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide
 - Maintain evidence-based analysis while adapting communication style and risk tolerance
+- Do NOT add sub-headers like "**TRAINING DECISION: [date]**" or "**ASSESSMENT:**" within your sections. The three section headers (DAILY RECOMMENDATION, WEEKLY PLANNING, PATTERN INSIGHTS) are the only structural elements. Write each section in prose paragraphs.
 
 ### STRUCTURED OUTPUT (Phase 1)
 After your three prose sections, append a machine-readable JSON block inside XML tags.
@@ -1342,7 +1425,10 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
     "autopsy_informed": false,
     "alignment_trend": "insufficient_data",
     "training_stage": null,
-    "weeks_to_a_race": null
+    "weeks_to_a_race": null,
+    "weekly_plan_prescribed": null,
+    "weekly_plan_deviation": false,
+    "weekly_plan_deviation_reason": null
   }},
   "meta": {{
     "model_used": "claude-sonnet-4-6",
@@ -1582,10 +1668,17 @@ def analyze_training_patterns(activities):
 
 
 def parse_llm_response(response_text):
-    """Parse the LLM response to extract the different recommendation sections.
+    """Extract daily_recommendation and structured_output from a single-section LLM response.
 
-    Tries structured output extraction first (Phase 1), then falls back to regex
-    parsing for the three prose sections.
+    Expects:
+        DAILY RECOMMENDATION
+        [200-230 word prose]
+
+        <structured_output>{ ... }</structured_output>
+
+    weekly_recommendation and pattern_insights are always returned as empty strings —
+    those concerns are owned by dedicated systems (Coach page weekly program, autopsy)
+    and are no longer generated in the daily call.
     """
     import re
 
@@ -1593,183 +1686,50 @@ def parse_llm_response(response_text):
         'daily_recommendation': '',
         'weekly_recommendation': '',
         'pattern_insights': '',
-        'structured_output': None  # Phase 1: machine-readable JSON assessment
+        'structured_output': None
     }
 
     if not response_text or not response_text.strip():
         logger.error("Empty response text received")
         return sections
 
-    # Phase 1: Extract structured JSON block first (before regex parsing modifies the text)
+    # Extract structured JSON block first (before any text manipulation)
     sections['structured_output'] = extract_structured_output(response_text)
 
-    # Clean the response
-    cleaned_response = response_text.strip()
+    # Strip <structured_output> block — already captured above; remove it so it doesn't
+    # appear inside the prose capture
+    cleaned_response = re.sub(
+        r'<structured_output>.*?</structured_output>', '', response_text.strip(), flags=re.DOTALL
+    ).strip()
 
-    # Debug log the response format
     logger.info(f"Parsing response of length {len(cleaned_response)}")
     logger.info(f"Response preview: {cleaned_response[:200]}...")
 
-    # Initialize match variables
-    daily_match = None
-    weekly_match = None
-    insights_match = None
-
-    # PRIMARY FORMAT: Flexible inline parsing (most reliable - handles headers anywhere in text)
-    # This is the primary parsing approach and handles most LLM response formats
-    # Key: Does NOT require headers to be at line starts, properly separates sections
-    # by looking for the NEXT header keyword (not just end of string)
-
-    # Check if response contains all three section markers
-    has_all_sections = (
-        re.search(r'DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE) and
-        re.search(r'WEEKLY\s+(PLANNING|RECOMMENDATION)', cleaned_response, re.IGNORECASE) and
-        re.search(r'PATTERN\s+INSIGHTS', cleaned_response, re.IGNORECASE)
+    # Extract DAILY RECOMMENDATION section.
+    # Handles plain text, bold (**DAILY...**), and markdown header (#/##) variants.
+    # Captures everything after the header to end-of-string.
+    daily_match = re.search(
+        r'(?:\*{0,2}#{0,2}\s*)?DAILY\s+RECOMMENDATION:?\*{0,2}\s+(.*)',
+        cleaned_response, re.DOTALL | re.IGNORECASE
     )
 
-    if has_all_sections:
-        # Use strict patterns that require finding the next section (no $ fallback for DAILY/WEEKLY)
-        daily_match = re.search(
-            r'DAILY\s+RECOMMENDATION:?\s+(.*?)(?=WEEKLY\s+(?:PLANNING|RECOMMENDATION))',
-            cleaned_response, re.DOTALL | re.IGNORECASE)
-
-        weekly_match = re.search(
-            r'WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\s+(.*?)(?=PATTERN\s+INSIGHTS)',
-            cleaned_response, re.DOTALL | re.IGNORECASE)
-
-        insights_match = re.search(
-            r'PATTERN\s+INSIGHTS:?\s+(.*?)$',
-            cleaned_response, re.DOTALL | re.IGNORECASE)
-
-        if daily_match and weekly_match and insights_match:
-            logger.info("✅ Successfully parsed all 3 sections using primary inline format")
-
-    # FALLBACK FORMATS: Try specific markdown/formatting patterns if primary didn't match
-
-    # Format 2: Bold headers with colons (**DAILY RECOMMENDATION:**)
-    if not daily_match:
-        daily_match = re.search(r'\*\*DAILY\s+RECOMMENDATION:?\*\*\s*(.*?)(?=\*\*WEEKLY|\*\*PATTERN|$)',
-                                cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not weekly_match:
-        weekly_match = re.search(r'\*\*WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\*\*\s*(.*?)(?=\*\*PATTERN|$)',
-                                 cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not insights_match:
-        insights_match = re.search(r'\*\*PATTERN\s+INSIGHTS:?\*\*\s*(.*?)$',
-                                   cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    # Format 3: Markdown headers with ## (## DAILY RECOMMENDATION)
-    if not daily_match:
-        daily_match = re.search(r'##\s*DAILY\s+RECOMMENDATION:?\s*(.*?)(?=##\s*WEEKLY|##\s*PATTERN|$)',
-                                cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not weekly_match:
-        weekly_match = re.search(r'##\s*WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\s*(.*?)(?=##\s*PATTERN|$)',
-                                 cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not insights_match:
-        insights_match = re.search(r'##\s*PATTERN\s+INSIGHTS:?\s*(.*?)$',
-                                   cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    # Format 4: Markdown headers with # (# DAILY RECOMMENDATION)
-    if not daily_match:
-        daily_match = re.search(r'#\s+DAILY\s+RECOMMENDATION\s*\n+(.*?)(?=#\s+WEEKLY|#\s+PATTERN|$)',
-                                cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not weekly_match:
-        weekly_match = re.search(r'#\s+WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s*\n+(.*?)(?=#\s+PATTERN|$)',
-                                 cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not insights_match:
-        insights_match = re.search(r'#\s+PATTERN\s+INSIGHTS\s*\n+(.*?)$',
-                                   cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    # Format 5: Line-start headers (legacy format, kept for backwards compatibility)
-    if not daily_match:
-        daily_match = re.search(r'^DAILY\s+RECOMMENDATION\s+(.*?)(?=^WEEKLY\s+(?:PLANNING|RECOMMENDATION)|^PATTERN\s+INSIGHTS|$)',
-                                cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
-
-    if not weekly_match:
-        weekly_match = re.search(r'^WEEKLY\s+(?:PLANNING|RECOMMENDATION)\s+(.*?)(?=^PATTERN\s+INSIGHTS|$)',
-                                 cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
-
-    if not insights_match:
-        insights_match = re.search(r'^PATTERN\s+INSIGHTS\s+(.*?)$',
-                                   cleaned_response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
-
-    # LAST RESORT: Flexible inline with $ fallback (captures remaining content)
-    if not daily_match:
-        daily_match = re.search(r'DAILY\s+RECOMMENDATION:?\s+(.*?)(?=WEEKLY\s+(?:PLANNING|RECOMMENDATION)|PATTERN\s+INSIGHTS|$)',
-                                cleaned_response, re.DOTALL | re.IGNORECASE)
-        if daily_match:
-            logger.info("⚠️ Matched daily section using last-resort inline format")
-
-    if not weekly_match:
-        weekly_match = re.search(r'WEEKLY\s+(?:PLANNING|RECOMMENDATION):?\s+(.*?)(?=PATTERN\s+INSIGHTS|$)',
-                                 cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    if not insights_match:
-        insights_match = re.search(r'PATTERN\s+INSIGHTS:?\s+(.*?)$',
-                                   cleaned_response, re.DOTALL | re.IGNORECASE)
-
-    # Extract matched sections and log which format was used
-    format_used = "unknown"
     if daily_match:
-        sections['daily_recommendation'] = daily_match.group(1).strip()
-        # Determine which format matched by checking the pattern
-        if re.search(r'^DAILY\s+RECOMMENDATION\s*\n', cleaned_response, re.MULTILINE | re.IGNORECASE):
-            format_used = "plain_text_headers"
-        elif re.search(r'\*\*DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
-            format_used = "bold_headers"
-        elif re.search(r'##\s*DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
-            format_used = "markdown_headers_double"
-        elif re.search(r'#\s+DAILY\s+RECOMMENDATION', cleaned_response, re.IGNORECASE):
-            format_used = "markdown_headers_single"
-        logger.info(f"✅ Found daily section ({format_used}): {len(sections['daily_recommendation'])} chars")
+        raw_section = daily_match.group(1).strip()
+        logger.info(f"✅ Extracted daily recommendation: {len(raw_section)} chars")
+    else:
+        raw_section = cleaned_response
+        logger.warning("No DAILY RECOMMENDATION header found — using full response as daily recommendation")
 
-    if weekly_match:
-        sections['weekly_recommendation'] = weekly_match.group(1).strip()
-        logger.info(f"✅ Found weekly section: {len(sections['weekly_recommendation'])} chars")
+    # Clean markdown formatting and collapse excess blank lines
+    sections['daily_recommendation'] = process_markdown(raw_section)
+    sections['daily_recommendation'] = re.sub(r'\n{2,}', '\n', sections['daily_recommendation']).strip()
 
-    if insights_match:
-        sections['pattern_insights'] = insights_match.group(1).strip()
-        logger.info(f"✅ Found insights section: {len(sections['pattern_insights'])} chars")
-
-    # CRITICAL FIX: Based on database evidence, Claude is returning single consolidated responses
-    # If no separate sections found, use the entire response as daily recommendation
-    if not any(sections.values()):
-        logger.warning("No structured sections found, using entire response as daily recommendation")
-        sections['daily_recommendation'] = cleaned_response
-        sections['weekly_recommendation'] = "Continue monitoring current training approach based on daily guidance."
-        sections['pattern_insights'] = "Analysis integrated into daily recommendation above."
-        logger.info(f"Using consolidated response: daily section now has {len(sections['daily_recommendation'])} chars")
-
-    # Also handle case where only daily was found (partial match)
-    elif sections['daily_recommendation'] and not sections['weekly_recommendation']:
-        logger.info("Found daily section but no weekly/pattern sections, providing defaults")
-        if not sections['weekly_recommendation']:
-            sections['weekly_recommendation'] = "Continue current training approach with focus on ACWR management."
-        if not sections['pattern_insights']:
-            sections['pattern_insights'] = "Monitor recovery indicators and training load progression."
-
-    # Clean up markdown formatting in prose sections (skip structured_output — it's a dict)
-    for key in sections:
-        if key == 'structured_output':
-            continue
-        if sections[key]:
-            sections[key] = process_markdown(sections[key])
-            # Remove ALL blank lines - visual separation via styled headers instead
-            sections[key] = re.sub(r'\n{2,}', '\n', sections[key])  # All blank lines removed, single newlines only
-            sections[key] = sections[key].strip()
-
-    # Final validation and logging
+    # Final validation
     logger.info("FINAL PARSED SECTIONS:")
-    for key, value in sections.items():
-        if value and len(value) > 10:
-            logger.info(f"✅ {key}: {len(value)} characters")
-        else:
-            logger.warning(f"❌ {key}: EMPTY or too short")
+    if sections['daily_recommendation'] and len(sections['daily_recommendation']) > 10:
+        logger.info(f"✅ daily_recommendation: {len(sections['daily_recommendation'])} characters")
+    else:
+        logger.warning("❌ daily_recommendation: EMPTY or too short")
 
     return sections
 
@@ -2253,10 +2213,139 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
         }
 
 
-def get_athlete_model_context(user_id):
+def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
+                            rhr_baseline, rhr_baseline_count, athlete_model):
+    """Synthesize wellness signals into a readiness state: GREEN, AMBER, or RED.
+
+    Args:
+        readiness_row: dict with wellness fields from journal_entries (or None).
+        hrv_baseline: float — 30-day HRV average (or None if insufficient data).
+        hrv_baseline_count: int — number of readings in the baseline.
+        rhr_baseline: float — 7-day RHR average (or None).
+        rhr_baseline_count: int — number of readings in the baseline.
+        athlete_model: dict from get_athlete_model() for personalised thresholds (or None).
+
+    Returns:
+        dict: {state, component_flags, confidence, narrative}
+    """
+    model = athlete_model or {}
+    hrv_suppression_threshold = float(model.get('hrv_suppression_threshold') or 0.85)
+    rhr_elevation_threshold   = float(model.get('rhr_elevation_threshold') or 1.08)
+
+    row          = readiness_row or {}
+    hrv_value    = row.get('hrv_value')
+    rhr_value    = row.get('resting_hr')
+    sleep_secs   = row.get('sleep_duration_secs')
+    sleep_score  = row.get('sleep_score')
+    # morning_soreness (morning entry) or pain_percentage (post-workout)
+    soreness     = row.get('morning_soreness') if row.get('morning_soreness') is not None else row.get('pain_percentage')
+
+    hrv_suppressed   = False
+    rhr_elevated     = False
+    sleep_deficit    = False
+    sleep_poor_score = False
+    high_soreness    = False
+    signals_with_data = 0.0
+
+    # HRV suppression (requires ≥5 baseline days for full credit)
+    if hrv_value is not None:
+        if hrv_baseline and hrv_baseline_count >= 5:
+            signals_with_data += 1
+            if float(hrv_value) < float(hrv_baseline) * hrv_suppression_threshold:
+                hrv_suppressed = True
+        else:
+            signals_with_data += 0.5  # value present but no reliable baseline yet
+
+    # RHR elevation (requires ≥3 baseline days)
+    if rhr_value is not None:
+        if rhr_baseline and rhr_baseline_count >= 3:
+            signals_with_data += 1
+            if float(rhr_value) > float(rhr_baseline) * rhr_elevation_threshold:
+                rhr_elevated = True
+        else:
+            signals_with_data += 0.5
+
+    if sleep_secs is not None:
+        signals_with_data += 1
+        if float(sleep_secs) < 21600:  # < 6 hrs
+            sleep_deficit = True
+
+    if sleep_score is not None:
+        signals_with_data += 1
+        if int(sleep_score) < 60:
+            sleep_poor_score = True
+
+    if soreness is not None:
+        signals_with_data += 1
+        if float(soreness) >= 70:
+            high_soreness = True
+
+    # Max theoretical confidence is 1.0 (all 5 signals present with reliable baselines).
+    # Signals without baselines contribute 0.5 each, so confidence may cap below 1.0
+    # until enough baseline readings accumulate (≥5 for HRV, ≥3 for RHR).
+    confidence = round(signals_with_data / 5.0, 2)
+
+    # Determine state
+    red_conditions = (
+        (hrv_suppressed and rhr_elevated) or
+        (hrv_suppressed and sleep_deficit) or
+        (high_soreness and (hrv_suppressed or rhr_elevated)) or
+        (sleep_score is not None and int(sleep_score) < 40) or
+        (soreness is not None and float(soreness) >= 85)
+    )
+    flag_count = sum([hrv_suppressed, rhr_elevated, sleep_deficit, sleep_poor_score, high_soreness])
+
+    if red_conditions:
+        state = "RED"
+    elif flag_count >= 1:
+        state = "AMBER"
+    else:
+        state = "GREEN"
+
+    # Confidence downgrade: < 0.4 data coverage → pull back one level
+    if confidence < 0.4:
+        if state == "RED":
+            state = "AMBER"
+        elif state == "AMBER":
+            state = "GREEN"
+
+    # Build narrative
+    if state == "GREEN":
+        narrative = "Wellness signals normal — cleared for planned training load."
+    elif state == "AMBER":
+        active = []
+        if hrv_suppressed:   active.append("HRV suppressed")
+        if rhr_elevated:     active.append("RHR elevated")
+        if sleep_deficit:    active.append("sleep deficit")
+        if sleep_poor_score: active.append("poor sleep score")
+        if high_soreness:    active.append("high soreness")
+        flags_str = ", ".join(active) if active else "one or more signals elevated"
+        narrative = f"Caution: {flags_str} — monitor effort, reduce intensity if needed."
+    else:
+        narrative = "Multiple recovery signals active — strongly consider rest or easy recovery session."
+
+    return {
+        "state": state,
+        "component_flags": {
+            "hrv_suppressed":   hrv_suppressed,
+            "rhr_elevated":     rhr_elevated,
+            "sleep_deficit":    sleep_deficit,
+            "sleep_poor_score": sleep_poor_score,
+            "high_soreness":    high_soreness,
+        },
+        "confidence": confidence,
+        "narrative": narrative,
+    }
+
+
+def get_athlete_model_context(user_id, athlete_model=None):
     """Return a formatted string for prompt injection based on the athlete's persistent model.
 
     Phase 3 — Persistent Athlete Model.
+
+    Args:
+        user_id: User ID.
+        athlete_model: Optional pre-fetched model dict. If None, fetches from DB.
 
     Returns:
         str: Multi-line context block ready to embed in a prompt, OR
@@ -2265,7 +2354,7 @@ def get_athlete_model_context(user_id):
     MIN_AUTOPSIES = 3
 
     try:
-        model = get_athlete_model(user_id)
+        model = athlete_model if athlete_model is not None else get_athlete_model(user_id)
         if not model:
             return ""
 
@@ -2458,6 +2547,69 @@ def update_athlete_model(user_id, autopsy_data):
         except Exception as div_range_err:
             logger.warning(f"Could not compute typical_divergence_low for user {user_id}: {div_range_err}")
 
+        # Cache current HRV/RHR baselines and tighten HRV suppression threshold when
+        # athlete underperformed on a day where HRV appeared normal (false negative).
+        new_hrv_baseline_30d = None
+        new_rhr_baseline_7d = None
+        new_hrv_suppression_threshold = None
+        try:
+            hrv_b_row = execute_query(
+                """SELECT AVG(hrv_value) AS hrv_avg
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= CURRENT_DATE - INTERVAL '30 days'
+                     AND hrv_value IS NOT NULL""",
+                (user_id,), fetch=True
+            )
+            if hrv_b_row and hrv_b_row[0] and hrv_b_row[0]['hrv_avg']:
+                new_hrv_baseline_30d = round(float(hrv_b_row[0]['hrv_avg']), 1)
+
+            rhr_b_row = execute_query(
+                """SELECT AVG(resting_hr) AS rhr_avg
+                   FROM journal_entries
+                   WHERE user_id = %s
+                     AND date >= CURRENT_DATE - INTERVAL '7 days'
+                     AND resting_hr IS NOT NULL""",
+                (user_id,), fetch=True
+            )
+            if rhr_b_row and rhr_b_row[0] and rhr_b_row[0]['rhr_avg']:
+                new_rhr_baseline_7d = int(round(float(rhr_b_row[0]['rhr_avg'])))
+
+            # Tighten HRV suppression threshold if athlete underperformed (alignment < 5)
+            # Adjust HRV suppression threshold based on alignment outcome:
+            # - Tighten (+0.02) when athlete underperformed (alignment < 5) but HRV looked
+            #   normal — threshold was too lenient, missing a real suppression signal.
+            # - Loosen (-0.01) when athlete performed well (alignment >= 7) and HRV was
+            #   above the threshold — threshold may be too aggressive, causing false positives.
+            # Bounds: [0.75, 0.95]
+            if new_hrv_baseline_30d and date_str:
+                hrv_day_row = execute_query(
+                    "SELECT hrv_value FROM journal_entries WHERE user_id = %s AND date = %s",
+                    (user_id, date_str), fetch=True
+                )
+                hrv_today = hrv_day_row[0]['hrv_value'] if hrv_day_row and hrv_day_row[0] else None
+                if hrv_today is not None:
+                    current_threshold = float((existing or {}).get('hrv_suppression_threshold') or 0.85)
+                    hrv_ratio = float(hrv_today) / new_hrv_baseline_30d
+                    if alignment_score < 5 and hrv_ratio >= current_threshold:
+                        # HRV appeared normal but athlete underperformed — tighten
+                        new_hrv_suppression_threshold = min(round(current_threshold + 0.02, 2), 0.95)
+                        logger.info(
+                            f"Tightening HRV suppression threshold for user {user_id}: "
+                            f"{current_threshold:.2f} → {new_hrv_suppression_threshold:.2f} "
+                            f"(hrv_ratio={hrv_ratio:.2f}, alignment={alignment_score})"
+                        )
+                    elif alignment_score >= 7 and hrv_ratio >= current_threshold:
+                        # HRV above threshold and athlete performed well — loosen slightly
+                        new_hrv_suppression_threshold = max(round(current_threshold - 0.01, 2), 0.75)
+                        logger.info(
+                            f"Loosening HRV suppression threshold for user {user_id}: "
+                            f"{current_threshold:.2f} → {new_hrv_suppression_threshold:.2f} "
+                            f"(hrv_ratio={hrv_ratio:.2f}, alignment={alignment_score})"
+                        )
+        except Exception as hrv_learn_err:
+            logger.warning(f"Could not update wellness thresholds for user {user_id}: {hrv_learn_err}")
+
         # Check for sustained physical distress pattern: 2 of last 5 autopsies physical.
         # Auto-sets or auto-clears early_warning_active based on current pattern.
         early_warning_active = False
@@ -2510,6 +2662,12 @@ def update_athlete_model(user_id, autopsy_data):
             updates['typical_divergence_low'] = new_div_low
         if new_div_low_n is not None:
             updates['div_low_n'] = new_div_low_n
+        if new_hrv_baseline_30d is not None:
+            updates['hrv_baseline_30d'] = new_hrv_baseline_30d
+        if new_rhr_baseline_7d is not None:
+            updates['rhr_baseline_7d'] = new_rhr_baseline_7d
+        if new_hrv_suppression_threshold is not None:
+            updates['hrv_suppression_threshold'] = new_hrv_suppression_threshold
 
         upsert_athlete_model(user_id, updates)
         logger.info(
@@ -2545,22 +2703,17 @@ def get_recent_autopsy_insights(user_id, days=3):
         if not recent_autopsies:
             return None
 
-        # Calculate average alignment and extract key insights
+        # Calculate average alignment and collect full autopsy texts
         alignment_scores = []
-        key_insights = []
+        latest_full_analysis = None
 
         for row in recent_autopsies:
             autopsy = dict(row)
             if autopsy['alignment_score']:
                 alignment_scores.append(autopsy['alignment_score'])
-
-            # Extract learning insights section - capture more for critical cases
-            analysis = autopsy['autopsy_analysis'] or ""
-            if "LEARNING INSIGHTS" in analysis.upper():
-                insights_section = analysis.split("LEARNING INSIGHTS")[-1]
-                # For low alignment scores (<4), capture more context for critical guidance (injury, medical issues)
-                char_limit = 500 if autopsy.get('alignment_score', 10) < 4 else 300
-                key_insights.append(insights_section[:char_limit])
+            # Keep the most recent full autopsy text (rows are ordered DESC)
+            if latest_full_analysis is None and autopsy.get('autopsy_analysis'):
+                latest_full_analysis = autopsy['autopsy_analysis']
 
         avg_alignment = sum(alignment_scores) / len(alignment_scores) if alignment_scores else 5
 
@@ -2574,7 +2727,7 @@ def get_recent_autopsy_insights(user_id, days=3):
         return {
             'count': len(recent_autopsies),
             'avg_alignment': round(avg_alignment, 1),
-            'latest_insights': key_insights[0] if key_insights else None,
+            'latest_insights': latest_full_analysis,
             'alignment_trend': alignment_scores[-3:] if len(alignment_scores) >= 3 else alignment_scores,
             'reason_breakdown': reason_breakdown,
         }
@@ -2647,11 +2800,14 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
         }
         or None if generation fails
     """
+    import re
     try:
         if target_date is None:
             # Use USER'S TIMEZONE for date calculation
             from timezone_utils import get_user_current_date
             target_date = get_user_current_date(user_id) + timedelta(days=1)  # Tomorrow
+        elif isinstance(target_date, str):
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
 
         target_date_str = target_date.strftime('%Y-%m-%d')
 
@@ -2680,28 +2836,26 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
 
         if response and response.strip():
             logger.info(f"Generated autopsy-informed decision for user {user_id}")
-            # Clean markdown formatting for better display
-            cleaned_response = process_markdown(response.strip())
 
-            # Parse into separate sections - do this ONCE at the source
-            sections = parse_llm_response(cleaned_response)
+            # parse_llm_response handles process_markdown and structured_output extraction
+            sections = parse_llm_response(response.strip())
 
             daily_rec = sections.get('daily_recommendation', '')
-            weekly_rec = sections.get('weekly_recommendation', '')
-            pattern_insights = sections.get('pattern_insights', '')
 
-            # Fallback: if parsing failed, use full text as daily recommendation
-            if not daily_rec and cleaned_response:
-                daily_rec = cleaned_response
-                logger.warning("Parser returned empty daily_recommendation, using full text as fallback")
+            # Fallback: if parser returned empty, use the raw response stripped of XML block
+            if not daily_rec:
+                daily_rec = re.sub(
+                    r'<structured_output>.*?</structured_output>', '', response.strip(), flags=re.DOTALL
+                ).strip()
+                logger.warning("Parser returned empty daily_recommendation, using stripped raw response")
 
-            logger.info(f"✅ Parsed LLM sections - Daily: {len(daily_rec)} chars, Weekly: {len(weekly_rec)} chars, Insights: {len(pattern_insights)} chars")
+            logger.info(f"✅ Daily recommendation: {len(daily_rec)} chars")
 
             return {
                 'daily_recommendation': daily_rec,
-                'weekly_recommendation': weekly_rec,
-                'pattern_insights': pattern_insights,
-                'raw_response': cleaned_response,
+                'weekly_recommendation': '',
+                'pattern_insights': '',
+                'raw_response': response.strip(),
                 'structured_output': sections.get('structured_output')
             }
         else:
@@ -2967,47 +3121,33 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
 3. AUTOPSY-SPECIFIC GUIDANCE (from Key Learning above)
    - Apply the exact strategy changes recommended in autopsy analysis
    - Don't assume low alignment = simplify; read what autopsy actually says
-3. WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED
-   - The Coach page weekly plan is the primary prescription. Deviation requires a hard threshold to be breached.
-   - VALID reasons to deviate: ACWR exceeds athlete's high-risk threshold, or divergence is NEGATIVE beyond the athlete's personal breakdown threshold, or active injury.
-   - INVALID reasons to deviate (do NOT modify the plan for these):
-     * Positive divergence — positive divergence means MORE available capacity (recovery zone), never less. It is a green light for the planned workout, not a reason to downgrade.
-     * TRIMP from prior day that is elevated but within normal range — terrain-driven TRIMP inflation is expected and does not warrant plan modification.
-     * Starting energy 3/5 or higher — normal daily variation, not a flag.
-     * "Fatigue carryover" reasoning without a threshold breach — fatigue is expected in a training week.
-   - If no threshold is breached, Decision MUST be "Proceed as planned."
-4. CURRENT METRICS (ACWR, divergence, days since rest)
+4. WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED
+   - The weekly plan is the default prescription. Positive divergence means more available capacity, not less — it is never a reason to reduce load. Deviate only when metrics breach a threshold, an injury is present, or the autopsy identifies a specific adaptation or scheduling adjustment.
+5. CURRENT METRICS (ACWR, divergence, days since rest)
    - Only apply normal training progression if no injury/medical issues present
-5. ATHLETE RISK TOLERANCE
+6. ATHLETE RISK TOLERANCE
    - Respect personalized thresholds, but medical safety always trumps risk tolerance
 
-REQUIRED OUTPUT FORMAT (CRITICAL - FOLLOW EXACTLY):
+REQUIRED OUTPUT FORMAT:
 
-Your response must have exactly ONE section with this header on its own line:
+IMPORTANT: Output ONLY two things — the DAILY RECOMMENDATION prose and the structured_output block. Do NOT include "WEEKLY PLANNING", "PATTERN INSIGHTS", or any other section headers. Responses that include those sections will have content truncated by the parser.
+
+Begin your response with this header on its own line, then write the prescription immediately after:
 
 DAILY RECOMMENDATION
 
-[Write a training prescription as flowing prose — no bullet points, no numbered lines, no headers within the section. Cover these elements in order:
-1. The planned workout from the week plan (type, distance, terrain, vert) — reference it using one of: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", "your weekly training plan calls for". If no plan exists, note that and prescribe from metrics.
-2. The training stage and what it means for today's effort.
-3. Alignment: cite the K-of-N figure from ALIGNMENT data above and what it says about recent execution.
-4. Metrics: cite External ACWR, Internal ACWR, and Divergence values. Interpret each using the athlete's personal thresholds from ATHLETE MODEL — where are they in their productive training window?
-5. Prescription confidence: state the model confidence % and autopsy count and what that means for trusting this prescription.
-6. Decision: "Proceed as planned." or "Adjust: [specific change] because [one reason]."
-7. 2-3 execution cues (effort zone, terrain, pacing, HR, duration).
-8. If active injury signals: one sentence on managing it this workout.
-100-130 words total.]
+Your prescription must be flowing prose (no bullets, no sub-headers, no numbered lines) and must be 200-230 words. You are not done until you have addressed all eight elements below. Do not stop after the workout description — the metrics, decision, and execution cues are mandatory.
 
-CRITICAL REQUIREMENTS:
-- Use the athlete's PERSONALIZED THRESHOLDS from ATHLETE MODEL, not population constants
-- Apply the Training Reference Framework principles throughout
-- Keep each section focused and actionable
-- Reference specific numbers from the metrics
-- Write naturally and concisely
-- Use COMPACT FORMATTING: Single line breaks between paragraphs, no excessive whitespace
-- Avoid markdown formatting (no #, ##, or **bold**) - use plain text only
-- Focus on actionable guidance that demonstrates learning from recent patterns
-- ENSURE consistency with Coach page weekly plan (if provided) or explain deviations based on metrics
+Element 1 — PLAN (~30 words): State the planned workout (type, distance, terrain, vert). Use one of: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", "your weekly training plan calls for". If no plan exists, prescribe from metrics.
+Element 2 — STAGE (~20 words): Name the training stage and what it means for today's effort quality.
+Element 3 — ALIGNMENT (~20 words): Cite the K-of-N figure from ALIGNMENT data and what it says about recent execution.
+Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each against the athlete's personal thresholds from ATHLETE MODEL — state where they sit in their productive training window.
+Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
+Element 6 — DECISION (~20 words): Write "Proceed as planned." or "Adjust: [specific change] because [one reason]."
+Element 7 — EXECUTION (~45 words): Give 2-3 specific execution cues covering effort zone, pacing or HR target, terrain guidance, and duration.
+Element 8 — INJURY (≤15 words, only if signals are present): One sentence on managing the injury this workout.
+
+Plain text only — no markdown, no bold, no headers within the prose.
 
 ### STRUCTURED OUTPUT (required)
 After the DAILY RECOMMENDATION section, append a machine-readable JSON block inside XML tags.
@@ -3460,7 +3600,7 @@ def execute_tool_call(user_id, tool_name, tool_input):
     raise ValueError(f"Unknown tool: {tool_name!r}")
 
 
-def generate_recommendations_agentic(user_id, target_date=None):
+def generate_recommendations_agentic(user_id, target_date=None, force=False):
     """Generate training recommendations using the two-turn agentic pattern.
 
     Phase 4 — Agentic Context Assembly.
@@ -3516,7 +3656,7 @@ def generate_recommendations_agentic(user_id, target_date=None):
             (user_id, target_date),
             fetch=True
         )
-        if existing_rec:
+        if existing_rec and not force:
             logger.info(
                 f"[AGENTIC] Recommendation already exists for target_date {target_date}, "
                 f"skipping generation to preserve historical record"
@@ -3527,6 +3667,8 @@ def generate_recommendations_agentic(user_id, target_date=None):
                 fetch=True
             )
             return dict(result[0]) if result and result[0] else get_latest_recommendation(user_id)
+        elif existing_rec and force:
+            logger.info(f"[AGENTIC] Force-regenerating recommendation for target_date {target_date}")
 
         # ------------------------------------------------------------------ #
         # Get current metrics (minimal context for Turn 1)                    #
@@ -3687,8 +3829,33 @@ def generate_recommendations_agentic(user_id, target_date=None):
                         )
 
                 if r_parts:
+                    _athlete_model_raw = get_athlete_model(user_id)
+                    _rs = compute_readiness_state(
+                        readiness_row=row,
+                        hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
+                        hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
+                        rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
+                        rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
+                        athlete_model=_athlete_model_raw,
+                    )
                     static_context_parts.append(
-                        "### MORNING READINESS\n" + "\n".join(f"- {p}" for p in r_parts)
+                        "### MORNING READINESS\n" +
+                        "\n".join(f"- {p}" for p in r_parts) +
+                        f"\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}"
+                    )
+                elif hrv_baseline_data or rhr_baseline_data:
+                    # No wellness fields today but baselines exist — compute low-confidence state
+                    _athlete_model_raw = get_athlete_model(user_id)
+                    _rs = compute_readiness_state(
+                        readiness_row={},
+                        hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
+                        hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
+                        rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
+                        rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
+                        athlete_model=_athlete_model_raw,
+                    )
+                    static_context_parts.append(
+                        f"### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}"
                     )
         except Exception as readiness_err:
             logger.warning(f"[AGENTIC] Could not fetch morning readiness for user {user_id}: {readiness_err}")
@@ -4031,6 +4198,15 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
         so = structured_output or {}
         risk = so.get('risk') or {}
         so_flags = risk.get('flags') or []
+
+        # Log weekly plan deviation if the LLM flagged one
+        so_context = so.get('context') or {}
+        if so_context.get('weekly_plan_deviation'):
+            logger.info(
+                f"Weekly plan deviation recorded for user {user_id} on {activity_date}: "
+                f"prescribed='{so_context.get('weekly_plan_prescribed')}' | "
+                f"reason='{so_context.get('weekly_plan_deviation_reason')}'"
+            )
         if not has_injury_flag:
             has_injury_flag = any(
                 'injur' in str(f).lower() or 'pain' in str(f).lower()

@@ -77,13 +77,24 @@ const formatTrainingDecision = (text: string): React.ReactNode => {
   
   lines.forEach((line, index) => {
     const trimmedLine = line.trim();
-    
+
     // Skip empty lines
     if (!trimmedLine) {
       elements.push(<br key={`br-${index}`} />);
       return;
     }
-    
+
+    // Strip LLM-generated date-stamped sub-headers in all markdown variants:
+    //   "TRAINING DECISION: 2026-03-30"
+    //   "**TRAINING DECISION: 2026-03-30**"
+    //   "# TRAINING DECISION: 2026-03-30"
+    //   "## TRAINING DECISION: 2026-03-30"
+    // The Journal already shows the date in the row header — these LLM labels are redundant.
+    const cleanedForPattern = trimmedLine.replace(/^#+\s*/, '').replace(/\*\*/g, '').trim();
+    if (/^TRAINING DECISION:\s*\d{4}-\d{2}-\d{2}$/i.test(cleanedForPattern)) {
+      return;
+    }
+
     // Check for headers (##)
     if (trimmedLine.startsWith('##')) {
       const headerText = trimmedLine.replace(/^##+\s*/, '');
@@ -192,6 +203,14 @@ interface WellnessData {
   respiration_rate: number | null;
   vo2max: number | null;
   hrv_source: string | null;
+  readiness_state: 'GREEN' | 'AMBER' | 'RED' | null;
+  readiness_flags: {
+    hrv_suppressed?: boolean;
+    rhr_elevated?: boolean;
+    sleep_deficit?: boolean;
+    sleep_poor_score?: boolean;
+    high_soreness?: boolean;
+  } | null;
 }
 
 const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, onSaved }) => {
@@ -245,13 +264,62 @@ const MorningReadinessCard: React.FC<MorningReadinessCardProps> = ({ todayStr, o
       backgroundColor: '#f9fafb',
       marginBottom: '12px'
     }}>
-      <div style={{
-        fontSize: '0.9rem',
-        fontWeight: '600',
-        color: '#374151',
-        marginBottom: '12px'
-      }}>
-        How are you feeling this morning?
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151' }}>
+          How are you feeling this morning?
+        </div>
+        {wellness?.readiness_state && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '3px 10px',
+              borderRadius: '12px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              letterSpacing: '0.05em',
+              backgroundColor:
+                wellness.readiness_state === 'GREEN' ? '#f0fdf4' :
+                wellness.readiness_state === 'AMBER' ? '#fffbeb' : '#fef2f2',
+              border: `1px solid ${
+                wellness.readiness_state === 'GREEN' ? '#86efac' :
+                wellness.readiness_state === 'AMBER' ? '#fcd34d' : '#fca5a5'
+              }`,
+              color:
+                wellness.readiness_state === 'GREEN' ? '#16a34a' :
+                wellness.readiness_state === 'AMBER' ? '#d97706' : '#dc2626',
+            }}>
+              <span style={{
+                width: '7px', height: '7px', borderRadius: '50%',
+                backgroundColor:
+                  wellness.readiness_state === 'GREEN' ? '#16a34a' :
+                  wellness.readiness_state === 'AMBER' ? '#d97706' : '#dc2626',
+                flexShrink: 0
+              }} />
+              {wellness.readiness_state}
+            </div>
+            {wellness.readiness_flags && (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {wellness.readiness_flags.hrv_suppressed && (
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', backgroundColor: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>HRV suppressed</span>
+                )}
+                {wellness.readiness_flags.rhr_elevated && (
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', backgroundColor: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>RHR elevated</span>
+                )}
+                {wellness.readiness_flags.sleep_deficit && (
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', backgroundColor: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>Sleep deficit</span>
+                )}
+                {wellness.readiness_flags.sleep_poor_score && (
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', backgroundColor: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>Poor sleep</span>
+                )}
+                {wellness.readiness_flags.high_soreness && (
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', backgroundColor: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>High soreness</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sleep Quality */}
@@ -425,9 +493,11 @@ interface WhyRecommendationPanelProps {
   structuredOutput: any;           // the structured_output JSONB field
   targetDate: string;              // recommendation_target_date (YYYY-MM-DD)
   todaysDecision: string;          // the prose recommendation text (read-only, displayed above)
+  onRegenerate?: () => void;       // optional callback to force-regenerate the recommendation
+  isRegenerating?: boolean;        // true while regeneration is in-flight
 }
 
-const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structuredOutput, targetDate, todaysDecision: _todaysDecision }) => {
+const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structuredOutput, targetDate, todaysDecision: _todaysDecision, onRegenerate, isRegenerating }) => {
   const [state, setState] = useState<WhyPanelState>({
     status: 'idle',
     conversation: [],
@@ -579,6 +649,24 @@ const WhyRecommendationPanel: React.FC<WhyRecommendationPanelProps> = ({ structu
           >
             Week Plan
           </a>
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              style={{
+                backgroundColor: 'transparent',
+                color: isRegenerating ? '#9ca3af' : '#6b7280',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                padding: '4px 10px',
+                fontSize: '0.75rem',
+                fontWeight: '600',
+                cursor: isRegenerating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isRegenerating ? 'Regenerating...' : 'Refresh Rec'}
+            </button>
+          )}
         </div>
       )}
 
@@ -1012,6 +1100,7 @@ const JournalPage: React.FC = () => {
   const [centerDate, setCenterDate] = useState<string>('');
   const [isSaving, setIsSaving] = useState<string | null>(null);
   const [savedEntries, setSavedEntries] = useState<Set<string>>(new Set()); // Track saved entries
+  const [isRegenerating, setIsRegenerating] = useState<string | null>(null); // date being regenerated
   // Phase 6B: track dates where readiness was submitted this session
   const [readinessSubmitted, setReadinessSubmitted] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1160,6 +1249,11 @@ const JournalPage: React.FC = () => {
                 const savedEntry = result.data.find(e => e.date === date);
                 if (savedEntry?.ai_autopsy?.autopsy_analysis) {
                   openAutopsyModal(savedEntry);
+                  // Auto-regen recommendation for next day (silently, in background)
+                  const nextDay = new Date(date + 'T12:00:00');
+                  nextDay.setDate(nextDay.getDate() + 1);
+                  const nextDateStr = nextDay.toISOString().split('T')[0];
+                  regenRecommendationSilent(nextDateStr);
                 }
               }
             }
@@ -1240,7 +1334,39 @@ const JournalPage: React.FC = () => {
     }
   };
 
-  // NEW: Handle marking rest day
+  // Silent background regen — fires after autopsy is generated, no blocking UI.
+  // Defined here so handleMarkRestDay (below) can reference it without a forward dependency.
+  const regenRecommendationSilent = async (forDate: string) => {
+    const POLL_INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 90000;
+    try {
+      const startResponse = await fetch('/api/llm-recommendations/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ target_date: forDate })
+      });
+      if (!startResponse.ok) return;
+      const { job_id } = await startResponse.json();
+      const deadline = Date.now() + TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+        const statusResponse = await fetch(`/api/llm-recommendations/status/${job_id}`, {
+          credentials: 'include'
+        });
+        const { status } = await statusResponse.json();
+        if (status === 'complete') {
+          await fetchJournalData(centerDate || undefined);
+          return;
+        }
+        if (status === 'error') return;
+      }
+    } catch {
+      // Non-critical — silently ignore regen errors
+    }
+  };
+
+  // Handle marking rest day
   const handleMarkRestDay = async (date: string) => {
     // Prompt user for notes about why they're skipping the workout
     const notes = window.prompt(
@@ -1288,9 +1414,12 @@ const JournalPage: React.FC = () => {
       // Mark as saved
       setSavedEntries(prev => new Set(prev).add(date));
 
-      // Refresh journal data to get updated autopsy and tomorrow's recommendation
+      // Refresh journal data then auto-regen tomorrow's recommendation
       try {
         await fetchJournalData(centerDate);
+        const nextDay = new Date(date + 'T12:00:00');
+        nextDay.setDate(nextDay.getDate() + 1);
+        regenRecommendationSilent(nextDay.toISOString().split('T')[0]);
       } catch (refreshErr) {
         console.error('Failed to refresh data after rest day:', refreshErr);
       }
@@ -1626,8 +1755,12 @@ const JournalPage: React.FC = () => {
                                   Autopsy-Informed
                                 </span>
                               </div>
-                              {/* Compact Mark as Rest Day button - hide if already marked as rest */}
-                              {(!entry.activity_summary || entry.activity_summary.type !== 'rest') && (
+                              {/* Compact Mark as Rest Day button - hide if activity already recorded (real or manual rest).
+                                  == null intentionally catches both null and undefined:
+                                  null  = no activity recorded yet (show button)
+                                  negative int = manually marked rest day (hide)
+                                  positive int = real Strava activity (hide) */}
+                              {(entry.activity_summary?.activity_id == null) && (
                                 <button
                                   onClick={() => handleMarkRestDay(entry.date)}
                                   disabled={isSaving === entry.date}
@@ -1664,6 +1797,12 @@ const JournalPage: React.FC = () => {
                               structuredOutput={entry.structured_output || {}}
                               targetDate={entry.recommendation_target_date || entry.date}
                               todaysDecision={entry.todays_decision || ''}
+                              isRegenerating={isRegenerating === entry.date}
+                              onRegenerate={() => {
+                                const forDate = entry.recommendation_target_date || entry.date;
+                                setIsRegenerating(entry.date);
+                                regenRecommendationSilent(forDate).finally(() => setIsRegenerating(null));
+                              }}
                             />
                           </div>
                         ) : (
@@ -1741,25 +1880,16 @@ const JournalPage: React.FC = () => {
                               <span style={{ fontSize: '0.875rem', color: '#9ca3af', fontStyle: 'italic' }}>No recommendation</span>
                             )
                           ) : (
-                            <>
-                              <div style={{
-                                fontSize: '0.875rem',
-                                lineHeight: '1.6',
-                                maxHeight: '120px',
-                                overflowY: 'auto',
-                                color: '#374151',
-                                textAlign: 'left'
-                              }}>
-                                {formatTrainingDecision(entry.todays_decision)}
-                              </div>
-
-                              {/* Phase 5: Why This Recommendation Panel for regular rows */}
-                              <WhyRecommendationPanel
-                                structuredOutput={entry.structured_output || {}}
-                                targetDate={entry.recommendation_target_date || entry.date}
-                                todaysDecision={entry.todays_decision || ''}
-                              />
-                            </>
+                            <div style={{
+                              fontSize: '0.875rem',
+                              lineHeight: '1.6',
+                              maxHeight: '120px',
+                              overflowY: 'auto',
+                              color: '#374151',
+                              textAlign: 'left'
+                            }}>
+                              {formatTrainingDecision(entry.todays_decision)}
+                            </div>
                           )}
                         </div>
                       </td>

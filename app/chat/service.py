@@ -18,7 +18,7 @@ from .rate_limiter import check_usage, record_usage
 logger = logging.getLogger(__name__)
 
 # Configuration
-CHAT_MODEL = 'claude-3-5-haiku-20241022'
+CHAT_MODEL = 'claude-haiku-4-5-20251001'
 MAX_RESPONSE_TOKENS = 500
 TEMPERATURE = 0.7
 MAX_CONVERSATION_MESSAGES = 10

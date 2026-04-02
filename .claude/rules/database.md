@@ -23,6 +23,22 @@ paths: ["app/**/*.py", "scripts/**/*.py"]
 ### Production (Cloud Run)
 Connects via Unix socket — no public IP, no authorized networks. Managed automatically by Cloud Run + Cloud SQL connector. DATABASE_URL is stored in Secret Manager (`database-url` secret, version 52+).
 
+### Python Script Working Directory
+
+**Always run Python scripts that import app modules from the `app/` directory.**
+
+App modules (`db_utils`, `db_credentials_loader`, `db_connection_manager`) use relative imports and are only resolvable when `app/` is the working directory. Running from the project root causes `ModuleNotFoundError`.
+
+```bash
+# CORRECT
+cd app && python -c "from db_utils import execute_query; ..."
+
+# WRONG — ModuleNotFoundError: No module named 'db_connection_manager'
+python -c "from app.db_utils import execute_query; ..."
+```
+
+This applies to ad-hoc DB checks, schema queries, and one-off scripts. Migration scripts in `scripts/migrations/` have their own path setup — check their imports before running.
+
 ### Local Development
 Requires the **Cloud SQL Auth Proxy** running before any DB work (migrations, scripts, local Flask):
 

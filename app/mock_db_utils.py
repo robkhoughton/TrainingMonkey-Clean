@@ -254,16 +254,22 @@ You're in good shape heading into this week. Your chronic training load is well-
 - Consider foam rolling after hard sessions"""
 
     def _generate_mock_journal_entries(self, today, days: int) -> List[Dict]:
-        """Generate mock journal entries."""
+        """Generate mock journal entries with wellness fields."""
         entries = []
         for i in range(days):
             date = today - timedelta(days=i)
+            # Generate realistic wellness data with mild daily variation
+            hrv_base = 62 + random.gauss(0, 6)
+            rhr_base = 50 + random.gauss(0, 3)
+            sleep_hrs = 7.0 + random.gauss(0, 0.8)
             entries.append({
                 'date': date.isoformat(),
                 'user_id': 1,
                 'energy_level': random.randint(2, 5),
                 'rpe_score': random.randint(4, 8),
-                'pain_percentage': random.randint(0, 30),
+                'pain_percentage': random.randint(0, 20),
+                'morning_soreness': random.randint(0, 25),
+                'sleep_quality': random.randint(3, 5),
                 'notes': random.choice([
                     'Felt good today',
                     'Legs were heavy',
@@ -271,6 +277,21 @@ You're in good shape heading into this week. Your chronic training load is well-
                     'Tired but pushed through',
                     ''
                 ]),
+                # Wellness / watch data fields
+                'hrv_value': round(max(35, hrv_base), 1),
+                'hrv_source': 'intervals_icu',
+                'resting_hr': round(max(38, rhr_base), 0),
+                'sleep_duration_secs': round(max(14400, sleep_hrs * 3600), 0),
+                'sleep_score': random.randint(65, 92),
+                'weight': round(72.0 + random.gauss(0, 0.4), 1),
+                'spo2': None,
+                'respiration_rate': None,
+                'vo2max': None,
+                'todays_decision': (
+                    'Your HRV is reading slightly below your 30-day average, which combined with yesterday\'s quality session suggests your body is still absorbing training load. Today\'s prescription: easy aerobic run 45-60 min at conversational pace. Focus on form over pace. If you feel flat in the first 15 minutes, cut it short — adaptation happens during recovery, not just during effort.'
+                    if i == 0 else None
+                ),
+                'is_today': (i == 0),
                 'updated_at': datetime.now().isoformat()
             })
         return entries
@@ -349,6 +370,13 @@ class MockCursor:
 
     def close(self):
         pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
 
 class MockRow(dict):
@@ -496,9 +524,53 @@ def _handle_select(query: str, params: tuple) -> List[Dict]:
     # Journal entries
     if 'journal_entries' in query:
         entries = _mock_store.journal_entries.copy()
+
+        # Aggregate queries (AVG / MIN / MAX / COUNT on wellness columns)
+        is_aggregate = any(kw in query for kw in ('avg(', 'min(hrv', 'min(resting', 'min(sleep', 'max(hrv', 'max(resting', 'max(sleep', 'count(hrv', 'count(resting'))
+        if is_aggregate:
+            hrv_vals   = [e['hrv_value']           for e in entries if e.get('hrv_value') is not None]
+            rhr_vals   = [e['resting_hr']           for e in entries if e.get('resting_hr') is not None]
+            sleep_vals = [e['sleep_duration_secs']  for e in entries if e.get('sleep_duration_secs') is not None]
+            weight_vals= [e['weight']               for e in entries if e.get('weight') is not None]
+
+            # 28d range query (has both min and max for hrv, resting_hr, sleep)
+            if 'min(hrv_value)' in query and 'min(resting_hr)' in query:
+                return [{
+                    'hrv_28d_low':    round(min(hrv_vals),   1) if hrv_vals   else None,
+                    'hrv_28d_high':   round(max(hrv_vals),   1) if hrv_vals   else None,
+                    'rhr_28d_low':    round(min(rhr_vals),   0) if rhr_vals   else None,
+                    'rhr_28d_high':   round(max(rhr_vals),   0) if rhr_vals   else None,
+                    'sleep_28d_low':  round(min(sleep_vals), 0) if sleep_vals else None,
+                    'sleep_28d_high': round(max(sleep_vals), 0) if sleep_vals else None,
+                }]
+
+            # HRV avg baseline (key: 'baseline' + 'hrv_count')
+            if 'avg(hrv_value)' in query:
+                return [{
+                    'baseline':  round(sum(hrv_vals) / len(hrv_vals), 1) if hrv_vals else None,
+                    'hrv_count': len(hrv_vals),
+                }]
+
+            # RHR avg baseline (key: 'baseline' + 'rhr_count')
+            if 'avg(resting_hr)' in query:
+                return [{
+                    'baseline':  round(sum(rhr_vals) / len(rhr_vals), 1) if rhr_vals else None,
+                    'rhr_count': len(rhr_vals),
+                }]
+
+            # Weight avg baseline
+            if 'avg(weight)' in query:
+                return [{
+                    'baseline': round(sum(weight_vals) / len(weight_vals), 2) if weight_vals else None,
+                }]
+
+            # Generic fallback
+            return [{'baseline': None, 'hrv_count': 0, 'rhr_count': 0}]
+
+        # Single-row select (today's entry) — filter by date
         if params and len(params) >= 2:
-            # Filter by user_id and date if present
-            entries = [e for e in entries if str(params[-1]) in e.get('date', '')]
+            date_param = str(params[-1])
+            entries = [e for e in entries if e.get('date', '') == date_param or date_param in e.get('date', '')]
         return entries
 
     # AI Autopsies
@@ -574,6 +646,64 @@ def get_latest_recommendation(user_id: int) -> Optional[Dict]:
 def recommendation_needs_update(user_id: int) -> bool:
     """Check if mock recommendation needs update."""
     return False  # Never needs update in mock mode
+
+
+def recommendation_is_stale(user_id: int, target_date) -> bool:
+    """Mock staleness check — always returns False (recommendation exists) in mock mode."""
+    return False
+
+
+def get_athlete_model(user_id: int):
+    """Return a minimal mock athlete model dict."""
+    return {
+        "user_id": user_id,
+        "risk_tolerance": "moderate",
+        "preferred_surface": "trail",
+        "notes": "",
+        "early_warning": None,
+    }
+
+
+def upsert_athlete_model(user_id: int, model_data: dict) -> bool:
+    """No-op in mock mode — athlete model is not persisted."""
+    return True
+
+
+def get_current_week_context(user_id: int):
+    """Return a minimal mock weekly context dict."""
+    return {
+        "id": 1,
+        "week_start_date": "2026-03-23",
+        "strategic_summary": "Mock weekly plan: build aerobic base.",
+        "deviation_log": [],
+        "revision_pending": False,
+        "revision_proposal": None,
+    }
+
+
+def append_deviation_log(user_id: int, week_start, entry: dict) -> None:
+    """No-op in mock mode — deviation log is not persisted."""
+    return
+
+
+def set_revision_pending(user_id: int, week_start, proposal: dict) -> None:
+    """No-op in mock mode — revision flag is not persisted."""
+    return
+
+
+def get_answered_alignment_queries(user_id: int, days: int = 30):
+    """Return empty list in mock mode — no alignment query history."""
+    return []
+
+
+def get_pending_alignment_query(user_id: int):
+    """Return None in mock mode — no pending alignment queries."""
+    return None
+
+
+def update_alignment_query(query_id: int, status: str, response=None, snooze_until=None) -> None:
+    """No-op in mock mode — alignment query updates are not persisted."""
+    return
 
 
 def cleanup_old_recommendations(user_id: int, keep_days: int = 14) -> int:

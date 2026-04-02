@@ -52,6 +52,7 @@ TrainingMonkey/
 4. **Frontend Deployment** - After React changes, rebuild and copy to `app/static/`
 5. **No Deployment Commands** - Assistant prepares code; user handles all deployment
 6. **Root Cause Solutions** - Always address root causes, not symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds or patches that mask the real issue.
+7. **Timezone-Aware Dates** - Never use `datetime.now()` for user-facing date queries. Use `get_app_current_date()` (imported from `timezone_utils`). `datetime.now()` returns UTC and will show the wrong date for US users after ~4pm Pacific.
 
 ## Quick Reference
 

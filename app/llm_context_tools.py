@@ -23,11 +23,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _serialize(obj):
-    """Recursively convert date/datetime objects to ISO strings for JSON safety."""
+    """Recursively convert non-JSON-serializable types for JSON safety."""
+    from decimal import Decimal
     if obj is None:
         return obj
     if isinstance(obj, (date, datetime)):
         return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
     if isinstance(obj, dict):
         return {k: _serialize(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -161,9 +164,10 @@ def get_weekly_program_day(user_id: int, target_date: str) -> dict:
         logger.warning(f"get_weekly_program_day: invalid date {target_date!r}")
         return {}
 
-    # Find the Monday of the week containing target_date
-    days_since_monday = target_dt.weekday()  # 0=Monday
-    week_start = target_dt - timedelta(days=days_since_monday)
+    # Find the Sunday of the week containing target_date (weeks are Sunday-Saturday,
+    # matching how coach_recommendations.py stores week_start_date via get_current_week_start())
+    days_since_sunday = (target_dt.weekday() + 1) % 7  # Sun=0, Mon=1, ..., Sat=6
+    week_start = target_dt - timedelta(days=days_since_sunday)
 
     # Look back up to 4 weeks for a relevant program
     for week_offset in range(4):

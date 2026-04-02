@@ -1,0 +1,152 @@
+{% extends "base_settings.html" %}
+
+{% block title %}Integrations - Your Training Monkey{% endblock %}
+
+{% block meta_description %}Connect Your Training Monkey to intervals.icu to automatically sync HRV, resting heart rate, sleep, and wellness data.{% endblock %}
+
+{% set active_section = 'integrations' %}
+
+{% block body_attributes %}data-settings-page="true"{% endblock %}
+
+{% block header_title %}
+<h1>Integrations</h1>
+<p class="subtitle">Connect External Data Sources</p>
+<p class="description">Connect intervals.icu to automatically sync wellness data — HRV, resting heart rate, sleep, weight, and more — directly into your daily coaching recommendations.</p>
+{% endblock %}
+
+{% block content %}
+<section class="setup-section">
+    <h2>intervals.icu</h2>
+
+    <div id="connection-status" style="margin-bottom: 20px; padding: 12px 16px; border-radius: 6px; font-size: 0.9rem;
+        {% if intervals_connected %}
+            background-color: #f0fdf4; border: 1px solid #86efac; color: #166534;
+        {% else %}
+            background-color: #f9fafb; border: 1px solid #d1d5db; color: #6b7280;
+        {% endif %}">
+        {% if intervals_connected %}
+            Connected — athlete ID: <strong>{{ intervals_athlete_id }}</strong>
+        {% else %}
+            Not connected
+        {% endif %}
+    </div>
+
+    <div style="margin-bottom: 20px; font-size: 0.875rem; color: #6b7280; line-height: 1.6;">
+        <strong>What syncs automatically each morning:</strong>
+        <ul style="margin-top: 8px; padding-left: 20px;">
+            <li>HRV (rMSSD) — overnight heart rate variability</li>
+            <li>Resting heart rate</li>
+            <li>Sleep duration and sleep score</li>
+            <li>Weight</li>
+            <li>SpO2 (blood oxygen)</li>
+            <li>Overnight respiration rate</li>
+            <li>VO2max estimate</li>
+        </ul>
+        <p style="margin-top: 10px;">
+            To get your API key: log into intervals.icu → Settings → scroll to <strong>Developer Settings</strong> → Generate API Key.<br>
+            Your athlete ID is the <code>i123456</code> code visible in the URL when logged in.
+        </p>
+    </div>
+
+    <form id="integrationsForm">
+        <div class="form-container">
+            <div class="form-group">
+                <label for="intervals_icu_athlete_id">Athlete ID</label>
+                <input type="text" id="intervals_icu_athlete_id" name="intervals_icu_athlete_id"
+                       placeholder="e.g. i539228"
+                       value="{{ intervals_athlete_id if intervals_connected else '' }}"
+                       style="max-width: 200px;">
+                <small style="color: #6b7280;">Found in the intervals.icu URL when logged in</small>
+            </div>
+
+            <div class="form-group">
+                <label for="intervals_icu_api_key">API Key</label>
+                <input type="password" id="intervals_icu_api_key" name="intervals_icu_api_key"
+                       placeholder="{% if intervals_connected %}Key saved — enter new key to update{% else %}Paste your API key here{% endif %}"
+                       style="max-width: 400px;">
+                <small style="color: #6b7280;">Generated in intervals.icu Settings → Developer Settings</small>
+            </div>
+        </div>
+
+        <div id="form-message" style="display: none; margin-bottom: 12px; padding: 8px 12px; border-radius: 4px; font-size: 0.875rem;"></div>
+
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button type="submit" id="saveBtn" class="btn btn-primary">
+                {% if intervals_connected %}Update Connection{% else %}Connect{% endif %}
+            </button>
+            {% if intervals_connected %}
+            <button type="button" id="disconnectBtn" class="btn btn-secondary"
+                    style="background: none; border: 1px solid #d1d5db; color: #6b7280; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.875rem;">
+                Disconnect
+            </button>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<script>
+document.getElementById('integrationsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const apiKey    = document.getElementById('intervals_icu_api_key').value.trim();
+    const athleteId = document.getElementById('intervals_icu_athlete_id').value.trim();
+    const msg       = document.getElementById('form-message');
+    const btn       = document.getElementById('saveBtn');
+
+    if (!athleteId || !apiKey) {
+        showMessage('Both athlete ID and API key are required.', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        const resp = await fetch('/api/settings/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ intervals_icu_api_key: apiKey, intervals_icu_athlete_id: athleteId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showMessage('Connected successfully. Wellness data will sync before your next morning recommendation.', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showMessage(data.error || 'Failed to save. Please try again.', 'error');
+        }
+    } catch (err) {
+        showMessage('Network error. Please try again.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+    }
+});
+
+{% if intervals_connected %}
+document.getElementById('disconnectBtn').addEventListener('click', async function() {
+    if (!confirm('Disconnect intervals.icu? Wellness data will no longer sync automatically.')) return;
+    try {
+        const resp = await fetch('/api/settings/integrations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ intervals_icu_api_key: '', intervals_icu_athlete_id: '' })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            window.location.reload();
+        }
+    } catch (err) {
+        showMessage('Network error. Please try again.', 'error');
+    }
+});
+{% endif %}
+
+function showMessage(text, type) {
+    const el = document.getElementById('form-message');
+    el.textContent = text;
+    el.style.display = 'block';
+    el.style.backgroundColor = type === 'success' ? '#f0fdf4' : '#fef2f2';
+    el.style.border = '1px solid ' + (type === 'success' ? '#86efac' : '#fca5a5');
+    el.style.color = type === 'success' ? '#166534' : '#dc2626';
+}
+</script>
+{% endblock %}

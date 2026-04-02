@@ -75,16 +75,27 @@ usePagePerformanceMonitoring('page');
 
 ## Timezone & Date Display
 
+ISO date-only strings (`'YYYY-MM-DD'`) are parsed as **UTC midnight** by JavaScript. In Pacific
+time (UTC-7), this rolls back to the previous evening — displaying one day earlier than intended.
+
+**Always append `T12:00:00` when parsing a date-only string for display:**
+
 ```typescript
-// Use the application's date utilities
-import { getAppCurrentDate } from './dateUtils';
+// CORRECT — anchors to local noon, no UTC→local day shift
+const displayDate = new Date(dateString + 'T12:00:00').toLocaleDateString('en-US', {
+  weekday: 'long', month: 'short', day: 'numeric'
+});
 
-// API responses use 'YYYY-MM-DD' format
-const dateString = '2025-01-15';
-
-// Display formatting
+// WRONG — UTC midnight shifts to previous day in Pacific time
 const displayDate = new Date(dateString).toLocaleDateString();
 ```
+
+This applies everywhere a `YYYY-MM-DD` string is passed to `new Date()` for display:
+`toLocaleDateString`, `toLocaleDateString` with options, weekday derivation, etc.
+
+**Week structure:** The training week runs **Sunday–Saturday**. Plans are generated Sunday
+morning (after the 2am Strava sync captures Saturday's activity). `week_start_date` is always
+a Sunday.
 
 ## API Communication
 

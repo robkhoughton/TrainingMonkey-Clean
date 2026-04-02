@@ -30,6 +30,20 @@ def get_app_date_string():
     return get_app_current_date().strftime('%Y-%m-%d')
 
 
+def get_current_week_start():
+    """Return the start date of the current training week (always a Sunday).
+
+    Week structure is Sunday-Saturday. Plans are generated Sunday morning after
+    the Saturday Strava sync, so the current Sunday is always day 1.
+    """
+    current_date = get_app_current_date()
+    day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
+    if day_of_week == 6:
+        return current_date
+    days_since_sunday = (day_of_week + 1) % 7
+    return current_date - timedelta(days=days_since_sunday)
+
+
 def get_user_current_date(user_id):
     """
     Get the current date for a specific user based on their timezone preference.

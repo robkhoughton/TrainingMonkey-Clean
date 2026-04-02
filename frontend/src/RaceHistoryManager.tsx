@@ -319,7 +319,7 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
 
   // Sort history by date (most recent first)
   const sortedHistory = [...history].sort((a, b) => 
-    new Date(b.race_date).getTime() - new Date(a.race_date).getTime()
+    new Date(b.race_date + 'T12:00:00').getTime() - new Date(a.race_date + 'T12:00:00').getTime()
   );
 
   // ============================================================================
@@ -900,7 +900,7 @@ const RaceHistoryManager: React.FC<RaceHistoryManagerProps> = ({ history, onHist
               {sortedHistory.map(race => (
                 <tr key={race.id} style={{ backgroundColor: 'white' }}>
                   <td style={{ padding: '10px', border: '1px solid #ccc' }}>
-                    {new Date(race.race_date).toLocaleDateString('en-US', {
+                    {new Date(race.race_date + 'T12:00:00').toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'short',
                       day: 'numeric'

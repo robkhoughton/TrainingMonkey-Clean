@@ -37,8 +37,9 @@ def load_context(user_id: int) -> dict:
         daily_recommendation = _get_todays_recommendation(user_id, today_str)
 
         # Get weekly program and extract today's workout
-        days_since_monday = current_date.weekday()
-        week_start = current_date - timedelta(days=days_since_monday)
+        # Weeks are Sunday-Saturday, matching weekly_programs storage
+        days_since_sunday = (current_date.weekday() + 1) % 7
+        week_start = current_date - timedelta(days=days_since_sunday)
         weekly_program = get_cached_weekly_program(user_id, week_start) or {}
         weekly_program_today = weekly_program.get('days', {}).get(current_date.strftime('%A'), {})
 

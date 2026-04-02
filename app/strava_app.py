@@ -2168,18 +2168,63 @@ def _cleanup_stale_rec_jobs():
             del _rec_jobs[jid]
 
 
-def _run_recommendation_job(job_id, user_id, use_agentic, target_date=None):
-    """Background thread: run generation and update job store on completion."""
+def _run_recommendation_job(job_id, user_id, target_date=None):
+    """Background thread: generate autopsy-informed recommendation and save to DB."""
     try:
-        if use_agentic:
-            result = generate_recommendations_agentic(user_id=user_id, target_date=target_date)
+        from llm_recommendations_module import (
+            generate_autopsy_informed_daily_decision,
+            get_recent_autopsy_insights,
+            get_current_metrics,
+            fix_dates_for_json,
+        )
+        from db_utils import save_llm_recommendation
+        from datetime import datetime as _dt
+        from timezone_utils import get_user_current_date
+
+        # Resolve target_date to a date object
+        if target_date is None:
+            target_date_obj = get_user_current_date(user_id) + timedelta(days=1)
         else:
-            result = generate_recommendations(force=True, user_id=user_id)
+            target_date_obj = _dt.strptime(target_date, '%Y-%m-%d').date()
+        target_date_str = target_date_obj.strftime('%Y-%m-%d')
+
+        # Fetch autopsy insights once and pass to generator (avoids double-fetch)
+        autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
+
+        # Generate — autopsy-informed path has no cache guard; always calls LLM fresh
+        decision = generate_autopsy_informed_daily_decision(
+            user_id, target_date_obj, autopsy_insights=autopsy_insights
+        )
+
+        if decision:
+            current_metrics = get_current_metrics(user_id) or {}
+            generation_date = get_user_current_date(user_id).strftime('%Y-%m-%d')
+            is_autopsy_informed = bool(autopsy_insights and autopsy_insights.get('count', 0) > 0)
+
+            recommendation_data = fix_dates_for_json({
+                'generation_date': generation_date,
+                'target_date': target_date_str,
+                'valid_until': None,
+                'data_start_date': target_date_str,
+                'data_end_date': target_date_str,
+                'metrics_snapshot': current_metrics,
+                'daily_recommendation': decision['daily_recommendation'],
+                'weekly_recommendation': decision.get('weekly_recommendation') or '',
+                'pattern_insights': decision.get('pattern_insights') or '',
+                'raw_response': decision['raw_response'],
+                'user_id': user_id,
+                'is_autopsy_informed': is_autopsy_informed,
+                'autopsy_count': autopsy_insights.get('count', 0) if autopsy_insights else 0,
+                'avg_alignment_score': autopsy_insights.get('avg_alignment') if autopsy_insights else None,
+                'structured_output': decision.get('structured_output'),
+            })
+            save_llm_recommendation(recommendation_data)
+
         with _rec_jobs_lock:
-            _rec_jobs[job_id]['status'] = 'complete' if result else 'error'
-            if not result:
+            _rec_jobs[job_id]['status'] = 'complete' if decision else 'error'
+            if not decision:
                 _rec_jobs[job_id]['error'] = 'Generation returned no result'
-        logger.info(f"Async recommendation job {job_id} finished: {'complete' if result else 'error'}")
+        logger.info(f"Async recommendation job {job_id} finished: {'complete' if decision else 'error'}")
     except Exception as e:
         logger.error(f"Async recommendation job {job_id} failed: {e}")
         with _rec_jobs_lock:
@@ -2193,7 +2238,6 @@ def generate_llm_recommendations():
     """Start async recommendation generation. Returns 202 with job_id immediately."""
     _cleanup_stale_rec_jobs()
     user_id = current_user.id
-    use_agentic = _is_feature_enabled('agentic_context', user_id)
     job_id = str(uuid.uuid4())
 
     data = request.get_json(silent=True) or {}
@@ -2209,11 +2253,11 @@ def generate_llm_recommendations():
 
     thread = threading.Thread(
         target=_run_recommendation_job,
-        args=(job_id, user_id, use_agentic, target_date),
+        args=(job_id, user_id, target_date),
         daemon=True
     )
     thread.start()
-    logger.info(f"Started async recommendation job {job_id} for user {user_id} (agentic={use_agentic}, target_date={target_date})")
+    logger.info(f"Started async recommendation job {job_id} for user {user_id} (target_date={target_date})")
     return jsonify({'job_id': job_id, 'status': 'pending'}), 202
 
 
@@ -5914,7 +5958,7 @@ def save_journal_entry():
 def get_readiness():
     """Return today's readiness + wellness data including intervals.icu synced fields."""
     try:
-        date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        date_str = request.args.get('date', get_app_current_date().strftime('%Y-%m-%d'))
 
         rows = db_utils.execute_query(
             """SELECT sleep_quality, morning_soreness, hrv_value, hrv_source,
@@ -5926,29 +5970,33 @@ def get_readiness():
         )
         row = dict(rows[0]) if rows else {}
 
-        # HRV 30-day baseline
+        # HRV 30-day baseline (always fetch — needed for readiness state even without today's value)
         hrv_baseline = None
-        if row.get('hrv_value') is not None:
-            b = db_utils.execute_query(
-                """SELECT AVG(hrv_value) AS baseline FROM journal_entries
-                   WHERE user_id = %s AND date >= %s::date - INTERVAL '30 days'
-                     AND date < %s::date AND hrv_value IS NOT NULL""",
-                (current_user.id, date_str, date_str), fetch=True
-            )
-            if b and b[0]['baseline']:
-                hrv_baseline = round(float(b[0]['baseline']), 1)
+        hrv_baseline_count = 0
+        b = db_utils.execute_query(
+            """SELECT AVG(hrv_value) AS baseline, COUNT(hrv_value) AS hrv_count
+               FROM journal_entries
+               WHERE user_id = %s AND date >= %s::date - INTERVAL '30 days'
+                 AND date < %s::date AND hrv_value IS NOT NULL""",
+            (current_user.id, date_str, date_str), fetch=True
+        )
+        if b and b[0]['baseline']:
+            hrv_baseline = round(float(b[0]['baseline']), 1)
+            hrv_baseline_count = int(b[0]['hrv_count'] or 0)
 
         # RHR 7-day baseline
         rhr_baseline = None
-        if row.get('resting_hr') is not None:
-            b = db_utils.execute_query(
-                """SELECT AVG(resting_hr) AS baseline FROM journal_entries
-                   WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
-                     AND date < %s::date AND resting_hr IS NOT NULL""",
-                (current_user.id, date_str, date_str), fetch=True
-            )
-            if b and b[0]['baseline']:
-                rhr_baseline = round(float(b[0]['baseline']), 1)
+        rhr_baseline_count = 0
+        b = db_utils.execute_query(
+            """SELECT AVG(resting_hr) AS baseline, COUNT(resting_hr) AS rhr_count
+               FROM journal_entries
+               WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
+                 AND date < %s::date AND resting_hr IS NOT NULL""",
+            (current_user.id, date_str, date_str), fetch=True
+        )
+        if b and b[0]['baseline']:
+            rhr_baseline = round(float(b[0]['baseline']), 1)
+            rhr_baseline_count = int(b[0]['rhr_count'] or 0)
 
         # Weight 7-day baseline
         weight_baseline = None
@@ -5961,6 +6009,41 @@ def get_readiness():
             )
             if b and b[0]['baseline']:
                 weight_baseline = round(float(b[0]['baseline']), 2)
+
+        # 28-day personal range for HRV, RHR, sleep (for normalized donut charts)
+        ranges = db_utils.execute_query(
+            """SELECT
+                 MIN(hrv_value)             AS hrv_28d_low,
+                 MAX(hrv_value)             AS hrv_28d_high,
+                 MIN(resting_hr)            AS rhr_28d_low,
+                 MAX(resting_hr)            AS rhr_28d_high,
+                 MIN(sleep_duration_secs)   AS sleep_28d_low,
+                 MAX(sleep_duration_secs)   AS sleep_28d_high
+               FROM journal_entries
+               WHERE user_id = %s
+                 AND date >= %s::date - INTERVAL '28 days'
+                 AND date < %s::date""",
+            (current_user.id, date_str, date_str), fetch=True
+        )
+        r28 = dict(ranges[0]) if ranges else {}
+        def _f(v): return float(v) if v is not None else None
+
+        # Readiness state synthesis
+        try:
+            from llm_recommendations_module import compute_readiness_state
+            from db_utils import get_athlete_model as _get_athlete_model
+            _athlete_model = _get_athlete_model(current_user.id)
+            _rs = compute_readiness_state(
+                readiness_row=row,
+                hrv_baseline=hrv_baseline,
+                hrv_baseline_count=hrv_baseline_count,
+                rhr_baseline=rhr_baseline,
+                rhr_baseline_count=rhr_baseline_count,
+                athlete_model=_athlete_model,
+            )
+        except Exception as rs_err:
+            logger.warning(f"Could not compute readiness state: {rs_err}")
+            _rs = {"state": None, "component_flags": {}, "confidence": 0.0, "narrative": ""}
 
         return jsonify({
             'date': date_str,
@@ -5978,6 +6061,16 @@ def get_readiness():
             'spo2': float(row['spo2']) if row.get('spo2') is not None else None,
             'respiration_rate': float(row['respiration_rate']) if row.get('respiration_rate') is not None else None,
             'vo2max': float(row['vo2max']) if row.get('vo2max') is not None else None,
+            'readiness_state': _rs.get('state'),
+            'readiness_confidence': _rs.get('confidence'),
+            'readiness_flags': _rs.get('component_flags', {}),
+            'readiness_narrative': _rs.get('narrative'),
+            'hrv_28d_low': _f(r28.get('hrv_28d_low')),
+            'hrv_28d_high': _f(r28.get('hrv_28d_high')),
+            'rhr_28d_low': _f(r28.get('rhr_28d_low')),
+            'rhr_28d_high': _f(r28.get('rhr_28d_high')),
+            'sleep_28d_low': _f(r28.get('sleep_28d_low')),
+            'sleep_28d_high': _f(r28.get('sleep_28d_high')),
         })
     except Exception as e:
         logger.error(f"Error fetching readiness for user {current_user.id}: {e}", exc_info=True)
@@ -6056,6 +6149,236 @@ def save_readiness():
             'error': 'Failed to save readiness data',
             'details': str(e) if app.debug else None
         }), 500
+
+
+@app.route('/api/journal/context', methods=['GET'])
+@login_required
+def get_journal_context():
+    """Return training stage + weekly session progress for the Journal context header.
+
+    Uses the cached weekly program (no regeneration). Returns nulls gracefully
+    if no race goal or weekly program exists.
+    """
+    try:
+        user_id = current_user.id
+        from db_utils import get_current_week_context
+        from coach_recommendations import get_race_goals as _get_race_goals
+        from datetime import date as _date
+
+        week_ctx = get_current_week_context(user_id)
+        race_goals = _get_race_goals(user_id)
+
+        # Find primary race (A priority first, then closest)
+        race_name = None
+        weeks_to_race = None
+        today = _date.today()
+        if race_goals:
+            primary = next((g for g in race_goals if g.get('priority') == 'A'), race_goals[0])
+            race_name = primary.get('race_name')
+            race_date_raw = primary.get('race_date')
+            if race_date_raw:
+                try:
+                    if isinstance(race_date_raw, str):
+                        race_date_obj = _date.fromisoformat(race_date_raw)
+                    else:
+                        race_date_obj = race_date_raw
+                    weeks_to_race = max(0, (race_date_obj - today).days // 7)
+                except Exception:
+                    pass
+
+        # Extract training stage and weekly session counts from strategic summary
+        stage_name = None
+        today_session = None
+        sessions_completed = 0
+        total_sessions = 0
+
+        if week_ctx:
+            summary = week_ctx.get('strategic_summary') or {}
+            if isinstance(summary, str):
+                import json as _json
+                try:
+                    summary = _json.loads(summary)
+                except Exception:
+                    summary = {}
+            stage_name = summary.get('training_stage')
+
+            # Count sessions completed this week vs planned
+            week_start = week_ctx.get('week_start_date')
+            if week_start:
+                if hasattr(week_start, 'strftime'):
+                    week_start_str = week_start.strftime('%Y-%m-%d')
+                else:
+                    week_start_str = str(week_start)
+                completed_rows = db_utils.execute_query(
+                    """SELECT COUNT(*) AS cnt FROM activities
+                       WHERE user_id = %s AND activity_id > 0
+                         AND date >= %s AND date <= CURRENT_DATE""",
+                    (user_id, week_start_str), fetch=True
+                )
+                sessions_completed = int(completed_rows[0]['cnt']) if completed_rows else 0
+
+            # Try to get total planned sessions from program_json
+            program_json = week_ctx.get('program_json') or summary.get('program_json')
+            if program_json:
+                if isinstance(program_json, str):
+                    import json as _json
+                    try:
+                        program_json = _json.loads(program_json)
+                    except Exception:
+                        program_json = {}
+                days = program_json.get('days', [])
+                total_sessions = sum(1 for d in days if d.get('session_type', '').lower() not in ('rest', 'off', ''))
+            else:
+                total_sessions = 7  # fallback
+
+            # Today's planned session
+            today_str = today.strftime('%Y-%m-%d')
+            if program_json and isinstance(program_json, dict):
+                days = program_json.get('days', [])
+                for d in days:
+                    if d.get('date') == today_str or d.get('day_of_week') == today.strftime('%A'):
+                        today_session = {
+                            'type': d.get('session_type', ''),
+                            'intensity': d.get('intensity', ''),
+                        }
+                        break
+
+        return jsonify({
+            'stage_name': stage_name,
+            'weeks_to_race': weeks_to_race,
+            'race_name': race_name,
+            'today_session': today_session,
+            'sessions_completed': sessions_completed,
+            'total_sessions': total_sessions,
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching journal context for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({
+            'stage_name': None, 'weeks_to_race': None, 'race_name': None,
+            'today_session': None, 'sessions_completed': 0, 'total_sessions': 0,
+        })
+
+
+def _sync_recent_strava_activities(user_id):
+    """Lightweight incremental Strava sync — last 2 days only.
+
+    Called synchronously at app-load before routing evaluation so that
+    activities completed since the last full sync are in the DB before
+    get_app_state() decides whether to route to post_workout.
+
+    Uses SimpleTokenManager so expired tokens are refreshed automatically.
+    Silently no-ops if the user has no Strava token or if any step fails.
+    """
+    try:
+        # Get HR config for TRIMP calculation
+        user_data = db_utils.execute_query(
+            "SELECT resting_hr, max_hr, gender FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        if not user_data:
+            return
+
+        row = user_data[0]
+        hr_config = {
+            'resting_hr': row.get('resting_hr') or 44,
+            'max_hr': row.get('max_hr') or 178,
+            'gender': row.get('gender') or 'male',
+        }
+
+        # Get a valid client — refreshes token automatically if expired
+        token_manager = SimpleTokenManager(user_id=user_id)
+        client = token_manager.get_working_strava_client(auto_refresh=True, validate_connection=False)
+        if not client:
+            logger.warning(f"Lightweight sync skipped for user {user_id}: no valid Strava client")
+            return
+
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=2)
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+
+        process_activities_for_date_range(client, start_str, end_str, hr_config, user_id=user_id)
+        ensure_daily_records(start_str, end_str, user_id=user_id)
+
+        current = start_date
+        while current <= end_date:
+            update_moving_averages(current.strftime('%Y-%m-%d'), user_id=user_id)
+            current += timedelta(days=1)
+
+    except Exception as e:
+        logger.warning(f"Lightweight Strava sync skipped for user {user_id}: {e}")
+
+
+@app.route('/api/app-state', methods=['GET'])
+@login_required
+def get_app_state():
+    """Return smart routing intent for app-load navigation.
+
+    Determines where the app should route on load:
+      - 'post_workout': most recent Strava activity has no subjectives logged
+      - 'morning': no post_workout pending AND morning entry not yet done today
+      - 'dashboard': everything is logged / default
+    """
+    try:
+        user_id = current_user.id
+        today_str = datetime.now().strftime('%Y-%m-%d')
+
+        # Sync last 48h from Strava before evaluating routing so new activities
+        # are in the DB even if the user opens the app before a scheduled sync.
+        _sync_recent_strava_activities(user_id)
+
+        # Check for activity without subjectives
+        journal_status = get_last_activity_journal_status(user_id)
+        if journal_status.get('reason') == 'journal_missing' and journal_status.get('has_activity'):
+            # Also fetch activity name for display
+            activity_date = journal_status.get('activity_date')
+            activity_name = None
+            if activity_date:
+                act_row = db_utils.execute_query(
+                    """SELECT name FROM activities
+                       WHERE user_id = %s AND date = %s AND activity_id > 0
+                       ORDER BY activity_id DESC LIMIT 1""",
+                    (user_id, activity_date), fetch=True
+                )
+                activity_name = act_row[0]['name'] if act_row and act_row[0] else None
+            return jsonify({
+                'route': 'post_workout',
+                'activity_name': activity_name,
+                'activity_date': activity_date,
+                'has_morning_entry': False,
+            })
+
+        # Check if morning entry done today
+        morning_row = db_utils.execute_query(
+            """SELECT sleep_quality, morning_soreness FROM journal_entries
+               WHERE user_id = %s AND date = %s""",
+            (user_id, today_str), fetch=True
+        )
+        has_morning_entry = False
+        if morning_row and morning_row[0]:
+            r = dict(morning_row[0])
+            has_morning_entry = (r.get('sleep_quality') is not None or
+                                  r.get('morning_soreness') is not None)
+
+        if not has_morning_entry:
+            return jsonify({
+                'route': 'morning',
+                'activity_name': None,
+                'activity_date': None,
+                'has_morning_entry': False,
+            })
+
+        return jsonify({
+            'route': 'dashboard',
+            'activity_name': None,
+            'activity_date': None,
+            'has_morning_entry': True,
+        })
+
+    except Exception as e:
+        logger.error(f"Error computing app state for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'route': 'dashboard', 'activity_name': None, 'activity_date': None, 'has_morning_entry': True})
 
 
 def generate_autopsy_for_date(date_str, user_id):
@@ -6679,8 +7002,9 @@ def weekly_program_cron():
     Generate divergence-optimized weekly training programs for Coach page.
     
     Two schedules:
-    - Sunday 6 PM UTC: Generate full 7-day program for upcoming week
-    - Wednesday 6 PM UTC: Regenerate remaining 4 days (adjust based on Mon-Wed performance)
+    - Sunday 3-4 AM Pacific: weekly-synthesis runs at 3am (after 2am Strava sync captures Saturday),
+      then weekly-comprehensive runs at 4am to generate full 7-day Sun-Sat program
+    - Wednesday ~6 PM Pacific: Regenerate remaining days (adjust based on Mon-Wed performance)
     
     Runs for active users only (activity in last 14 days).
     """
@@ -6748,18 +7072,8 @@ def weekly_program_cron():
                 logger.info(f"Generating weekly program for user {user_id} ({email})")
                 
                 # Calculate target week start based on mode
-                if mode == 'full':
-                    # Sunday generation: target upcoming Monday
-                    today = get_app_current_date()
-                    days_until_monday = (7 - today.weekday()) % 7
-                    if days_until_monday == 0:
-                        days_until_monday = 7  # If today is Monday, target next Monday
-                    target_week_start = today + timedelta(days=days_until_monday)
-                else:
-                    # Wednesday adjustment: target current week's Monday
-                    today = get_app_current_date()
-                    days_since_monday = today.weekday()
-                    target_week_start = today - timedelta(days=days_since_monday)
+                from timezone_utils import get_current_week_start
+                target_week_start = get_current_week_start()
                 
                 logger.info(f"Target week start: {target_week_start} (mode: {mode})")
                 

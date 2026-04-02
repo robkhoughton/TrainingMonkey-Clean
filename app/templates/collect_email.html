@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Your Email - Your Training Monkey</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            border: 2px solid #6B8F7F;
+            max-width: 560px;
+            width: 100%;
+            padding: 48px 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            letter-spacing: -0.5px;
+        }
+
+        .logo h1 span {
+            color: #6B8F7F;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+
+        .subtitle {
+            color: #4b5563;
+            margin-bottom: 28px;
+        }
+
+        .benefits {
+            background: #f0fdf4;
+            border-left: 4px solid #6B8F7F;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 28px;
+        }
+
+        .benefits p {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .benefits ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .benefits li {
+            color: #374151;
+            font-size: 0.9rem;
+            padding: 3px 0;
+        }
+
+        .benefits li::before {
+            content: "→ ";
+            color: #6B8F7F;
+            font-weight: 700;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        input[type="email"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        input[type="email"]:focus {
+            border-color: #6B8F7F;
+        }
+
+        .privacy {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 8px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            background: #FF5722;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-submit:hover {
+            background: #e64a19;
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-msg {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #b91c1c;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .why-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .why-link button {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .why-text {
+            display: none;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 8px;
+            padding: 0 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1><span>Y</span>our <span>T</span>raining <span>M</span>onkey</h1>
+        </div>
+
+        <h2>One more step</h2>
+        <p class="subtitle">
+            Your Strava account is connected. Add your email to unlock coaching notifications.
+        </p>
+
+        <div class="benefits">
+            <p>You'll receive:</p>
+            <ul>
+                <li>Daily training recommendations (6 AM)</li>
+                <li>Injury risk alerts when patterns change</li>
+                <li>Post-run journal prompts</li>
+                <li>Weekly progress summaries</li>
+            </ul>
+        </div>
+
+        <form id="emailForm">
+            <label for="email">Your email address</label>
+            <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="you@example.com"
+                required
+                autocomplete="email"
+                autofocus
+            />
+            <p class="privacy">No spam. Used only for training notifications. <a href="/privacy-policy" style="color:#6B8F7F;">Privacy Policy</a></p>
+            <div class="error-msg" id="errorMsg"></div>
+            <button type="submit" class="btn-submit" id="submitBtn">Continue</button>
+        </form>
+
+        <div class="why-link">
+            <button onclick="toggleWhy()">Why is this required?</button>
+        </div>
+        <p class="why-text" id="whyText">
+            Your Training Monkey sends personalised coaching via email. Without a real address, we can't reach you. Your Strava account alone doesn't include an email we can use.
+        </p>
+    </div>
+
+    <script>
+        function toggleWhy() {
+            const el = document.getElementById('whyText');
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+
+        document.getElementById('emailForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const errorEl = document.getElementById('errorMsg');
+            const email = document.getElementById('email').value.trim();
+
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            errorEl.style.display = 'none';
+
+            try {
+                // Step 1: Update email
+                const updateRes = await fetch('/api/user/update-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const updateData = await updateRes.json();
+
+                if (!updateRes.ok) {
+                    throw new Error(updateData.error || 'Failed to save email.');
+                }
+
+                // Step 2: Send verification email
+                const verifyRes = await fetch('/api/user/send-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                // Redirect to pending page regardless of verify send result
+                window.location.href = '/email-verification-pending';
+
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Continue';
+            }
+        });
+    </script>
+</body>
+</html>

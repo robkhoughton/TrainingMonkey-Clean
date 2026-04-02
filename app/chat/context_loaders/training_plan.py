@@ -41,10 +41,10 @@ def load_context(user_id: int) -> dict:
         }
     """
     try:
-        # Get current week start (Monday)
+        # Get current week start (Sunday — weeks are Sunday-Saturday, matching weekly_programs storage)
         current_date = get_user_current_date(user_id)
-        days_since_monday = current_date.weekday()
-        week_start = current_date - timedelta(days=days_since_monday)
+        days_since_sunday = (current_date.weekday() + 1) % 7
+        week_start = current_date - timedelta(days=days_since_sunday)
 
         weekly_program = get_cached_weekly_program(user_id, week_start) or {}
         race_goals = get_race_goals(user_id) or []

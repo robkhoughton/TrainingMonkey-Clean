@@ -167,7 +167,7 @@ const RaceGoalsManager: React.FC<RaceGoalsManagerProps> = ({ goals, onGoalsChang
 
   const calculateDaysAway = (raceDate: string): number => {
     const today = new Date();
-    const race = new Date(raceDate);
+    const race = new Date(raceDate + 'T12:00:00');
     const diffTime = race.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };

@@ -6,21 +6,73 @@ import ActivitiesPage from './ActivitiesPage';
 import JournalPage from './JournalPage';
 import CoachPage from './CoachPage';
 import SettingsPage from './SettingsPage';
+import TodayPage from './TodayPage';
+import PostWorkoutEntryPage from './PostWorkoutEntryPage';
+import MorningEntryPage from './MorningEntryPage';
 // import SpinnerTestPage from './SpinnerTestPage'; // Hidden - keeping for internal use
 import Footer from './Footer';
+
+type AppRoute = 'post_workout' | 'morning' | 'dashboard';
+interface AppState {
+  route: AppRoute;
+  activity_name: string | null;
+  activity_date: string | null;
+}
 
 function App() {
   // Get initial tab from URL parameters
   const getInitialTab = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    return tabParam || 'dashboard';
+    return tabParam || 'today';
   };
 
   const [activeTab, setActiveTab] = useState(getInitialTab());
   const [showJournalBadge, setShowJournalBadge] = useState(false);
   const [hasPendingAlignmentQuery, setHasPendingAlignmentQuery] = useState(false);
   const [hasPendingRevision, setHasPendingRevision] = useState(false);
+
+  // Smart routing: check app state once per session on mount
+  const [appRoute, setAppRoute] = useState<AppState | null>(null);
+  const [routeChecked, setRouteChecked] = useState(false);
+
+  // Smart app-load routing (runs once per browser session)
+  useEffect(() => {
+    const SESSION_KEY = 'ytm_app_state_checked';
+    if (sessionStorage.getItem(SESSION_KEY)) {
+      setRouteChecked(true);
+      return;
+    }
+    fetch('/api/app-state', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { route: 'dashboard' })
+      .then((data: AppState) => {
+        sessionStorage.setItem(SESSION_KEY, '1');
+        setAppRoute(data);
+        setRouteChecked(true);
+      })
+      .catch(() => {
+        sessionStorage.setItem(SESSION_KEY, '1');
+        setRouteChecked(true);
+      });
+  }, []);
+
+  const dismissEntryPage = () => {
+    setAppRoute(null);
+    setActiveTab('today');
+    window.history.replaceState({}, '', '/dashboard');
+  };
+
+  const goToToday = () => {
+    setAppRoute(null);
+    setActiveTab('today');
+    window.history.replaceState({}, '', '/dashboard');
+  };
+
+  const goToNextWorkout = () => {
+    setAppRoute(null);
+    setActiveTab('coach');
+    window.history.replaceState({}, '', '/dashboard?tab=coach');
+  };
 
   // Update tab when URL parameters change
   useEffect(() => {
@@ -74,6 +126,8 @@ function App() {
 
   const renderTabContent = () => {
     switch(activeTab) {
+      case 'today':
+        return <TodayPage onNavigateToTab={setActiveTab} />;
       case 'dashboard':
         return <TrainingLoadDashboard onNavigateToTab={setActiveTab} />;
       case 'activities':
@@ -88,12 +142,33 @@ function App() {
         return null;
       case 'settings':
         return <SettingsPage />;
-      // case 'spinner': // Hidden - keeping for internal use
-      //   return <SpinnerTestPage />;
       default:
-        return <TrainingLoadDashboard onNavigateToTab={setActiveTab} />;
+        return <TodayPage onNavigateToTab={setActiveTab} />;
     }
   };
+
+  // Render entry pages (full-screen, bypass nav) when app state demands it
+  if (routeChecked && appRoute) {
+    if (appRoute.route === 'post_workout') {
+      return (
+        <PostWorkoutEntryPage
+          activityName={appRoute.activity_name}
+          activityDate={appRoute.activity_date}
+          onDismiss={dismissEntryPage}
+          onNextWorkout={goToNextWorkout}
+        />
+      );
+    }
+    if (appRoute.route === 'morning') {
+      return (
+        <MorningEntryPage
+          onToday={goToToday}
+          onNextWorkout={goToNextWorkout}
+          onDismiss={dismissEntryPage}
+        />
+      );
+    }
+  }
 
   return (
     <div className="App" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -117,6 +192,7 @@ function App() {
             zIndex: 10
           }}>
             {[
+              { key: 'today', label: 'Today' },
               { key: 'dashboard', label: 'Dashboard' },
               { key: 'activities', label: 'Activities' },
               { key: 'journal', label: 'Journal' },

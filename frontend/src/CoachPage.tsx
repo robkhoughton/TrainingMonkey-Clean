@@ -1489,7 +1489,7 @@ const CoachPage: React.FC = () => {
 
   const calculateDaysToRace = (raceDate: string): number => {
     const today = new Date();
-    const race = new Date(raceDate);
+    const race = new Date(raceDate + 'T12:00:00');
     const diffTime = race.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;

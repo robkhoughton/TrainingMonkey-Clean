@@ -193,8 +193,8 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   };
 
   const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { 
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
       weekday: 'short', 
       month: 'short', 
       day: 'numeric' 
@@ -234,8 +234,8 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
 
   // Format date for header (e.g., "Dec 1, 2025")
   const formatHeaderDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { 
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', {
       month: 'short', 
       day: 'numeric',
       year: 'numeric'
