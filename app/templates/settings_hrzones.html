@@ -34,12 +34,18 @@
             </div>
 
             <div class="form-group">
-                <label for="hr_zones_method">Heart Rate Zone Calculation Method</label>
-                <select id="hr_zones_method" name="hr_zones_method" required>
-                    <option value="percentage" {% if user and user.hr_zones_method == 'percentage' %}selected{% endif %}>Percentage of Max HR</option>
-                    <option value="karvonen" {% if user and user.hr_zones_method == 'karvonen' %}selected{% endif %}>Karvonen (Heart Rate Reserve)</option>
-                </select>
-                <small style="color: #6b7280; font-size: 0.875rem;">Changes will recalculate all your past training data. <a href="/tutorials#heart-rate-zones-setup" target="_blank" style="color: #3b82f6; text-decoration: none;">Learn more about methods</a></small>
+                <label>Active Zone Method</label>
+                <div id="activeMethodBadge" style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <div id="activeMethodDot" style="width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; flex-shrink: 0; margin-top: 4px;"></div>
+                    <div>
+                        <div id="activeMethodLabel" style="font-weight: 600; color: #374151; font-size: 0.95rem;">Loading...</div>
+                        <div id="activeMethodReason" style="color: #6b7280; font-size: 0.8rem; margin-top: 0.2rem;"></div>
+                    </div>
+                </div>
+                <small style="color: #6b7280; font-size: 0.875rem; margin-top: 0.4rem; display: block;">
+                    Method is determined automatically from the data you provide. Custom zones (lab-tested) always take priority.
+                    <a href="/tutorials#heart-rate-zones-setup" target="_blank" style="color: #3b82f6; text-decoration: none;">Learn more</a>
+                </small>
             </div>
         </div>
 
@@ -81,7 +87,7 @@
                     <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 15%;">Purpose</th>
                     <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 20%;">Percentage Method<br><small style="font-weight: 400; color: #6b7280;">(% of Max HR)</small></th>
                     <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 20%;">Karvonen Method<br><small style="font-weight: 400; color: #6b7280;">(HR Reserve)</small></th>
-                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; background: #fef3c7; width: 15%; border: 2px solid #dc2626;">Your Active Zones<br><small style="font-weight: 400;">Current Method</small></th>
+                    <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; background: #fef3c7; width: 15%; border: 2px solid #dc2626;">Your Active Zones<br><small id="activeZonesMethodLabel" style="font-weight: 400; color: #6b7280;"></small></th>
                     <th style="padding: 0.75rem; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; width: 15%;">Custom Override</th>
                 </tr>
             </thead>
@@ -259,9 +265,38 @@
         }
     }
 
+    // Update the active method badge from API data
+    function updateActiveMethodBadge() {
+        if (!zonesData) return;
+
+        const label = document.getElementById('activeMethodLabel');
+        const reason = document.getElementById('activeMethodReason');
+        const dot = document.getElementById('activeMethodDot');
+        const badge = document.getElementById('activeMethodBadge');
+        const tableLabel = document.getElementById('activeZonesMethodLabel');
+
+        const methodColors = {
+            'custom':     { dot: '#22c55e', border: '#bbf7d0', bg: '#f0fdf4' },
+            'karvonen':   { dot: '#3b82f6', border: '#bfdbfe', bg: '#eff6ff' },
+            'percentage': { dot: '#f59e0b', border: '#fde68a', bg: '#fffbeb' },
+        };
+
+        const method = zonesData.active_method || 'percentage';
+        const colors = methodColors[method] || methodColors['percentage'];
+
+        label.textContent = zonesData.active_method_label || method;
+        reason.textContent = zonesData.active_method_reason || '';
+        dot.style.background = colors.dot;
+        badge.style.borderColor = colors.border;
+        badge.style.background = colors.bg;
+        if (tableLabel) tableLabel.textContent = zonesData.active_method_label || '';
+    }
+
     // Display zones table
     function displayZonesTable() {
         if (!zonesData) return;
+
+        updateActiveMethodBadge();
 
         const tbody = document.getElementById('zonesTableBody');
         tbody.innerHTML = '';

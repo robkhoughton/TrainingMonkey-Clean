@@ -106,6 +106,23 @@ All data-entry modals follow this pattern exactly. No exceptions.
 
 ---
 
+## Dashboard Container Hierarchy
+
+Three nested levels. Each has a distinct visual register:
+
+| Level | Name | Role | Component | Style |
+|-------|------|------|-----------|-------|
+| **1 — Card** | Signal Panel, Race Readiness, etc. | Top-level container | `CardHeader` | `13px`, `weight 700`, `uppercase`, `#7D9CB8`, dark gradient bg |
+| **2 — Group** | Training Status, Load, etc. | Major subdivision within a card | `Label` | `0.88rem`, `weight 700`, `uppercase`, `#7D9CB8` (Mountain Ridge) |
+| **3 — Metric** | Injury Risk, ACWR, etc. | Individual data element within a group | `ZonedGauge label` (and similar) | `0.78rem`, `weight 400`, `title case`, `#6b7280` (MUTED) |
+
+Rules:
+- Never decrease size going from Level 2 → Level 3 (hierarchy is built by promoting Level 2 upward, not shrinking Level 3)
+- Level 2 uses Mountain Ridge (`#7D9CB8`) — same hue as the card header — making groups feel architecturally related to their card
+- Level 3 uses title case (`text-transform: capitalize`), not uppercase — distinguishes it as a data label, not an organizational header
+
+---
+
 ## Card Header Semantic Convention
 
 Card header color signals **editability** — a subtle but meaningful distinction:

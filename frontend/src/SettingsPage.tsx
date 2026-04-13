@@ -18,7 +18,7 @@ export const SettingsPage: React.FC = () => {
         redirectPath = '/settings/hrzones';
         break;
       case 'acwr':
-        redirectPath = '/settings/acwr';
+        redirectPath = '/acwr-visualization';
         break;
       case 'integrations':
         redirectPath = '/settings/integrations';

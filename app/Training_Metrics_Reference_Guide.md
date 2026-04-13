@@ -3,7 +3,7 @@
 ## Decision Framework for Daily Training
 
 ### Primary Assessment Order:
-1. **Safety Check**: Days since rest > 7 → Mandatory rest or pain score 3 or greater on consecutive days
+1. **Safety Check**: Days since rest > 7 → Mandatory rest or pain score ≥60% on consecutive days
 2. **Overtraining Check**: Normalized Divergence < -0.15 → Rest or very light workout
 3. **ACWR Check**: Both External & Internal > 1.3 → Reduce intensity/volume
 4. **Recovery Check**: Divergence < -0.05 + Days since rest > 5 → Active recovery
@@ -150,15 +150,16 @@ This provides a more complete picture of the total external work performed durin
 | 4     | Hard        | Zone 4            | 16-18 RPE      |
 | 5     | Maximum     | Zone 5            | 19-20 RPE      |
 
-### Pain Score (% of time athlete is thinking about pain)
+### Pain Score (% of workout time the athlete is aware of pain)
 
-| Score | Description | Interpretation                                               |
-| ----- | ----------- | ------------------------------------------------------------ |
-| 0     | Excellent   | Pain free                                                    |
-| 20    | Good        | Low level pain (discomfort) during short portion of activity |
-| 40    | Okay        | Some pain sporadically through activity                      |
-| 60    | Marginal    | Persistent pain                                              |
-| 80    | Poor        | Pain on my mind 100% of the time                             |
+| Score | Description  | Coaching Action                                                                                      |
+| ----- | ------------ | ---------------------------------------------------------------------------------------------------- |
+| 0     | Excellent    | Pain free — continue your hard work.                                                                 |
+| 20    | Okay         | Continue your hard work but monitor conditions.                                                      |
+| 40    | Tolerable    | Continue your hard work but consider modifying today's activity and monitor conditions tomorrow.     |
+| 60    | Marginal     | Modify today's activity to reduce pain and closely monitor conditions tomorrow.                      |
+| 80    | Unacceptable | Get off your feet and closely monitor conditions tomorrow — consider a rest day.                     |
+| 100   | Dangerous    | Halt your workouts and revisit the plan. Something is wrong.                                         |
 
 
 ## Optimal Ranges for Health and Performance
@@ -342,6 +343,113 @@ Recent Pattern: Divergence trending negative for 6 consecutive days
 
 **Claude Response Framework: "METRIC ASSESSMENT:** Concerning divergence drift pattern with 6-day negative trend approaching critical threshold (-0.15). Internal ACWR (1.34) exceeds safe range while external remains acceptable, indicating physiological stress accumulation outpacing mechanical adaptation. TODAY: Active recovery mandatory - limit to 45-60 minutes easy trail hiking or Zone 1 running only. Target TRIMP <30 to arrest internal stress accumulation. WEEKLY: Immediate intervention protocol - reduce intensity for 5-7 days with no sessions above moderate effort (TRIMP <60). Focus on maintaining aerobic volume at reduced intensity until divergence improves. MONITOR: Daily divergence tracking critical - must reverse negative trend within 3-4 days. Target improvement to -0.08 or better before resuming quality sessions. If reaches -0.15, implement full rest protocol."
 ```
+
+---
+
+## Canonical Workout Library
+
+These are the prescribed workout protocols used by YTM. Prescriptions are fixed. **Pace is the emergent signal of improving fitness — HR zone compliance is the constant, not pace.** As fitness develops, the athlete covers more ground at the same internal load. Do not substitute alternative structures or invent progressions.
+
+### Interval Protocols
+
+One interval session per week. Protocols rotate on ISO week parity: even week = Norwegian 4×4, odd week = Lactate Shuttle.
+
+---
+
+#### Norwegian 4×4
+
+**Purpose:** Gold standard for VO2max development. 4 reps × 4 minutes accumulates 16 minutes of high-quality cardiovascular stimulus with sufficient recovery to maintain output across all reps.
+
+| Component | Prescription |
+|-----------|-------------|
+| Structure | 4 sets × 4 minutes |
+| Work effort | Zone 4 — HR between Zone 3 ceiling and VT2. Hard but sustainable for the full 4 minutes. First rep will feel easy; do not chase pace. |
+| Recovery | 3 minutes active recovery (Zone 1-2 jog/walk) between reps — full recovery matters |
+| Total quality time | 16 minutes |
+| Warm-up | 10-15 minutes easy (below VT1) before first rep |
+| Cool-down | 10 minutes easy after final rep |
+
+**Execution note:** Pace is not the target — HR zone compliance is. As fitness improves, the same HR effort produces faster pace. Do not prescribe pace targets that push HR above VT2.
+
+---
+
+#### Lactate Shuttle (Over-Unders)
+
+**Purpose:** Trains the body to produce and clear lactate repeatedly. By deliberately crossing VT2 and recovering just below it, the athlete develops tolerance and clearance capacity at threshold — critical for sustained race efforts on variable terrain.
+
+| Component | Prescription |
+|-----------|-------------|
+| Structure | 5-6 cycles of over-under alternations |
+| Over phase | 2 minutes in low Zone 4 — just above VT2, generating a lactate surge. Controlled push, not a sprint. |
+| Under phase | 3 minutes in high Zone 2 / low Zone 3 — just below VT2, clearing lactate. HR drops but does not fully recover — stay active, not passive. |
+| Total quality time | 25-30 minutes of alternations |
+| Warm-up | 15 minutes easy (below VT1) before first over |
+| Cool-down | 10 minutes easy after final under |
+
+**Execution note:** The transition across VT2 is the stimulus. The over phase is not a sprint. The under phase is not rest. Pace in both phases rises naturally as lactate tolerance improves.
+
+---
+
+### Strides
+
+**Purpose:** Neuromuscular stimulus that recruits fast-twitch muscle fibers and maintains leg speed without a taxing cardiovascular load. Counteracts the trail shuffle that develops from sustained grinding on steep terrain. This is not a cardiovascular session — it is a brief neural activation added to the end of an easy run.
+
+| Component | Prescription |
+|-----------|-------------|
+| Count | 4-6 strides |
+| Duration | 20-25 seconds each — controlled fast effort, not a sprint. Smooth acceleration to ~85-90% of max speed, then decelerate. |
+| Recovery | 90 seconds easy walk or jog between strides — full recovery is required |
+| Placement | End of the easy run, after the main aerobic work is complete |
+| Terrain | Flat or gently rolling — avoid technical or steep terrain |
+
+**Execution note:** Form is the stimulus, not raw speed. Tall posture, quick turnover, relaxed shoulders. These should feel controlled and snappy — not labored. If legs feel flat or heavy, reduce to 4 strides.
+
+#### Strides Placement Rules
+
+**Frequency:** 2-3 sessions per week maximum. CNS fatigue defeats their purpose if overused.
+
+**Place strides on:**
+1. **The easy run immediately before the interval session (highest priority)** — CNS primer. Wakes up neural pathways so the first hard interval doesn't feel flat or shocked.
+2. **One mid-week easy run** — leg speed maintenance, especially important during heavy trail volume weeks where stride naturally shortens and slow-twitch patterns dominate.
+
+**Never place strides on:**
+- The day after a long run — muscles carry micro-damage; strides increase injury risk and interrupt recovery. That easy run must be purely restorative.
+- Immediately after a hard interval session — the quality work is already done.
+
+### Phase-Specific Interval and Strides Prescription
+
+Interval frequency and protocol selection must match the training phase. Using the wrong protocol at the wrong time either wastes adaptation or leaves fatigue on race day. Prescriptions are fixed within a phase — do not invent alternatives.
+
+| Phase | Norwegian 4×4 | Lactate Shuttle | Strides |
+|-------|---------------|-----------------|---------|
+| Base (12+ weeks out) | None | Every 10-14 days | 2-3× per week |
+| Build (8-12 weeks out) | Alternating weekly | Alternating weekly | 1-2× per week |
+| Specificity (4-8 weeks out) | Every 10-14 days | Every 10-14 days | 2× per week |
+| Taper (2-4 weeks out) | None | Once, ~10 days out | 2× per week |
+| Peak (0-2 weeks out) | None | None | 1-2× per week, short and snappy |
+| Recovery (post-race) | None | None | None weeks 1-2; 4 strides only from week 3 |
+
+#### Phase Rationale — For Athlete Communication
+
+These explanations should inform the weekly plan narrative, especially at phase transitions.
+
+**Base Phase**
+The goal is building a massive aerobic foundation, maximizing fat adaptation, and developing structural resilience. 80-90% of volume is Zone 1-2. Heavy VO2max sessions like the Norwegian 4×4 are too taxing right now — the CNS cost competes with aerobic base development. The Lactate Shuttle, introduced lightly every 10-14 days, begins laying the groundwork for the build phase without becoming the primary focus. Strides are essential during base — because you are spending so much time running slowly, strides keep the fast-twitch fibers awake and neuromuscular pathways sharp without adding meaningful fatigue.
+
+**Build Phase**
+This is where the blade gets sharpened. Lactate threshold and VO2max development become primary. Both protocols are in rotation — Norwegian 4×4 one week, Lactate Shuttle the next. Stacking both protocols, a heavy gym session, and a long run in a single 7-day week is a recipe for overtraining. The alternating rotation manages this by design.
+
+**Specificity Phase (4-8 weeks out)**
+Training shifts toward race-specific demands — sustained climbing, descent running, back-to-back long efforts. Interval frequency pulls back to every 10-14 days as long runs and race simulation take recovery priority. Both protocols remain available but are no longer the primary focus.
+
+**Taper Phase**
+The hay is in the barn. Volume drops 30-50% but intensity touch-points are maintained. One Lactate Shuttle session, scheduled approximately 10 days before race day, helps maintain blood plasma volume and keeps the legs feeling snappy. No Norwegian 4×4 — Zone 5 work takes up to 14 days to fully absorb. Doing it during a taper leaves fatigue in the legs without providing usable fitness gains for race day. Strides increase to 2× per week — as volume drops, strides preserve the feeling of speed and high muscle tension.
+
+**Peak Phase (0-2 weeks out)**
+No interval sessions. Physical adaptations are locked in — focus shifts entirely to arriving fresh. Short, easy strides 1-2× per week maintain neuromuscular readiness without accumulating fatigue.
+
+**Recovery Phase (post-race)**
+Complete physiological restoration. No intervals for the first 2-3 weeks regardless of how good the athlete feels — cellular repair continues for 2-3 weeks post-race even when acute fatigue has resolved. No strides for the first 2 weeks. Reintroduce 4 strides only from week 3. Rushing this phase delays full recovery and increases injury risk when normal training resumes.
 
 ---
 

@@ -319,12 +319,22 @@ interface RaceAnalysis {
 // RACE READINESS CARD
 // ============================================================================
 
-export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = ({ readiness }) => {
+export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null; dark?: boolean }> = ({ readiness, dark = false }) => {
   const statusConfig = {
     already_ready: { label: 'Race Ready',    accent: '#7D9CB8', light: '#E6F0FF', text: '#1B2E4B' },
     on_track:      { label: 'On Track',      accent: '#16a34a', light: '#f0fdf4', text: '#14532d' },
     not_achievable:{ label: 'Load Gap',      accent: '#dc2626', light: '#fef2f2', text: '#7f1d1d' },
   };
+  const bodyBg    = dark ? '#243856' : 'white';
+  const bodyText  = dark ? '#E6F0FF' : '#1F2937';
+  const bodyMuted = dark ? '#7D9CB8' : '#6b7280';
+  const bodyFaint = dark ? '#7D9CB8' : '#9ca3af';
+  const tileBg    = dark ? '#1B2E4B' : 'white';
+  const tileDiv   = dark ? 'rgba(125,156,184,0.15)' : '#e5e7eb';
+  const peakColor = dark ? '#E6F0FF' : '#1B2E4B';
+  const trackBg   = dark ? 'linear-gradient(180deg, #1B2E4B 0%, #152440 100%)' : 'linear-gradient(180deg, #f0f3f7 0%, #e5e9ef 100%)';
+  const trackBorder = dark ? '1px solid rgba(125,156,184,0.20)' : '1px solid #d1d9e0';
+  const tickColor = dark ? 'rgba(125,156,184,0.40)' : '#c5cdd6';
 
   const cfg = readiness ? statusConfig[readiness.status] : null;
   const fillPct = readiness
@@ -341,16 +351,16 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
       {/* Header */}
       <div style={{
         background: 'linear-gradient(90deg, #1B2E4B 0%, #2d4a6e 100%)',
-        padding: '0.75rem 1.25rem',
+        padding: '0.5rem 1rem',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
         <div>
-          <div style={{ fontSize: '10px', letterSpacing: '0.15em', fontWeight: '700', color: '#7D9CB8', textTransform: 'uppercase', textAlign: 'left' }}>
+          <div style={{ fontSize: '13px', letterSpacing: '0.15em', fontWeight: '700', color: '#7D9CB8', textTransform: 'uppercase', textAlign: 'left' }}>
             Race Readiness
           </div>
-          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff', marginTop: '1px', textAlign: 'left' }}>
+          <div style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff', marginTop: '1px', textAlign: 'left' }}>
             {readiness ? readiness.race_name : 'A Race Projection'}
           </div>
         </div>
@@ -362,7 +372,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
             border: `1px solid ${cfg.accent}66`,
           }}>
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: cfg.accent }} />
-            <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.08em', color: cfg.accent, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', letterSpacing: '0.08em', color: cfg.accent, textTransform: 'uppercase' }}>
               {cfg.label}
             </span>
           </div>
@@ -370,18 +380,18 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
       </div>
 
       {/* Body */}
-      <div style={{ backgroundColor: 'white', padding: '1.25rem' }}>
+      <div style={{ backgroundColor: bodyBg, padding: '0.75rem 1rem' }}>
         {!readiness ? (
-          <p style={{ margin: 0, fontSize: '14px', color: '#6b7280', textAlign: 'left', lineHeight: '1.6' }}>
+          <p style={{ margin: 0, fontSize: '14px', color: bodyMuted, textAlign: 'left', lineHeight: '1.6' }}>
             Add distance to your A race goal to see your readiness projection.
           </p>
         ) : (
           <>
             {/* Verdict message */}
             <p style={{
-              margin: '0 0 1.25rem 0',
+              margin: '0 0 0.75rem 0',
               fontSize: '14px',
-              color: '#1F2937',
+              color: bodyText,
               lineHeight: '1.65',
               textAlign: 'left',
               borderLeft: `3px solid ${cfg!.accent}`,
@@ -402,20 +412,20 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
               for (let t = 0; t <= peakTarget; t += tickInterval) ticks.push(t);
               if (ticks[ticks.length - 1] !== peakTarget) ticks.push(peakTarget);
 
-              const TRACK_H = 14;
-              const TICK_BELOW = 5;
-              const PEAK_AREA_H = 26; // height reserved above track for peak marker
+              const TRACK_H = 10;
+              const TICK_BELOW = 4;
+              const PEAK_AREA_H = 20; // height reserved above track for peak marker
 
               return (
-                <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', letterSpacing: '0.1em', color: '#6b7280', textTransform: 'uppercase' }}>
                       Peak Week
                     </span>
-                    <span style={{ fontSize: '10px', color: '#9ca3af', fontStyle: 'italic' }}>
+                    <span style={{ fontSize: '13px', color: bodyFaint, fontStyle: 'italic' }}>
                       Now: <strong style={{ color: cfg!.accent, fontStyle: 'normal' }}>{currentMi} mi</strong>
                       {peakMi > currentMi && (
-                        <span style={{ marginLeft: '8px' }}>Block peak: <strong style={{ color: '#1B2E4B', fontStyle: 'normal' }}>{peakMi} mi</strong></span>
+                        <span style={{ marginLeft: '8px' }}>Block peak: <strong style={{ color: peakColor, fontStyle: 'normal' }}>{peakMi} mi</strong></span>
                       )}
                     </span>
                   </div>
@@ -434,9 +444,9 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                         gap: '1px',
                       }}>
                         <span style={{
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontWeight: '700',
-                          color: '#1B2E4B',
+                          color: peakColor,
                           fontVariantNumeric: 'tabular-nums',
                           whiteSpace: 'nowrap',
                           letterSpacing: '0.02em',
@@ -448,7 +458,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                           width: 0, height: 0,
                           borderLeft: '5px solid transparent',
                           borderRight: '5px solid transparent',
-                          borderTop: '6px solid #1B2E4B',
+                          borderTop: `6px solid ${peakColor}`,
                         }} />
                       </div>
                     )}
@@ -459,10 +469,10 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                     <div style={{
                       position: 'relative',
                       height: `${TRACK_H}px`,
-                      background: 'linear-gradient(180deg, #f0f3f7 0%, #e5e9ef 100%)',
+                      background: trackBg,
                       borderRadius: `${TRACK_H / 2}px`,
                       boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.10), inset 0 1px 1px rgba(0,0,0,0.06)',
-                      border: '1px solid #d1d9e0',
+                      border: trackBorder,
                       overflow: 'hidden',
                     }}>
                       <div style={{
@@ -484,7 +494,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                           top: `${TRACK_H - 2}px`,
                           height: `${TICK_BELOW + 2}px`,
                           width: '1px',
-                          backgroundColor: '#c5cdd6',
+                          backgroundColor: tickColor,
                           transform: 'translateX(-50%)',
                         }} />
                       );
@@ -492,7 +502,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                   </div>
 
                   {/* Tick labels */}
-                  <div style={{ position: 'relative', height: '16px', marginTop: '2px' }}>
+                  <div style={{ position: 'relative', height: '14px', marginTop: '2px' }}>
                     {ticks.map((t, i) => {
                       const pct = (t / peakTarget) * 100;
                       const isFirst = i === 0;
@@ -502,9 +512,9 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
                           position: 'absolute',
                           left: `${pct}%`,
                           transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: isLast ? '700' : '400',
-                          color: isLast ? '#1B2E4B' : '#9ca3af',
+                          color: isLast ? peakColor : bodyFaint,
                           fontVariantNumeric: 'tabular-nums',
                           whiteSpace: 'nowrap',
                           lineHeight: 1,
@@ -519,21 +529,21 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null }> = 
             })()}
 
             {/* Metric row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1px', backgroundColor: '#e5e7eb' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1px', backgroundColor: tileDiv }}>
               {[
                 { label: 'WEEKS AVAILABLE', value: String(readiness.weeks_available) },
                 { label: 'WEEKS TO PEAK', value: readiness.status === 'already_ready' ? '—' : String(readiness.weeks_needed) },
-                { label: 'ACWR CEILING', value: String(readiness.acwr_ceiling_used), sub: readiness.model_calibrated ? 'calibrated' : 'default' },
+                { label: 'EXT ACWR CEILING', value: String(readiness.acwr_ceiling_used), sub: readiness.model_calibrated ? 'calibrated' : 'default' },
               ].map(m => (
-                <div key={m.label} style={{ backgroundColor: 'white', padding: '0.75rem 1rem', borderTop: `2px solid ${cfg!.accent}` }}>
-                  <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.35rem', textAlign: 'left' }}>
+                <div key={m.label} style={{ backgroundColor: tileBg, padding: '0.4rem 0.75rem', borderTop: `2px solid ${cfg!.accent}` }}>
+                  <div style={{ fontSize: '11px', letterSpacing: '0.12em', fontWeight: '700', color: bodyMuted, textTransform: 'uppercase', marginBottom: '0.2rem', textAlign: 'left' }}>
                     {m.label}
                   </div>
-                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#1B2E4B', lineHeight: '1', fontVariantNumeric: 'tabular-nums', textAlign: 'left' }}>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: bodyText, lineHeight: '1', fontVariantNumeric: 'tabular-nums', textAlign: 'left' }}>
                     {m.value}
                   </div>
                   {m.sub && (
-                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '0.2rem', textAlign: 'left' }}>{m.sub}</div>
+                    <div style={{ fontSize: '11px', color: bodyFaint, marginTop: '0.15rem', textAlign: 'left' }}>{m.sub}</div>
                   )}
                 </div>
               ))}

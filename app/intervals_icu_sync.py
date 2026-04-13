@@ -22,9 +22,15 @@ INTERVALS_ICU_BASE = "https://intervals.icu/api/v1"
 def sync_wellness_for_user(user_id: int, api_key: str, athlete_id: str, target_date: date) -> bool:
     """
     Fetch one day of wellness data from intervals.icu and upsert into journal_entries.
+
+    intervals.icu dates sleep/HRV by the night it STARTED (e.g. Friday night = April 3).
+    Readiness applies to the morning AFTER that sleep (Saturday = April 4).
+    So we fetch target_date from intervals.icu but write to target_date + 1 in the DB.
+
     Returns True if data was found and written, False if no data for that date.
     """
-    date_str = target_date.isoformat()
+    date_str = target_date.isoformat()                          # for API request
+    write_date_str = (target_date + timedelta(days=1)).isoformat()  # for DB write
     url = f"{INTERVALS_ICU_BASE}/athlete/{athlete_id}/wellness"
     params = {"oldest": date_str, "newest": date_str}
 
@@ -74,11 +80,11 @@ def sync_wellness_for_user(user_id: int, api_key: str, athlete_id: str, target_d
             respiration_rate    = COALESCE(EXCLUDED.respiration_rate,    journal_entries.respiration_rate),
             vo2max              = COALESCE(EXCLUDED.vo2max,              journal_entries.vo2max),
             updated_at          = NOW()
-    """, (user_id, date_str, hrv_value, resting_hr, sleep_secs,
+    """, (user_id, write_date_str, hrv_value, resting_hr, sleep_secs,
           sleep_score, weight, spo2, respiration_rate, vo2max))
 
     logger.info(
-        f"[intervals.icu] Synced wellness for user {user_id} on {date_str}: "
+        f"[intervals.icu] Synced wellness for user {user_id} on {date_str} → written to {write_date_str}: "
         f"hrv={hrv_value}, rhr={resting_hr}, sleep={sleep_secs}s, "
         f"weight={weight}, spo2={spo2}, resp={respiration_rate}, vo2max={vo2max}"
     )
@@ -87,12 +93,19 @@ def sync_wellness_for_user(user_id: int, api_key: str, athlete_id: str, target_d
 
 def run_daily_sync(target_date: date = None) -> dict:
     """
-    Sync yesterday's wellness data for all users with intervals.icu credentials.
+    Sync wellness data for all users with intervals.icu credentials.
     Called once daily before the 6AM recommendation job.
+
+    Fetches yesterday's date from intervals.icu and writes it to today's journal_entries
+    row (date + 1 shift). This correctly maps Friday-night sleep → Saturday readiness.
+
+    If target_date is supplied, only that single date is synced (used by tests/backfills).
     Returns summary: {synced: N, skipped: N, errors: N}
     """
-    if target_date is None:
-        target_date = date.today() - timedelta(days=1)
+    if target_date is not None:
+        dates_to_sync = [target_date]
+    else:
+        dates_to_sync = [date.today() - timedelta(days=1)]
 
     users = execute_query(
         """SELECT id, intervals_icu_api_key, intervals_icu_athlete_id
@@ -108,18 +121,19 @@ def run_daily_sync(target_date: date = None) -> dict:
 
     synced = skipped = errors = 0
     for row in users:
-        user_id   = row["id"]
-        api_key   = row["intervals_icu_api_key"]
+        user_id    = row["id"]
+        api_key    = row["intervals_icu_api_key"]
         athlete_id = row["intervals_icu_athlete_id"]
-        try:
-            result = sync_wellness_for_user(user_id, api_key, athlete_id, target_date)
-            if result:
-                synced += 1
-            else:
-                skipped += 1
-        except Exception as e:
-            logger.error(f"[intervals.icu] Unexpected error for user {user_id}: {e}", exc_info=True)
-            errors += 1
+        for d in dates_to_sync:
+            try:
+                result = sync_wellness_for_user(user_id, api_key, athlete_id, d)
+                if result:
+                    synced += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                logger.error(f"[intervals.icu] Unexpected error for user {user_id} on {d}: {e}", exc_info=True)
+                errors += 1
 
     logger.info(f"[intervals.icu] Daily sync complete: synced={synced}, skipped={skipped}, errors={errors}")
     return {"synced": synced, "skipped": skipped, "errors": errors}

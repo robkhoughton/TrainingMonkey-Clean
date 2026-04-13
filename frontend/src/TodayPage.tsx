@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RaceReadinessCard, RaceReadiness } from './CoachPage';
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif';
@@ -13,6 +14,7 @@ const AMBER = '#d97706';
 const RED_C = '#dc2626';
 const DATA_HEADER_BG = 'linear-gradient(90deg, #1B2E4B 0%, #2d4a6e 100%)';
 
+
 const CARD_STYLE: React.CSSProperties = {
   background: CARD, borderRadius: '8px',
   boxShadow: '0 2px 4px rgba(0,0,0,0.25)', overflow: 'hidden',
@@ -21,36 +23,38 @@ const CARD_STYLE: React.CSSProperties = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface WellnessData {
-  readiness_state: 'GREEN' | 'AMBER' | 'RED' | null;
+  readiness_state: 'GREEN' | 'YELLOW_SYMPATHETIC' | 'YELLOW_PARASYMPATHETIC' | 'RED' | 'UNKNOWN' | null;
   readiness_flags: Record<string, boolean>;
   readiness_narrative: string | null;
   hrv_value: number | null;
   hrv_source: string | null;
-  hrv_baseline_30d: number | null;
+  hrv_z: number | null;
+  rhr_z: number | null;
+  hrv_reading_count: number | null;
+  rhr_reading_count: number | null;
   resting_hr: number | null;
-  rhr_baseline_7d: number | null;
   sleep_duration_secs: number | null;
   sleep_score: number | null;
-  hrv_28d_low: number | null; hrv_28d_high: number | null;
-  rhr_28d_low: number | null; rhr_28d_high: number | null;
-  sleep_28d_low: number | null; sleep_28d_high: number | null;
+  is_overreaching: boolean;
 }
 
 interface TrainingMetrics {
   externalAcwr: number;
   internalAcwr: number;
-  sevenDayAvgLoad: number;
   normalizedDivergence: number;
   injuryRiskScore: number;
   injuryRiskLabel: string;
+  daysSinceRest: number;
 }
 
 // Matches the actual /api/journal response shape
 interface JournalEntry {
   date: string;
   is_today: boolean;
+  is_next_incomplete?: boolean;
   recommendation_target_date: string | null;
   todays_decision: string;
+  structured_output?: any;
   observations: {
     pain_percentage: number | null;
     morning_soreness: number | null;
@@ -59,6 +63,183 @@ interface JournalEntry {
     notes: string;
   };
 }
+
+// ─── Why Panel ────────────────────────────────────────────────────────────────
+interface ConversationMessage { role: 'user' | 'assistant'; content: string; }
+interface WhyPanelState {
+  status: 'idle' | 'loading' | 'active' | 'error';
+  conversation: ConversationMessage[];
+  inputText: string;
+  isSendingTurn: boolean;
+}
+
+const WhyRecommendationPanel: React.FC<{
+  structuredOutput: any;
+  targetDate: string;
+}> = ({ structuredOutput, targetDate }) => {
+  const [state, setState] = useState<WhyPanelState>({
+    status: 'idle', conversation: [], inputText: '', isSendingTurn: false,
+  });
+
+  const handleWhyClick = async () => {
+    setState(s => ({ ...s, status: 'loading' }));
+    try {
+      const res = await fetch('/api/recommendation-conversation/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ recommendation_date: targetDate, structured_output: structuredOutput, metrics: {} }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setState(s => ({ ...s, status: 'active', conversation: data.conversation }));
+    } catch {
+      setState(s => ({ ...s, status: 'error' }));
+    }
+  };
+
+  const handleSend = async () => {
+    if (!state.inputText.trim() || state.isSendingTurn) return;
+    const userMessage = state.inputText.trim();
+    setState(s => ({ ...s, isSendingTurn: true, inputText: '' }));
+    try {
+      const res = await fetch('/api/recommendation-conversation/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recommendation_date: targetDate,
+          message: userMessage,
+          conversation: state.conversation,
+          structured_output: structuredOutput,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setState(s => ({ ...s, conversation: data.conversation, isSendingTurn: false }));
+    } catch {
+      setState(s => ({ ...s, isSendingTurn: false }));
+    }
+  };
+
+  const handleDone = () => {
+    fetch('/api/recommendation-conversation/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ recommendation_date: targetDate, conversation: state.conversation }),
+    }).catch(() => {});
+    setState(s => ({ ...s, status: 'idle' }));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  return (
+    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(125,156,184,0.1)' }}>
+      {state.status === 'idle' && (
+        <button
+          onClick={handleWhyClick}
+          style={{
+            backgroundColor: 'transparent', color: BLUE,
+            border: `1px solid ${BLUE}`, borderRadius: '4px',
+            padding: '4px 12px', fontSize: '0.75rem', fontWeight: 600,
+            cursor: 'pointer', fontFamily: FONT,
+          }}
+        >
+          Why this recommendation?
+        </button>
+      )}
+
+      {state.status === 'loading' && (
+        <div style={{ fontSize: '0.75rem', color: MUTED, fontStyle: 'italic', fontFamily: FONT }}>
+          Generating explanation...
+        </div>
+      )}
+
+      {state.status === 'error' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '0.75rem', color: RED_C, fontFamily: FONT }}>
+            Could not load explanation.
+          </span>
+          <button
+            onClick={() => setState(s => ({ ...s, status: 'idle' }))}
+            style={{
+              backgroundColor: 'transparent', color: BLUE, border: `1px solid ${BLUE}`,
+              borderRadius: '4px', padding: '2px 8px', fontSize: '0.72rem', cursor: 'pointer', fontFamily: FONT,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {state.status === 'active' && (
+        <div style={{ marginTop: '8px' }}>
+          <div style={{
+            maxHeight: '300px', overflowY: 'auto',
+            border: '1px solid rgba(125,156,184,0.18)', borderRadius: '6px',
+            padding: '8px', background: 'rgba(27,46,75,0.7)',
+            display: 'flex', flexDirection: 'column', gap: '8px',
+          }}>
+            {state.conversation.map((msg, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth: '85%', padding: '8px 10px', borderRadius: '6px',
+                  fontSize: '0.8rem', lineHeight: '1.55', textAlign: 'left',
+                  background: msg.role === 'user' ? 'rgba(59,130,246,0.18)' : CARD,
+                  color: TEXT, fontFamily: FONT,
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={state.inputText}
+              onChange={e => setState(s => ({ ...s, inputText: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a follow-up question..."
+              disabled={state.isSendingTurn}
+              style={{
+                flex: 1, padding: '5px 8px', fontSize: '0.8rem', fontFamily: FONT,
+                background: 'rgba(27,46,75,0.8)', color: TEXT,
+                border: '1px solid rgba(125,156,184,0.25)', borderRadius: '4px',
+                opacity: state.isSendingTurn ? 0.6 : 1,
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={state.isSendingTurn || !state.inputText.trim()}
+              style={{
+                background: BLUE, color: 'white', border: 'none', borderRadius: '4px',
+                padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600,
+                cursor: (state.isSendingTurn || !state.inputText.trim()) ? 'not-allowed' : 'pointer',
+                opacity: (state.isSendingTurn || !state.inputText.trim()) ? 0.6 : 1,
+                fontFamily: FONT,
+              }}
+            >
+              Send
+            </button>
+            <button
+              onClick={handleDone}
+              style={{
+                background: MUTED, color: BG, border: 'none', borderRadius: '4px',
+                padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600,
+                cursor: 'pointer', fontFamily: FONT,
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface DailyWorkout {
   date?: string;
@@ -82,11 +263,18 @@ interface JournalContext {
   today_session: { type: string; intensity: string } | null;
   sessions_completed: number;
   total_sessions: number;
+  week_days: Array<{ date: string; miles: number; vert: number; is_actual: boolean }>;
+  week_total_miles: number;
+  week_total_vert: number;
+  planned_week_miles: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function formatDateLong(): string {
   return new Date().toLocaleDateString('en-US', {
@@ -95,14 +283,21 @@ function formatDateLong(): string {
 }
 
 function getWeekDates(): Array<{ iso: string; abbrev: string }> {
-  const DAY_ABBREVS = ['S', 'M', 'T', 'W', 'Th', 'F', 'S'];
+  const DAY_ABBREVS = ['S', 'M', 'Tu', 'W', 'Th', 'F', 'S'];
   const today = new Date();
+  const dow = today.getDay(); // 0=Sunday
+  // On Sunday the new week just started and has no activities yet.
+  // Show the just-completed previous week (last Sun–Sat) so mileage is always visible.
+  const offset = dow === 0 ? 7 : dow;
   const sunday = new Date(today);
-  sunday.setDate(today.getDate() - today.getDay());
+  sunday.setDate(today.getDate() - offset);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(sunday);
     d.setDate(sunday.getDate() + i);
-    return { iso: d.toISOString().slice(0, 10), abbrev: DAY_ABBREVS[i] };
+    // Use local date components — toISOString() converts to UTC and can shift the date
+    // for users in negative-offset timezones (e.g. Pacific), matching todayIso() behaviour.
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { iso, abbrev: DAY_ABBREVS[i] };
   });
 }
 
@@ -119,19 +314,6 @@ function workoutAbbrev(type: string): string {
   if (t.includes('mobil') || t.includes('yoga') || t.includes('recover') || t.includes('stretch')) return 'M';
   if (t.includes('bike') || t.includes('cycle') || t.includes('swim') || t.includes('cross')) return 'X';
   return type.slice(0, 3).toUpperCase();
-}
-
-function norm(val: number | null, lo: number | null, hi: number | null, higherBetter = true): number | null {
-  if (val === null || lo === null || hi === null || hi === lo) return null;
-  const c = Math.max(0, Math.min(1, (val - lo) / (hi - lo)));
-  return higherBetter ? c : 1 - c;
-}
-
-function scoreColor(s: number | null): string {
-  if (s === null) return MUTED;
-  if (s >= 0.55) return GREEN;
-  if (s >= 0.30) return AMBER;
-  return RED_C;
 }
 
 function acwrStatus(v: number): { color: string; label: string } {
@@ -153,8 +335,8 @@ function divStatus(v: number): { color: string; label: string } {
 
 const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{
-    fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.12em',
-    textTransform: 'uppercase', color: MUTED, fontFamily: FONT, marginBottom: '6px',
+    fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.10em',
+    textTransform: 'uppercase', color: '#7D9CB8', fontFamily: FONT, marginBottom: '6px',
   }}>
     {children}
   </div>
@@ -162,99 +344,164 @@ const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const CardHeader: React.FC<{ label: string; title?: string }> = ({ label, title }) => (
   <div style={{
-    background: DATA_HEADER_BG, padding: '10px 20px',
+    background: DATA_HEADER_BG, padding: '0.5rem 1rem',
     borderBottom: '1px solid rgba(125,156,184,0.12)',
   }}>
-    <Label>{label}</Label>
-    {title && <div style={{ fontSize: '0.9rem', fontWeight: 600, color: TEXT, fontFamily: FONT }}>{title}</div>}
+    <div style={{ fontSize: '13px', letterSpacing: '0.15em', fontWeight: 700, textTransform: 'uppercase', color: MUTED, fontFamily: FONT }}>
+      {label}
+    </div>
+    {title && <div style={{ fontSize: '16px', fontWeight: 700, color: TEXT, fontFamily: FONT, marginTop: '1px' }}>{title}</div>}
   </div>
 );
 
-// ─── RecoveryDonut ─────────────────────────────────────────────────────────────
-// 240° gauge arc — composite of HRV+RHR+sleep vs 28-day personal range.
+// ─── TrainingReadinessCard ─────────────────────────────────────────────────────
+// ANS-based readiness: z-score HRV+RHR against personal baselines.
+// Four states: GREEN / YELLOW_SYMPATHETIC / YELLOW_PARASYMPATHETIC / RED / UNKNOWN
 
-interface RecoveryProps {
-  hrv_value: number | null; resting_hr: number | null; sleep_duration_secs: number | null;
-  hrv_28d_low: number | null; hrv_28d_high: number | null;
-  rhr_28d_low: number | null; rhr_28d_high: number | null;
-  sleep_28d_low: number | null; sleep_28d_high: number | null;
+interface TrainingReadinessProps {
+  readiness_state: WellnessData['readiness_state'];
+  readiness_narrative: string | null;
+  hrv_value: number | null;
+  hrv_z: number | null;
+  hrv_reading_count: number | null;
+  resting_hr: number | null;
+  rhr_z: number | null;
+  rhr_reading_count: number | null;
+  sleep_duration_secs: number | null;
   sleep_score: number | null;
-  hrv_baseline_30d: number | null; rhr_baseline_7d: number | null;
-  hasWatchData: boolean;
 }
 
-const RecoveryDonut: React.FC<RecoveryProps> = (p) => {
-  const hS = norm(p.hrv_value, p.hrv_28d_low, p.hrv_28d_high, true);
-  const rS = norm(p.resting_hr, p.rhr_28d_low, p.rhr_28d_high, false);
-  const sS = norm(p.sleep_duration_secs, p.sleep_28d_low, p.sleep_28d_high, true);
-  const scores = [hS, rS, sS].filter((v): v is number => v !== null);
-  const composite = scores.length ? scores.reduce((a, b) => a + b) / scores.length : null;
-  const arcColor  = composite === null ? 'rgba(125,156,184,0.25)'
-    : composite >= 0.5 ? GREEN : composite >= 0.2 ? AMBER : RED_C;
+// Stoplight segments — severity order: RED, CAUTION, DEEP HOLE, GREEN
+const READINESS_SEGMENTS = [
+  { key: 'RED',                    label: 'OVERREACHING', color: RED_C },
+  { key: 'YELLOW_SYMPATHETIC',     label: 'CAUTION',      color: AMBER },
+  { key: 'YELLOW_PARASYMPATHETIC', label: 'DEEP HOLE',    color: AMBER },
+  { key: 'GREEN',                  label: 'GREEN',        color: GREEN },
+];
 
-  const R = 36, CX = 52, CY = 52;
-  const CIRC   = 2 * Math.PI * R;
-  const ARC_LEN = CIRC * (240 / 360);
-  const fill    = composite !== null ? Math.max(0, composite) * ARC_LEN : 0;
-  const ROT     = `rotate(150, ${CX}, ${CY})`;
+const TrainingReadinessCard: React.FC<TrainingReadinessProps> = (p) => {
+  const key = p.readiness_state ?? 'UNKNOWN';
+  const isCalibrating = key === 'UNKNOWN' || p.readiness_state === null;
+  const activeSeg = READINESS_SEGMENTS.find(s => s.key === key) ?? null;
+  const activeColor = activeSeg?.color ?? MUTED;
+  const activeLabel = activeSeg?.label ?? 'Calibrating';
 
-  const pct      = composite !== null ? Math.round(composite * 100) : null;
-  const stateWord = composite === null ? '' : composite >= 0.5 ? 'GOOD' : composite >= 0.2 ? 'LOW' : 'POOR';
-  const hrsSlept  = p.sleep_duration_secs ? (p.sleep_duration_secs / 3600).toFixed(1) : null;
+  const fmtZ = (z: number | null) =>
+    z !== null ? `${z >= 0 ? '+' : ''}${z.toFixed(1)}\u03c3` : null;
+  const hrsSlept = p.sleep_duration_secs ? (p.sleep_duration_secs / 3600).toFixed(1) : null;
+
+  const BASELINE_DAYS = 14;
+  const hrvDaysLeft = isCalibrating ? Math.max(0, BASELINE_DAYS - (p.hrv_reading_count ?? 0)) : 0;
+  const rhrDaysLeft = isCalibrating ? Math.max(0, BASELINE_DAYS - (p.rhr_reading_count ?? 0)) : 0;
+  const daysLeft = Math.max(hrvDaysLeft, rhrDaysLeft);
 
   const subs = [
-    { lbl: 'HRV',   val: p.hrv_value   !== null ? `${Math.round(p.hrv_value)}ms`   : '—', s: hS,
-      sub: p.hrv_baseline_30d ? `avg ${Math.round(p.hrv_baseline_30d)}` : undefined },
-    { lbl: 'RHR',   val: p.resting_hr  !== null ? `${Math.round(p.resting_hr)}bpm` : '—', s: rS,
-      sub: p.rhr_baseline_7d  ? `avg ${Math.round(p.rhr_baseline_7d)}`  : undefined },
-    { lbl: 'SLEEP', val: hrsSlept               ? `${hrsSlept}h`                   : '—', s: sS,
-      sub: p.sleep_score != null ? `score ${p.sleep_score}` : undefined },
+    {
+      lbl: 'HRV',
+      val: p.hrv_value !== null ? `${Math.round(p.hrv_value)}ms` : '—',
+      annot: isCalibrating
+        ? (p.hrv_reading_count !== null ? `${p.hrv_reading_count} of ${BASELINE_DAYS} days` : null)
+        : fmtZ(p.hrv_z),
+    },
+    {
+      lbl: 'RHR',
+      val: p.resting_hr !== null ? `${Math.round(p.resting_hr)}bpm` : '—',
+      annot: isCalibrating
+        ? (p.rhr_reading_count !== null ? `${p.rhr_reading_count} of ${BASELINE_DAYS} days` : null)
+        : fmtZ(p.rhr_z),
+    },
+    {
+      lbl: 'SLEEP',
+      val: hrsSlept ? `${hrsSlept}h` : '—',
+      annot: p.sleep_score != null ? `score ${p.sleep_score}` : null,
+    },
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-      <svg width="104" height="90" viewBox="0 0 104 90">
-        {/* Track */}
-        <circle cx={CX} cy={CY} r={R} fill="none"
-          stroke="rgba(125,156,184,0.14)" strokeWidth="6"
-          strokeDasharray={`${ARC_LEN} ${CIRC - ARC_LEN}`} strokeLinecap="round"
-          transform={ROT} />
-        {/* Fill */}
-        {composite !== null && (
-          <circle cx={CX} cy={CY} r={R} fill="none"
-            stroke={arcColor} strokeWidth="6"
-            strokeDasharray={`${fill} ${CIRC - fill}`} strokeLinecap="round"
-            transform={ROT} style={{ transition: 'stroke-dasharray 0.7s ease' }} />
-        )}
-        {/* Center */}
-        {p.hasWatchData ? (
-          <>
-            <text x={CX} y={CY + 5} textAnchor="middle" fill={arcColor} fontSize="17" fontWeight="700" fontFamily={FONT}>
-              {pct ?? '—'}
-            </text>
-            {stateWord && (
-              <text x={CX} y={CY + 17} textAnchor="middle" fill={MUTED} fontSize="6.5" fontFamily={FONT} letterSpacing="1">
-                {stateWord}
-              </text>
-            )}
-          </>
+    <div style={{ marginBottom: '18px' }}>
+      {/* Label — matches ZonedGauge label style */}
+      <span style={{
+        fontSize: '0.78rem', color: MUTED, fontFamily: FONT,
+        letterSpacing: '0.06em', textTransform: 'capitalize',
+        display: 'block', marginBottom: '6px',
+      }}>
+        Training Readiness
+      </span>
+      {/* Stoplight bar — active segment gets border + top/bottom arrows */}
+      <div style={{ display: 'flex', gap: '2px', height: '12px', margin: '10px 0 18px 0' }}>
+        {isCalibrating ? (
+          <div style={{ flex: 1, borderRadius: '2px', background: MUTED, opacity: 0.25 }} />
         ) : (
-          <text x={CX} y={CY + 4} textAnchor="middle" fill={MUTED} fontSize="7.5" fontFamily={FONT}>
-            No watch data
-          </text>
+          READINESS_SEGMENTS.map(seg => {
+            const isActive = seg.key === key;
+            return (
+              <div key={seg.key} style={{
+                flex: 1, borderRadius: '2px',
+                background: seg.color,
+                opacity: isActive ? 0.90 : 0.18,
+                position: 'relative',
+                boxShadow: isActive ? `0 0 8px 3px ${seg.color}` : undefined,
+              }}>
+                {isActive && (
+                  <>
+                    {/* Top arrow — glow color, points upward */}
+                    <div style={{
+                      position: 'absolute', top: '-10px', left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '7px solid transparent',
+                      borderRight: '7px solid transparent',
+                      borderBottom: `8px solid ${seg.color}`,
+                      filter: `drop-shadow(0 0 4px ${seg.color})`,
+                      zIndex: 2,
+                    }} />
+                    {/* Bottom arrow — glow color, points downward */}
+                    <div style={{
+                      position: 'absolute', bottom: '-10px', left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '7px solid transparent',
+                      borderRight: '7px solid transparent',
+                      borderTop: `8px solid ${seg.color}`,
+                      filter: `drop-shadow(0 0 4px ${seg.color})`,
+                      zIndex: 2,
+                    }} />
+                  </>
+                )}
+              </div>
+            );
+          })
         )}
-      </svg>
-
-      {/* Sub-values */}
-      <div style={{ display: 'flex', gap: '12px' }}>
-        {subs.map(({ lbl, val, s, sub }) => (
-          <div key={lbl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: scoreColor(s), flexShrink: 0 }} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: p.hasWatchData ? TEXT : MUTED, fontFamily: FONT }}>{val}</span>
-            </div>
-            <span style={{ fontSize: '0.5rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: FONT }}>{lbl}</span>
-            {sub && <span style={{ fontSize: '0.5rem', color: MUTED, fontFamily: FONT }}>{sub}</span>}
+      </div>
+      {/* Narrative — matches ZonedGauge tick label area */}
+      <div style={{
+        fontSize: '0.72rem', color: MUTED, fontFamily: FONT,
+        lineHeight: 1.4, marginTop: '6px', marginBottom: '12px', minHeight: '2.2em',
+      }}>
+        {isCalibrating
+          ? (daysLeft > 0
+              ? `Log morning HRV and resting HR daily — ${daysLeft} more day${daysLeft === 1 ? '' : 's'} needed.`
+              : 'Baseline complete — readiness will update on next sync.')
+          : (p.readiness_narrative ?? '')}
+      </div>
+      {/* Sub-values: HRV · RHR · SLEEP */}
+      <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+        {subs.map(({ lbl, val, annot }) => (
+          <div key={lbl} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{
+              fontSize: '0.68rem', color: MUTED, fontFamily: FONT,
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}>
+              {lbl}
+            </span>
+            <span style={{ fontSize: '1.05rem', fontWeight: 700, color: TEXT, fontFamily: FONT }}>
+              {val}
+            </span>
+            {annot && (
+              <span style={{ fontSize: '0.72rem', color: MUTED, fontFamily: FONT }}>
+                {annot}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -276,67 +523,84 @@ interface ZonedGaugeProps {
   label: string;
   value: number | null;
   valueLabel: string;
-  statusLabel: string;
   statusColor: string;
-  // gauge config
   min: number; max: number;
   zones: Array<{ from: number; to: number; color: string; opacity: number }>;
+  ticks?: Array<{ value: number; label: string }>;
 }
 
-const ZonedGauge: React.FC<ZonedGaugeProps> = ({ label, value, valueLabel, statusLabel, statusColor, min, max, zones }) => {
+const ZonedGauge: React.FC<ZonedGaugeProps> = ({ label, value, valueLabel, statusColor, min, max, zones, ticks }) => {
   const W = 160, H = 12;
-  const toX = (v: number) => Math.max(0, Math.min(W, ((v - min) / (max - min)) * W));
+  const toX    = (v: number) => Math.max(0, Math.min(W, ((v - min) / (max - min)) * W));
+  const toPct  = (v: number) => `${Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100))}%`;
   const markerX = value !== null ? toX(value) : null;
 
   return (
-    <div style={{ marginBottom: '14px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
-        <span style={{ fontSize: '0.65rem', color: MUTED, fontFamily: FONT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-          {label}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: TEXT, fontFamily: FONT }}>{valueLabel}</span>
-          <span style={{ fontSize: '0.6rem', fontWeight: 700, color: statusColor, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: FONT }}>
-            {statusLabel}
-          </span>
-        </div>
+    <div style={{ marginBottom: '18px' }}>
+      <span style={{ fontSize: '0.78rem', color: MUTED, fontFamily: FONT, letterSpacing: '0.06em', textTransform: 'capitalize', display: 'block', marginBottom: '2px' }}>
+        {label}
+      </span>
+      <div style={{ textAlign: 'center', marginBottom: '5px' }}>
+        <span style={{ fontSize: '1.05rem', fontWeight: 700, color: TEXT, fontFamily: FONT, letterSpacing: '0.02em' }}>{valueLabel}</span>
       </div>
-      <svg width={W} height={H + 8} viewBox={`0 0 ${W} ${H + 8}`} style={{ display: 'block' }}>
-        {/* Zone bands */}
+      {/* SVG: zone bands + marker only — tick labels rendered as HTML to avoid distortion */}
+      <svg width="100%" height={H + 14} viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         {zones.map((z, i) => (
           <rect key={i}
             x={toX(z.from)} y={4} width={Math.max(0, toX(z.to) - toX(z.from))} height={H}
             fill={z.color} opacity={z.opacity} rx="2"
           />
         ))}
-        {/* Track border */}
         <rect x={0} y={4} width={W} height={H} fill="none"
-          stroke="rgba(125,156,184,0.15)" strokeWidth="1" rx="2" />
-        {/* Marker */}
+          stroke="rgba(125,156,184,0.25)" strokeWidth="1" rx="2" />
         {markerX !== null && (
-          <>
-            <line x1={markerX} y1={1} x2={markerX} y2={H + 7} stroke={statusColor} strokeWidth="2" strokeLinecap="round" />
-            <circle cx={markerX} cy={H / 2 + 4} r="4" fill={statusColor} />
-          </>
+          <g>
+            <line x1={markerX} y1={2} x2={markerX} y2={H + 5}
+              stroke="rgba(255,255,255,0.92)" strokeWidth="1.5" strokeLinecap="square" />
+            {/* Upward-pointing triangle — base below bar, tip touches bar bottom */}
+            <polygon
+              points={`${markerX - 3.5},${H + 12} ${markerX + 3.5},${H + 12} ${markerX},${H + 5}`}
+              fill="rgba(255,255,255,0.88)"
+            />
+          </g>
         )}
       </svg>
+      {/* Tick labels as HTML — immune to SVG non-uniform scaling distortion */}
+      {ticks && ticks.length > 0 && (
+        <div style={{ position: 'relative', height: '18px', marginTop: '2px' }}>
+          {ticks.map(t => (
+            <span key={t.value} style={{
+              position: 'absolute', left: toPct(t.value), transform: 'translateX(-50%)',
+              fontSize: '0.72rem', color: MUTED, fontFamily: FONT, whiteSpace: 'nowrap',
+            }}>{t.label}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
 const LoadGauges: React.FC<LoadGaugesProps> = ({ extAcwr, intAcwr, divergence }) => {
   const acwrZones = [
-    { from: 0,   to: 0.8, color: MUTED,  opacity: 0.25 },
-    { from: 0.8, to: 1.3, color: GREEN,  opacity: 0.30 },
-    { from: 1.3, to: 1.5, color: AMBER,  opacity: 0.35 },
-    { from: 1.5, to: 2.0, color: RED_C,  opacity: 0.35 },
+    { from: 0,   to: 0.8, color: MUTED,  opacity: 0.45 },
+    { from: 0.8, to: 1.3, color: GREEN,  opacity: 0.70 },
+    { from: 1.3, to: 1.5, color: AMBER,  opacity: 0.72 },
+    { from: 1.5, to: 2.0, color: RED_C,  opacity: 0.72 },
   ];
   const divZones = [
-    { from: -0.5, to: -0.35, color: RED_C,  opacity: 0.35 },
-    { from: -0.35, to: -0.15, color: AMBER, opacity: 0.30 },
-    { from: -0.15, to:  0.15, color: GREEN, opacity: 0.30 },
-    { from:  0.15, to:  0.35, color: AMBER, opacity: 0.30 },
-    { from:  0.35, to:  0.5,  color: RED_C,  opacity: 0.35 },
+    { from: -0.5,  to: -0.35, color: RED_C,  opacity: 0.72 },
+    { from: -0.35, to: -0.15, color: AMBER,  opacity: 0.65 },
+    { from: -0.15, to:  0.15, color: GREEN,  opacity: 0.65 },
+    { from:  0.15, to:  0.35, color: AMBER,  opacity: 0.65 },
+    { from:  0.35, to:  0.5,  color: RED_C,  opacity: 0.72 },
+  ];
+  const acwrTicks = [
+    { value: 0.8, label: '0.8' }, { value: 1.3, label: '1.3' }, { value: 1.5, label: '1.5' },
+  ];
+  const divTicks = [
+    { value: -0.35, label: '-.35' }, { value: -0.15, label: '-.15' },
+    { value: 0,     label: '0'    },
+    { value:  0.15, label: '.15'  }, { value:  0.35, label: '.35' },
   ];
 
   const ea = acwrStatus(extAcwr ?? 0);
@@ -346,19 +610,19 @@ const LoadGauges: React.FC<LoadGaugesProps> = ({ extAcwr, intAcwr, divergence })
   return (
     <div style={{ width: '100%' }}>
       <ZonedGauge
-        label="Ext ACWR" value={extAcwr} min={0} max={2.0} zones={acwrZones}
+        label="External ACWR" value={extAcwr} min={0} max={2.0} zones={acwrZones}
         valueLabel={extAcwr != null ? extAcwr.toFixed(2) : '—'}
-        statusLabel={ea.label} statusColor={ea.color}
+        statusColor={ea.color} ticks={acwrTicks}
       />
       <ZonedGauge
-        label="Int ACWR" value={intAcwr} min={0} max={2.0} zones={acwrZones}
+        label="Internal ACWR" value={intAcwr} min={0} max={2.0} zones={acwrZones}
         valueLabel={intAcwr != null ? intAcwr.toFixed(2) : '—'}
-        statusLabel={ia.label} statusColor={ia.color}
+        statusColor={ia.color} ticks={acwrTicks}
       />
       <ZonedGauge
         label="Divergence" value={divergence} min={-0.5} max={0.5} zones={divZones}
         valueLabel={divergence != null ? divergence.toFixed(3) : '—'}
-        statusLabel={ds.label} statusColor={ds.color}
+        statusColor={ds.color} ticks={divTicks}
       />
     </div>
   );
@@ -489,39 +753,70 @@ const InjuryTrend: React.FC<InjuryTrendProps> = ({ entries }) => {
   );
 };
 
+// ─── Intensity colors (matches WeeklyProgramDisplay) ─────────────────────────
+const IC = { low: '#66BB6A', moderate: '#FFD54F', high: '#FF8A65' };
+
+function getSessionChip(session: DailyWorkout | null): { color: string; label: string } | null {
+  if (!session) return null;
+  const t = (session.workout_type || '').trim();
+  if (!t || /^(rest|day off|off)$/i.test(t)) return null;
+  const i = (session.intensity || '').toLowerCase();
+  const color = i === 'high' ? IC.high : i === 'moderate' ? IC.moderate : IC.low;
+  const label = t.replace(/\brun\b/gi, '').replace(/\s+/g, ' ').trim();
+  return { color, label };
+}
+
 // ─── DayCell ───────────────────────────────────────────────────────────────────
 
-interface DayCellProps { abbrev: string; isToday: boolean; session: DailyWorkout | null; }
+interface DayCellProps { abbrev: string; isToday: boolean; session: DailyWorkout | null; miles?: number; isActual?: boolean; }
 
-const DayCell: React.FC<DayCellProps> = ({ abbrev, isToday, session }) => {
-  const abbrevType = session ? workoutAbbrev(session.workout_type) : '—';
-  const isOff = abbrevType === 'OFF' || !session;
+const DayCell: React.FC<DayCellProps> = ({ abbrev, isToday, session, miles, isActual = true }) => {
+  const chip     = getSessionChip(session);
+  const isOff    = !session || (!chip && !(session.workout_type || '').toLowerCase().includes('rest'));
+  const isRest   = session && !chip;
+  const hasMiles = miles != null && miles > 0.05;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', opacity: isOff ? 0.45 : 1 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', opacity: isOff ? 0.4 : 1 }}>
+      {/* Actual or planned miles */}
       <div style={{
-        width: '26px', height: '26px', borderRadius: '3px',
+        fontSize: '0.82rem', fontWeight: isActual ? 600 : 400, height: '16px', lineHeight: '16px',
+        color: hasMiles ? (isActual ? TEXT : MUTED) : 'rgba(0,0,0,0)',
+        fontStyle: isActual ? 'normal' : 'italic',
+        fontFamily: FONT,
+      }}>
+        {hasMiles ? miles!.toFixed(1) : '0'}
+      </div>
+
+      {/* Day letter */}
+      <div style={{
+        width: '32px', height: '32px', borderRadius: '4px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: isToday ? '#FF5722' : 'transparent',
-        border: isToday ? 'none' : '1px solid rgba(125,156,184,0.2)',
-        fontSize: '0.65rem', fontWeight: isToday ? 700 : 500,
+        background: isToday ? '#FF5722' : 'rgba(125,156,184,0.08)',
+        border: isToday ? 'none' : '1px solid rgba(125,156,184,0.18)',
+        fontSize: '0.86rem', fontWeight: isToday ? 700 : 500,
         color: isToday ? 'white' : MUTED, fontFamily: FONT,
       }}>
         {abbrev}
       </div>
-      <div style={{
-        width: '26px', height: '20px', borderRadius: '3px',
-        background: isOff ? 'transparent' : 'rgba(125,156,184,0.1)',
-        border: `1px solid ${isOff ? 'rgba(125,156,184,0.08)' : 'rgba(125,156,184,0.28)'}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.58rem', fontWeight: 700, color: TEXT, fontFamily: FONT,
-      }}>
-        {abbrevType}
+
+      {/* Session chip or Rest/blank */}
+      <div style={{ height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: '100%' }}>
+        {chip ? (
+          <div style={{
+            background: `${chip.color}22`, border: `1px solid ${chip.color}60`,
+            borderRadius: '3px', padding: '2px 5px',
+            fontSize: '0.68rem', fontWeight: 700, color: chip.color,
+            fontFamily: FONT, whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+          }}>
+            {chip.label}
+          </div>
+        ) : isRest ? (
+          <span style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT }}>Rest</span>
+        ) : null}
       </div>
-      {session?.duration_estimate && (
-        <div style={{ fontSize: '0.5rem', color: MUTED, fontFamily: FONT, textAlign: 'center', lineHeight: 1.2, maxWidth: '30px' }}>
-          {session.duration_estimate.replace('minutes','min').replace('minute','min').replace('hours','hr').replace('hour','hr')}
-        </div>
-      )}
+
     </div>
   );
 };
@@ -535,57 +830,60 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
   const [metrics,        setMetrics]        = useState<TrainingMetrics | null>(null);
   const [program,        setProgram]        = useState<WeeklyProgram | null>(null);
   const [context,        setContext]        = useState<JournalContext | null>(null);
-  const [rec,            setRec]            = useState<string | null>(null);
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
-  const [loading,        setLoading]        = useState(true);
-  const [showWhy,        setShowWhy]        = useState(false);
+  const [rec,              setRec]              = useState<string | null>(null);
+  const [recTargetDate,    setRecTargetDate]    = useState<string | null>(null);
+  const [structuredOutput, setStructuredOutput] = useState<any>({});
+  const [journalEntries,   setJournalEntries]   = useState<JournalEntry[]>([]);
+  const [loading,          setLoading]          = useState(true);
+  const [programLoading,   setProgramLoading]   = useState(true);
+  const [raceReadiness,    setRaceReadiness]    = useState<RaceReadiness | null>(null);
 
   useEffect(() => {
+    // Fast endpoints — page renders as soon as these complete
     Promise.all([
       fetch('/api/readiness',                    { credentials: 'include' }).then(r => r.ok ? r.json() : null),
       fetch(`/api/training-data?t=${Date.now()}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
-      fetch('/api/coach/weekly-program',          { credentials: 'include' }).then(r => r.ok ? r.json() : null),
       fetch('/api/journal/context',               { credentials: 'include' }).then(r => r.ok ? r.json() : null),
       fetch('/api/journal',                       { credentials: 'include' }).then(r => r.ok ? r.json() : null),
-    ]).then(([well, training, prog, ctx, recData]) => {
+      fetch('/api/coach/race-readiness',          { credentials: 'include' }).then(r => r.ok ? r.json() : null),
+    ]).then(([well, training, ctx, recData, readinessData]) => {
       if (well) setWellness(well);
       if (training?.data?.length) {
         const rows = [...training.data].sort((a: any, b: any) => b.date.localeCompare(a.date));
-        const r = rows[0];
+        const r  = rows[0];
+        const cm = training.current_metrics || {};
         setMetrics({
           externalAcwr:         r.acute_chronic_ratio       || 0,
           internalAcwr:         r.trimp_acute_chronic_ratio || 0,
-          sevenDayAvgLoad:      r.seven_day_avg_load        || 0,
           normalizedDivergence: r.normalized_divergence     || 0,
-          injuryRiskScore:      r.injury_risk_score         || 0,
-          injuryRiskLabel:      r.injury_risk_label         || 'LOW',
+          injuryRiskScore:      cm.injury_risk_score        || 0,
+          injuryRiskLabel:      cm.injury_risk_label        || 'LOW',
+          daysSinceRest:        cm.days_since_rest          || 0,
         });
       }
-      if (prog?.program)         setProgram(prog.program);
-      if (ctx)                   setContext(ctx);
+      if (readinessData?.success && readinessData?.readiness) setRaceReadiness(readinessData.readiness);
+      if (ctx) setContext(ctx);
       if (recData?.data?.length) {
         const entries: JournalEntry[] = recData.data;
         setJournalEntries(entries);
-
-        // Find the recommendation targeted for today specifically.
-        // After autopsy, the rec for tomorrow is stored in yesterday's entry
-        // with recommendation_target_date = tomorrow.
-        const todayStr = todayIso();
-        const targetedForToday = entries.find(e =>
-          e.recommendation_target_date === todayStr &&
-          e.todays_decision &&
-          !e.todays_decision.includes('No recommendation available')
-        );
-        const todayEntryRec = entries.find(e =>
-          e.is_today &&
-          e.todays_decision &&
-          !e.todays_decision.includes('No recommendation available')
-        );
-        const r = targetedForToday?.todays_decision || todayEntryRec?.todays_decision || null;
+        const matched = entries.find(e => e.is_next_incomplete) ||
+          entries.find(e => e.is_today && e.todays_decision && !e.todays_decision.includes('No recommendation available')) ||
+          null;
+        const r = matched?.todays_decision || null;
         if (r) setRec(r);
+        if (matched?.recommendation_target_date) setRecTargetDate(matched.recommendation_target_date);
+        if (matched?.structured_output) setStructuredOutput(matched.structured_output);
       }
       setLoading(false);
     }).catch(() => setLoading(false));
+
+    // Weekly program fetches independently — slow LLM call, ~60–90s
+    // Page renders without it; week schedule populates when ready
+    fetch('/api/coach/weekly-program', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(prog => { if (prog?.program) setProgram(prog.program); })
+      .catch(() => {})
+      .finally(() => setProgramLoading(false));
   }, []);
 
   // Session lookup
@@ -599,7 +897,10 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
   const todayDate    = todayIso();
   const getSession   = (iso: string): DailyWorkout | null =>
     sessionByDate[iso] || sessionByDow[dayOfWeekName(iso)] || null;
-  const todaySession = getSession(todayDate);
+  // Use the Rx target date for the session title/badge — keeps title aligned with the narrative.
+  // When the next incomplete workout is tomorrow (e.g. today's session is done), recTargetDate
+  // will differ from todayDate and we want the session from the Rx date, not today's calendar slot.
+  const todaySession = getSession(recTargetDate || todayDate);
 
   // Priority badge from load + injury signals
   const todayEntry  = journalEntries.find(e => e.is_today);
@@ -615,9 +916,6 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
 
   const hasWatchData = wellness?.hrv_source === 'intervals_icu';
 
-  const acwr  = acwrStatus(metrics?.externalAcwr ?? 0);
-  const iacwr = acwrStatus(metrics?.internalAcwr ?? 0);
-  const div   = divStatus(metrics?.normalizedDivergence ?? 0);
 
   const activeFlags = wellness?.readiness_flags
     ? Object.entries(wellness.readiness_flags)
@@ -625,7 +923,8 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
         .map(([k]) => ({
           hrv_suppressed: 'HRV suppressed', rhr_elevated: 'RHR elevated',
           sleep_deficit: 'Sleep deficit', sleep_poor_score: 'Poor sleep score',
-          high_soreness: 'High soreness',
+          high_soreness: 'High soreness', deep_hole: 'Deep hole',
+          is_overreaching: 'Overreaching',
         }[k] || k))
     : [];
 
@@ -675,12 +974,17 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
               </span>
             </span>
           </div>
-          <div style={{ fontSize: '0.8rem', color: MUTED, marginTop: '4px', fontFamily: FONT }}>{formatDateLong()}</div>
+          <div style={{ fontSize: '0.8rem', color: MUTED, marginTop: '4px', fontFamily: FONT, textAlign: 'left' }}>{formatDateLong()}</div>
         </div>
 
         {/* ── 1. Rx card (two-column prose) ── */}
         <div className="t-card" style={{ ...CARD_STYLE, marginBottom: '16px' }}>
-          <CardHeader label="Training Prescription" />
+          <CardHeader
+            label="Training Prescription"
+            title={recTargetDate
+              ? new Date(recTargetDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+              : undefined}
+          />
           <div style={{ padding: '20px' }}>
 
             {/* Workout header */}
@@ -712,7 +1016,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                 <div
                   className="rx-prose"
                   style={{ columnCount: 2, columnGap: '32px', columnRule: '1px solid rgba(125,156,184,0.12)',
-                           fontSize: '0.92rem', lineHeight: '1.7', color: TEXT, fontFamily: FONT }}
+                           fontSize: '0.92rem', lineHeight: '1.7', color: TEXT, fontFamily: FONT, textAlign: 'left' }}
                 >
                   {rec.split(/\n+/).filter(l => l.trim()).length > 1
                     ? rec.split(/\n+/).filter(l => l.trim()).map((para, i) => (
@@ -723,59 +1027,10 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                 </div>
 
                 {/* Why this Rx? */}
-                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(125,156,184,0.1)' }}>
-                  <button
-                    onClick={() => setShowWhy(v => !v)}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: MUTED, fontSize: '0.78rem', fontFamily: FONT,
-                      padding: 0, display: 'flex', alignItems: 'center', gap: '5px',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.65rem' }}>{showWhy ? '▾' : '▸'}</span>
-                    Why this recommendation?
-                  </button>
-
-                  {showWhy && (
-                    <div style={{
-                      marginTop: '12px', padding: '14px 16px',
-                      background: 'rgba(27,46,75,0.6)',
-                      border: '1px solid rgba(125,156,184,0.15)', borderRadius: '4px',
-                    }}>
-                      <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-                        <div>
-                          <Label>Load signals</Label>
-                          <div style={{ fontSize: '0.8rem', color: TEXT, fontFamily: FONT, lineHeight: '1.9' }}>
-                            <div>Ext ACWR: <strong style={{ color: acwr.color }}>{metrics?.externalAcwr.toFixed(2) ?? '—'}</strong> — {acwr.label}</div>
-                            <div>Int ACWR: <strong style={{ color: iacwr.color }}>{metrics?.internalAcwr.toFixed(2) ?? '—'}</strong> — {iacwr.label}</div>
-                            <div>Divergence: <strong style={{ color: div.color }}>{metrics?.normalizedDivergence.toFixed(3) ?? '—'}</strong> — {div.label}</div>
-                          </div>
-                        </div>
-                        {(activeFlags.length > 0 || wellness?.readiness_narrative) && (
-                          <div style={{ maxWidth: '320px' }}>
-                            <Label>Readiness signals</Label>
-                            {wellness?.readiness_narrative && (
-                              <p style={{ fontSize: '0.8rem', color: TEXT, fontFamily: FONT, margin: '0 0 8px', lineHeight: '1.6' }}>
-                                {wellness.readiness_narrative}
-                              </p>
-                            )}
-                            {activeFlags.length > 0 && (
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {activeFlags.map(f => (
-                                  <span key={f} style={{
-                                    fontSize: '0.62rem', color: AMBER,
-                                    border: '1px solid rgba(217,119,6,0.3)',
-                                    borderRadius: '3px', padding: '2px 7px', fontFamily: FONT,
-                                  }}>{f}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <WhyRecommendationPanel
+                  structuredOutput={structuredOutput}
+                  targetDate={recTargetDate || todayDate}
+                />
               </>
             ) : (
               <p style={{ margin: 0, color: MUTED, fontSize: '0.9rem', fontStyle: 'italic', fontFamily: FONT }}>
@@ -790,107 +1045,150 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
           <CardHeader label="Signal Panel" />
           <div className="sig-cols" style={{ display: 'flex', padding: '16px 20px', gap: 0, alignItems: 'flex-start' }}>
 
-            {/* Recovery */}
-            <div style={{ flex: 1, minWidth: 0, paddingRight: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ alignSelf: 'flex-start', marginBottom: '10px' }}><Label>Recovery</Label></div>
-              <RecoveryDonut
+            {/* Training Status — injury risk + ANS readiness + volume + rest */}
+            <div style={{ flex: 1, minWidth: 0, paddingRight: '20px' }}>
+              <div style={{ textAlign: 'left', marginBottom: '10px' }}><Label>Training Status</Label></div>
+
+              {/* Injury Risk gauge */}
+              {metrics && (() => {
+                const score = metrics.injuryRiskScore;
+                const riskColor = score >= 60 ? RED_C : score >= 30 ? AMBER : GREEN;
+                const riskZones = [
+                  { from: 0,  to: 30,  color: GREEN, opacity: 0.65 },
+                  { from: 30, to: 60,  color: AMBER, opacity: 0.68 },
+                  { from: 60, to: 100, color: RED_C, opacity: 0.75 },
+                ];
+                return (
+                  <ZonedGauge
+                    label="Injury Risk" value={score} min={0} max={100} zones={riskZones}
+                    valueLabel={`${Math.round(score)}`}
+                    statusColor={riskColor}
+                    ticks={[{ value: 30, label: '30' }, { value: 60, label: '60' }]}
+                  />
+                );
+              })()}
+
+              <TrainingReadinessCard
+                readiness_state={wellness?.readiness_state ?? null}
+                readiness_narrative={wellness?.readiness_narrative ?? null}
                 hrv_value={wellness?.hrv_value ?? null}
+                hrv_z={wellness?.hrv_z ?? null}
+                hrv_reading_count={wellness?.hrv_reading_count ?? null}
                 resting_hr={wellness?.resting_hr ?? null}
+                rhr_z={wellness?.rhr_z ?? null}
+                rhr_reading_count={wellness?.rhr_reading_count ?? null}
                 sleep_duration_secs={wellness?.sleep_duration_secs ?? null}
-                hrv_28d_low={wellness?.hrv_28d_low ?? null}   hrv_28d_high={wellness?.hrv_28d_high ?? null}
-                rhr_28d_low={wellness?.rhr_28d_low ?? null}   rhr_28d_high={wellness?.rhr_28d_high ?? null}
-                sleep_28d_low={wellness?.sleep_28d_low ?? null} sleep_28d_high={wellness?.sleep_28d_high ?? null}
                 sleep_score={wellness?.sleep_score ?? null}
-                hrv_baseline_30d={wellness?.hrv_baseline_30d ?? null}
-                rhr_baseline_7d={wellness?.rhr_baseline_7d ?? null}
-                hasWatchData={hasWatchData}
               />
-            </div>
 
-            <div className="sig-div" style={dividerStyle} />
-
-            {/* Load */}
-            <div style={{ flex: 1, minWidth: 0, padding: '0 20px' }}>
-              <Label>Load</Label>
-              <LoadGauges
-                extAcwr={metrics?.externalAcwr ?? null}
-                intAcwr={metrics?.internalAcwr ?? null}
-                divergence={metrics?.normalizedDivergence ?? null}
-              />
-              {metrics && (
-                <div style={{ fontSize: '0.7rem', color: MUTED, fontFamily: FONT, marginTop: '4px' }}>
-                  7-day avg load: <strong style={{ color: TEXT }}>{metrics.sevenDayAvgLoad.toFixed(0)}</strong>
-                  &nbsp;·&nbsp;
-                  Injury risk: <strong style={{
-                    color: metrics.injuryRiskScore >= 60 ? RED_C : metrics.injuryRiskScore >= 30 ? AMBER : GREEN
-                  }}>{metrics.injuryRiskLabel}</strong>
+              {/* Volume + rest */}
+              {(context || metrics) && (
+                <div style={{ fontSize: '0.88rem', color: MUTED, fontFamily: FONT, marginTop: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {context && (
+                    <span>
+                      Week: <strong style={{ color: TEXT }}>{(context.week_total_miles ?? 0).toFixed(1)} mi</strong>
+                      {(context.week_total_vert ?? 0) > 0 && (
+                        <> · <strong style={{ color: TEXT }}>{Math.round(context.week_total_vert ?? 0).toLocaleString()} ft</strong></>
+                      )}
+                    </span>
+                  )}
+                  {metrics && (
+                    <span>
+                      Rest: <strong style={{ color: metrics.daysSinceRest >= 7 ? AMBER : TEXT }}>
+                        {metrics.daysSinceRest === 0 ? 'today' : `${metrics.daysSinceRest}d ago`}
+                      </strong>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
 
             <div className="sig-div" style={dividerStyle} />
 
-            {/* Injury Trend */}
-            <div style={{ flex: 1, minWidth: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ alignSelf: 'flex-start', marginBottom: '10px' }}><Label>Injury Trend · 7 days</Label></div>
-              <InjuryTrend entries={journalEntries} />
+            {/* Load — ACWR + divergence gauges */}
+            <div style={{ flex: 1, minWidth: 0, padding: '0 20px' }}>
+              <div style={{ textAlign: 'left' }}><Label>Load</Label></div>
+              <LoadGauges
+                extAcwr={metrics?.externalAcwr ?? null}
+                intAcwr={metrics?.internalAcwr ?? null}
+                divergence={metrics?.normalizedDivergence ?? null}
+              />
             </div>
 
           </div>
         </div>
 
-        {/* ── 3. Week context ── */}
+        {/* ── 3. Race Readiness ── */}
+        <div className="t-card" style={{ marginBottom: '16px' }}>
+          <RaceReadinessCard readiness={raceReadiness} dark={true} />
+        </div>
+
+        {/* ── 4. Week Context ── */}
         <div className="t-card" style={{ ...CARD_STYLE, marginBottom: '24px' }}>
-          <CardHeader label="Week Context" title={context?.stage_name || undefined} />
-          <div style={{ padding: '16px 20px' }}>
-            {(context?.race_name || (context && context.total_sessions > 0) || todaySession) && (
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '18px' }}>
-                {context?.race_name && (
-                  <div>
-                    <Label>Race Goal</Label>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: TEXT, fontFamily: FONT }}>
-                      {context.race_name}
-                      {context.weeks_to_race != null && (
-                        <span style={{ fontWeight: 400, color: MUTED, marginLeft: '8px' }}>{context.weeks_to_race}w away</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {context && context.total_sessions > 0 && (
-                  <div>
-                    <Label>This Week</Label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <div style={{ display: 'flex', gap: '3px' }}>
-                        {Array.from({ length: context.total_sessions }).map((_, i) => (
-                          <div key={i} style={{
-                            width: '18px', height: '4px', borderRadius: '2px',
-                            background: i < context.sessions_completed ? SAGE : 'rgba(125,156,184,0.22)',
-                          }} />
-                        ))}
-                      </div>
-                      <span style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT }}>
-                        {context.sessions_completed}/{context.total_sessions}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {todaySession && (
-                  <div>
-                    <Label>Today</Label>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: TEXT, fontFamily: FONT }}>{todaySession.workout_type}</div>
-                    {todaySession.intensity && <div style={{ fontSize: '0.75rem', color: MUTED, marginTop: '2px', fontFamily: FONT }}>{todaySession.intensity}</div>}
-                  </div>
-                )}
+          <CardHeader label="Week Context" title={context?.stage_name ? `PHASE: ${context.stage_name}` : undefined} />
+          <div style={{ padding: '0.75rem 1rem' }}>
+            {context && context.total_sessions > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  {Array.from({ length: context.total_sessions }).map((_, i) => (
+                    <div key={i} style={{
+                      width: '18px', height: '4px', borderRadius: '2px',
+                      background: i < context.sessions_completed ? SAGE : 'rgba(125,156,184,0.22)',
+                    }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT }}>
+                  {context.sessions_completed}/{context.total_sessions} sessions
+                </span>
               </div>
             )}
             <div>
               <Label>Weekly Schedule</Label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginTop: '10px' }}>
-                {weekDates.map(({ iso, abbrev }) => (
-                  <DayCell key={iso} abbrev={abbrev} isToday={iso === todayDate} session={getSession(iso)} />
-                ))}
-              </div>
-              {!loading && !program && (
+              {(() => {
+                const milesMap = Object.fromEntries((context?.week_days ?? []).map(d => [d.date, d]));
+                const totalMiles    = context?.week_total_miles   ?? 0;
+                const totalVert     = context?.week_total_vert    ?? 0;
+                const plannedMiles  = context?.planned_week_miles ?? 0;
+                return (
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '10px', alignItems: 'stretch' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', flex: 1 }}>
+                      {weekDates.map(({ iso, abbrev }) => (
+                        <DayCell
+                          key={iso} abbrev={abbrev} isToday={iso === todayDate}
+                          session={getSession(iso)}
+                          miles={milesMap[iso]?.miles}
+                          isActual={milesMap[iso]?.is_actual ?? true}
+                        />
+                      ))}
+                    </div>
+                    {/* Weekly totals */}
+                    <div style={{ width: '1px', background: 'rgba(125,156,184,0.15)', margin: '0 8px', alignSelf: 'stretch' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px', minWidth: '52px' }}>
+                      <div style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Week</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: TEXT, fontFamily: FONT, whiteSpace: 'nowrap' }}>
+                        {totalMiles > 0 ? totalMiles.toFixed(1) : '0'}
+                        <span style={{ fontSize: '0.78rem', fontWeight: 400, color: MUTED }}> mi</span>
+                      </div>
+                      {plannedMiles > 0 && (
+                        <div style={{ fontSize: '0.78rem', color: MUTED, fontFamily: FONT, whiteSpace: 'nowrap', fontStyle: 'italic' }}>
+                          {plannedMiles.toFixed(0)} planned
+                        </div>
+                      )}
+                      {totalVert > 0 && (
+                        <div style={{ fontSize: '0.82rem', color: MUTED, fontFamily: FONT, whiteSpace: 'nowrap' }}>
+                          {Math.round(totalVert).toLocaleString()} ft
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {programLoading && (
+                <p style={{ margin: '12px 0 0', color: MUTED, fontSize: '0.8rem', fontStyle: 'italic', fontFamily: FONT }}>
+                  Loading weekly plan...
+                </p>
+              )}
+              {!programLoading && !program && (
                 <p style={{ margin: '12px 0 0', color: MUTED, fontSize: '0.8rem', fontStyle: 'italic', fontFamily: FONT }}>
                   No weekly program. Visit the Coach tab to generate one.
                 </p>

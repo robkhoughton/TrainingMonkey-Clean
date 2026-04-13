@@ -1341,7 +1341,7 @@ def get_current_week_context(user_id):
             SELECT id, week_start_date,
                    strategic_summary, deviation_log,
                    revision_pending, revision_proposal,
-                   program_json
+                   program_json, schedule_constraints
             FROM weekly_programs
             WHERE user_id = %s
               AND week_start_date <= CURRENT_DATE
@@ -1357,6 +1357,75 @@ def get_current_week_context(user_id):
     except Exception as e:
         logger.error(f"db_utils: get_current_week_context failed for user {user_id}: {e}")
         return None
+
+
+def save_schedule_constraint(user_id, week_start, entry):
+    """Append a date-specific scheduling exception to weekly_programs.schedule_constraints.
+
+    Args:
+        user_id (int): User ID.
+        week_start (date | str): Sunday date of the target week (YYYY-MM-DD).
+        entry (dict): {date (str YYYY-MM-DD), reason (str), entered_at (str ISO)}.
+    """
+    try:
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET schedule_constraints = COALESCE(schedule_constraints, '[]'::jsonb)
+                                       || to_jsonb(%s::jsonb),
+                updated_at = NOW()
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (json.dumps(entry), user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: Saved schedule constraint for user {user_id}, "
+            f"week {week_start}, date {entry.get('date')}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: save_schedule_constraint failed for user {user_id}, "
+            f"week {week_start}: {e}"
+        )
+        raise
+
+
+def delete_schedule_constraint(user_id, week_start, constraint_date):
+    """Remove a schedule constraint entry by date from weekly_programs.schedule_constraints.
+
+    Args:
+        user_id (int): User ID.
+        week_start (date | str): Sunday date of the target week (YYYY-MM-DD).
+        constraint_date (str): YYYY-MM-DD date of the constraint to remove.
+    """
+    try:
+        execute_query(
+            """
+            UPDATE weekly_programs
+            SET schedule_constraints = (
+                SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                FROM jsonb_array_elements(COALESCE(schedule_constraints, '[]'::jsonb)) AS elem
+                WHERE elem->>'date' != %s
+            ),
+            updated_at = NOW()
+            WHERE user_id = %s
+              AND week_start_date = %s
+            """,
+            (constraint_date, user_id, str(week_start)),
+            fetch=False
+        )
+        logger.info(
+            f"db_utils: Deleted schedule constraint for user {user_id}, "
+            f"week {week_start}, date {constraint_date}"
+        )
+    except Exception as e:
+        logger.error(
+            f"db_utils: delete_schedule_constraint failed for user {user_id}, "
+            f"week {week_start}: {e}"
+        )
+        raise
 
 
 def append_deviation_log(user_id, week_start, entry):
@@ -1671,6 +1740,117 @@ def update_alignment_query(query_id, status, response=None, snooze_until=None):
         raise
 
 
+# ─── Aerobic Assessment ────────────────────────────────────────────────────────
+
+def get_activities_with_hr_streams(user_id, limit=30):
+    """Return recent running activities that have a stored HR stream.
+
+    Includes a flag indicating whether the activity has already been assessed.
+    Only returns activities with duration >= 30 min (minimum viable drift test).
+    """
+    query = """
+        SELECT
+            a.activity_id, a.name, a.date, a.duration_minutes,
+            a.avg_heart_rate, a.sport_type, a.distance_miles,
+            hs.sample_rate,
+            (SELECT COUNT(*) FROM aerobic_assessments aa
+             WHERE aa.activity_id = a.activity_id AND aa.user_id = %s) AS already_assessed
+        FROM activities a
+        JOIN hr_streams hs ON hs.activity_id = a.activity_id AND hs.user_id = a.user_id
+        WHERE a.user_id = %s
+          AND a.sport_type IN ('Run', 'TrailRun', 'VirtualRun', 'Hike')
+          AND a.duration_minutes >= 30
+        ORDER BY a.date DESC
+        LIMIT %s
+    """
+    return execute_query(query, (user_id, user_id, limit), fetch=True) or []
+
+
+def save_aerobic_assessment(user_id, activity_id, data):
+    """Save (or update) an aerobic assessment result.
+
+    Args:
+        user_id:     int
+        activity_id: int — Strava activity ID
+        data:        dict from analyze_hr_drift_test() plus warmup_minutes, notes
+
+    Returns:
+        Saved row as dict, or None on failure.
+    """
+    # Fetch the activity date so we can store test_date without caller needing it
+    date_row = execute_query(
+        "SELECT date FROM activities WHERE activity_id = %s AND user_id = %s",
+        (activity_id, user_id), fetch=True
+    )
+    test_date = date_row[0]['date'] if date_row else None
+
+    query = """
+        INSERT INTO aerobic_assessments
+            (user_id, activity_id, test_date, warmup_minutes,
+             first_half_avg_hr, second_half_avg_hr, drift_pct,
+             aet_bpm, ant_bpm, gap_pct, gap_status, interpretation,
+             steady_state_minutes, notes, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (user_id, activity_id) DO UPDATE SET
+            warmup_minutes       = EXCLUDED.warmup_minutes,
+            first_half_avg_hr    = EXCLUDED.first_half_avg_hr,
+            second_half_avg_hr   = EXCLUDED.second_half_avg_hr,
+            drift_pct            = EXCLUDED.drift_pct,
+            aet_bpm              = EXCLUDED.aet_bpm,
+            ant_bpm              = EXCLUDED.ant_bpm,
+            gap_pct              = EXCLUDED.gap_pct,
+            gap_status           = EXCLUDED.gap_status,
+            interpretation       = EXCLUDED.interpretation,
+            steady_state_minutes = EXCLUDED.steady_state_minutes,
+            notes                = EXCLUDED.notes,
+            updated_at           = NOW()
+        RETURNING *
+    """
+    params = (
+        user_id, activity_id, test_date,
+        data.get('warmup_minutes', 10.0),
+        data['first_half_avg_hr'], data['second_half_avg_hr'], data['drift_pct'],
+        data['aet_bpm'], data.get('ant_bpm'),
+        data.get('gap_pct'), data.get('gap_status'),
+        data['interpretation'], data['steady_state_minutes'],
+        data.get('notes'),
+    )
+    result = execute_query(query, params, fetch=True)
+    return result[0] if result else None
+
+
+def get_aerobic_assessments(user_id):
+    """Return all aerobic assessments for a user, newest first.
+
+    Joins to activities for the activity name and distance.
+    """
+    query = """
+        SELECT
+            aa.*,
+            a.name  AS activity_name,
+            a.distance_miles
+        FROM aerobic_assessments aa
+        JOIN activities a ON a.activity_id = aa.activity_id
+        WHERE aa.user_id = %s
+        ORDER BY aa.test_date DESC
+    """
+    return execute_query(query, (user_id,), fetch=True) or []
+
+
+def get_latest_aerobic_assessment(user_id):
+    """Return the most recent aerobic assessment for a user, or None."""
+    query = """
+        SELECT aa.*, a.name AS activity_name
+        FROM aerobic_assessments aa
+        JOIN activities a ON a.activity_id = aa.activity_id
+        WHERE aa.user_id = %s
+        ORDER BY aa.test_date DESC
+        LIMIT 1
+    """
+    result = execute_query(query, (user_id,), fetch=True)
+    return result[0] if result else None
+
+
 # Also update the __all__ list to include these new functions:
 __all__ = [
     'get_db_connection',
@@ -1698,6 +1878,8 @@ __all__ = [
     'delete_hr_stream_data',
     # Plan Execution Loop — Phase A
     'get_current_week_context',
+    'save_schedule_constraint',
+    'delete_schedule_constraint',
     'append_deviation_log',
     'set_revision_pending',
     'upsert_week_strategic_summary',
@@ -1709,4 +1891,9 @@ __all__ = [
     'get_pending_alignment_query',
     'update_alignment_query',
     'get_answered_alignment_queries',
+    # Aerobic Assessment
+    'save_aerobic_assessment',
+    'get_aerobic_assessments',
+    'get_latest_aerobic_assessment',
+    'get_activities_with_hr_streams',
 ]

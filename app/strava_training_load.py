@@ -1009,45 +1009,52 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     logger.info(f"External load calculated: distance={distance_miles:.2f}, "
                 f"elevation_load={elevation_load_miles:.2f}, total={total_load_miles:.2f}")
 
-    # Get heart rate data (UNCHANGED - your existing logic)
+    # Get heart rate data
     avg_hr = float(activity.average_heartrate or 0)
     max_hr = float(activity.max_heartrate or 0)
 
-    # Get detailed HR streams for zone calculation and enhanced TRIMP
-    hr_zone_times = [0, 0, 0, 0, 0]  # Default to zeros
-    hr_stream_data = None  # Initialize for enhanced TRIMP calculation
-    
-    # Try to get HR zone data from multiple sources
+    # Fetch user's HR zone settings so zone calculation uses YTM config, not Garmin zones.
+    # Priority: custom (lab-tested) > karvonen (HRR) > percentage of max HR.
+    user_hr_zones_method = 'percentage'
+    user_custom_hr_zones = None
+    if user_id:
+        try:
+            zone_settings = execute_query(
+                "SELECT hr_zones_method, custom_hr_zones FROM user_settings WHERE id = %s",
+                (user_id,), fetch=True
+            )
+            if zone_settings and zone_settings[0]:
+                user_hr_zones_method = zone_settings[0].get('hr_zones_method') or 'percentage'
+                user_custom_hr_zones = zone_settings[0].get('custom_hr_zones')
+            logger.info(
+                f"User {user_id} zone method: {user_hr_zones_method}, "
+                f"custom zones present: {bool(user_custom_hr_zones)}"
+            )
+        except Exception as e:
+            logger.warning(f"Could not load HR zone settings for user {user_id}: {e}; defaulting to percentage")
+
+    # Get HR streams for zone calculation and enhanced TRIMP.
+    # Time in zone is ONLY computed from HR streams — never estimated from average HR.
+    hr_zone_times = [0, 0, 0, 0, 0]
+    hr_stream_data = None
     try:
-        # Method 1: Try to get streams data (most accurate)
         streams = get_activity_streams(client, activity_id)
         if streams and 'heartrate' in streams and streams['heartrate']:
             logger.info(f"Streams retrieved for activity {activity_id}: {list(streams.keys())}")
             hr_zone_times = calculate_hr_zones_from_streams(
                 streams,
                 hr_config['max_hr'],
-                hr_config['resting_hr']
+                hr_config['resting_hr'],
+                hr_zones_method=user_hr_zones_method,
+                custom_hr_zones=user_custom_hr_zones,
             )
-            
-            # Extract HR stream data for enhanced TRIMP calculation
             hr_stream_data = streams['heartrate'].data
             logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
-            
-            # Note: HR stream data will be saved after the main activity record is created
-            # to avoid foreign key constraint violations
         else:
-            logger.warning(f"No heartrate stream data available for activity {activity_id}")
-            
-            # Method 2: Fallback - estimate HR zones from average HR if we have it
-            if avg_hr > 0 and hr_config:
-                logger.info(f"Estimating HR zones from average HR {avg_hr} for activity {activity_id}")
-                hr_zone_times = estimate_hr_zones_from_average_hr(
-                    avg_hr, 
-                    duration_minutes, 
-                    hr_config['max_hr'], 
-                    hr_config['resting_hr']
-                )
-                logger.info(f"Estimated HR zone times: {hr_zone_times}")
+            logger.warning(
+                f"No HR stream data for activity {activity_id} — time in zone recorded as zeros. "
+                f"Zone estimation from average HR is not performed."
+            )
     except Exception as e:
         logger.warning(f"Could not get HR data for activity {activity_id}: {str(e)}")
 
@@ -1520,10 +1527,27 @@ def _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, 
         return 0.0
 
 
-def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60):
+def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
+                                     hr_zones_method='percentage', custom_hr_zones=None):
     """
-    Calculate time spent in heart rate zones from stream data.
-    Returns array of seconds in each zone [zone1, zone2, zone3, zone4, zone5].
+    Calculate time spent in heart rate zones from stream data using YTM user settings.
+
+    Zone boundary priority (matching user HR settings):
+      1. custom   — lab-tested boundaries from user_settings.custom_hr_zones (preferred)
+      2. karvonen — heart rate reserve method using resting_hr + max_hr
+      3. percentage — percentage of max_hr only (fallback when no resting_hr)
+
+    Args:
+        hr_stream: Strava stream dict containing 'heartrate' key
+        max_hr: user's max HR from user_settings
+        resting_hr: user's resting HR from user_settings
+        hr_zones_method: 'karvonen'/'reserve' or 'percentage' (from user_settings.hr_zones_method)
+        custom_hr_zones: dict of custom zone boundaries (from user_settings.custom_hr_zones);
+                         if present, always takes priority over method-derived boundaries
+
+    Returns:
+        list of 5 ints: seconds spent in [zone1, zone2, zone3, zone4, zone5]
+        Returns [0,0,0,0,0] if stream unavailable — never estimated from average HR.
     """
     if not hr_stream or 'heartrate' not in hr_stream:
         return [0, 0, 0, 0, 0]
@@ -1533,29 +1557,73 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60):
         if not hr_data:
             return [0, 0, 0, 0, 0]
 
-        # Calculate HR zones using same logic as Garmin version
-        hr_reserve = max_hr - resting_hr
+        # Parse custom zones if provided as a JSON string
+        if custom_hr_zones and isinstance(custom_hr_zones, str):
+            try:
+                custom_hr_zones = json.loads(custom_hr_zones)
+            except Exception:
+                logger.warning("Could not parse custom_hr_zones JSON; ignoring custom zones")
+                custom_hr_zones = None
 
-        zones = [
-            (resting_hr + 0.5 * hr_reserve, resting_hr + 0.6 * hr_reserve),  # Zone 1
-            (resting_hr + 0.6 * hr_reserve, resting_hr + 0.7 * hr_reserve),  # Zone 2
-            (resting_hr + 0.7 * hr_reserve, resting_hr + 0.8 * hr_reserve),  # Zone 3
-            (resting_hr + 0.8 * hr_reserve, resting_hr + 0.9 * hr_reserve),  # Zone 4
-            (resting_hr + 0.9 * hr_reserve, max_hr),  # Zone 5
-        ]
+        # Determine which method is active and build zone boundaries
+        if custom_hr_zones:
+            method_label = 'custom'
+            # Build base boundaries then apply custom overrides
+            hr_reserve = max_hr - resting_hr
+            base = [
+                [resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve],
+                [resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve],
+                [resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve],
+                [resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve],
+                [resting_hr + 0.90 * hr_reserve, max_hr],
+            ]
+            zone_keys = ['zone1', 'zone2', 'zone3', 'zone4', 'zone5']
+            for i, key in enumerate(zone_keys):
+                if key in custom_hr_zones:
+                    c = custom_hr_zones[key]
+                    if c.get('min') is not None:
+                        base[i][0] = float(c['min'])
+                    if c.get('max') is not None:
+                        base[i][1] = float(c['max'])
+            zones = [tuple(z) for z in base]
+
+        elif hr_zones_method in ('karvonen', 'reserve'):
+            method_label = 'karvonen'
+            hr_reserve = max_hr - resting_hr
+            zones = [
+                (resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve),
+                (resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve),
+                (resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve),
+                (resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve),
+                (resting_hr + 0.90 * hr_reserve, max_hr),
+            ]
+
+        else:
+            method_label = 'percentage'
+            zones = [
+                (max_hr * 0.50, max_hr * 0.60),
+                (max_hr * 0.60, max_hr * 0.70),
+                (max_hr * 0.70, max_hr * 0.80),
+                (max_hr * 0.80, max_hr * 0.90),
+                (max_hr * 0.90, max_hr),
+            ]
+
+        logger.info(
+            f"HR zone method: {method_label} | "
+            f"max_hr={max_hr}, resting_hr={resting_hr} | "
+            f"boundaries: {[(round(mn), round(mx)) for mn, mx in zones]}"
+        )
 
         zone_times = [0, 0, 0, 0, 0]
-
         for hr in hr_data:
             if hr <= 0:
                 continue
-
             for i, (zone_min, zone_max) in enumerate(zones):
                 if zone_min <= hr < zone_max:
                     zone_times[i] += 1
                     break
 
-        logger.info(f"HR zone times (seconds): {zone_times}")
+        logger.info(f"HR zone times (seconds) [{method_label}]: {zone_times}")
         return zone_times
 
     except Exception as e:
@@ -1565,8 +1633,8 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60):
 
 def estimate_hr_zones_from_average_hr(avg_hr, duration_minutes, max_hr=180, resting_hr=60):
     """
-    Estimate HR zone distribution from average HR when stream data is not available.
-    This is a fallback method that provides reasonable estimates based on average HR.
+    DEPRECATED — not called. Time in zone must be computed from HR streams only.
+    Estimation from average HR produces inaccurate zone distributions and is not used.
     """
     try:
         if avg_hr <= 0 or duration_minutes <= 0:

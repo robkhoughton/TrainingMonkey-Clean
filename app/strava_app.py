@@ -54,6 +54,8 @@ from db_connection_manager import initialize_database_pool, get_database_manager
 from optimized_token_management import OptimizedTokenManager, batch_refresh_all_tokens
 from optimized_acwr_service import OptimizedACWRService, batch_recalculate_all_acwr
 from prompt_constants import format_divergence_for_prompt
+from readiness_engine import get_ans_readiness
+from aerobic_assessment_engine import analyze_hr_drift_test
 from intervals_icu_sync import run_daily_sync as intervals_icu_daily_sync
 
 # Import Strava processing functions
@@ -195,6 +197,10 @@ def initialize_database_pool_on_startup():
 
 # Initialize database pool immediately after app creation
 initialize_database_pool_on_startup()
+
+# Validate coaching context files exist (catches renames/deletions before first inference)
+from llm_recommendations_module import validate_coaching_context_files
+validate_coaching_context_files()
 
 # Cleanup database pool on app shutdown
 @app.teardown_appcontext
@@ -966,22 +972,24 @@ def sync_with_automatic_token_management():
         except Exception as e:
             logger.error(f"❌ sync_fix error: {str(e)}")
 
-        # Test user authentication
-        try:
-            user_id = current_user.id
-            logger.info(f"✅ User authenticated: {user_id}")
-        except Exception as e:
-            logger.error(f"❌ Authentication error: {str(e)}")
-            return jsonify({'error': f'Authentication failed: {str(e)}'}), 401
-
         logger.info("=== STARTING ENHANCED STRAVA SYNC WITH AUTO TOKEN REFRESH ===")
 
         data = request.get_json() or {}
         days = data.get('days', 7)
         logger.info(f"Sync parameters: days={days}")
 
-        # Check if this is a scheduled request (from Cloud Scheduler)
+        # Check if this is a scheduled request (from Cloud Scheduler) — must happen
+        # before any current_user access, as Cloud Scheduler has no session.
         is_scheduled_request = request.headers.get('X-Cloudscheduler') == 'true'
+
+        # For user-initiated requests, require an authenticated session
+        if not is_scheduled_request:
+            try:
+                user_id = current_user.id
+                logger.info(f"✅ User authenticated: {user_id}")
+            except Exception as e:
+                logger.error(f"❌ Authentication error: {str(e)}")
+                return jsonify({'error': f'Authentication failed: {str(e)}'}), 401
 
         if is_scheduled_request:
             logger.info("Processing scheduled sync request for all users")
@@ -4933,13 +4941,34 @@ def _build_activity_summary(day_activities):
     total_trimp = sum(float(a.get('trimp', 0) or 0) for a in real)
     primary = max(real, key=lambda x: x.get('distance_miles', 0) or 0)
 
+    total_z1 = sum(int(a.get('time_in_zone1') or 0) for a in real)
+    total_z2 = sum(int(a.get('time_in_zone2') or 0) for a in real)
+    total_z3 = sum(int(a.get('time_in_zone3') or 0) for a in real)
+    total_z4 = sum(int(a.get('time_in_zone4') or 0) for a in real)
+    total_z5 = sum(int(a.get('time_in_zone5') or 0) for a in real)
+    total_zone_sec = total_z1 + total_z2 + total_z3 + total_z4 + total_z5
+
+    def _pct(z):
+        return round(z / total_zone_sec * 100, 1) if total_zone_sec > 0 else 0.0
+
     return {
         'type': primary.get('type', 'Unknown'),
         'distance': round(total_distance, 2),
         'elevation': round(total_elevation, 0),
         'workout_classification': classify_workout_by_hr_zones(real),
         'total_trimp': round(total_trimp, 1),
-        'activity_id': primary.get('activity_id')
+        'activity_id': primary.get('activity_id'),
+        'time_in_zone1': total_z1,
+        'time_in_zone2': total_z2,
+        'time_in_zone3': total_z3,
+        'time_in_zone4': total_z4,
+        'time_in_zone5': total_z5,
+        'total_zone_seconds': total_zone_sec,
+        'z1_pct': _pct(total_z1),
+        'z2_pct': _pct(total_z2),
+        'z3_pct': _pct(total_z3),
+        'z4_pct': _pct(total_z4),
+        'z5_pct': _pct(total_z5),
     }
 
 
@@ -5012,13 +5041,35 @@ def get_activity_summary_for_date(date_obj, user_id):
         # Classify workout based on HR zones (more accurate than TRIMP)
         workout_classification = classify_workout_by_hr_zones(activity_list)
 
+        # Aggregate zone times for compliance checking
+        total_z1 = sum(int(a.get('time_in_zone1') or 0) for a in activity_list)
+        total_z2 = sum(int(a.get('time_in_zone2') or 0) for a in activity_list)
+        total_z3 = sum(int(a.get('time_in_zone3') or 0) for a in activity_list)
+        total_z4 = sum(int(a.get('time_in_zone4') or 0) for a in activity_list)
+        total_z5 = sum(int(a.get('time_in_zone5') or 0) for a in activity_list)
+        total_zone_sec = total_z1 + total_z2 + total_z3 + total_z4 + total_z5
+
+        def _pct(z):
+            return round(z / total_zone_sec * 100, 1) if total_zone_sec > 0 else 0.0
+
         result = {
             'type': activity_type,
             'distance': round(total_distance, 2),
             'elevation': round(total_elevation, 0),
             'workout_classification': workout_classification,
             'total_trimp': round(total_trimp, 1),
-            'activity_id': primary_activity_id  # CRITICAL: Include for "View on Strava" links
+            'activity_id': primary_activity_id,
+            'time_in_zone1': total_z1,
+            'time_in_zone2': total_z2,
+            'time_in_zone3': total_z3,
+            'time_in_zone4': total_z4,
+            'time_in_zone5': total_z5,
+            'total_zone_seconds': total_zone_sec,
+            'z1_pct': _pct(total_z1),
+            'z2_pct': _pct(total_z2),
+            'z3_pct': _pct(total_z3),
+            'z4_pct': _pct(total_z4),
+            'z5_pct': _pct(total_z5),
         }
 
         logger.info(f"Activity summary for {date_str}: {result}")
@@ -5693,7 +5744,15 @@ def save_journal_entry():
             alignment_score = None
             try:
                 logger.info(f"🔍 Step 1: Generating autopsy for {date_str}")
-                autopsy_is_fallback = generate_autopsy_for_date(date_str, current_user.id) or False
+                _autopsy_result = generate_autopsy_for_date(date_str, current_user.id)
+                if isinstance(_autopsy_result, dict):
+                    autopsy_is_fallback = _autopsy_result.get('is_fallback', False)
+                    _autopsy_next_session_type = _autopsy_result.get('next_session_type')
+                    _autopsy_next_session_adjustment = _autopsy_result.get('next_session_adjustment')
+                else:
+                    autopsy_is_fallback = bool(_autopsy_result)
+                    _autopsy_next_session_type = None
+                    _autopsy_next_session_adjustment = None
                 autopsy_generated = True
                 logger.info(f"✅ Autopsy generated for {date_str}")
                 
@@ -5759,6 +5818,8 @@ def save_journal_entry():
                     update_athlete_model(current_user.id, {
                         'alignment_score': alignment_score,
                         'date': date_str,
+                        'next_session_type': _autopsy_next_session_type,
+                        'next_session_adjustment': _autopsy_next_session_adjustment,
                     })
                 except Exception as model_err:
                     logger.warning(
@@ -5970,33 +6031,22 @@ def get_readiness():
         )
         row = dict(rows[0]) if rows else {}
 
-        # HRV 30-day baseline (always fetch — needed for readiness state even without today's value)
-        hrv_baseline = None
-        hrv_baseline_count = 0
-        b = db_utils.execute_query(
-            """SELECT AVG(hrv_value) AS baseline, COUNT(hrv_value) AS hrv_count
-               FROM journal_entries
-               WHERE user_id = %s AND date >= %s::date - INTERVAL '30 days'
-                 AND date < %s::date AND hrv_value IS NOT NULL""",
-            (current_user.id, date_str, date_str), fetch=True
-        )
-        if b and b[0]['baseline']:
-            hrv_baseline = round(float(b[0]['baseline']), 1)
-            hrv_baseline_count = int(b[0]['hrv_count'] or 0)
-
-        # RHR 7-day baseline
-        rhr_baseline = None
-        rhr_baseline_count = 0
-        b = db_utils.execute_query(
-            """SELECT AVG(resting_hr) AS baseline, COUNT(resting_hr) AS rhr_count
-               FROM journal_entries
-               WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
-                 AND date < %s::date AND resting_hr IS NOT NULL""",
-            (current_user.id, date_str, date_str), fetch=True
-        )
-        if b and b[0]['baseline']:
-            rhr_baseline = round(float(b[0]['baseline']), 1)
-            rhr_baseline_count = int(b[0]['rhr_count'] or 0)
+        # intervals.icu labels last night's wellness by sleep-start date (yesterday).
+        # If today has no HRV/wellness data, fall back to the most recent entry that does
+        # so the readiness panel always shows current data regardless of the date offset.
+        _has_wellness = any(row.get(f) is not None for f in ['hrv_value', 'resting_hr', 'sleep_duration_secs'])
+        if not _has_wellness:
+            fallback = db_utils.execute_query(
+                """SELECT sleep_quality, morning_soreness, hrv_value, hrv_source,
+                          resting_hr, sleep_duration_secs, sleep_score,
+                          weight, spo2, respiration_rate, vo2max
+                   FROM journal_entries
+                   WHERE user_id = %s AND date < %s AND hrv_value IS NOT NULL
+                   ORDER BY date DESC LIMIT 1""",
+                (current_user.id, date_str), fetch=True
+            )
+            if fallback:
+                row = dict(fallback[0])
 
         # Weight 7-day baseline
         weight_baseline = None
@@ -6010,36 +6060,22 @@ def get_readiness():
             if b and b[0]['baseline']:
                 weight_baseline = round(float(b[0]['baseline']), 2)
 
-        # 28-day personal range for HRV, RHR, sleep (for normalized donut charts)
-        ranges = db_utils.execute_query(
-            """SELECT
-                 MIN(hrv_value)             AS hrv_28d_low,
-                 MAX(hrv_value)             AS hrv_28d_high,
-                 MIN(resting_hr)            AS rhr_28d_low,
-                 MAX(resting_hr)            AS rhr_28d_high,
-                 MIN(sleep_duration_secs)   AS sleep_28d_low,
-                 MAX(sleep_duration_secs)   AS sleep_28d_high
-               FROM journal_entries
-               WHERE user_id = %s
-                 AND date >= %s::date - INTERVAL '28 days'
-                 AND date < %s::date""",
-            (current_user.id, date_str, date_str), fetch=True
-        )
-        r28 = dict(ranges[0]) if ranges else {}
-        def _f(v): return float(v) if v is not None else None
+        # ANS readiness: z-score pipeline with four-state classification
+        _ans = get_ans_readiness(current_user.id)
 
-        # Readiness state synthesis
+        # Component flags (sleep, soreness) via legacy path — HRV/RHR driven by ans_result
         try:
             from llm_recommendations_module import compute_readiness_state
             from db_utils import get_athlete_model as _get_athlete_model
             _athlete_model = _get_athlete_model(current_user.id)
             _rs = compute_readiness_state(
                 readiness_row=row,
-                hrv_baseline=hrv_baseline,
-                hrv_baseline_count=hrv_baseline_count,
-                rhr_baseline=rhr_baseline,
-                rhr_baseline_count=rhr_baseline_count,
+                hrv_baseline=None,
+                hrv_baseline_count=0,
+                rhr_baseline=None,
+                rhr_baseline_count=0,
                 athlete_model=_athlete_model,
+                ans_result=_ans,
             )
         except Exception as rs_err:
             logger.warning(f"Could not compute readiness state: {rs_err}")
@@ -6051,9 +6087,11 @@ def get_readiness():
             'morning_soreness': row.get('morning_soreness'),
             'hrv_value': float(row['hrv_value']) if row.get('hrv_value') is not None else None,
             'hrv_source': row.get('hrv_source'),
-            'hrv_baseline_30d': hrv_baseline,
+            'hrv_z': _ans.get('hrv_z'),
+            'rhr_z': _ans.get('rhr_z'),
+            'hrv_reading_count': _ans.get('hrv_reading_count', 0),
+            'rhr_reading_count': _ans.get('rhr_reading_count', 0),
             'resting_hr': row.get('resting_hr'),
-            'rhr_baseline_7d': rhr_baseline,
             'sleep_duration_secs': row.get('sleep_duration_secs'),
             'sleep_score': row.get('sleep_score'),
             'weight': float(row['weight']) if row.get('weight') is not None else None,
@@ -6061,16 +6099,11 @@ def get_readiness():
             'spo2': float(row['spo2']) if row.get('spo2') is not None else None,
             'respiration_rate': float(row['respiration_rate']) if row.get('respiration_rate') is not None else None,
             'vo2max': float(row['vo2max']) if row.get('vo2max') is not None else None,
-            'readiness_state': _rs.get('state'),
+            'readiness_state': _ans.get('state'),
             'readiness_confidence': _rs.get('confidence'),
             'readiness_flags': _rs.get('component_flags', {}),
-            'readiness_narrative': _rs.get('narrative'),
-            'hrv_28d_low': _f(r28.get('hrv_28d_low')),
-            'hrv_28d_high': _f(r28.get('hrv_28d_high')),
-            'rhr_28d_low': _f(r28.get('rhr_28d_low')),
-            'rhr_28d_high': _f(r28.get('rhr_28d_high')),
-            'sleep_28d_low': _f(r28.get('sleep_28d_low')),
-            'sleep_28d_high': _f(r28.get('sleep_28d_high')),
+            'readiness_narrative': _ans.get('narrative'),
+            'is_overreaching': _ans.get('is_overreaching', False),
         })
     except Exception as e:
         logger.error(f"Error fetching readiness for user {current_user.id}: {e}", exc_info=True)
@@ -6226,7 +6259,7 @@ def get_journal_context():
                         program_json = _json.loads(program_json)
                     except Exception:
                         program_json = {}
-                days = program_json.get('days', [])
+                days = program_json.get('daily_program') or program_json.get('days', [])
                 total_sessions = sum(1 for d in days if d.get('session_type', '').lower() not in ('rest', 'off', ''))
             else:
                 total_sessions = 7  # fallback
@@ -6234,7 +6267,7 @@ def get_journal_context():
             # Today's planned session
             today_str = today.strftime('%Y-%m-%d')
             if program_json and isinstance(program_json, dict):
-                days = program_json.get('days', [])
+                days = program_json.get('daily_program') or program_json.get('days', [])
                 for d in days:
                     if d.get('date') == today_str or d.get('day_of_week') == today.strftime('%A'):
                         today_session = {
@@ -6243,6 +6276,75 @@ def get_journal_context():
                         }
                         break
 
+        # Per-day mileage for the current week (Sunday–Saturday, user's timezone).
+        # On Sunday (dow=0) the new week just started with no activities yet.
+        # Show the just-completed previous week (last Sun–Sat) so mileage is always visible.
+        from timezone_utils import get_app_current_date
+        from datetime import timedelta as _td
+        today_tz  = get_app_current_date()
+        dow       = (today_tz.weekday() + 1) % 7   # 0=Sunday … 6=Saturday
+        if dow == 0:
+            week_sun = today_tz - _td(days=7)   # last Sunday
+            week_sat = today_tz - _td(days=1)   # last Saturday
+        else:
+            week_sun = today_tz - _td(days=dow)
+            week_sat = week_sun + _td(days=6)
+
+        day_rows = db_utils.execute_query(
+            """SELECT date,
+                      COALESCE(SUM(distance_miles), 0)      AS miles,
+                      COALESCE(SUM(elevation_gain_feet), 0) AS vert
+               FROM activities
+               WHERE user_id = %s AND activity_id > 0
+                 AND date >= %s AND date <= %s
+               GROUP BY date ORDER BY date""",
+            (user_id, week_sun.isoformat(), week_sat.isoformat()),
+            fetch=True
+        )
+
+        week_days = [
+            {'date': str(r['date']), 'miles': float(r['miles'] or 0), 'vert': float(r['vert'] or 0)}
+            for r in (day_rows or [])
+        ]
+        actual_by_date = {d['date']: d for d in week_days}
+        week_total_miles = sum(d['miles'] for d in week_days)
+        week_total_vert  = sum(d['vert']  for d in week_days)
+
+        # Planned mileage per day from the weekly program (future days + today if not yet run)
+        planned_days = []
+        if week_ctx:
+            pj = week_ctx.get('program_json') or {}
+            if isinstance(pj, str):
+                import json as _json
+                try: pj = _json.loads(pj)
+                except Exception: pj = {}
+            for entry in (pj.get('daily_program') or pj.get('days') or []):
+                d_str = entry.get('date') or ''
+                if not d_str:
+                    continue
+                planned_days.append({
+                    'date':  d_str,
+                    'miles': float(entry.get('distance_miles') or 0),
+                    'vert':  float(entry.get('elevation_gain_feet') or 0),
+                })
+
+        # Merge: for each day in the display window, use actual if available, else planned
+        today_str_tz = today_tz.isoformat()
+        planned_by_date = {d['date']: d for d in planned_days}
+        merged_days = []
+        from datetime import timedelta as _td2
+        cur = week_sun
+        while cur <= week_sat:
+            iso = cur.isoformat()
+            if iso in actual_by_date:
+                merged_days.append({**actual_by_date[iso], 'is_actual': True})
+            elif iso in planned_by_date and iso >= today_str_tz:
+                merged_days.append({**planned_by_date[iso], 'is_actual': False})
+            cur += _td2(days=1)
+
+        # Planned weekly total (for display alongside actual)
+        planned_week_miles = sum(d['miles'] for d in planned_days)
+
         return jsonify({
             'stage_name': stage_name,
             'weeks_to_race': weeks_to_race,
@@ -6250,6 +6352,10 @@ def get_journal_context():
             'today_session': today_session,
             'sessions_completed': sessions_completed,
             'total_sessions': total_sessions,
+            'week_days': merged_days,
+            'week_total_miles': week_total_miles,
+            'week_total_vert': week_total_vert,
+            'planned_week_miles': planned_week_miles,
         })
 
     except Exception as e:
@@ -6257,6 +6363,7 @@ def get_journal_context():
         return jsonify({
             'stage_name': None, 'weeks_to_race': None, 'race_name': None,
             'today_session': None, 'sessions_completed': 0, 'total_sessions': 0,
+            'week_days': [], 'week_total_miles': 0, 'week_total_vert': 0, 'planned_week_miles': 0,
         })
 
 
@@ -6420,6 +6527,24 @@ def generate_autopsy_for_date(date_str, user_id):
         # Format activity summary text
         actual_activities = f"{activity_summary['type'].title()} workout: {activity_summary['distance']} miles, {activity_summary['elevation']} ft elevation, TRIMP: {activity_summary['total_trimp']} ({activity_summary['workout_classification']} intensity)"
 
+        # Compute zone compliance for autopsy
+        zone_compliance = None
+        try:
+            from llm_recommendations_module import get_user_hr_thresholds, compute_zone_compliance
+            hr_thresholds = get_user_hr_thresholds(user_id)
+            structured_output, _ = get_recommendation_meta_for_date(
+                datetime.strptime(date_str, '%Y-%m-%d').date(), user_id
+            )
+            prescribed_intent = None
+            if structured_output and isinstance(structured_output, dict):
+                prescribed_intent = (
+                    structured_output.get('decision', {}).get('polarized_session_intent')
+                    or structured_output.get('decision', {}).get('intensity_target')
+                )
+            zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds)
+        except Exception as _zce:
+            logger.warning(f"Zone compliance computation failed for {date_str}: {_zce}")
+
         # Import and use the enhanced autopsy generation
         from llm_recommendations_module import generate_activity_autopsy_enhanced
 
@@ -6428,15 +6553,20 @@ def generate_autopsy_for_date(date_str, user_id):
             date_str=date_str,
             prescribed_action=prescribed_action,
             actual_activities=actual_activities,
-            observations=observations
+            observations=observations,
+            zone_compliance=zone_compliance
         )
 
-        # Extract analysis and alignment score from enhanced result
+        # Extract analysis, alignment score, and next-session adjustment from enhanced result
         is_fallback = False
+        next_session_type = None
+        next_session_adjustment = None
         if isinstance(autopsy_result, dict):
             autopsy_analysis = autopsy_result.get('analysis', '')
             alignment_score = autopsy_result.get('alignment_score', 5)
             is_fallback = autopsy_result.get('is_fallback', False)
+            next_session_type = autopsy_result.get('next_session_type')
+            next_session_adjustment = autopsy_result.get('next_session_adjustment')
         else:
             # Fallback for old format
             autopsy_analysis = autopsy_result if autopsy_result else ''
@@ -6465,7 +6595,11 @@ def generate_autopsy_for_date(date_str, user_id):
         ))
 
         logger.info(f"Successfully generated and saved enhanced AI autopsy for user {user_id} on {date_str}")
-        return is_fallback
+        return {
+            'is_fallback': is_fallback,
+            'next_session_type': next_session_type,
+            'next_session_adjustment': next_session_adjustment,
+        }
 
     except Exception as e:
         logger.error(f"Error generating enhanced autopsy for {date_str}, user {user_id}: {str(e)}")
@@ -7166,10 +7300,13 @@ def weekly_synthesis_cron():
         from datetime import timedelta
         from timezone_utils import get_app_current_date
 
-        # Saturday run: synthesize the week that just ended (Mon–Sat)
+        # Synthesize the most recently completed week (Sun–Sat structure).
+        # Works correctly whether cron fires Saturday evening or Sunday morning.
+        # weekday(): Mon=0 … Sat=5, Sun=6
         today = get_app_current_date()  # Pacific time — avoids UTC midnight crossing Saturday→Sunday
-        days_since_monday = today.weekday()
-        week_start = today - timedelta(days=days_since_monday)
+        days_since_saturday = (today.weekday() - 5) % 7   # 0 on Sat, 1 on Sun, …
+        last_saturday = today - timedelta(days=days_since_saturday)
+        week_start = last_saturday - timedelta(days=6)     # Sunday that started the week
 
         users = db_utils.execute_query(
             "SELECT DISTINCT user_id FROM activities WHERE date >= %s",
@@ -7254,7 +7391,7 @@ def get_weekly_synthesis():
 def generate_weekly_synthesis_manual():
     """
     Manually trigger weekly synthesis generation for the prior week.
-    Body: { "week_start": "YYYY-MM-DD" } — the Monday of the week to synthesize (optional, defaults to last week).
+    Body: { "week_start": "YYYY-MM-DD" } — the Sunday of the week to synthesize (optional, defaults to last week).
     """
     try:
         from coach_recommendations import generate_weekly_synthesis
@@ -7267,9 +7404,11 @@ def generate_weekly_synthesis_manual():
         if week_start_str:
             week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
         else:
-            # Default: last week's Monday
+            # Default: Sunday that started the most recently completed week (Sun–Sat)
             today = get_app_current_date()
-            week_start = today - timedelta(days=today.weekday() + 7)
+            days_since_saturday = (today.weekday() - 5) % 7  # 0 on Sat, 1 on Sun, …
+            last_saturday = today - timedelta(days=days_since_saturday)
+            week_start = last_saturday - timedelta(days=6)
 
         synthesis = generate_weekly_synthesis(user_id, week_start)
 
@@ -7849,13 +7988,24 @@ def update_settings():
         update_fields = []
         update_values = []
 
+        # hr_zones_method is not accepted from the form — it is derived from data availability.
+        # If the user provides resting_hr, karvonen is used; otherwise percentage of max HR.
+        # Custom zones always take priority regardless of method (handled at calculation time).
+        allowed_fields = ['resting_hr', 'max_hr', 'gender', 'age', 'timezone', 'primary_sport',
+                          'secondary_sport', 'training_experience', 'current_phase', 'race_goal_date',
+                          'weekly_training_hours', 'acwr_alert_threshold', 'injury_risk_alerts',
+                          'recommendation_style', 'coaching_tone']
+
         for field, value in data.items():
-            if field in ['resting_hr', 'max_hr', 'gender', 'age', 'timezone', 'hr_zones_method', 'primary_sport',
-                         'secondary_sport', 'training_experience', 'current_phase', 'race_goal_date',
-                         'weekly_training_hours', 'acwr_alert_threshold', 'injury_risk_alerts',
-                         'recommendation_style', 'coaching_tone']:
+            if field in allowed_fields:
                 update_fields.append(f"{field} = %s")
                 update_values.append(value)
+
+        # Auto-derive and store hr_zones_method based on data provided
+        resting_hr_in_data = data.get('resting_hr') or old_settings_dict.get('resting_hr')
+        derived_method = 'karvonen' if resting_hr_in_data and int(resting_hr_in_data) > 0 else 'percentage'
+        update_fields.append("hr_zones_method = %s")
+        update_values.append(derived_method)
 
         if not update_fields:
             return jsonify({'error': 'No valid fields to update'}), 400
@@ -8238,17 +8388,35 @@ def get_heart_rate_zones():
                         zone_data['max_formula'] = f"Custom: {custom_zone['max']}"
                         zone_data['is_custom_max'] = True
 
+        # Derive active method from data availability — not from stored hr_zones_method.
+        # Priority: custom (lab-tested) > karvonen (if resting_hr present) > percentage
+        if custom_boundaries:
+            active_method = 'custom'
+            active_method_label = 'Custom (Lab-Tested)'
+            active_method_reason = 'Your custom zone boundaries are being used — these take priority over all formula-based methods.'
+        elif resting_hr and resting_hr > 0:
+            active_method = 'karvonen'
+            active_method_label = 'Karvonen (Heart Rate Reserve)'
+            active_method_reason = 'Zones calculated from your resting HR and max HR using the Karvonen formula.'
+        else:
+            active_method = 'percentage'
+            active_method_label = 'Percentage of Max HR'
+            active_method_reason = 'Zones calculated as a percentage of your max HR. Add your resting HR to enable the more accurate Karvonen method.'
+
         return jsonify({
             'success': True,
             'zones': final_zones,
             'method': method,
+            'active_method': active_method,
+            'active_method_label': active_method_label,
+            'active_method_reason': active_method_reason,
             'resting_hr': resting_hr,
             'max_hr': max_hr,
             'hr_reserve': hr_reserve,
             'has_custom_zones': custom_boundaries is not None,
-            'percentage_zones': percentage_zones,  # Always include for comparison
-            'karvonen_zones': karvonen_zones,  # Always include for comparison
-            'calculated_zones': calculated_zones  # The active method's zones
+            'percentage_zones': percentage_zones,
+            'karvonen_zones': karvonen_zones,
+            'calculated_zones': calculated_zones
         })
 
     except Exception as e:
@@ -11377,18 +11545,6 @@ def settings_coaching():
     """Coaching settings — redirected to Coach/Season"""
     return redirect('/dashboard?tab=coach')
 
-@app.route('/settings/acwr', methods=['GET'])
-@login_required
-def settings_acwr():
-    """ACWR visualization settings page"""
-    try:
-        return render_template('settings_acwr.html', 
-                             user=current_user, 
-                             active_section='acwr',
-                             user_context={'is_authenticated': True, 'user': current_user})
-    except Exception as e:
-        app.logger.error(f"Error rendering ACWR settings: {str(e)}")
-        return render_template('error.html', error="Failed to load ACWR settings"), 500
 
 @app.route('/admin/trimp-settings', methods=['GET'])
 @login_required
@@ -12816,6 +12972,155 @@ def delete_race_history(history_id):
         }), 500
 
 
+# ─── Aerobic Assessment Endpoints ─────────────────────────────────────────────
+
+@app.route('/api/coach/activities-with-hr', methods=['GET'])
+@login_required
+def get_activities_with_hr():
+    """Return recent running activities that have a stored HR stream."""
+    try:
+        activities = db_utils.get_activities_with_hr_streams(current_user.id)
+        serialized = []
+        for a in activities:
+            serialized.append({
+                'activity_id': a['activity_id'],
+                'name': a['name'] or 'Untitled',
+                'date': a['date'].strftime('%Y-%m-%d') if hasattr(a['date'], 'strftime') else str(a['date']),
+                'duration_minutes': float(a['duration_minutes'] or 0),
+                'avg_heart_rate': float(a['avg_heart_rate'] or 0),
+                'sport_type': a['sport_type'],
+                'distance_miles': float(a['distance_miles']) if a['distance_miles'] else None,
+                'sample_rate': float(a['sample_rate'] or 1.0),
+                'already_assessed': int(a['already_assessed'] or 0),
+            })
+        return jsonify({'success': True, 'activities': serialized})
+    except Exception as e:
+        logger.error(f"Error fetching HR activities for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/aerobic-assessments/preview', methods=['POST'])
+@login_required
+def preview_aerobic_assessment():
+    """Analyze an HR stream and return computed metrics without saving."""
+    try:
+        data = request.get_json() or {}
+        activity_id = data.get('activity_id')
+        if not activity_id:
+            return jsonify({'success': False, 'error': 'activity_id is required'}), 400
+
+        warmup_minutes = float(data.get('warmup_minutes', 10.0))
+        ant_bpm = float(data['ant_bpm']) if data.get('ant_bpm') else None
+
+        stream = db_utils.get_hr_stream_data(activity_id, current_user.id)
+        if not stream:
+            return jsonify({'success': False, 'error': 'No HR stream found for this activity.'}), 404
+
+        hr_data = stream['hr_data']
+        sample_rate = float(stream.get('sample_rate') or 1.0)
+
+        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm)
+
+        if not result['valid']:
+            return jsonify({'success': False, 'error': result['error']}), 400
+
+        return jsonify({'success': True, 'analysis': result})
+
+    except Exception as e:
+        logger.error(f"Error previewing aerobic assessment for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/aerobic-assessments', methods=['POST'])
+@login_required
+def save_aerobic_assessment_endpoint():
+    """Analyze an HR stream and save the result as an aerobic assessment."""
+    try:
+        data = request.get_json() or {}
+        activity_id = data.get('activity_id')
+        if not activity_id:
+            return jsonify({'success': False, 'error': 'activity_id is required'}), 400
+
+        warmup_minutes = float(data.get('warmup_minutes', 10.0))
+        ant_bpm = float(data['ant_bpm']) if data.get('ant_bpm') else None
+        notes = data.get('notes', '').strip() or None
+
+        stream = db_utils.get_hr_stream_data(activity_id, current_user.id)
+        if not stream:
+            return jsonify({'success': False, 'error': 'No HR stream found for this activity.'}), 404
+
+        hr_data = stream['hr_data']
+        sample_rate = float(stream.get('sample_rate') or 1.0)
+
+        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm)
+        if not result['valid']:
+            return jsonify({'success': False, 'error': result['error']}), 400
+
+        result['warmup_minutes'] = warmup_minutes
+        result['notes'] = notes
+
+        saved = db_utils.save_aerobic_assessment(current_user.id, activity_id, result)
+        if not saved:
+            return jsonify({'success': False, 'error': 'Failed to save assessment.'}), 500
+
+        # Serialize for JSON response
+        assessment = dict(saved)
+        for key in ('test_date', 'created_at', 'updated_at'):
+            if key in assessment and hasattr(assessment[key], 'strftime'):
+                assessment[key] = assessment[key].strftime('%Y-%m-%d') if key == 'test_date' else assessment[key].isoformat()
+        for key in ('drift_pct', 'aet_bpm', 'ant_bpm', 'gap_pct', 'first_half_avg_hr',
+                    'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes'):
+            if assessment.get(key) is not None:
+                assessment[key] = float(assessment[key])
+
+        return jsonify({'success': True, 'assessment': assessment}), 201
+
+    except Exception as e:
+        logger.error(f"Error saving aerobic assessment for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/aerobic-assessments', methods=['GET'])
+@login_required
+def get_aerobic_assessments_endpoint():
+    """Return all aerobic assessments for the current user."""
+    try:
+        rows = db_utils.get_aerobic_assessments(current_user.id)
+        assessments = []
+        for row in rows:
+            a = dict(row)
+            for key in ('test_date', 'created_at', 'updated_at'):
+                if key in a and hasattr(a[key], 'strftime'):
+                    a[key] = a[key].strftime('%Y-%m-%d') if key == 'test_date' else a[key].isoformat()
+            for key in ('drift_pct', 'aet_bpm', 'ant_bpm', 'gap_pct', 'first_half_avg_hr',
+                        'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes', 'distance_miles'):
+                if a.get(key) is not None:
+                    a[key] = float(a[key])
+            assessments.append(a)
+        return jsonify({'success': True, 'assessments': assessments})
+    except Exception as e:
+        logger.error(f"Error fetching aerobic assessments for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/aerobic-assessments/<int:assessment_id>', methods=['DELETE'])
+@login_required
+def delete_aerobic_assessment(assessment_id):
+    """Delete a single aerobic assessment (ownership enforced by WHERE clause)."""
+    try:
+        result = db_utils.execute_query(
+            "DELETE FROM aerobic_assessments WHERE id = %s AND user_id = %s RETURNING id",
+            (assessment_id, current_user.id),
+            fetch=True
+        )
+        if result:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Assessment not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting aerobic assessment {assessment_id} for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/race-history/screenshot', methods=['POST'])
 @login_required
 def upload_race_history_screenshot():
@@ -13378,6 +13683,98 @@ def accept_current_schedule():
         
     except Exception as e:
         logger.error(f"Error accepting schedule: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/schedule-constraints', methods=['GET'])
+@login_required
+def get_schedule_constraints():
+    """Return this week's date-specific scheduling exceptions."""
+    try:
+        user_id = current_user.id
+        week_ctx = db_utils.get_current_week_context(user_id)
+        constraints = []
+        if week_ctx:
+            raw = week_ctx.get('schedule_constraints') or []
+            constraints = raw if isinstance(raw, list) else []
+        return jsonify({'success': True, 'constraints': constraints})
+    except Exception as e:
+        logger.error(f"Error fetching schedule constraints for user {current_user.id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/schedule-constraints', methods=['POST'])
+@login_required
+def add_schedule_constraint():
+    """Add a date-specific scheduling exception for the current week."""
+    try:
+        user_id = current_user.id
+        data = request.get_json() or {}
+
+        constraint_date = data.get('date', '').strip()
+        reason = data.get('reason', '').strip()
+
+        if not constraint_date:
+            return jsonify({'success': False, 'error': 'date is required'}), 400
+
+        try:
+            from datetime import datetime as _dt
+            _dt.strptime(constraint_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'success': False, 'error': 'date must be YYYY-MM-DD'}), 400
+
+        week_ctx = db_utils.get_current_week_context(user_id)
+        if not week_ctx:
+            return jsonify({'success': False, 'error': 'No weekly program found for current week'}), 404
+
+        week_start = week_ctx['week_start_date']
+        entry = {
+            'date': constraint_date,
+            'reason': reason or 'Unavailable',
+            'entered_at': get_app_current_date().isoformat()
+        }
+
+        db_utils.save_schedule_constraint(user_id, week_start, entry)
+
+        updated_ctx = db_utils.get_current_week_context(user_id)
+        constraints = (updated_ctx.get('schedule_constraints') or []) if updated_ctx else []
+
+        logger.info(f"User {user_id} added schedule constraint for {constraint_date}")
+        return jsonify({'success': True, 'constraints': constraints})
+
+    except Exception as e:
+        logger.error(f"Error adding schedule constraint for user {current_user.id}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/schedule-constraints/<constraint_date>', methods=['DELETE'])
+@login_required
+def remove_schedule_constraint(constraint_date):
+    """Remove a date-specific scheduling exception by date."""
+    try:
+        user_id = current_user.id
+
+        try:
+            from datetime import datetime as _dt
+            _dt.strptime(constraint_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'success': False, 'error': 'date must be YYYY-MM-DD'}), 400
+
+        week_ctx = db_utils.get_current_week_context(user_id)
+        if not week_ctx:
+            return jsonify({'success': False, 'error': 'No weekly program found'}), 404
+
+        week_start = week_ctx['week_start_date']
+        db_utils.delete_schedule_constraint(user_id, week_start, constraint_date)
+
+        updated_ctx = db_utils.get_current_week_context(user_id)
+        constraints = (updated_ctx.get('schedule_constraints') or []) if updated_ctx else []
+
+        logger.info(f"User {user_id} removed schedule constraint for {constraint_date}")
+        return jsonify({'success': True, 'constraints': constraints})
+
+    except Exception as e:
+        logger.error(f"Error removing schedule constraint for user {current_user.id}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

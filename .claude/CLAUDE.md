@@ -44,6 +44,16 @@ TrainingMonkey/
 └── .claude/rules/          # Modular coding standards
 ```
 
+## Training Metrics Reference Guide
+
+`app/Training_Metrics_Reference_Guide.md` is the authoritative source for all coaching thresholds, metric definitions, and decision logic. **Before writing any code that involves coaching signals, pain scoring, ACWR thresholds, divergence windows, RPE, or training load decisions — read the relevant section of this guide.** Do not invent thresholds.
+
+Key sections:
+- Pain score scale and safety rules (§ Pain Score)
+- ACWR ranges and injury risk (§ Load Ratios)
+- Divergence productive window and breakdown floor (§ Normalized Load Divergence)
+- Decision framework for daily/weekly planning (§ Decision Framework)
+
 ## Critical Rules (Read First)
 
 1. **PostgreSQL ONLY** - Use `%s` placeholders, `SERIAL PRIMARY KEY`, `NOW()` - never SQLite syntax
@@ -83,6 +93,15 @@ Detailed standards are organized in `.claude/rules/`:
 - `deployment.md` - Dockerfile, frontend build, deployment process
 - `frontend.md` - React/TypeScript patterns, performance monitoring
 - `code-quality.md` - General standards, error handling, testing
+
+## Coaching Context Library
+
+Topic files in `app/coaching_context/` are injected state-gated into LLM prompts. No Dockerfile change needed — the directory is copied wholesale. See `app/coaching_context/README.md` for the file inventory and gating conditions.
+
+**Adding a new context file — 3 required steps:**
+1. Write `app/coaching_context/<topic>.md` — compact, imperative, model-facing
+2. Add a gating condition to `_load_coaching_context()` in `llm_recommendations_module.py` with a rationale comment
+3. Verify injection reaches **all 3 LLM call sites**: daily recommendation (`create_enhanced_prompt_with_tone`), agentic chat (~line 4321 in `llm_recommendations_module.py`), journal endpoint (`strava_app.py` ~line 6108)
 
 ## Key Files
 

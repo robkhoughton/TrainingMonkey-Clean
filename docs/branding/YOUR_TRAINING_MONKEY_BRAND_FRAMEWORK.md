@@ -1225,6 +1225,21 @@ Built by runners, for runners
 | Small | 0.95rem (15.2px) | 400 | Help text |
 | Caption | 0.85rem (13.6px) | 400 | Meta info |
 
+### Dashboard Container Hierarchy
+
+Three nested levels used throughout the in-app dashboard. Each has a distinct visual register:
+
+| Level | Name | Examples | Component | Style |
+|-------|------|----------|-----------|-------|
+| **1 — Card** | Top-level container | Signal Panel, Race Readiness | `CardHeader` | `13px`, `weight 700`, `uppercase`, `#7D9CB8`, dark gradient bg |
+| **2 — Group** | Major subdivision within a card | Training Status, Load | `Label` | `0.88rem`, `weight 700`, `uppercase`, `#7D9CB8` (Mountain Ridge) |
+| **3 — Metric** | Individual data element | Injury Risk, ACWR | gauge/metric label | `0.78rem`, `weight 400`, `title case`, `#6b7280` (muted) |
+
+Rules:
+- Level 2 uses Mountain Ridge (`#7D9CB8`) — same hue as the card header — so groups feel architecturally related to their card
+- Level 3 uses `text-transform: capitalize` (title case), not uppercase — marks it as a data label, not an organizational header
+- Never make Level 3 labels smaller than their current size to create hierarchy; promote Level 2 upward instead
+
 ### Component Checklist
 
 When designing a new page or feature, ensure:

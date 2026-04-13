@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from timezone_utils import get_app_current_date, get_current_week_start
 from unified_metrics_service import UnifiedMetricsService
 from db_utils import execute_query, upsert_week_strategic_summary
+from readiness_engine import get_weekly_ans_summary
 from llm_recommendations_module import (
     call_anthropic_api,
     load_training_guide,
@@ -355,6 +356,54 @@ def format_race_history_for_prompt(race_history: List[Dict], trend: Dict) -> str
     return "\n".join(lines)
 
 
+def _format_aet_prompt_block(assessment, target_week_start, stage: str = 'base') -> str:
+    """Format latest aerobic assessment for weekly program prompt injection.
+
+    Includes scheduling trigger via workout_library.get_aerobic_assessment_prompt_block().
+    Thresholds: ≤28d current (no action), 29-42d window open (suggest), >42d overdue (prescribe).
+    Blocked during taper, peak, and recovery phases.
+    """
+    from workout_library import get_aerobic_assessment_prompt_block
+
+    if not assessment:
+        sched = get_aerobic_assessment_prompt_block(9999, stage, last_drift_pct=None)
+        base = "No HR drift test on record."
+        if sched['prompt_block']:
+            return base + "\n\n" + sched['prompt_block']
+        return base + " Schedule a drift test when the athlete has a well-rested Zone 2 day available."
+
+    try:
+        from datetime import datetime as _dt
+        test_date = assessment['test_date']
+        if isinstance(test_date, str):
+            test_date = _dt.strptime(test_date, '%Y-%m-%d').date()
+        days_since = (target_week_start - test_date).days
+        freshness = "current" if days_since <= 28 else "retest window open" if days_since <= 42 else "overdue"
+
+        aet = float(assessment['aet_bpm'])
+        drift = float(assessment['drift_pct'])
+        lines = [
+            f"AeT: {aet:.0f} bpm | Drift: {drift:.1f}% | {assessment.get('interpretation', '')}",
+            f"Test date: {test_date} ({days_since} days ago — {freshness})",
+        ]
+        if assessment.get('gap_pct') is not None:
+            gap = float(assessment['gap_pct'])
+            lines.append(f"AeT/AnT gap: {gap:.1f}% — {assessment.get('gap_status', '')}")
+        else:
+            lines.append("AeT/AnT gap: not assessed (no AnT data)")
+
+        result = "\n".join(lines)
+
+        sched = get_aerobic_assessment_prompt_block(days_since, stage, last_drift_pct=drift)
+        logger.info(f"Aerobic assessment scheduling: {sched['log_summary']}")
+        if sched['prompt_block']:
+            result += "\n\n" + sched['prompt_block']
+
+        return result
+    except Exception:
+        return "Aerobic assessment data unavailable."
+
+
 def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
     """Format training schedule for LLM prompt with multi-discipline support."""
     if not schedule_data or not schedule_data.get('schedule'):
@@ -404,23 +453,80 @@ def format_training_schedule_for_prompt(schedule_data: Optional[Dict]) -> str:
 
 
 def format_journal_observations_for_prompt(observations: List[Dict]) -> str:
-    """Format recent journal observations for LLM prompt."""
+    """Format recent journal observations for LLM prompt.
+
+    Pain scale (from Training Metrics Reference Guide):
+      0% = pain free | 20% = Good (brief discomfort) | 40% = Okay (sporadic)
+      60% = Marginal (persistent) | 80% = Poor (constant)
+    Safety rule: pain >= 60% on consecutive days = mandatory rest flag.
+    Isolated readings at 20% are training noise — do not modify load.
+    """
     if not observations:
         return "No recent journal entries."
-    
+
+    recent = observations[:5]
+
+    # Pain signal classification using guide-defined thresholds
+    pain_entries = [(o.get('pain_percentage'), o.get('rpe_score') or 0) for o in recent]
+    pain_nonzero = [(p, rpe) for p, rpe in pain_entries if p is not None and p > 0]
+    pain_days = len(pain_nonzero)
+
+    # Consecutive days >= 60% triggers safety flag (guide's only hard pain rule)
+    pain_values = [o.get('pain_percentage') or 0 for o in recent]
+    consecutive_high = any(
+        pain_values[i] >= 60 and pain_values[i + 1] >= 60
+        for i in range(len(pain_values) - 1)
+    )
+    dangerous = any(p >= 100 for p in pain_values)
+
+    # Trend: is pain rising across the window?
+    dated_pain = [(o['date'], o.get('pain_percentage') or 0) for o in sorted(recent, key=lambda x: x['date'])]
+    nonzero_trend = [p for _, p in dated_pain if p > 0]
+    trending_up = len(nonzero_trend) >= 3 and nonzero_trend[-1] > nonzero_trend[0]
+
+    if dangerous:
+        injury_signal = "DANGEROUS (≥100%) — halt workouts, revisit the plan immediately"
+    elif consecutive_high:
+        injury_signal = "SAFETY FLAG — consecutive days ≥60%; modify activity and monitor tomorrow"
+    elif trending_up and pain_days >= 3:
+        injury_signal = "trending upward — monitor closely, consider reducing intensity"
+    elif pain_days >= 3:
+        injury_signal = "recurring — factor into session selection but not a load emergency"
+    elif pain_days == 1:
+        injury_signal = "isolated — training noise, do not modify load"
+    else:
+        injury_signal = None
+
     lines = ["Recent Training Response:"]
-    for obs in observations[:5]:  # Last 5 days
+    for obs in recent:
         energy = obs.get('energy_level', 'N/A')
         rpe = obs.get('rpe_score', 'N/A')
         pain = obs.get('pain_percentage')
-        
+
         line = f"- {obs['date']}: Energy {energy}/5, RPE {rpe}/10"
         if pain is not None and pain > 0:
-            line += f", Pain {pain}%"
+            # Add effort context for isolated readings so LLM doesn't over-weight them
+            rpe_val = obs.get('rpe_score') or 0
+            if pain >= 100:
+                label = "(Dangerous — halt workouts)"
+            elif pain >= 80:
+                label = "(Unacceptable — rest day warranted)"
+            elif pain >= 60:
+                label = "(Marginal — modify activity)"
+            elif pain >= 40:
+                label = "(Tolerable — monitor tomorrow)"
+            else:
+                label = "(Okay — continue, monitor)"
+            if pain_days == 1 and rpe_val >= 7:
+                label += ", isolated on hard effort"
+            line += f", Pain {pain}% {label}"
         if obs.get('notes'):
             line += f" | Notes: {obs['notes'][:50]}"
         lines.append(line)
-    
+
+    if injury_signal:
+        lines.append(f"\nInjury signal summary: {injury_signal}.")
+
     return "\n".join(lines)
 
 
@@ -533,6 +639,41 @@ def format_training_progression_for_prompt(prior_weeks: list) -> str:
     return "\n".join(lines)
 
 
+def _build_ans_prompt_block(summary):
+    """Format the ANS weekly summary dict into a prompt-ready string.
+
+    Returns an empty string when summary is None (insufficient baseline data),
+    so the caller can always interpolate it unconditionally.
+    """
+    if not summary:
+        return ""
+
+    lines = [
+        "\n**ANS READINESS (Prior 7 Days)**",
+        f"Entry state: {summary['entry_state']} — {summary['entry_narrative']}",
+        f"HRV 7d avg: {summary['avg_hrv_z']:+.2f}\u03c3 | RHR 7d avg: {summary['avg_rhr_z']:+.2f}\u03c3 | Trend: {summary['trend']}",
+        f"Days: {summary['days_green']} green / {summary['days_yellow']} yellow / {summary['days_red']} red",
+    ]
+
+    if summary['recovery_week_recommended']:
+        lines.append(
+            "[CONSTRAINT] MANDATORY RECOVERY WEEK: ACWR target 0.7-0.8. "
+            "No sessions above Zone 2. Daily mileage capped at 60% of recent average. "
+            "This overrides the current periodization phase."
+        )
+    elif summary['trend'] == 'degrading':
+        lines.append(
+            "[WARNING] FATIGUE TREND DEGRADING: Front-load Zone 1/2 volume early in the week. "
+            "Push any scheduled quality sessions to Day 5 or later."
+        )
+    elif summary['trend'] == 'improving':
+        lines.append(
+            "[SIGNAL] RECOVERY TREND IMPROVING: Optimal window for quality sessions is Day 4 through Day 7."
+        )
+
+    return "\n".join(lines) + "\n"
+
+
 def build_weekly_program_prompt(
     user_id: int,
     target_week_start: date
@@ -571,6 +712,14 @@ def build_weekly_program_prompt(
     training_schedule = get_training_schedule(user_id)
     training_stage = get_current_training_stage(user_id)
     journal_obs = get_recent_journal_observations(user_id)
+
+    # Fetch athlete-declared scheduling exceptions for this week
+    try:
+        from db_utils import get_current_week_context
+        _week_ctx = get_current_week_context(user_id)
+        schedule_constraints = (_week_ctx.get('schedule_constraints') or []) if _week_ctx else []
+    except Exception:
+        schedule_constraints = []
 
     # Get personalization data (from Dashboard LLM system)
     risk_tolerance = get_user_recommendation_style(user_id)
@@ -626,8 +775,58 @@ def build_weekly_program_prompt(
     # Get last 3 weeks of strategic summaries for training arc context
     prior_weeks = get_prior_week_summaries(user_id, target_week_start, n=3)
 
+    # Fetch latest aerobic assessment for AeT/AnT prompt injection
+    latest_aet = None
+    try:
+        from db_utils import get_latest_aerobic_assessment
+        latest_aet = get_latest_aerobic_assessment(user_id)
+    except Exception as _aet_err:
+        logger.debug(f"Aerobic assessment fetch skipped: {_aet_err}")
+
     athlete_experience = athlete_profile_data[0]['training_experience'].capitalize() if (athlete_profile_data and athlete_profile_data[0].get('training_experience')) else "Intermediate"
     athlete_age = athlete_profile_data[0]['age'] if (athlete_profile_data and athlete_profile_data[0].get('age')) else None
+
+    # Compute polarized training compliance for prior week
+    polarized_ratio = None
+    polarized_block = ""
+    try:
+        from llm_recommendations_module import compute_weekly_polarized_ratio, get_user_hr_thresholds
+        polarized_ratio = compute_weekly_polarized_ratio(
+            user_id=user_id,
+            training_stage=training_stage,
+            athlete_age=athlete_age,
+            week_start_date=target_week_start - timedelta(days=7)
+        )
+        hr_thresholds = get_user_hr_thresholds(user_id)
+        if polarized_ratio:
+            pr = polarized_ratio
+            bh_str = f"Black hole days: {', '.join(pr['moderate_dates'])}" if pr['moderate_dates'] else "No black hole sessions."
+            vt_str = f"VT1 = {hr_thresholds['vt1_bpm']} bpm | VT2 = {hr_thresholds['vt2_bpm']} bpm" if hr_thresholds else ""
+            polarized_block = f"""
+**POLARIZED TRAINING COMPLIANCE — PRIOR WEEK (SEILER MODEL):**
+Sessions: {pr['easy_sessions']} Easy | {pr['hard_sessions']} Hard | {pr['moderate_sessions']} Moderate (black hole)
+{bh_str}
+Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {pr['compliance'].replace('_', ' ').title()}
+{vt_str}
+"""
+    except Exception as _pre:
+        logger.debug(f"Polarized ratio computation skipped: {_pre}")
+
+    # Interval protocol + stride placement rules — phase-aware, injected so the LLM prescribes correct structures
+    interval_protocol_block = ""
+    try:
+        from workout_library import get_phase_interval_rules
+        _stage = training_stage.get('stage', 'base')
+        _weeks_to_race = training_stage.get('weeks_until_race') or training_stage.get('weeks_to_race')
+        _phase_rules = get_phase_interval_rules(
+            stage=_stage,
+            weeks_to_race=_weeks_to_race,
+            target_date=target_week_start,
+        )
+        interval_protocol_block = "\n" + _phase_rules['prompt_block'] + "\n"
+        logger.info(f"Weekly plan interval rules: {_phase_rules['log_summary']}")
+    except Exception as _ipe:
+        logger.debug(f"Interval protocol injection skipped: {_ipe}")
 
     # Build prompt sections
     week_end = target_week_start + timedelta(days=6)
@@ -687,7 +886,11 @@ def build_weekly_program_prompt(
         prior_week_section = "No prior week data available — this is either the first week or synthesis has not yet run."
 
     decay_str = f" | Decay rate: {decay_rate:.3f}" if decay_rate is not None else ""
-    
+
+    # ANS readiness summary for the prior 7 days
+    ans_summary = get_weekly_ans_summary(user_id)
+    ans_prompt_block = _build_ans_prompt_block(ans_summary)
+
     prompt = f"""You are an expert ultra-trail running coach creating a divergence-optimized weekly training program.
 
 **ATHLETE PROFILE**
@@ -710,7 +913,7 @@ Recent trajectory (7d): {div_trend}
 
 External ACWR: {ext_acwr} | Internal ACWR: {int_acwr} | Days Since Rest: {days_since_rest}
 Acute load (7d): {seven_day} mi | Chronic load ({chronic_days}d): {twentyeight_day} mi{decay_str}
-
+{ans_prompt_block}
 **ATHLETE MODEL**
 
 {athlete_model_context if athlete_model_context else "Athlete model not yet available — using population defaults."}
@@ -744,6 +947,10 @@ Guide context: {assessment_category}
 
 {format_race_history_for_prompt(race_history, perf_trend)}
 
+**AEROBIC ASSESSMENT (HR Drift Test)**
+
+{_format_aet_prompt_block(latest_aet, target_week_start, stage=training_stage.get('stage', 'base'))}
+
 **CURRENT TRAINING STAGE**
 
 Stage: {training_stage.get('stage', 'Unknown')}
@@ -754,6 +961,11 @@ Focus: {training_stage.get('details', 'N/A')}
 **TRAINING SCHEDULE & AVAILABILITY**
 
 {format_training_schedule_for_prompt(training_schedule)}
+
+**ATHLETE-FLAGGED SCHEDULE CONFLICTS (this week)**
+
+{chr(10).join(f"- {c['date']}: {c.get('reason', 'Unavailable')}" for c in sorted(schedule_constraints, key=lambda x: x.get('date', ''))) if schedule_constraints else "None declared."}
+{("CONSTRAINT RULE: Do not prescribe hard sessions or long runs on conflicted dates. If a key session falls on a conflicted date, shift it to the nearest available day or drop it if no adjacent slot exists." if schedule_constraints else "")}
 
 **RECENT TRAINING RESPONSE**
 
@@ -781,7 +993,8 @@ Generate a divergence-optimized 7-day training program for the week of {target_w
 6. **Recovery Integration**: Plan rest/easy days based on current divergence trajectory and days since rest.
 7. **Long Run Distance Ceiling (HARD CONSTRAINT)**: {f"The athlete's longest run in the past 30 days is {max_30d_long_run:.1f} miles. The prescribed long run must not exceed {long_run_ceiling:.1f} miles ({max_30d_long_run:.1f} × 1.10). It must also not exceed 1/3 of your planned total weekly mileage — check this after setting weekly volume and reduce if needed." if long_run_ceiling else "No recent long run data available — be conservative; prescribe no more than 10 miles for a long run until training history is established."}
 8. **Hard Session Recovery Buffer (HARD CONSTRAINT)**: High-intensity sessions (Tempo Run, Interval/Speed Work, Hill Repeats) and Long Runs all require 48 hours of recovery before the next hard session. Never place two hard sessions on consecutive days. A Long Run on Saturday means Friday must be Easy/Recovery/Rest, and Sunday must be Easy/Recovery/Rest.
-
+9. **Polarized Training (Seiler 80:20 Model)**: Target {f"{polarized_ratio['target_easy_pct']:.0f}" if polarized_ratio else "80"}% of sessions as Easy (stay below VT1). Hard sessions must achieve 15+ minutes above VT2. Zone 3 (moderate intensity) is the "black hole" — fatigue without adaptation. Set hard_session_type for all High-intensity days: "tempo" (sustained Z4, 25-35 min), "intervals" (repeated Z4/Z5 blocks with Z1/Z2 recovery), "hills", or "race_sim".
+{polarized_block}{interval_protocol_block}
 **REQUIRED OUTPUT FORMAT (JSON):**
 
 Return your response as a valid JSON object with this exact structure:
@@ -804,6 +1017,8 @@ Return your response as a valid JSON object with this exact structure:
       "description": "6 miles easy, conversational pace, flat terrain",
       "duration_estimate": "60-70 minutes",
       "intensity": "Low",
+      "hard_session_type": null,
+      "strides": false,
       "distance_miles": 6.0,
       "elevation_gain_feet": 200,
       "key_focus": "Recovery from weekend, maintain aerobic base",
@@ -823,6 +1038,8 @@ Return your response as a valid JSON object with this exact structure:
 - Ensure all 7 days (Sunday-Saturday) are included in daily_program
 - Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training
 - Intensity levels: Low, Moderate, High
+- hard_session_type: set to "tempo", "intervals", "hills", or "race_sim" for High-intensity days; set to null for Low/Moderate/Rest days. "tempo" = sustained Z4 effort (25-35 min); "intervals" = repeated Z4/Z5 blocks with Z1/Z2 recovery; "hills" = uphill quality efforts with descent recovery; "race_sim" = event-specific pacing
+- strides: set to true on qualifying easy run days per the stride placement rules above; false on all other days (hard sessions, long run, rest, day after long run)
 - Be specific with distances, paces, and terrain rationale
 - Ensure the program is realistic for the athlete's current fitness and schedule
 - For external_acwr_estimate and internal_acwr_estimate: use the External ACWR and Internal ACWR values provided in the athlete metrics above as your starting point, adjusted for the planned weekly load
@@ -1306,6 +1523,27 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
             f"Days since rest: {metrics.get('days_since_rest', 'N/A')}"
         ) if metrics else "Metrics unavailable."
 
+        # Polarized compliance for the completed week
+        polarized_section = ""
+        try:
+            from llm_recommendations_module import compute_weekly_polarized_ratio
+            _stage = strategic_summary.get('training_stage', 'unknown') if strategic_summary else 'unknown'
+            _age_row = execute_query("SELECT age FROM user_settings WHERE id = %s", (user_id,), fetch=True)
+            _age = _age_row[0]['age'] if _age_row and _age_row[0].get('age') else None
+            _pr = compute_weekly_polarized_ratio(
+                user_id=user_id, training_stage=_stage, athlete_age=_age, week_start_date=week_start
+            )
+            if _pr:
+                _bh = f"Black hole days: {', '.join(_pr['moderate_dates'])}" if _pr['moderate_dates'] else "No black hole sessions."
+                polarized_section = (
+                    f"\nPOLARIZED COMPLIANCE:\n"
+                    f"{_pr['easy_sessions']} Easy | {_pr['hard_sessions']} Hard | {_pr['moderate_sessions']} Moderate (black hole)\n"
+                    f"{_bh}\n"
+                    f"Easy%: {_pr['easy_pct']:.0f}% (target: {_pr['target_easy_pct']:.0f}%) — {_pr['compliance'].replace('_', ' ')}\n"
+                )
+        except Exception as _pe:
+            logger.debug(f"Polarized section skipped in synthesis: {_pe}")
+
         prompt = f"""You are an expert trail running coach writing a concise end-of-week synthesis for your athlete.
 
 Week: {week_start.strftime('%B %d')} – {week_end.strftime('%B %d, %Y')}
@@ -1322,12 +1560,13 @@ ATHLETE OBSERVATIONS THIS WEEK:
 
 END-OF-WEEK METRICS:
 {metrics_section}
-
+{polarized_section}
 Write a retrospective synthesis of 150-200 words covering:
 1. What the athlete actually did vs what was planned (alignment assessment)
 2. Key physiological patterns that emerged (ACWR trend, divergence signals, fatigue)
-3. What this week teaches us about the athlete's current adaptation state
-4. One forward-looking observation for next week
+3. Polarized training compliance — name any black hole sessions by date; note whether Easy:Hard ratio was on target
+4. What this week teaches us about the athlete's current adaptation state
+5. One forward-looking observation for next week
 
 Write in second person ("you"), use plain text (no markdown), coaching tone. Be specific — reference actual numbers and dates. Do not list these as numbered points; write as flowing prose."""
 

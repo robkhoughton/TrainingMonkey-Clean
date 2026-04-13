@@ -67,6 +67,14 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
   const [longRunDays, setLongRunDays] = useState<string[]>(['Saturday', 'Sunday']);
   const [constraints, setConstraints] = useState<string>('');
 
+  // This week's scheduling exceptions
+  interface WeekException { date: string; reason: string; entered_at: string; }
+  const [weekExceptions, setWeekExceptions] = useState<WeekException[]>([]);
+  const [newExceptionDate, setNewExceptionDate] = useState<string>('');
+  const [newExceptionReason, setNewExceptionReason] = useState<string>('');
+  const [isSavingException, setIsSavingException] = useState<boolean>(false);
+  const [exceptionError, setExceptionError] = useState<string | null>(null);
+
   // Supplemental training
   const [includeStrength, setIncludeStrength] = useState<boolean>(false);
   const [strengthHours, setStrengthHours] = useState<number>(2);
@@ -119,6 +127,14 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
       }
     }
   }, [schedule]);
+
+  // Load this week's exceptions on mount
+  useEffect(() => {
+    fetch('/api/coach/schedule-constraints')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => setWeekExceptions(d.constraints || []))
+      .catch(() => { /* non-fatal */ });
+  }, []);
 
   // ============================================================================
   // HANDLERS
@@ -219,6 +235,36 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
           : d
       )
     );
+  };
+
+  const handleAddException = async () => {
+    if (!newExceptionDate) { setExceptionError('Pick a date'); return; }
+    setIsSavingException(true);
+    setExceptionError(null);
+    try {
+      const res = await fetch('/api/coach/schedule-constraints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: newExceptionDate, reason: newExceptionReason || 'Unavailable' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      setWeekExceptions(data.constraints || []);
+      setNewExceptionDate('');
+      setNewExceptionReason('');
+    } catch (err) {
+      setExceptionError(err instanceof Error ? err.message : 'Failed to save exception');
+    } finally {
+      setIsSavingException(false);
+    }
+  };
+
+  const handleDeleteException = async (exDate: string) => {
+    try {
+      const res = await fetch(`/api/coach/schedule-constraints/${exDate}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) setWeekExceptions(data.constraints || []);
+    } catch { /* non-fatal */ }
   };
 
   const handleSubmit = async () => {
@@ -555,11 +601,28 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
               </div>
             )}
 
-            {/* Constraints */}
+            {/* Recurring Constraints */}
             {constraints && (
-              <div style={{ padding: '10px 16px' }}>
-                <div style={{ ...displayLabel, marginBottom: '5px' }}>Constraints</div>
+              <div style={{ padding: '10px 16px', borderBottom: weekExceptions.length > 0 ? '1px solid #f3f4f6' : undefined }}>
+                <div style={{ ...displayLabel, marginBottom: '5px' }}>Recurring Constraints</div>
                 <div style={{ fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.5 }}>{constraints}</div>
+              </div>
+            )}
+
+            {/* This week's exceptions */}
+            {weekExceptions.length > 0 && (
+              <div style={{ padding: '10px 16px' }}>
+                <div style={{ ...displayLabel, marginBottom: '7px' }}>This Week's Conflicts</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {[...weekExceptions].sort((a, b) => a.date.localeCompare(b.date)).map(ex => (
+                    <div key={ex.date} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#6b7280' }}>
+                        {new Date(ex.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </span>
+                      <span style={{ fontWeight: 600, color: '#dc2626' }}>{ex.reason}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -713,7 +776,7 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
               {/* Constraints */}
               <div>
                 <label style={tacticalLabel}>
-                  Constraints{' '}
+                  Recurring Constraints{' '}
                   <span style={{ color: 'rgba(125,156,184,0.5)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span>
                 </label>
                 <textarea
@@ -729,6 +792,88 @@ const TrainingScheduleConfig: React.FC<TrainingScheduleConfigProps> = ({ schedul
                   } as React.CSSProperties}
                   placeholder="e.g., Tuesday max 30 minutes, Need rest day after long runs..."
                 />
+              </div>
+
+              {/* This Week's Exceptions */}
+              <div style={{ borderTop: '1px solid rgba(125,156,184,0.25)', paddingTop: '20px' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#7D9CB8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '4px' }}>
+                  This Week's Scheduling Conflicts
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(125,156,184,0.65)', marginBottom: '14px' }}>
+                  Flag specific dates when work or life will block training. The AI will route around them.
+                </div>
+
+                {/* Existing exceptions */}
+                {weekExceptions.length > 0 && (
+                  <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {[...weekExceptions].sort((a, b) => a.date.localeCompare(b.date)).map(ex => (
+                      <div key={ex.date} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: 'rgba(220,38,38,0.08)',
+                        border: '1px solid rgba(220,38,38,0.3)',
+                        borderRadius: '4px',
+                      }}>
+                        <div>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#E6F0FF' }}>
+                            {new Date(ex.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                          <span style={{ fontSize: '0.78rem', color: 'rgba(230,240,255,0.65)', marginLeft: '10px' }}>{ex.reason}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteException(ex.date)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'rgba(220,38,38,0.7)', fontSize: '0.85rem', fontWeight: 700, padding: '0 4px',
+                          }}
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add new exception */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '0 0 auto' }}>
+                    <label style={{ ...tacticalLabel, marginBottom: '5px' }}>Date</label>
+                    <input
+                      type="date"
+                      value={newExceptionDate}
+                      onChange={e => setNewExceptionDate(e.target.value)}
+                      style={{ ...tacticalInput, fontSize: '0.8rem' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label style={{ ...tacticalLabel, marginBottom: '5px' }}>Reason</label>
+                    <input
+                      type="text"
+                      value={newExceptionReason}
+                      onChange={e => setNewExceptionReason(e.target.value)}
+                      placeholder="e.g., All-day work event"
+                      style={{ ...tacticalInput, width: '100%', boxSizing: 'border-box', fontSize: '0.8rem' }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddException}
+                    disabled={isSavingException || !newExceptionDate}
+                    style={{
+                      padding: '7px 14px',
+                      backgroundColor: isSavingException || !newExceptionDate ? 'rgba(125,156,184,0.25)' : 'rgba(255,87,34,0.85)',
+                      color: 'white', border: 'none', borderRadius: '4px', cursor: isSavingException || !newExceptionDate ? 'default' : 'pointer',
+                      fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.06em', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {isSavingException ? 'Saving…' : 'Flag Date'}
+                  </button>
+                </div>
+                {exceptionError && (
+                  <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#dc2626' }}>{exceptionError}</div>
+                )}
               </div>
 
               {/* Supplemental Training */}

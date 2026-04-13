@@ -48,6 +48,9 @@ COPY email_verification/ /app/email_verification/
 # Copy Training Metrics Reference Guide (used by LLM)
 COPY Training_Metrics_Reference_Guide.md .
 
+# Copy coaching context library (state-gated LLM prompt injection)
+COPY coaching_context/ /app/coaching_context/
+
 # Create the directory structure that Flask expects
 RUN mkdir -p /app/static
 RUN mkdir -p /app/build

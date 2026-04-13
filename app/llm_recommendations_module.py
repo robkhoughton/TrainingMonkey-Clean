@@ -17,6 +17,7 @@ from unified_metrics_service import UnifiedMetricsService
 from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA, format_divergence_for_prompt
 
 # Import database utilities
+from readiness_engine import get_ans_readiness
 from db_utils import (
     execute_query,
     save_llm_recommendation,
@@ -128,6 +129,100 @@ def load_training_guide():
     except Exception as e:
         logger.error(f"Error loading training guide: {str(e)}")
         return None
+
+
+_COACHING_CONTEXT_FILES = [
+    'trail_specifics.md',
+    'intensity_zones.md',
+    'strength_integration.md',
+    'neuromuscular.md',
+    'readiness.md',
+    'periodization.md',
+    'zone2_training.md',
+    'aerobic_assessment.md',
+    'muscular_endurance.md',
+]
+
+
+def validate_coaching_context_files():
+    """Verify all expected coaching context files exist on disk.
+
+    Called once at startup. Logs ERROR for any missing file so renames or
+    deletions are caught immediately rather than silently dropped at inference time.
+    """
+    context_dir = os.path.join(os.path.dirname(__file__), 'coaching_context')
+    missing = [f for f in _COACHING_CONTEXT_FILES
+               if not os.path.isfile(os.path.join(context_dir, f))]
+    if missing:
+        for f in missing:
+            logger.error(f"Coaching context file missing at startup: {os.path.join(context_dir, f)}")
+    else:
+        logger.info(f"Coaching context: all {len(_COACHING_CONTEXT_FILES)} files present.")
+    return len(missing) == 0
+
+
+def _load_coaching_context(user_id: int, readiness_state: str, current_date: str) -> str:
+    """State-gated injection of coaching context library.
+
+    Injection rules:
+    - trail_specifics.md      — always (athlete is always a trail runner)
+    - intensity_zones.md      — always (polarized model; foundational for any prescription)
+    - strength_integration.md — always (eccentric overlap scheduling applies every week)
+    - readiness.md            — when readiness_state != GREEN (extra ANS interpretation needed)
+    - periodization.md        — when nearest race is within 4 weeks (taper planning)
+    - zone2_training.md       — when race > 28 days or no upcoming race (base period)
+    - aerobic_assessment.md   — when race > 28 days or no upcoming race (AeT/AnT testing, 10% transition rule)
+    - muscular_endurance.md   — when race > 56 days or no upcoming race (ME block needs 8+ weeks)
+
+    Adding a new file: write the .md, add a condition here, verify all active LLM call sites
+    receive it (create_enhanced_prompt_with_tone, agentic chat ~line 4321, journal endpoint).
+
+    Returns a formatted prompt block, or empty string if nothing to inject.
+    """
+    context_dir = os.path.join(os.path.dirname(__file__), 'coaching_context')
+    files_to_load = ['trail_specifics.md', 'intensity_zones.md', 'strength_integration.md', 'neuromuscular.md']
+
+    if readiness_state and readiness_state != 'GREEN':
+        files_to_load.append('readiness.md')
+
+    days_away = None  # days until nearest upcoming race; None = no race goal set
+    try:
+        from coach_recommendations import get_race_goals
+        from timezone_utils import get_app_current_date
+        from datetime import datetime as _dt
+        goals = get_race_goals(user_id) or []
+        today = get_app_current_date()
+        upcoming = [g for g in goals if g.get('race_date', '') > str(today)]
+        if upcoming:
+            nearest = min(upcoming, key=lambda g: g['race_date'])
+            days_away = (_dt.strptime(nearest['race_date'], '%Y-%m-%d').date() - today).days
+    except Exception as _re:
+        logger.debug(f"Coaching context: race proximity check failed: {_re}")
+
+    if days_away is not None and days_away <= 28:
+        files_to_load.append('periodization.md')
+
+    if days_away is None or days_away > 28:
+        files_to_load.append('zone2_training.md')
+        files_to_load.append('aerobic_assessment.md')  # AeT/AnT testing protocols and 10% transition rule
+
+    if days_away is None or days_away > 56:
+        files_to_load.append('muscular_endurance.md')
+
+    sections = []
+    for fname in files_to_load:
+        path = os.path.join(context_dir, fname)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                sections.append(f.read().strip())
+        except FileNotFoundError:
+            logger.warning(f"Coaching context file missing: {path}")
+        except Exception as _fe:
+            logger.warning(f"Coaching context load error ({fname}): {_fe}")
+
+    if not sections:
+        return ""
+    return "\n\n### COACHING CONTEXT\n" + "\n\n---\n\n".join(sections) + "\n"
 
 
 def _select_guide_sections(guide_text, assessment_category):
@@ -294,6 +389,321 @@ def _classify_activity_intensity(activity):
         return 'Hard'
     primary = p.index(max(p))
     return 'Easy/Recovery' if primary <= 1 else ('Moderate' if primary == 2 else 'Hard')
+
+
+def get_user_hr_thresholds(user_id):
+    """Return HR zone boundaries for user, deriving VT1/VT2 from zone 2/4 upper bounds.
+
+    VT1 = Zone 2 upper bound (top of low-intensity aerobic zone).
+    VT2 = Zone 4 upper bound (top of threshold zone / lactate threshold).
+
+    Uses user's configured method (karvonen, percentage, or custom overrides).
+    Returns a dict with resting_hr, max_hr, vt1_bpm, vt2_bpm, zone_method, zones (z1-z5 min/max).
+    Returns None if user settings are missing or invalid.
+    """
+    try:
+        result = execute_query(
+            "SELECT resting_hr, max_hr, hr_zones_method, custom_hr_zones FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        if not result:
+            return None
+
+        row = result[0]
+        resting_hr = row.get('resting_hr') or 65
+        max_hr = row.get('max_hr') or 185
+        method = row.get('hr_zones_method') or 'percentage'
+
+        custom_boundaries = None
+        raw_custom = row.get('custom_hr_zones')
+        if raw_custom:
+            try:
+                custom_boundaries = json.loads(raw_custom) if isinstance(raw_custom, str) else raw_custom
+            except Exception:
+                custom_boundaries = None
+
+        hr_reserve = max_hr - resting_hr
+
+        if method in ('karvonen', 'reserve'):
+            zones = {
+                'zone1': {'min': int(resting_hr + hr_reserve * 0.50), 'max': int(resting_hr + hr_reserve * 0.60)},
+                'zone2': {'min': int(resting_hr + hr_reserve * 0.60), 'max': int(resting_hr + hr_reserve * 0.70)},
+                'zone3': {'min': int(resting_hr + hr_reserve * 0.70), 'max': int(resting_hr + hr_reserve * 0.80)},
+                'zone4': {'min': int(resting_hr + hr_reserve * 0.80), 'max': int(resting_hr + hr_reserve * 0.90)},
+                'zone5': {'min': int(resting_hr + hr_reserve * 0.90), 'max': max_hr},
+            }
+        else:
+            zones = {
+                'zone1': {'min': int(max_hr * 0.50), 'max': int(max_hr * 0.60)},
+                'zone2': {'min': int(max_hr * 0.60), 'max': int(max_hr * 0.70)},
+                'zone3': {'min': int(max_hr * 0.70), 'max': int(max_hr * 0.80)},
+                'zone4': {'min': int(max_hr * 0.80), 'max': int(max_hr * 0.90)},
+                'zone5': {'min': int(max_hr * 0.90), 'max': max_hr},
+            }
+
+        if custom_boundaries:
+            for zone_key in zones:
+                if zone_key in custom_boundaries:
+                    c = custom_boundaries[zone_key]
+                    if c.get('min') is not None:
+                        zones[zone_key]['min'] = int(c['min'])
+                    if c.get('max') is not None:
+                        zones[zone_key]['max'] = int(c['max'])
+
+        return {
+            'resting_hr': resting_hr,
+            'max_hr': max_hr,
+            'zone_method': method,
+            'vt1_bpm': zones['zone2']['max'],
+            'vt2_bpm': zones['zone4']['max'],
+            'zones': zones,
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching HR thresholds for user {user_id}: {e}")
+        return None
+
+
+def classify_session_polarized(zone_times):
+    """Classify a session using Seiler's polarized training model (session intent, not time dominance).
+
+    Args:
+        zone_times: dict with time_in_zone1..time_in_zone5 (seconds), or a list of such dicts
+                    (multiple activities in a day are aggregated automatically).
+
+    Returns:
+        'Easy'     — session stayed in Z1/Z2: Z4+Z5 < 10% AND Z3 < 20%
+        'Hard'     — meaningful high-intensity work: Z4+Z5 >= 20% OR Z4 alone >= 15%
+        'Moderate' — black hole: Z3-dominant, not recovery, not adaptation
+        'Unknown'  — no HR data (total zone time == 0)
+
+    NOTE: 'Moderate' is NOT a fallback — it is the specific black-hole failure category.
+    Z3 presence in a Hard session is expected (transitions); only 'Easy' sessions are
+    checked for Z3 drift via compute_zone_compliance().
+    """
+    if isinstance(zone_times, list):
+        combined = {'time_in_zone1': 0, 'time_in_zone2': 0, 'time_in_zone3': 0,
+                    'time_in_zone4': 0, 'time_in_zone5': 0}
+        for row in zone_times:
+            for k in combined:
+                combined[k] += (row.get(k) or 0)
+        zone_times = combined
+
+    z1 = zone_times.get('time_in_zone1') or 0
+    z2 = zone_times.get('time_in_zone2') or 0
+    z3 = zone_times.get('time_in_zone3') or 0
+    z4 = zone_times.get('time_in_zone4') or 0
+    z5 = zone_times.get('time_in_zone5') or 0
+    total = z1 + z2 + z3 + z4 + z5
+
+    if total == 0:
+        return 'Unknown'
+
+    p4 = z4 / total * 100
+    p5 = z5 / total * 100
+    p3 = z3 / total * 100
+
+    if p4 + p5 >= 20 or p4 >= 15:
+        return 'Hard'
+    if p4 + p5 < 10 and p3 < 20:
+        return 'Easy'
+    return 'Moderate'
+
+
+def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
+    """Compute polarized training compliance for a session.
+
+    Args:
+        activity_summary: dict from get_activity_summary_for_date() — must include
+                          time_in_zone1..5 and z1_pct..z5_pct fields.
+        prescribed_intent: 'easy' | 'moderate' | 'hard' | 'race_effort' | 'none' | None
+                           (from structured_output.decision.intensity_target)
+        hr_thresholds: dict from get_user_hr_thresholds()
+
+    Returns dict:
+        {
+            'has_hr_data': bool,
+            'prescribed': str,
+            'actual_classification': str,   # Easy / Hard / Moderate / Unknown
+            'black_hole': bool,             # Easy prescribed, Z3 > 15%
+            'z2_target_met': bool | None,   # None when not an Easy session
+            'z2_minutes': float,
+            'quality_minutes': float,       # Z4+Z5 minutes
+            'insufficient_intensity': bool, # Hard prescribed, Z4+Z5 < 15%
+            'z_pcts': dict,                 # z1..z5 percentages
+            'vt1_bpm': int | None,
+            'vt2_bpm': int | None,
+        }
+    """
+    total_zone_sec = activity_summary.get('total_zone_seconds', 0)
+    has_hr = total_zone_sec > 0
+
+    z2_sec = activity_summary.get('time_in_zone2', 0) or 0
+    z4_sec = activity_summary.get('time_in_zone4', 0) or 0
+    z5_sec = activity_summary.get('time_in_zone5', 0) or 0
+    z2_min = z2_sec / 60
+    quality_min = (z4_sec + z5_sec) / 60
+
+    z_pcts = {
+        'z1': activity_summary.get('z1_pct', 0),
+        'z2': activity_summary.get('z2_pct', 0),
+        'z3': activity_summary.get('z3_pct', 0),
+        'z4': activity_summary.get('z4_pct', 0),
+        'z5': activity_summary.get('z5_pct', 0),
+    }
+
+    actual = classify_session_polarized({
+        'time_in_zone1': activity_summary.get('time_in_zone1', 0),
+        'time_in_zone2': activity_summary.get('time_in_zone2', 0),
+        'time_in_zone3': activity_summary.get('time_in_zone3', 0),
+        'time_in_zone4': activity_summary.get('time_in_zone4', 0),
+        'time_in_zone5': activity_summary.get('time_in_zone5', 0),
+    })
+
+    is_easy_prescribed = prescribed_intent in ('easy', None) or (
+        isinstance(prescribed_intent, str) and 'easy' in prescribed_intent.lower()
+    )
+    is_hard_prescribed = isinstance(prescribed_intent, str) and prescribed_intent in ('hard', 'race_effort')
+
+    black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
+    z2_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
+    insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
+
+    return {
+        'has_hr_data': has_hr,
+        'prescribed': prescribed_intent or 'unknown',
+        'actual_classification': actual,
+        'black_hole': black_hole,
+        'z2_target_met': z2_target_met,
+        'z2_minutes': z2_min,
+        'quality_minutes': quality_min,
+        'insufficient_intensity': insufficient_intensity,
+        'z_pcts': z_pcts,
+        'vt1_bpm': hr_thresholds.get('vt1_bpm') if hr_thresholds else None,
+        'vt2_bpm': hr_thresholds.get('vt2_bpm') if hr_thresholds else None,
+        'zones': hr_thresholds.get('zones') if hr_thresholds else None,  # full bpm boundaries for prompt labeling
+    }
+
+
+def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_start_date=None, trailing_days=7):
+    """Compute the Easy:Hard session ratio for the trailing week using Seiler's session-count model.
+
+    Args:
+        user_id: int
+        training_stage: str — 'base' | 'build' | 'peak' | 'specificity' | 'taper' | 'recovery' | 'unknown'
+        athlete_age: int or None
+        week_start_date: date — if provided, counts sessions from week_start_date to week_start_date+6 days.
+                         If None, counts trailing_days back from today.
+        trailing_days: int — used only when week_start_date is None.
+
+    Returns dict:
+        {
+            'easy_sessions': int,
+            'hard_sessions': int,
+            'moderate_sessions': int,   # black hole count
+            'unknown_sessions': int,
+            'total_sessions': int,
+            'easy_pct': float,          # easy / (easy + hard) * 100; 0 if no easy+hard sessions
+            'target_easy_pct': float,   # target based on training block and age
+            'compliance': str,          # 'on_target' | 'too_hard' | 'too_easy' | 'insufficient_data'
+            'moderate_dates': list[str],  # dates of black-hole sessions
+        }
+    Returns None on error.
+    """
+    try:
+        from timezone_utils import get_app_current_date
+
+        if week_start_date is not None:
+            start = week_start_date
+            end = week_start_date + timedelta(days=6)
+        else:
+            today = get_app_current_date()
+            start = today - timedelta(days=trailing_days - 1)
+            end = today
+
+        rows = execute_query(
+            """
+            SELECT date,
+                   SUM(COALESCE(time_in_zone1, 0)) AS z1,
+                   SUM(COALESCE(time_in_zone2, 0)) AS z2,
+                   SUM(COALESCE(time_in_zone3, 0)) AS z3,
+                   SUM(COALESCE(time_in_zone4, 0)) AS z4,
+                   SUM(COALESCE(time_in_zone5, 0)) AS z5
+            FROM activities
+            WHERE user_id = %s AND date >= %s AND date <= %s AND activity_id > 0
+            GROUP BY date
+            ORDER BY date
+            """,
+            (user_id, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')),
+            fetch=True
+        ) or []
+
+        easy = hard = moderate = unknown = 0
+        moderate_dates = []
+
+        for row in rows:
+            zone_dict = {
+                'time_in_zone1': int(row.get('z1') or 0),
+                'time_in_zone2': int(row.get('z2') or 0),
+                'time_in_zone3': int(row.get('z3') or 0),
+                'time_in_zone4': int(row.get('z4') or 0),
+                'time_in_zone5': int(row.get('z5') or 0),
+            }
+            cls = classify_session_polarized(zone_dict)
+            if cls == 'Easy':
+                easy += 1
+            elif cls == 'Hard':
+                hard += 1
+            elif cls == 'Moderate':
+                moderate += 1
+                date_val = row.get('date')
+                if date_val:
+                    moderate_dates.append(str(date_val)[:10])
+            else:
+                unknown += 1
+
+        total = easy + hard + moderate + unknown
+        easy_hard = easy + hard
+        easy_pct = (easy / easy_hard * 100) if easy_hard > 0 else 0.0
+
+        # Target Easy% by training block
+        stage_lower = (training_stage or '').lower()
+        if stage_lower in ('base',):
+            base_target = 90.0
+        elif stage_lower in ('taper', 'recovery'):
+            base_target = 85.0
+        else:
+            base_target = 80.0  # build, peak, specificity, unknown
+
+        # Masters athlete adjustment (+5% easy if age >= 50)
+        age_adj = 5.0 if (athlete_age and int(athlete_age) >= 50) else 0.0
+        target = min(base_target + age_adj, 95.0)
+
+        # Compliance window ±10 points
+        if easy_hard < 3:
+            compliance = 'insufficient_data'
+        elif easy_pct >= target - 10:
+            compliance = 'on_target'
+        elif easy_pct < target - 10:
+            compliance = 'too_hard'
+        else:
+            compliance = 'too_easy'
+
+        return {
+            'easy_sessions': easy,
+            'hard_sessions': hard,
+            'moderate_sessions': moderate,
+            'unknown_sessions': unknown,
+            'total_sessions': total,
+            'easy_pct': round(easy_pct, 1),
+            'target_easy_pct': target,
+            'compliance': compliance,
+            'moderate_dates': moderate_dates,
+        }
+
+    except Exception as e:
+        logger.error(f"Error computing weekly polarized ratio for user {user_id}: {e}")
+        return None
 
 
 def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=None):
@@ -553,6 +963,29 @@ def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_T
     return call_claude(prompt, model=model, temperature=temperature, max_tokens=max_tokens, timeout=timeout, task='daily')
 
 
+def format_pain_signal(pain_percentage, rpe_score=None):
+    """Return a labelled pain string using the Training Metrics Reference Guide scale.
+
+    Scale: 0=Excellent | 20=Okay | 40=Tolerable | 60=Marginal | 80=Unacceptable | 100=Dangerous
+    Safety rule: ≥60% on consecutive days = mandatory rest flag.
+    An isolated reading ≤20% is training noise — do not modify load.
+    """
+    if pain_percentage is None or pain_percentage == 0:
+        return None
+    if pain_percentage >= 100:
+        label, action = "Dangerous", "halt workouts, revisit the plan"
+    elif pain_percentage >= 80:
+        label, action = "Unacceptable", "rest day warranted"
+    elif pain_percentage >= 60:
+        label, action = "Marginal", "modify today's activity"
+    elif pain_percentage >= 40:
+        label, action = "Tolerable", "consider modifying, monitor tomorrow"
+    else:
+        label, action = "Okay", "continue, monitor"
+    effort_note = ", isolated on hard effort" if (rpe_score or 0) >= 7 else ""
+    return f"{pain_percentage}% [{label} — {action}{effort_note}]"
+
+
 def format_observations_for_prompt(observations):
     """Format user observations for the AI prompt"""
     if not observations:
@@ -569,7 +1002,9 @@ def format_observations_for_prompt(observations):
         formatted.append(f"RPE (Rate of Perceived Exertion): {observations['rpe_score']}/10 - How hard the workout felt")
 
     if observations.get('pain_percentage') is not None:
-        formatted.append(f"Pain %: {observations['pain_percentage']}% - Percentage of time thinking about pain during activity")
+        pain_str = format_pain_signal(observations['pain_percentage'], observations.get('rpe_score'))
+        if pain_str:
+            formatted.append(f"Pain: {pain_str}")
 
     if observations.get('notes'):
         formatted.append(f"Notes: {observations['notes']}")
@@ -677,8 +1112,9 @@ def create_fallback_autopsy(prescribed_action, actual_activities, observations):
         elif observations['rpe_score'] <= 4:
             response_notes.append("Low RPE indicates easy session")
 
-    if observations.get('pain_percentage', 0) > 0:
-        response_notes.append(f"Pain reported ({observations['pain_percentage']}%) - monitor closely")
+    if observations.get('pain_percentage', 0) >= 40:
+        pain_str = format_pain_signal(observations['pain_percentage'], observations.get('rpe_score'))
+        response_notes.append(f"Pain: {pain_str}")
 
     fallback = f"""**ALIGNMENT ASSESSMENT:**
 {alignment}
@@ -972,29 +1408,8 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         fetch=True
     )
 
-    # HRV 30-day baseline (require ≥7 readings)
-    hrv_baseline_data = execute_query(
-        """SELECT AVG(hrv_value) AS hrv_baseline, COUNT(hrv_value) AS hrv_count
-           FROM journal_entries
-           WHERE user_id = %s
-             AND date >= %s::date - INTERVAL '30 days'
-             AND date < %s::date
-             AND hrv_value IS NOT NULL""",
-        (user_id, current_date, current_date),
-        fetch=True
-    )
-
-    # RHR 7-day baseline (require ≥3 readings)
-    rhr_baseline_data = execute_query(
-        """SELECT AVG(resting_hr) AS rhr_baseline, COUNT(resting_hr) AS rhr_count
-           FROM journal_entries
-           WHERE user_id = %s
-             AND date >= %s::date - INTERVAL '7 days'
-             AND date < %s::date
-             AND resting_hr IS NOT NULL""",
-        (user_id, current_date, current_date),
-        fetch=True
-    )
+    # ANS readiness: z-score based HRV+RHR assessment with overreaching trend detection
+    _ans = get_ans_readiness(user_id)
 
     readiness_context = ""
     if readiness_data and readiness_data[0]:
@@ -1029,43 +1444,35 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         if ms is not None:
             parts.append(f"Morning soreness: {ms}/100")
 
-        # HRV context
+        # HRV context — z-score relative to personal baseline
         if hrv_value is not None:
-            hrv_baseline = hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None
-            hrv_count    = hrv_baseline_data[0]['hrv_count']    if hrv_baseline_data and hrv_baseline_data[0] else 0
-            if hrv_baseline and hrv_count >= 7:
-                ratio     = float(hrv_value) / float(hrv_baseline)
-                pct_diff  = (ratio - 1.0) * 100
-                direction = "suppressed" if ratio < 0.85 else ("elevated" if ratio > 1.15 else "normal range")
-                parts.append(
-                    f"HRV: {hrv_value:.0f}ms "
-                    f"(30-day baseline: {hrv_baseline:.0f}ms, "
-                    f"{abs(pct_diff):.0f}% {'below' if pct_diff < 0 else 'above'} baseline — {direction})"
-                )
-            else:
-                readings_needed = max(0, 7 - (hrv_count or 0))
-                parts.append(f"HRV: {hrv_value:.0f}ms (building baseline — {readings_needed} more readings needed)")
-
-        # Resting HR context
-        if rhr_value is not None:
-            rhr_baseline = rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None
-            rhr_count    = rhr_baseline_data[0]['rhr_count']    if rhr_baseline_data and rhr_baseline_data[0] else 0
-            if rhr_baseline and rhr_count >= 3:
-                rhr_diff = rhr_value - float(rhr_baseline)
-                pct_diff = (rhr_diff / float(rhr_baseline)) * 100
-                if pct_diff >= 10:
-                    status = "significantly elevated"
-                elif pct_diff >= 5:
-                    status = "elevated"
-                elif pct_diff <= -5:
-                    status = "below baseline"
+            hrv_z = _ans.get('hrv_z')
+            if hrv_z is not None:
+                if hrv_z >= 1.5:
+                    hrv_status = "elevated — parasympathetic spike"
+                elif hrv_z <= -1.0:
+                    hrv_status = "suppressed"
+                elif hrv_z >= 0.5:
+                    hrv_status = "above baseline"
                 else:
-                    status = "normal range"
-                parts.append(
-                    f"Resting HR: {rhr_value}bpm "
-                    f"(7-day baseline: {rhr_baseline:.0f}bpm, "
-                    f"{abs(pct_diff):.0f}% {'above' if rhr_diff > 0 else 'below'} baseline — {status})"
-                )
+                    hrv_status = "normal range"
+                parts.append(f"HRV: {hrv_value:.0f}ms ({hrv_z:+.2f}σ — {hrv_status})")
+            else:
+                parts.append(f"HRV: {hrv_value:.0f}ms (building baseline)")
+
+        # Resting HR context — z-score relative to personal baseline
+        if rhr_value is not None:
+            rhr_z = _ans.get('rhr_z')
+            if rhr_z is not None:
+                if rhr_z >= 1.0:
+                    rhr_status = "elevated"
+                elif rhr_z <= -1.0:
+                    rhr_status = "below baseline"
+                elif rhr_z >= 0.5:
+                    rhr_status = "slightly above baseline"
+                else:
+                    rhr_status = "normal range"
+                parts.append(f"Resting HR: {rhr_value}bpm ({rhr_z:+.2f}σ — {rhr_status})")
             else:
                 parts.append(f"Resting HR: {rhr_value}bpm (building baseline)")
 
@@ -1121,19 +1528,23 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         if parts:
             readiness_context = "\n### MORNING READINESS\n" + "\n".join(f"- {p}" for p in parts) + "\n"
 
-        # Readiness state synthesis (always compute when readiness row exists)
+        # Readiness state synthesis — ANS engine drives HRV/RHR signals
         _rs = compute_readiness_state(
             readiness_row=row,
-            hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
-            hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
-            rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
-            rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
+            hrv_baseline=None,
+            hrv_baseline_count=0,
+            rhr_baseline=None,
+            rhr_baseline_count=0,
             athlete_model=_cached_athlete_model,
+            ans_result=_ans,
         )
         if readiness_context:
             readiness_context += f"**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
         else:
             readiness_context = f"\n### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
+
+    # State-gated coaching context library injection
+    coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), current_date)
 
     # Build autopsy context section if insights available
     autopsy_context = ""
@@ -1284,6 +1695,125 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                 if revision_pending:
                     weekly_context_block += " | Plan revision pending — a mid-week adjustment has been proposed."
                 weekly_context_block += "\n"
+
+            # Inject athlete-declared scheduling exceptions for this week
+            schedule_constraints = week_ctx.get('schedule_constraints') or []
+            if schedule_constraints:
+                future_constraints = [
+                    c for c in schedule_constraints
+                    if isinstance(c, dict) and c.get('date', '') >= str(target_date)
+                ]
+                if future_constraints:
+                    lines = []
+                    for c in sorted(future_constraints, key=lambda x: x.get('date', '')):
+                        lines.append(f"  - {c['date']}: {c.get('reason', 'Unavailable')}")
+                    weekly_context_block += (
+                        "\nATHLETE-FLAGGED SCHEDULE CONFLICTS (this week):\n"
+                        + "\n".join(lines)
+                        + "\nAdjust prescriptions accordingly — do not prescribe hard sessions on conflicted dates.\n"
+                    )
+
+            # Inject zone-aware execution cues based on today's session type
+            if today_full:
+                _day_intensity = today_full.get('intensity', '').lower()
+                _hard_type = today_full.get('hard_session_type')
+                _strides_today = today_full.get('strides', False)
+                try:
+                    _hr = get_user_hr_thresholds(user_id)
+                    if _hr and _day_intensity == 'low':
+                        _vt1 = _hr['vt1_bpm']
+                        _z2_min = _hr['zones']['zone2']['min']
+                        _z3_min = _hr['zones']['zone3']['min']
+                        weekly_context_block += f"""
+EASY DAY EXECUTION — POLARIZED COMPLIANCE:
+Stay below {_vt1} bpm (VT1 — Zone 2 ceiling, {_hr['zone_method']} method).
+Target: minimum 45 minutes in Zone 2 ({_z2_min}–{_vt1} bpm).
+HR is the authority — if HR climbs above {_vt1} bpm, reduce effort immediately.
+Zone 3 ({_z3_min}+ bpm) is the black hole: fatigue without meaningful adaptation.
+RULE — INTERNAL LOAD: Never prescribe terrain features (grade, hill steepness) as a proxy for managing internal load. Internal load is always and only a function of HR. If you want the athlete to manage load on a climb, say "if HR approaches {_vt1} bpm on climbs, shorten stride or slow down" — never "power hike climbs steeper than X%". Terrain prescriptions are only acceptable for injury management (e.g. avoid technical footing for ankle recovery), not load management.
+"""
+                    elif _hr and _day_intensity == 'high':
+                        _vt1 = _hr['vt1_bpm']
+                        _vt2 = _hr['vt2_bpm']
+                        _z4_min = _hr['zones']['zone4']['min']
+                        _z3_min = _hr['zones']['zone3']['min']
+                        if _hard_type == 'intervals':
+                            try:
+                                from workout_library import get_interval_protocol_for_week, format_interval_protocol_for_prompt
+                                import datetime as _dt
+                                _target = _dt.date.fromisoformat(target_date) if isinstance(target_date, str) else target_date
+                                _protocol = get_interval_protocol_for_week(_target)
+                                _protocol_block = format_interval_protocol_for_prompt(_protocol, _vt1, _vt2)
+                                weekly_context_block += f"\n{_protocol_block}\n"
+                            except Exception as _lib_err:
+                                logger.debug(f"Workout library lookup failed, using generic interval cue: {_lib_err}")
+                                weekly_context_block += f"""
+INTERVAL EXECUTION — POLARIZED COMPLIANCE:
+Quality block: repeated efforts in Zone 4 ({_z4_min}–{_vt2} bpm) with full recovery below VT1 ({_vt1} bpm).
+Target: minimum 15 minutes cumulative in Zone 4 across all intervals.
+Recovery between intervals must stay in Zone 1/2 — do not let them drift to Zone 3 ({_z3_min}+ bpm).
+"""
+                        elif _hard_type == 'hills':
+                            weekly_context_block += f"""
+HILL SESSION EXECUTION — POLARIZED COMPLIANCE:
+Quality block: sustained uphill efforts into Zone 4/5 (above {_z4_min} bpm).
+Target: minimum 15 minutes cumulative above VT2 ({_vt2} bpm) across all hill efforts.
+Descent recovery should stay below VT1 ({_vt1} bpm) — easy jog or walk.
+"""
+                        else:
+                            # tempo or race_sim or unspecified hard
+                            weekly_context_block += f"""
+TEMPO EXECUTION — POLARIZED COMPLIANCE:
+Target: 25–35 minutes sustained at Zone 4 ({_z4_min}–{_vt2} bpm).
+Warm-up and cool-down below VT1 ({_vt1} bpm). Brief Zone 5 spikes tolerated.
+Minimum quality block: 15 minutes above VT2 ({_vt2} bpm).
+"""
+                except Exception as _hre:
+                    logger.debug(f"Zone cue injection skipped for user {user_id}: {_hre}")
+
+                # Inject stride execution cue when today's plan includes strides
+                if _strides_today:
+                    try:
+                        from workout_library import STRIDE_PROTOCOL
+                        _sp = STRIDE_PROTOCOL["prescription"]
+                        weekly_context_block += f"""
+STRIDES — TODAY'S SESSION INCLUDES STRIDES:
+{_sp['placement']}.
+{_sp['count']}, {_sp['duration']}
+Recovery between strides: {_sp['recovery']}
+Terrain: {_sp['terrain']}
+Execution: {_sp['execution_note']}
+"""
+                    except Exception as _stre:
+                        logger.debug(f"Stride cue injection skipped for user {user_id}: {_stre}")
+
+                # Inject pending session-type adjustment from athlete model when
+                # today's planned session matches a stored adjustment.
+                if _hard_type and _cached_athlete_model:
+                    try:
+                        import json as _json
+                        _pending = _cached_athlete_model.get('pending_session_adjustments') or {}
+                        if isinstance(_pending, str):
+                            _pending = _json.loads(_pending)
+                        _adj_entry = _pending.get(_hard_type)
+                        if _adj_entry and isinstance(_adj_entry, dict):
+                            _expires = _adj_entry.get('expires', '')
+                            _today_str = get_app_current_date().strftime('%Y-%m-%d')
+                            if _expires >= _today_str:
+                                _adj_text = _adj_entry.get('adjustment', '')
+                                _from_date = _adj_entry.get('from_date', 'recent session')
+                                if _adj_text:
+                                    weekly_context_block += f"""
+PENDING {_hard_type.upper()} SESSION ADJUSTMENT (learned from autopsy on {_from_date}):
+{_adj_text}
+Apply this adjustment when prescribing today's {_hard_type} session.
+"""
+                                    logger.info(
+                                        f"Injected pending {_hard_type} adjustment for user {user_id} "
+                                        f"from {_from_date}"
+                                    )
+                    except Exception as _adj_err:
+                        logger.debug(f"Pending session adjustment injection skipped for user {user_id}: {_adj_err}")
         else:
             weekly_context_block = """
 ### WEEKLY CONTEXT
@@ -1324,6 +1854,7 @@ Assessment Category: {assessment_category}
 - Days Since Rest: {formatted_metrics['days_since_rest']}
 {athlete_model_context}
 {readiness_context}
+{coaching_context_block}
 {autopsy_context}
 {weekly_context_block}
 ### PATTERN ANALYSIS
@@ -1408,6 +1939,8 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
   "decision": {{
     "action": "train",
     "intensity_target": "moderate",
+    "polarized_session_intent": "easy",
+    "hard_session_type": null,
     "volume_modifier": 0.0,
     "specific_workout_type": null,
     "duration_minutes_suggested": null
@@ -1452,6 +1985,8 @@ Allowed enum values:
 - divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data
 - decision.action: train | rest | cross_train | reduce
 - decision.intensity_target: easy | moderate | hard | race_effort | none
+- decision.polarized_session_intent: easy | hard | rest | unknown (Seiler session-count model: classify entire session by intent — easy=stay below VT1, hard=achieve 15+ min above VT2, rest=no training)
+- decision.hard_session_type: tempo | intervals | hills | race_sim | null (set only when polarized_session_intent=hard; null for easy/rest days)
 - risk.injury_risk_level: low | moderate | high | critical
 - risk.pain_location: Extract from athlete notes — the specific body part if pain is mentioned (e.g., "left knee", "right achilles", "lower back", "hip flexor"). Set to null if no pain is mentioned in the notes.
 - context.alignment_trend: improving | stable | declining | insufficient_data
@@ -1734,21 +2269,24 @@ def parse_llm_response(response_text):
     return sections
 
 
-def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, actual_activities, observations):
+def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, actual_activities, observations,
+                                       zone_compliance=None):
     """
     Generate AI autopsy comparing prescribed vs actual training using Training Reference Guide.
     Enhanced version that includes alignment scoring and structured learning insights.
-    
+
     This is the primary autopsy generation function. Use this instead of the deprecated
     generate_activity_autopsy() function.
-    
+
     Args:
         user_id (int): User ID for multi-user support
         date_str (str): Date in YYYY-MM-DD format
         prescribed_action (str): The "Today" section from AI recommendation
         actual_activities (str): Summary of what user actually did
         observations (dict): User's energy, RPE, pain, notes
-        
+        zone_compliance (dict): Optional output of compute_zone_compliance() — zone distribution
+                                and polarized compliance flags for this session.
+
     Returns:
         dict: Contains 'analysis' (str) and 'alignment_score' (int 1-10)
     """
@@ -1765,7 +2303,8 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
             prescribed_action,
             actual_activities,
             observations,
-            tone_instructions
+            tone_instructions,
+            zone_compliance=zone_compliance
         )
 
         # Get specialized settings for autopsy analysis from config
@@ -2049,7 +2588,7 @@ def get_coaching_style_from_spectrum(spectrum_value):
         }
 
 def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, actual_activities, observations,
-                                                tone_instructions=None):
+                                                tone_instructions=None, zone_compliance=None):
     """Create autopsy prompt that compares prescribed vs actual without metrics confusion."""
     try:
         # Format user observations
@@ -2074,7 +2613,77 @@ def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, act
         if tone_instructions:
             tone_section = f"{tone_instructions}\n\n"
 
+        # Build zone compliance block
+        zone_block = ""
+        if zone_compliance and zone_compliance.get('has_hr_data'):
+            zp = zone_compliance['z_pcts']
+            vt1 = zone_compliance.get('vt1_bpm')
+            vt2 = zone_compliance.get('vt2_bpm')
+            z2_min = zone_compliance.get('z2_minutes', 0)
+            q_min = zone_compliance.get('quality_minutes', 0)
+            prescribed = zone_compliance.get('prescribed', 'unknown')
+            actual_cls = zone_compliance.get('actual_classification', 'Unknown')
+
+            # Build per-zone bpm labels so the LLM cannot misattribute boundaries
+            zones_dict = zone_compliance.get('zones')
+            def _zone_label(key):
+                if not zones_dict or key not in zones_dict:
+                    return key.upper()
+                z = zones_dict[key]
+                zmin = z.get('min', '?')
+                zmax = z.get('max', '?')
+                return f"{key.upper()} ({zmin}–{zmax} bpm)"
+
+            z1_lbl = _zone_label('zone1')
+            z2_lbl = _zone_label('zone2')
+            z3_lbl = _zone_label('zone3')
+            z4_lbl = _zone_label('zone4')
+            z5_lbl = _zone_label('zone5')
+
+            vt_str = (
+                f"VT1 = {vt1} bpm (= {z2_lbl} ceiling / Zone 3 floor) | "
+                f"VT2 = {vt2} bpm (= {z4_lbl} ceiling / Zone 5 floor)"
+            ) if vt1 and vt2 else ""
+
+            zone_block = f"""
+ZONE COMPLIANCE (POLARIZED TRAINING):
+Prescribed intent: {prescribed} | Actual session classification: {actual_cls}
+{z1_lbl}: {zp.get('z1', 0):.0f}% | {z2_lbl}: {zp.get('z2', 0):.0f}% | {z3_lbl}: {zp.get('z3', 0):.0f}% | {z4_lbl}: {zp.get('z4', 0):.0f}% | {z5_lbl}: {zp.get('z5', 0):.0f}%
+{vt_str}
+Z2 time: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
+"""
+            if zone_compliance.get('black_hole'):
+                zone_block += f"""
+BLACK HOLE ALERT: This session was prescribed as Easy but Z3 (moderate intensity) was {zp.get('z3', 0):.0f}% of session time (threshold: 15%). This is a polarized training compliance failure — the athlete accumulated fatigue without a meaningful adaptation stimulus. Address this explicitly in the alignment assessment. The alignment score should reflect this compliance failure.
+"""
+            elif zone_compliance.get('z2_target_met') is False:
+                zone_block += f"""
+Z2 TARGET MISSED: Easy session had only {z2_min:.0f} min in Zone 2 (target: 45 min). Insufficient aerobic base stimulus accumulated.
+"""
+            if zone_compliance.get('insufficient_intensity'):
+                zone_block += f"""
+INTENSITY TARGET MISSED: Hard session only achieved {q_min:.0f} min above VT2 (target: 15 min). Session did not generate sufficient high-intensity adaptation stimulus. Assess whether this was a pacing issue, fatigue, or execution problem.
+"""
+
         training_guide = load_training_guide()
+
+        # Anchor NEXT_SESSION_ADJUSTMENT to the athlete's actual HR zones so the LLM
+        # cannot substitute population defaults or invent HR numbers.
+        _zone_anchor = ""
+        if zone_compliance and zone_compliance.get('has_hr_data'):
+            _vt1 = zone_compliance.get('vt1_bpm')
+            _vt2 = zone_compliance.get('vt2_bpm')
+            if _vt1 and _vt2:
+                _zone_anchor = (
+                    f" CRITICAL — use this athlete's actual HR zones: "
+                    f"VT1 = {_vt1} bpm (Zone 2 ceiling), "
+                    f"VT2 = {_vt2} bpm (Zone 4 ceiling). "
+                    f"Zone 4 (tempo work) is the band between Zone 3 and {_vt2} bpm. "
+                    f"Zone 5 is above {_vt2} bpm. "
+                    f"Any HR at or below {_vt1} bpm is Zone 2 or lower — NEVER call it Zone 4. "
+                    f"Any HR above {_vt2} bpm is Zone 5 — NEVER call it Zone 4. "
+                    f"Do not invent HR numbers outside these boundaries."
+                )
 
         prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
 
@@ -2085,11 +2694,11 @@ PRESCRIBED TRAINING DECISION:
 
 ACTUAL TRAINING COMPLETED:
 {activity_summary}
-
+{zone_block}
 USER OBSERVATIONS:
 - Energy Level: {energy_level}/5 (How did the athlete feel going into the session? 5=Fired up, 1=Barely got out of bed)
 - RPE (Rate of Perceived Exertion): {rpe_score}/10 (How hard did the workout feel? 10=Maximum effort, 1=Very easy)
-- Pain %: {pain_percentage}% (Percentage of time during the activity that the athlete was thinking about pain)
+- Pain: {format_pain_signal(pain_percentage) or "0% [Excellent — pain free]"} (% of workout time athlete was aware of pain; scale: 0=Excellent, 20=Okay, 40=Tolerable, 60=Marginal, 80=Unacceptable, 100=Dangerous)
 - Additional Notes: {notes}
 
 DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
@@ -2113,11 +2722,18 @@ PHYSIOLOGICAL RESPONSE ANALYSIS:
 LEARNING INSIGHTS & COACHING TAKEAWAYS:
 [{('Apply the coaching tone throughout. ' if tone_instructions else '')}Key takeaways from today's session. Why did athlete deviate (if applicable)? What does response reveal about adaptation and adherence patterns? Any coaching adjustments needed based on alignment and physiological response?]
 
+--- STRUCTURED OUTPUT (machine-parsed — do NOT include these tags anywhere in your narrative above) ---
+NEXT_SESSION_TYPE: [tempo|intervals|hills|race_sim|none]
+NEXT_SESSION_ADJUSTMENT: [one specific, actionable adjustment for the athlete's next session of that type — e.g. target HR range, interval structure change, pacing cue.{_zone_anchor} Write "none" if no adjustment needed.]
+
 CRITICAL REQUIREMENTS:
 - Start with "ALIGNMENT_SCORE: X/10" where X is a number 1-10
-- Keep total response under 300 words for Journal display
+- Keep total response under 350 words for Journal display
 - Focus on actionable insights about compliance and response
 - Check user notes for context on deviations{(' - Apply the specified coaching tone consistently throughout all sections' if tone_instructions else '')}
+- NEXT_SESSION_TYPE and NEXT_SESSION_ADJUSTMENT appear ONLY in the STRUCTURED OUTPUT block at the end — never in ALIGNMENT ASSESSMENT, PHYSIOLOGICAL RESPONSE ANALYSIS, or LEARNING INSIGHTS
+- NEXT_SESSION_TYPE must be exactly one of: tempo, intervals, hills, race_sim, none
+- NEXT_SESSION_ADJUSTMENT must be a single sentence when a type is specified; "none" otherwise
 """
 
         return prompt
@@ -2149,15 +2765,47 @@ def parse_enhanced_autopsy_response(response):
         # Ensure score is in valid range
         alignment_score = max(1, min(10, alignment_score))
 
-        # Remove the score prefix from the stored analysis text so the banner
-        # is the single source of truth and the text doesn't repeat it.
+        # Extract next session adjustment fields
+        type_match = re.search(r'NEXT_SESSION_TYPE:\s*(\w+)', response, re.IGNORECASE)
+        adj_match = re.search(r'NEXT_SESSION_ADJUSTMENT:\s*(.+?)(?:\n|$)', response, re.DOTALL)
+        next_session_type = type_match.group(1).lower().strip() if type_match else None
+        next_session_adjustment = adj_match.group(1).strip() if adj_match else None
+        # Normalize — treat none/null/empty as no adjustment
+        _valid_types = {'tempo', 'intervals', 'hills', 'race_sim'}
+        if next_session_type not in _valid_types:
+            next_session_type = None
+            next_session_adjustment = None
+        if next_session_adjustment and next_session_adjustment.lower() in ('none', 'null', 'n/a', ''):
+            next_session_type = None
+            next_session_adjustment = None
+
+        # Remove the score prefix and the next-session block from the stored analysis text
+        # so the journal display doesn't repeat structured fields.
         cleaned_analysis = re.sub(r'ALIGNMENT_SCORE:\s*[\d.]+/10\s*', '', response, flags=re.IGNORECASE).strip()
         cleaned_analysis = re.sub(r'^[\d.]+/10\s*', '', cleaned_analysis).strip()
+        # Strip the entire STRUCTURED OUTPUT block and any stray structured field tags.
+        # Matches from the dashed header or from the first NEXT_SESSION tag to end of string.
+        # The block is always at the end of the response.
+        cleaned_analysis = re.sub(
+            r'\n*-{3,}\s*STRUCTURED OUTPUT.*',
+            '',
+            cleaned_analysis,
+            flags=re.IGNORECASE | re.DOTALL
+        ).strip()
+        # Also catch any stray NEXT_SESSION_TYPE/NEXT_SESSION_ADJUSTMENT that leaked through
+        cleaned_analysis = re.sub(
+            r'\n*NEXT[_ ]SESSION[_ ](?:ADJUSTMENT|TYPE):.*',
+            '',
+            cleaned_analysis,
+            flags=re.IGNORECASE | re.DOTALL
+        ).strip()
         cleaned_analysis = process_markdown(cleaned_analysis)
 
         return {
             'analysis': cleaned_analysis,
-            'alignment_score': alignment_score
+            'alignment_score': alignment_score,
+            'next_session_type': next_session_type,
+            'next_session_adjustment': next_session_adjustment,
         }
 
     except Exception as e:
@@ -2214,16 +2862,19 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
 
 
 def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
-                            rhr_baseline, rhr_baseline_count, athlete_model):
+                            rhr_baseline, rhr_baseline_count, athlete_model,
+                            ans_result=None):
     """Synthesize wellness signals into a readiness state: GREEN, AMBER, or RED.
 
     Args:
         readiness_row: dict with wellness fields from journal_entries (or None).
-        hrv_baseline: float — 30-day HRV average (or None if insufficient data).
-        hrv_baseline_count: int — number of readings in the baseline.
-        rhr_baseline: float — 7-day RHR average (or None).
-        rhr_baseline_count: int — number of readings in the baseline.
+        hrv_baseline: float — legacy 30-day HRV average. Ignored when ans_result provided.
+        hrv_baseline_count: int — legacy baseline count. Ignored when ans_result provided.
+        rhr_baseline: float — legacy 7-day RHR average. Ignored when ans_result provided.
+        rhr_baseline_count: int — legacy baseline count. Ignored when ans_result provided.
         athlete_model: dict from get_athlete_model() for personalised thresholds (or None).
+        ans_result: optional dict from get_ans_readiness(). When provided, z-score based
+                    HRV/RHR evaluation supersedes the ratio-based fallback.
 
     Returns:
         dict: {state, component_flags, confidence, narrative}
@@ -2245,10 +2896,18 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
     sleep_deficit    = False
     sleep_poor_score = False
     high_soreness    = False
+    deep_hole        = False   # parasympathetic hyperactivity pattern
     signals_with_data = 0.0
 
-    # HRV suppression (requires ≥5 baseline days for full credit)
-    if hrv_value is not None:
+    # HRV and RHR evaluation — use z-score engine when available, ratio fallback otherwise
+    ans = ans_result or {}
+    hrv_z = ans.get('hrv_z')
+    rhr_z = ans.get('rhr_z')
+
+    if hrv_z is not None:
+        signals_with_data += 1
+        hrv_suppressed = hrv_z <= -1.0
+    elif hrv_value is not None:
         if hrv_baseline and hrv_baseline_count >= 5:
             signals_with_data += 1
             if float(hrv_value) < float(hrv_baseline) * hrv_suppression_threshold:
@@ -2256,14 +2915,20 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
         else:
             signals_with_data += 0.5  # value present but no reliable baseline yet
 
-    # RHR elevation (requires ≥3 baseline days)
-    if rhr_value is not None:
+    if rhr_z is not None:
+        signals_with_data += 1
+        rhr_elevated = rhr_z >= 1.0
+    elif rhr_value is not None:
         if rhr_baseline and rhr_baseline_count >= 3:
             signals_with_data += 1
             if float(rhr_value) > float(rhr_baseline) * rhr_elevation_threshold:
                 rhr_elevated = True
         else:
             signals_with_data += 0.5
+
+    # Deep Hole: HRV spike + RHR suppression simultaneously — parasympathetic overdrive
+    if hrv_z is not None and rhr_z is not None:
+        deep_hole = (hrv_z >= 1.5 and rhr_z <= -1.0)
 
     if sleep_secs is not None:
         signals_with_data += 1
@@ -2287,6 +2952,7 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
 
     # Determine state
     red_conditions = (
+        ans.get('is_overreaching') or  # 4-day overreaching streak
         (hrv_suppressed and rhr_elevated) or
         (hrv_suppressed and sleep_deficit) or
         (high_soreness and (hrv_suppressed or rhr_elevated)) or
@@ -2297,7 +2963,7 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
 
     if red_conditions:
         state = "RED"
-    elif flag_count >= 1:
+    elif deep_hole or flag_count >= 1:
         state = "AMBER"
     else:
         state = "GREEN"
@@ -2313,16 +2979,22 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
     if state == "GREEN":
         narrative = "Wellness signals normal — cleared for planned training load."
     elif state == "AMBER":
-        active = []
-        if hrv_suppressed:   active.append("HRV suppressed")
-        if rhr_elevated:     active.append("RHR elevated")
-        if sleep_deficit:    active.append("sleep deficit")
-        if sleep_poor_score: active.append("poor sleep score")
-        if high_soreness:    active.append("high soreness")
-        flags_str = ", ".join(active) if active else "one or more signals elevated"
-        narrative = f"Caution: {flags_str} — monitor effort, reduce intensity if needed."
+        if deep_hole:
+            narrative = "Parasympathetic hyperactivity (HRV spike + RHR suppression) — rest only, do not load."
+        else:
+            active = []
+            if hrv_suppressed:   active.append("HRV suppressed")
+            if rhr_elevated:     active.append("RHR elevated")
+            if sleep_deficit:    active.append("sleep deficit")
+            if sleep_poor_score: active.append("poor sleep score")
+            if high_soreness:    active.append("high soreness")
+            flags_str = ", ".join(active) if active else "one or more signals elevated"
+            narrative = f"Caution: {flags_str} — monitor effort, reduce intensity if needed."
     else:
-        narrative = "Multiple recovery signals active — strongly consider rest or easy recovery session."
+        if ans.get('is_overreaching'):
+            narrative = "Systemic overreaching (4-day streak) — immediate deload required."
+        else:
+            narrative = "Multiple recovery signals active — strongly consider rest or easy recovery session."
 
     return {
         "state": state,
@@ -2332,6 +3004,8 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
             "sleep_deficit":    sleep_deficit,
             "sleep_poor_score": sleep_poor_score,
             "high_soreness":    high_soreness,
+            "deep_hole":        deep_hole,
+            "is_overreaching":  bool(ans.get('is_overreaching')),
         },
         "confidence": confidence,
         "narrative": narrative,
@@ -2669,6 +3343,38 @@ def update_athlete_model(user_id, autopsy_data):
         if new_hrv_suppression_threshold is not None:
             updates['hrv_suppression_threshold'] = new_hrv_suppression_threshold
 
+        # Carry forward session-type-specific adjustments.
+        # If the autopsy named a next-session type and adjustment, upsert it into
+        # pending_session_adjustments keyed by session type with a 14-day expiry.
+        next_session_type = autopsy_data.get('next_session_type')
+        next_session_adjustment = autopsy_data.get('next_session_adjustment')
+        _valid_session_types = {'tempo', 'intervals', 'hills', 'race_sim'}
+        if next_session_type in _valid_session_types and next_session_adjustment:
+            try:
+                import json as _json
+                expiry = (get_app_current_date() + timedelta(days=14)).strftime('%Y-%m-%d')
+                pending = {}
+                existing_pending = (existing or {}).get('pending_session_adjustments')
+                if existing_pending and isinstance(existing_pending, dict):
+                    pending = existing_pending
+                elif existing_pending and isinstance(existing_pending, str):
+                    try:
+                        pending = _json.loads(existing_pending)
+                    except Exception:
+                        pending = {}
+                pending[next_session_type] = {
+                    'adjustment': next_session_adjustment,
+                    'from_date': date_str or get_app_current_date().strftime('%Y-%m-%d'),
+                    'expires': expiry,
+                }
+                updates['pending_session_adjustments'] = _json.dumps(pending)
+                logger.info(
+                    f"Stored pending {next_session_type} adjustment for user {user_id} "
+                    f"(expires {expiry}): {next_session_adjustment[:80]}"
+                )
+            except Exception as adj_err:
+                logger.warning(f"Could not store pending session adjustment for user {user_id}: {adj_err}")
+
         upsert_athlete_model(user_id, updates)
         logger.info(
             f"Updated athlete model for user {user_id}: total_autopsies={new_total}, "
@@ -2771,7 +3477,8 @@ def get_recent_journal_notes(user_id, days=3):
             rpe = note_data.get('rpe_score', '-')
             pain = note_data.get('pain_percentage', '-')
 
-            formatted_notes.append(f"  {date_str}: Energy {energy}/5, RPE {rpe}/10, Pain {pain}%\n  Notes: {notes_text}")
+            pain_str = format_pain_signal(pain if isinstance(pain, (int, float)) else None) or "0%"
+            formatted_notes.append(f"  {date_str}: Energy {energy}/5, RPE {rpe}/10, Pain {pain_str}\n  Notes: {notes_text}")
 
         return "\n\n".join(formatted_notes)
 
@@ -3144,7 +3851,7 @@ Element 3 — ALIGNMENT (~20 words): Cite the K-of-N figure from ALIGNMENT data 
 Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each against the athlete's personal thresholds from ATHLETE MODEL — state where they sit in their productive training window.
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
 Element 6 — DECISION (~20 words): Write "Proceed as planned." or "Adjust: [specific change] because [one reason]."
-Element 7 — EXECUTION (~45 words): Give 2-3 specific execution cues covering effort zone, pacing or HR target, terrain guidance, and duration.
+Element 7 — EXECUTION (~45 words): Give 2-3 specific execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain (grade, hill steepness, trail type) as a proxy for managing internal load — always give the HR number instead. Example: "if HR approaches 148 bpm on climbs, shorten your stride" NOT "power hike climbs over 10%". Terrain cues are only acceptable when managing a specific injury (e.g., "avoid technical rock sections for ankle recovery").
 Element 8 — INJURY (≤15 words, only if signals are present): One sentence on managing the injury this workout.
 
 Plain text only — no markdown, no bold, no headers within the prose.
@@ -3172,6 +3879,8 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
   "decision": {{
     "action": "train",
     "intensity_target": "moderate",
+    "polarized_session_intent": "easy",
+    "hard_session_type": null,
     "volume_modifier": 0.0,
     "specific_workout_type": null,
     "duration_minutes_suggested": null

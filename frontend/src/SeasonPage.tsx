@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { RaceReadinessCard, AthleteModelPanel, RaceReadiness, AthleteModel } from './CoachPage';
 import CoachingStyleSpectrum from './CoachingStyleSpectrum';
 import RiskToleranceSelector from './RiskToleranceSelector';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine, Legend,
+} from 'recharts';
 
 // ============================================================================
 // INTERFACES
@@ -30,6 +34,50 @@ interface GoalFormData {
   notes: string;
   elevation_gain_feet: string;
   distance_miles: string;
+}
+
+interface AerobicAssessment {
+  id: number;
+  activity_id: number;
+  activity_name: string;
+  test_date: string;
+  warmup_minutes: number;
+  first_half_avg_hr: number;
+  second_half_avg_hr: number;
+  drift_pct: number;
+  aet_bpm: number;
+  ant_bpm: number | null;
+  gap_pct: number | null;
+  gap_status: string | null;
+  interpretation: string;
+  steady_state_minutes: number;
+  notes: string | null;
+  distance_miles: number | null;
+}
+
+interface HRActivity {
+  activity_id: number;
+  name: string;
+  date: string;
+  duration_minutes: number;
+  avg_heart_rate: number;
+  sport_type: string;
+  distance_miles: number | null;
+  sample_rate: number;
+  already_assessed: number;
+}
+
+interface DriftPreview {
+  valid: boolean;
+  first_half_avg_hr: number;
+  second_half_avg_hr: number;
+  drift_pct: number;
+  aet_bpm: number;
+  interpretation: string;
+  steady_state_minutes: number;
+  ant_bpm: number | null;
+  gap_pct: number | null;
+  gap_status: string | null;
 }
 
 const EMPTY_FORM: GoalFormData = {
@@ -592,6 +640,340 @@ const PrefModal: React.FC<PrefModalProps> = ({
 };
 
 // ============================================================================
+// AEROBIC ASSESSMENT PANEL
+// ============================================================================
+
+const driftColor = (pct: number) =>
+  pct < 1.5 ? '#3b82f6' : pct <= 5.0 ? '#16a34a' : pct <= 10.0 ? '#d97706' : '#dc2626';
+
+const driftLabel = (pct: number) =>
+  pct < 1.5 ? 'Too Low' : pct <= 5.0 ? 'Valid' : pct <= 10.0 ? 'Above AeT' : 'High';
+
+interface AerobicAssessmentPanelProps {
+  assessments: AerobicAssessment[];
+  hrActivities: HRActivity[];
+  selectedActivityId: number | null;
+  setSelectedActivityId: (id: number | null) => void;
+  warmupMinutes: number;
+  setWarmupMinutes: (v: number) => void;
+  antBpm: string;
+  setAntBpm: (v: string) => void;
+  assessmentNotes: string;
+  setAssessmentNotes: (v: string) => void;
+  driftPreview: DriftPreview | null;
+  isAnalyzing: boolean;
+  isSavingAssessment: boolean;
+  assessmentError: string | null;
+  onAnalyze: () => void;
+  onSave: () => void;
+  onDelete: (id: number) => void;
+}
+
+const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
+  assessments, hrActivities, selectedActivityId, setSelectedActivityId,
+  warmupMinutes, setWarmupMinutes, antBpm, setAntBpm,
+  assessmentNotes, setAssessmentNotes, driftPreview,
+  isAnalyzing, isSavingAssessment, assessmentError,
+  onAnalyze, onSave, onDelete,
+}) => {
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    border: '1px solid #d1dce8',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
+    overflow: 'hidden',
+  };
+  const headerStyle: React.CSSProperties = {
+    background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+    padding: '10px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em',
+    color: '#1B2E4B', textTransform: 'uppercase',
+  };
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 10px', borderRadius: '5px',
+    border: '1px solid rgba(125,156,184,0.35)', backgroundColor: 'rgba(255,255,255,0.07)',
+    color: '#E6F0FF', fontSize: '0.82rem', boxSizing: 'border-box',
+  };
+  const fieldLabelStyle: React.CSSProperties = {
+    display: 'block', fontSize: '0.68rem', fontWeight: 600,
+    letterSpacing: '0.08em', color: 'rgba(230,240,255,0.6)',
+    textTransform: 'uppercase', marginBottom: '4px',
+  };
+
+  // Chart data — oldest first
+  const chartData = [...assessments]
+    .sort((a, b) => a.test_date.localeCompare(b.test_date))
+    .map(a => ({
+      date: formatDate(a.test_date),
+      aet: a.aet_bpm,
+      ant: a.ant_bpm ?? undefined,
+      drift: a.drift_pct,
+    }));
+
+  const hasAnt = assessments.some(a => a.ant_bpm !== null);
+
+  return (
+    <div style={cardStyle}>
+      {/* Header */}
+      <div style={headerStyle}>
+        <span style={labelStyle}>Aerobic Assessment</span>
+        <span style={{ fontSize: '0.65rem', color: '#1B2E4B', fontWeight: 600, opacity: 0.7 }}>
+          HR Drift Test
+        </span>
+      </div>
+
+      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+        {/* ── INPUT SECTION ── */}
+        <div style={{ ...CARBON, borderRadius: '7px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Activity selector */}
+          <div>
+            <label style={fieldLabelStyle}>Select Activity</label>
+            <select
+              value={selectedActivityId ?? ''}
+              onChange={e => {
+                setSelectedActivityId(e.target.value ? Number(e.target.value) : null);
+              }}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              <option value=''>— choose a run with HR data —</option>
+              {hrActivities.map(a => (
+                <option key={a.activity_id} value={a.activity_id}>
+                  {formatDate(a.date)} · {a.name}{a.distance_miles ? ` (${a.distance_miles.toFixed(1)} mi)` : ''}{a.already_assessed ? ' ✓' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Warm-up slider */}
+          <div>
+            <label style={fieldLabelStyle}>
+              Warm-up to skip: <span style={{ color: '#E6F0FF', fontWeight: 700 }}>{warmupMinutes} min</span>
+            </label>
+            <input
+              type='range' min={5} max={20} step={1}
+              value={warmupMinutes}
+              onChange={e => setWarmupMinutes(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#FF5722' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'rgba(230,240,255,0.4)', marginTop: '2px' }}>
+              <span>5 min</span><span>20 min</span>
+            </div>
+          </div>
+
+          {/* AnT bpm (optional) */}
+          <div>
+            <label style={fieldLabelStyle}>AnT bpm (optional — from hill TT)</label>
+            <input
+              type='number' placeholder='e.g. 168'
+              value={antBpm}
+              onChange={e => setAntBpm(e.target.value)}
+              style={inputStyle}
+              min={100} max={220}
+            />
+          </div>
+
+          {/* Analyze button */}
+          <button
+            onClick={onAnalyze}
+            disabled={!selectedActivityId || isAnalyzing}
+            style={{
+              padding: '8px 20px', borderRadius: '5px', border: 'none',
+              backgroundColor: selectedActivityId ? '#FF5722' : 'rgba(125,156,184,0.25)',
+              color: selectedActivityId ? 'white' : 'rgba(230,240,255,0.4)',
+              fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em',
+              cursor: selectedActivityId ? 'pointer' : 'not-allowed',
+              alignSelf: 'flex-start',
+            }}
+          >
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </button>
+        </div>
+
+        {/* ── ERROR ── */}
+        {assessmentError && (
+          <div style={{ padding: '10px 14px', backgroundColor: '#fff0f0', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '0.8rem', color: '#dc2626' }}>
+            {assessmentError}
+          </div>
+        )}
+
+        {/* ── PREVIEW RESULT ── */}
+        {driftPreview && (
+          <div style={{ ...CARBON, borderRadius: '7px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(230,240,255,0.5)', textTransform: 'uppercase' }}>Result Preview</span>
+              <span style={{
+                padding: '2px 10px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                backgroundColor: driftColor(driftPreview.drift_pct),
+                color: 'white',
+              }}>
+                {driftLabel(driftPreview.drift_pct)}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+              {[
+                { label: 'First Half', value: `${driftPreview.first_half_avg_hr.toFixed(0)} bpm` },
+                { label: 'Second Half', value: `${driftPreview.second_half_avg_hr.toFixed(0)} bpm` },
+                { label: 'Drift', value: `${driftPreview.drift_pct.toFixed(1)}%`, color: driftColor(driftPreview.drift_pct) },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ textAlign: 'center', padding: '8px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '5px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'rgba(230,240,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: color ?? '#E6F0FF', marginTop: '2px' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '8px 10px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '5px', borderLeft: `3px solid ${driftColor(driftPreview.drift_pct)}` }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#E6F0FF' }}>
+                AeT: {driftPreview.aet_bpm.toFixed(0)} bpm
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(230,240,255,0.7)', marginTop: '3px', lineHeight: 1.4 }}>
+                {driftPreview.interpretation}
+              </div>
+            </div>
+
+            {driftPreview.gap_pct !== null && (
+              <div style={{ fontSize: '0.75rem', color: 'rgba(230,240,255,0.7)', padding: '6px 10px', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '5px' }}>
+                AeT/AnT gap: <strong style={{ color: '#E6F0FF' }}>{driftPreview.gap_pct.toFixed(1)}%</strong> — {driftPreview.gap_status}
+              </div>
+            )}
+
+            <div style={{ fontSize: '0.67rem', color: 'rgba(230,240,255,0.4)' }}>
+              Steady-state window: {driftPreview.steady_state_minutes.toFixed(0)} min
+            </div>
+
+            {/* Notes field */}
+            <div>
+              <label style={{ ...fieldLabelStyle, color: 'rgba(230,240,255,0.5)' }}>Notes (optional)</label>
+              <textarea
+                value={assessmentNotes}
+                onChange={e => setAssessmentNotes(e.target.value)}
+                placeholder='Conditions, terrain, how you felt...'
+                rows={2}
+                style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+
+            <button
+              onClick={onSave}
+              disabled={isSavingAssessment}
+              style={{
+                padding: '8px 20px', borderRadius: '5px', border: 'none',
+                backgroundColor: '#16a34a', color: 'white',
+                fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em',
+                cursor: 'pointer', alignSelf: 'flex-start',
+              }}
+            >
+              {isSavingAssessment ? 'Saving...' : 'Save Assessment'}
+            </button>
+          </div>
+        )}
+
+        {/* ── HISTORY CHART ── */}
+        {chartData.length >= 2 && (
+          <div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', color: '#4a6285', textTransform: 'uppercase', marginBottom: '8px' }}>
+              AeT Progression
+            </div>
+            <ResponsiveContainer width='100%' height={200}>
+              <LineChart data={chartData} margin={{ top: 4, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray='3 3' stroke='rgba(0,0,0,0.08)' />
+                <XAxis dataKey='date' tick={{ fontSize: 11, fill: '#7D9CB8' }} />
+                <YAxis yAxisId='hr' domain={['auto', 'auto']} tick={{ fontSize: 11, fill: '#7D9CB8' }} label={{ value: 'bpm', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#7D9CB8' }} />
+                <YAxis yAxisId='drift' orientation='right' domain={[0, 'auto']} tick={{ fontSize: 11, fill: '#7D9CB8' }} label={{ value: 'drift %', angle: 90, position: 'insideRight', fontSize: 10, fill: '#7D9CB8' }} />
+                <Tooltip
+                  contentStyle={{ fontSize: '0.78rem', border: '1px solid #d1dce8' }}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'AeT bpm' || name === 'AnT bpm') return [`${Number(value).toFixed(0)} bpm`, name];
+                    if (name === 'Drift %') return [`${Number(value).toFixed(1)}%`, name];
+                    return [value, name];
+                  }}
+                />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: '0.72rem' }} />
+                <ReferenceLine yAxisId='drift' y={5} stroke='#d97706' strokeDasharray='4 2' label={{ value: '5% AeT', fontSize: 10, fill: '#d97706' }} />
+                <Line yAxisId='hr' type='monotone' dataKey='aet' name='AeT bpm' stroke='#FF5722' strokeWidth={2} dot={{ r: 4, fill: '#FF5722' }} activeDot={{ r: 5 }} />
+                {hasAnt && <Line yAxisId='hr' type='monotone' dataKey='ant' name='AnT bpm' stroke='#7D9CB8' strokeWidth={2} strokeDasharray='5 3' dot={{ r: 3 }} />}
+                <Line yAxisId='drift' type='monotone' dataKey='drift' name='Drift %' stroke='rgba(125,156,184,0.6)' strokeWidth={1.5} strokeDasharray='3 2' dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* ── HISTORY TABLE ── */}
+        {assessments.length > 0 ? (
+          <div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', color: '#4a6285', textTransform: 'uppercase', marginBottom: '8px' }}>
+              Test History
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {assessments.map(a => (
+                <div key={a.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '10px',
+                  padding: '10px 12px', backgroundColor: '#f8fafc',
+                  borderRadius: '6px', border: '1px solid #e2e8f0',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1B2E4B' }}>
+                        {formatDate(a.test_date)}
+                      </span>
+                      <span style={{
+                        padding: '1px 8px', borderRadius: '8px', fontSize: '0.68rem', fontWeight: 700,
+                        backgroundColor: driftColor(a.drift_pct), color: 'white',
+                      }}>
+                        {driftLabel(a.drift_pct)} · {a.drift_pct.toFixed(1)}%
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#4a6285', fontWeight: 600 }}>
+                        AeT {a.aet_bpm.toFixed(0)} bpm
+                      </span>
+                      {a.gap_pct !== null && (
+                        <span style={{ fontSize: '0.7rem', color: '#7D9CB8' }}>
+                          gap {a.gap_pct.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', lineHeight: 1.4 }}>
+                      {a.activity_name}{a.distance_miles ? ` · ${a.distance_miles.toFixed(1)} mi` : ''} · {a.steady_state_minutes.toFixed(0)} min steady-state
+                    </div>
+                    {a.notes && (
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px', fontStyle: 'italic' }}>{a.notes}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onDelete(a.id)}
+                    title='Delete'
+                    style={{
+                      flexShrink: 0, padding: '3px 8px', fontSize: '0.68rem',
+                      border: '1px solid #e2e8f0', borderRadius: '4px',
+                      backgroundColor: 'transparent', color: '#94a3b8',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !driftPreview && (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '0.8rem' }}>
+            No drift tests recorded. Select a steady-state run to analyze.
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // SEASON PAGE
 // ============================================================================
 
@@ -615,17 +997,31 @@ const SeasonPage: React.FC = () => {
   const [editingPref, setEditingPref] = useState<'communication' | 'risk' | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
 
+  // Aerobic Assessment
+  const [assessments, setAssessments] = useState<AerobicAssessment[]>([]);
+  const [hrActivities, setHrActivities] = useState<HRActivity[]>([]);
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const [warmupMinutes, setWarmupMinutes] = useState<number>(10);
+  const [antBpm, setAntBpm] = useState<string>('');
+  const [assessmentNotes, setAssessmentNotes] = useState<string>('');
+  const [driftPreview, setDriftPreview] = useState<DriftPreview | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSavingAssessment, setIsSavingAssessment] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+
   // ──────────────────────────────────────────
   // FETCH
   // ──────────────────────────────────────────
 
   const fetchAll = async () => {
     try {
-      const [goalsRes, readinessRes, modelRes, settingsRes] = await Promise.all([
+      const [goalsRes, readinessRes, modelRes, settingsRes, assessmentsRes, hrActivitiesRes] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/race-readiness'),
         fetch('/api/athlete-model'),
         fetch('/api/user-settings'),
+        fetch('/api/coach/aerobic-assessments'),
+        fetch('/api/coach/activities-with-hr'),
       ]);
 
       if (goalsRes.ok) {
@@ -662,6 +1058,15 @@ const SeasonPage: React.FC = () => {
           ? String(new Date().getFullYear())
           : rawExp
         );
+      }
+      if (assessmentsRes.ok) {
+        const d = await assessmentsRes.json();
+        if (d.success) setAssessments(d.assessments || []);
+      }
+
+      if (hrActivitiesRes.ok) {
+        const d = await hrActivitiesRes.json();
+        if (d.success) setHrActivities(d.activities || []);
       }
     } finally {
       setIsLoading(false);
@@ -741,6 +1146,77 @@ const SeasonPage: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ primary_sport: ps, secondary_sport: ss || null, training_experience: el }),
     });
+  };
+
+  // ──────────────────────────────────────────
+  // HANDLERS — AEROBIC ASSESSMENT
+  // ──────────────────────────────────────────
+
+  const handleAnalyzePreview = async () => {
+    if (!selectedActivityId) return;
+    setIsAnalyzing(true);
+    setAssessmentError(null);
+    setDriftPreview(null);
+    try {
+      const res = await fetch('/api/coach/aerobic-assessments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activity_id: selectedActivityId,
+          warmup_minutes: warmupMinutes,
+          ant_bpm: antBpm ? parseFloat(antBpm) : null,
+        }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setDriftPreview(d.analysis);
+      } else {
+        setAssessmentError(d.error || 'Analysis failed.');
+      }
+    } catch {
+      setAssessmentError('Network error. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleSaveAssessment = async () => {
+    if (!selectedActivityId || !driftPreview) return;
+    setIsSavingAssessment(true);
+    setAssessmentError(null);
+    try {
+      const res = await fetch('/api/coach/aerobic-assessments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activity_id: selectedActivityId,
+          warmup_minutes: warmupMinutes,
+          ant_bpm: antBpm ? parseFloat(antBpm) : null,
+          notes: assessmentNotes || null,
+        }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setDriftPreview(null);
+        setSelectedActivityId(null);
+        setAntBpm('');
+        setAssessmentNotes('');
+        setWarmupMinutes(10);
+        fetchAll();
+      } else {
+        setAssessmentError(d.error || 'Save failed.');
+      }
+    } catch {
+      setAssessmentError('Network error. Please try again.');
+    } finally {
+      setIsSavingAssessment(false);
+    }
+  };
+
+  const handleDeleteAssessment = async (id: number) => {
+    if (!window.confirm('Delete this assessment?')) return;
+    await fetch(`/api/coach/aerobic-assessments/${id}`, { method: 'DELETE' });
+    fetchAll();
   };
 
   // ──────────────────────────────────────────
@@ -1112,6 +1588,25 @@ const SeasonPage: React.FC = () => {
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <RaceReadinessCard readiness={raceReadiness} />
           <AthleteModelPanel model={athleteModel} />
+          <AerobicAssessmentPanel
+            assessments={assessments}
+            hrActivities={hrActivities}
+            selectedActivityId={selectedActivityId}
+            setSelectedActivityId={setSelectedActivityId}
+            warmupMinutes={warmupMinutes}
+            setWarmupMinutes={setWarmupMinutes}
+            antBpm={antBpm}
+            setAntBpm={setAntBpm}
+            assessmentNotes={assessmentNotes}
+            setAssessmentNotes={setAssessmentNotes}
+            driftPreview={driftPreview}
+            isAnalyzing={isAnalyzing}
+            isSavingAssessment={isSavingAssessment}
+            assessmentError={assessmentError}
+            onAnalyze={handleAnalyzePreview}
+            onSave={handleSaveAssessment}
+            onDelete={handleDeleteAssessment}
+          />
         </div>
 
       </div>
