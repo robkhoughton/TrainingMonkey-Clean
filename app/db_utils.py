@@ -1758,7 +1758,7 @@ def get_activities_with_hr_streams(user_id, limit=30):
         FROM activities a
         JOIN hr_streams hs ON hs.activity_id = a.activity_id AND hs.user_id = a.user_id
         WHERE a.user_id = %s
-          AND a.sport_type IN ('Run', 'TrailRun', 'VirtualRun', 'Hike')
+          AND LOWER(a.sport_type) IN ('run', 'trailrun', 'virtualrun', 'hike', 'running', 'trail running', 'trail_running')
           AND a.duration_minutes >= 30
         ORDER BY a.date DESC
         LIMIT %s

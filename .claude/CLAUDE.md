@@ -13,9 +13,7 @@ TrainingMonkey is a training analytics platform for endurance athletes. It integ
 ## Deployment Model
 
 **Local Deployment** - This project is deployed from the local machine, not from GitHub/CI/CD.
-- User runs deployment commands manually (e.g., `app/deploy_strava_simple.bat`)
-- Assistant prepares code changes but NEVER runs deployment commands
-- All testing happens locally before user initiates deployment
+- Use the `/deploy` skill when the user invokes it — run all build, copy, and deploy steps via Bash
 - Git is used for version control only, not deployment triggers
 
 ## Git Commit/Push Practices

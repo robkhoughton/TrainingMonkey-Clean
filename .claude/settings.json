@@ -1,3 +1,11 @@
 {
-  "hooks": {}
+  "hooks": {},
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/frontend && npm run build)",
+      "Bash(rm -f /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/:*)",
+      "Bash(cp -r /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/frontend/build/:*)",
+      "Bash(cd /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app && echo:*)"
+    ]
+  }
 }

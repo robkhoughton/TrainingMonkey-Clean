@@ -9,19 +9,22 @@ login_manager = LoginManager()
 logger = logging.getLogger(__name__)
 
 class User(UserMixin):
-    def __init__(self, id, email, password_hash, resting_hr=None, max_hr=None, gender=None, is_admin=False):
+    def __init__(self, id, email, password_hash, resting_hr=None, max_hr=None, gender=None, is_admin=False,
+                 registration_date=None, email_modal_dismissals=0):
         self.id = id
         self.email = email
         self.password_hash = password_hash
         self.resting_hr = resting_hr
         self.max_hr = max_hr
         self.gender = gender
-        self.is_admin = is_admin # Store is_admin attribute
+        self.is_admin = is_admin
+        self.registration_date = registration_date
+        self.email_modal_dismissals = email_modal_dismissals
 
     @staticmethod
     def get(user_id):
         user_data = execute_query(
-            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin FROM user_settings WHERE id = %s",
+            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin, registration_date, email_modal_dismissals FROM user_settings WHERE id = %s",
             (user_id,),
             fetch=True
         )
@@ -32,7 +35,7 @@ class User(UserMixin):
         # Convert PostgreSQL Row to dictionary for reliable access
         user_row = user_data[0]
         user_dict = dict(user_row) if hasattr(user_row, 'keys') else user_row
-        
+
         return User(
             id=user_dict['id'],
             email=user_dict['email'],
@@ -40,7 +43,9 @@ class User(UserMixin):
             resting_hr=user_dict.get('resting_hr'),
             max_hr=user_dict.get('max_hr'),
             gender=user_dict.get('gender'),
-            is_admin=user_dict.get('is_admin', False)
+            is_admin=user_dict.get('is_admin', False),
+            registration_date=user_dict.get('registration_date'),
+            email_modal_dismissals=user_dict.get('email_modal_dismissals', 0)
         )
 
     @staticmethod
@@ -49,7 +54,7 @@ class User(UserMixin):
 
         # Use ? syntax - db_utils will convert to %s for PostgreSQL
         user_data = execute_query(
-            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin FROM user_settings WHERE email = %s",
+            "SELECT id, email, password_hash, resting_hr, max_hr, gender, is_admin, registration_date, email_modal_dismissals FROM user_settings WHERE email = %s",
             (email,),
             fetch=True
         )
@@ -70,7 +75,9 @@ class User(UserMixin):
             resting_hr=user_dict.get('resting_hr'),
             max_hr=user_dict.get('max_hr'),
             gender=user_dict.get('gender'),
-            is_admin=user_dict.get('is_admin', False)
+            is_admin=user_dict.get('is_admin', False),
+            registration_date=user_dict.get('registration_date'),
+            email_modal_dismissals=user_dict.get('email_modal_dismissals', 0)
         )
 
     @staticmethod

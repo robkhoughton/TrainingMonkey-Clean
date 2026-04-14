@@ -4,7 +4,7 @@ import CoachingStyleSpectrum from './CoachingStyleSpectrum';
 import RiskToleranceSelector from './RiskToleranceSelector';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
+  ResponsiveContainer, ReferenceLine, Legend, ReferenceArea,
 } from 'recharts';
 
 // ============================================================================
@@ -65,6 +65,11 @@ interface HRActivity {
   distance_miles: number | null;
   sample_rate: number;
   already_assessed: number;
+}
+
+interface HRStreamPoint {
+  t: number;  // minutes
+  hr: number;
 }
 
 interface DriftPreview {
@@ -653,9 +658,11 @@ interface AerobicAssessmentPanelProps {
   assessments: AerobicAssessment[];
   hrActivities: HRActivity[];
   selectedActivityId: number | null;
-  setSelectedActivityId: (id: number | null) => void;
+  onActivitySelect: (id: number | null) => void;
   warmupMinutes: number;
   setWarmupMinutes: (v: number) => void;
+  cooldownMinutes: number;
+  setCooldownMinutes: (v: number) => void;
   antBpm: string;
   setAntBpm: (v: string) => void;
   assessmentNotes: string;
@@ -664,17 +671,23 @@ interface AerobicAssessmentPanelProps {
   isAnalyzing: boolean;
   isSavingAssessment: boolean;
   assessmentError: string | null;
+  hrStream: HRStreamPoint[];
+  streamTotalMinutes: number;
+  isLoadingStream: boolean;
   onAnalyze: () => void;
   onSave: () => void;
   onDelete: (id: number) => void;
+  onBackfill: () => Promise<void>;
+  isBackfilling: boolean;
 }
 
 const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
-  assessments, hrActivities, selectedActivityId, setSelectedActivityId,
-  warmupMinutes, setWarmupMinutes, antBpm, setAntBpm,
-  assessmentNotes, setAssessmentNotes, driftPreview,
+  assessments, hrActivities, selectedActivityId, onActivitySelect,
+  warmupMinutes, setWarmupMinutes, cooldownMinutes, setCooldownMinutes,
+  antBpm, setAntBpm, assessmentNotes, setAssessmentNotes, driftPreview,
   isAnalyzing, isSavingAssessment, assessmentError,
-  onAnalyze, onSave, onDelete,
+  hrStream, streamTotalMinutes, isLoadingStream,
+  onAnalyze, onSave, onDelete, onBackfill, isBackfilling,
 }) => {
   const cardStyle: React.CSSProperties = {
     backgroundColor: 'white',
@@ -696,7 +709,7 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
   };
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '7px 10px', borderRadius: '5px',
-    border: '1px solid rgba(125,156,184,0.35)', backgroundColor: 'rgba(255,255,255,0.07)',
+    border: '1px solid rgba(125,156,184,0.35)', backgroundColor: '#1B2E4B',
     color: '#E6F0FF', fontSize: '0.82rem', boxSizing: 'border-box',
   };
   const fieldLabelStyle: React.CSSProperties = {
@@ -737,9 +750,7 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
             <label style={fieldLabelStyle}>Select Activity</label>
             <select
               value={selectedActivityId ?? ''}
-              onChange={e => {
-                setSelectedActivityId(e.target.value ? Number(e.target.value) : null);
-              }}
+              onChange={e => onActivitySelect(e.target.value ? Number(e.target.value) : null)}
               style={{ ...inputStyle, cursor: 'pointer' }}
             >
               <option value=''>— choose a run with HR data —</option>
@@ -749,23 +760,112 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
                 </option>
               ))}
             </select>
+            {hrActivities.length === 0 && (
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'rgba(230,240,255,0.5)' }}>No HR streams stored yet.</span>
+                <button
+                  onClick={onBackfill}
+                  disabled={isBackfilling}
+                  style={{
+                    padding: '4px 10px', fontSize: '0.7rem', fontWeight: 700,
+                    borderRadius: '4px', border: 'none', cursor: isBackfilling ? 'not-allowed' : 'pointer',
+                    backgroundColor: isBackfilling ? 'rgba(107,143,127,0.4)' : '#6B8F7F',
+                    color: '#fff', letterSpacing: '0.05em',
+                  }}
+                >
+                  {isBackfilling ? 'Fetching...' : 'Fetch last 7 days'}
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Warm-up slider */}
-          <div>
-            <label style={fieldLabelStyle}>
-              Warm-up to skip: <span style={{ color: '#E6F0FF', fontWeight: 700 }}>{warmupMinutes} min</span>
-            </label>
-            <input
-              type='range' min={5} max={20} step={1}
-              value={warmupMinutes}
-              onChange={e => setWarmupMinutes(Number(e.target.value))}
-              style={{ width: '100%', accentColor: '#FF5722' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'rgba(230,240,255,0.4)', marginTop: '2px' }}>
-              <span>5 min</span><span>20 min</span>
+          {/* HR chart + trim sliders — shown once a stream is loaded */}
+          {isLoadingStream && (
+            <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'rgba(230,240,255,0.5)', padding: '12px 0' }}>
+              Loading HR stream…
             </div>
-          </div>
+          )}
+
+          {hrStream.length > 0 && !isLoadingStream && (() => {
+            const maxT = streamTotalMinutes;
+            const cooldownStart = maxT - cooldownMinutes;
+            return (
+              <div>
+                {/* Chart */}
+                <div style={{ marginBottom: '10px' }}>
+                  <ResponsiveContainer width='100%' height={140}>
+                    <LineChart data={hrStream} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray='2 4' stroke='rgba(230,240,255,0.07)' />
+                      <XAxis
+                        dataKey='t'
+                        type='number'
+                        domain={[0, maxT]}
+                        tickFormatter={v => `${Math.round(v)}m`}
+                        tick={{ fontSize: 9, fill: 'rgba(230,240,255,0.4)' }}
+                        tickCount={7}
+                      />
+                      <YAxis
+                        domain={['auto', 'auto']}
+                        tick={{ fontSize: 9, fill: 'rgba(230,240,255,0.4)' }}
+                        width={34}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0d1b2e', border: '1px solid rgba(230,240,255,0.15)', borderRadius: '4px', fontSize: '0.72rem' }}
+                        labelFormatter={v => `${Number(v).toFixed(1)} min`}
+                        formatter={(v: any) => [`${v} bpm`, 'HR']}
+                      />
+                      {/* Shade excluded warmup region */}
+                      {warmupMinutes > 0 && (
+                        <ReferenceArea x1={0} x2={warmupMinutes} fill='rgba(255,87,34,0.18)' />
+                      )}
+                      {/* Shade excluded cooldown region */}
+                      {cooldownMinutes > 0 && (
+                        <ReferenceArea x1={cooldownStart} x2={maxT} fill='rgba(255,87,34,0.18)' />
+                      )}
+                      {/* Boundary lines */}
+                      {warmupMinutes > 0 && (
+                        <ReferenceLine x={warmupMinutes} stroke='#FF5722' strokeDasharray='3 2' strokeWidth={1.5} />
+                      )}
+                      {cooldownMinutes > 0 && (
+                        <ReferenceLine x={cooldownStart} stroke='#FF5722' strokeDasharray='3 2' strokeWidth={1.5} />
+                      )}
+                      <Line type='monotone' dataKey='hr' stroke='#6B8F7F' strokeWidth={1.5} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Trim sliders */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      Trim start: <span style={{ color: '#FF5722', fontWeight: 700 }}>{warmupMinutes} min</span>
+                    </label>
+                    <input
+                      type='range' min={0} max={Math.min(60, Math.floor(maxT * 0.8))} step={1}
+                      value={warmupMinutes}
+                      onChange={e => setWarmupMinutes(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#FF5722' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      Trim end: <span style={{ color: '#FF5722', fontWeight: 700 }}>{cooldownMinutes} min</span>
+                    </label>
+                    <input
+                      type='range' min={0} max={Math.floor(maxT * 0.4)} step={1}
+                      value={Math.floor(maxT * 0.4) - cooldownMinutes}
+                      onChange={e => setCooldownMinutes(Math.floor(maxT * 0.4) - Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#FF5722' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: 'rgba(230,240,255,0.35)', marginTop: '4px' }}>
+                  Analysis window: {warmupMinutes} – {maxT - cooldownMinutes} min
+                  ({Math.round(maxT - warmupMinutes - cooldownMinutes)} min)
+                </div>
+              </div>
+            );
+          })()}
 
           {/* AnT bpm (optional) */}
           <div>
@@ -1008,6 +1108,11 @@ const SeasonPage: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingAssessment, setIsSavingAssessment] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [hrStream, setHrStream] = useState<HRStreamPoint[]>([]);
+  const [streamTotalMinutes, setStreamTotalMinutes] = useState<number>(0);
+  const [isLoadingStream, setIsLoadingStream] = useState(false);
+  const [cooldownMinutes, setCooldownMinutes] = useState<number>(0);
 
   // ──────────────────────────────────────────
   // FETCH
@@ -1152,6 +1257,31 @@ const SeasonPage: React.FC = () => {
   // HANDLERS — AEROBIC ASSESSMENT
   // ──────────────────────────────────────────
 
+  const handleActivitySelect = async (activityId: number | null) => {
+    setSelectedActivityId(activityId);
+    setDriftPreview(null);
+    setAssessmentError(null);
+    setHrStream([]);
+    setStreamTotalMinutes(0);
+    setCooldownMinutes(0);
+    if (!activityId) return;
+    setIsLoadingStream(true);
+    try {
+      const res = await fetch(`/api/coach/hr-stream/${activityId}`);
+      const d = await res.json();
+      if (d.success) {
+        setHrStream(d.data);
+        setStreamTotalMinutes(d.total_minutes);
+      } else {
+        setAssessmentError(d.error || 'Could not load HR stream.');
+      }
+    } catch {
+      setAssessmentError('Network error loading HR stream.');
+    } finally {
+      setIsLoadingStream(false);
+    }
+  };
+
   const handleAnalyzePreview = async () => {
     if (!selectedActivityId) return;
     setIsAnalyzing(true);
@@ -1164,6 +1294,7 @@ const SeasonPage: React.FC = () => {
         body: JSON.stringify({
           activity_id: selectedActivityId,
           warmup_minutes: warmupMinutes,
+          cooldown_minutes: cooldownMinutes,
           ant_bpm: antBpm ? parseFloat(antBpm) : null,
         }),
       });
@@ -1191,6 +1322,7 @@ const SeasonPage: React.FC = () => {
         body: JSON.stringify({
           activity_id: selectedActivityId,
           warmup_minutes: warmupMinutes,
+          cooldown_minutes: cooldownMinutes,
           ant_bpm: antBpm ? parseFloat(antBpm) : null,
           notes: assessmentNotes || null,
         }),
@@ -1202,6 +1334,9 @@ const SeasonPage: React.FC = () => {
         setAntBpm('');
         setAssessmentNotes('');
         setWarmupMinutes(10);
+        setCooldownMinutes(0);
+        setHrStream([]);
+        setStreamTotalMinutes(0);
         fetchAll();
       } else {
         setAssessmentError(d.error || 'Save failed.');
@@ -1217,6 +1352,28 @@ const SeasonPage: React.FC = () => {
     if (!window.confirm('Delete this assessment?')) return;
     await fetch(`/api/coach/aerobic-assessments/${id}`, { method: 'DELETE' });
     fetchAll();
+  };
+
+  const handleBackfill = async () => {
+    setIsBackfilling(true);
+    setAssessmentError(null);
+    try {
+      const res = await fetch('/api/coach/backfill-hr-streams', { method: 'POST' });
+      const d = await res.json();
+      if (d.success) {
+        await fetchAll();
+        if (d.fetched === 0) {
+          const detail = d.errors?.length ? ` (${d.errors[0]})` : '';
+          setAssessmentError(`${d.message}${detail}`);
+        }
+      } else {
+        setAssessmentError(d.error || 'Backfill failed.');
+      }
+    } catch {
+      setAssessmentError('Network error during backfill.');
+    } finally {
+      setIsBackfilling(false);
+    }
   };
 
   // ──────────────────────────────────────────
@@ -1592,9 +1749,11 @@ const SeasonPage: React.FC = () => {
             assessments={assessments}
             hrActivities={hrActivities}
             selectedActivityId={selectedActivityId}
-            setSelectedActivityId={setSelectedActivityId}
+            onActivitySelect={handleActivitySelect}
             warmupMinutes={warmupMinutes}
             setWarmupMinutes={setWarmupMinutes}
+            cooldownMinutes={cooldownMinutes}
+            setCooldownMinutes={setCooldownMinutes}
             antBpm={antBpm}
             setAntBpm={setAntBpm}
             assessmentNotes={assessmentNotes}
@@ -1603,9 +1762,14 @@ const SeasonPage: React.FC = () => {
             isAnalyzing={isAnalyzing}
             isSavingAssessment={isSavingAssessment}
             assessmentError={assessmentError}
+            hrStream={hrStream}
+            streamTotalMinutes={streamTotalMinutes}
+            isLoadingStream={isLoadingStream}
             onAnalyze={handleAnalyzePreview}
             onSave={handleSaveAssessment}
             onDelete={handleDeleteAssessment}
+            onBackfill={handleBackfill}
+            isBackfilling={isBackfilling}
           />
         </div>
 

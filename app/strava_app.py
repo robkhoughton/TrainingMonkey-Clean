@@ -1969,7 +1969,10 @@ def dashboard():
 
     except Exception as e:
         logger.error(f"Email enforcement error for user {current_user.id}: {e}")
-    
+        # Fail closed: if enforcement check itself errors, block unless we can confirm a real email
+        if not current_user.email or '@training-monkey.com' in current_user.email:
+            return redirect('/collect-email')
+
     response = send_from_directory('build', 'index.html')
     # CRITICAL: Prevent caching of index.html so users always get latest JS file references
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -12974,6 +12977,110 @@ def delete_race_history(history_id):
 
 # ─── Aerobic Assessment Endpoints ─────────────────────────────────────────────
 
+@app.route('/api/coach/backfill-hr-streams', methods=['POST'])
+@login_required
+def backfill_hr_streams():
+    """Fetch and store HR streams for the last 7 days of activities missing them."""
+    try:
+        from strava_training_load import get_activity_streams
+        from enhanced_token_management import SimpleTokenManager
+
+        cutoff = get_app_current_date() - timedelta(days=7)
+
+        # Activities in the last 7 days that have avg_heart_rate but no stored stream
+        candidates = db_utils.execute_query(
+            """
+            SELECT a.activity_id, a.name, a.date
+            FROM activities a
+            LEFT JOIN hr_streams hs ON hs.activity_id = a.activity_id AND hs.user_id = a.user_id
+            WHERE a.user_id = %s
+              AND a.date >= %s
+              AND a.avg_heart_rate > 0
+              AND LOWER(a.sport_type) IN ('run', 'trailrun', 'virtualrun', 'hike', 'running', 'trail running', 'trail_running')
+              AND hs.activity_id IS NULL
+            ORDER BY a.date DESC
+            """,
+            (current_user.id, cutoff),
+            fetch=True
+        ) or []
+
+        if not candidates:
+            return jsonify({'success': True, 'fetched': 0, 'skipped': 0,
+                            'message': 'No activities found needing backfill in the last 7 days.'})
+
+        # Use SimpleTokenManager so expired tokens are refreshed automatically
+        token_manager = SimpleTokenManager(user_id=current_user.id)
+        client = token_manager.get_working_strava_client(auto_refresh=True, validate_connection=False)
+        if not client:
+            return jsonify({'success': False, 'error': 'Could not get a valid Strava token. Try syncing first.'}), 400
+
+        fetched, skipped, errors = 0, 0, []
+        for row in candidates:
+            activity_id = row['activity_id']
+            try:
+                streams = get_activity_streams(client, activity_id)
+                if streams and 'heartrate' in streams and streams['heartrate']:
+                    hr_data = streams['heartrate'].data
+                    db_utils.save_hr_stream_data(activity_id, current_user.id, hr_data, sample_rate=1.0)
+                    fetched += 1
+                    logger.info(f"Backfilled HR stream for activity {activity_id} ({row['name']})")
+                else:
+                    skipped += 1
+                    errors.append(f"{row['name']}: no heartrate stream in Strava")
+                    logger.info(f"No HR stream available for activity {activity_id} from Strava")
+            except Exception as e:
+                skipped += 1
+                errors.append(f"{row['name']}: {str(e)}")
+                logger.warning(f"Failed to backfill HR stream for activity {activity_id}: {e}")
+
+        return jsonify({
+            'success': True,
+            'fetched': fetched,
+            'skipped': skipped,
+            'candidates': len(candidates),
+            'errors': errors,
+            'message': f'Backfilled {fetched} of {len(candidates)} activities.'
+        })
+
+    except Exception as e:
+        logger.error(f"Error in HR stream backfill for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/hr-stream/<int:activity_id>', methods=['GET'])
+@login_required
+def get_hr_stream(activity_id):
+    """Return a downsampled HR stream for chart display."""
+    try:
+        stream = db_utils.get_hr_stream_data(activity_id, current_user.id)
+        if not stream:
+            return jsonify({'success': False, 'error': 'No HR stream found.'}), 404
+
+        hr_data = stream['hr_data']
+        sample_rate = float(stream.get('sample_rate') or 1.0)
+        samples_per_minute = 60.0 * sample_rate
+        total_minutes = len(hr_data) / samples_per_minute
+
+        # Downsample to at most one point every 5 seconds for chart performance
+        target_interval_sec = 5
+        step = max(1, int(target_interval_sec * sample_rate))
+        downsampled = [
+            {'t': round(i / samples_per_minute, 2), 'hr': int(hr_data[i])}
+            for i in range(0, len(hr_data), step)
+            if isinstance(hr_data[i], (int, float)) and hr_data[i] > 30
+        ]
+
+        return jsonify({
+            'success': True,
+            'data': downsampled,
+            'sample_rate': sample_rate,
+            'total_minutes': round(total_minutes, 1),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching HR stream for activity {activity_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/activities-with-hr', methods=['GET'])
 @login_required
 def get_activities_with_hr():
@@ -13010,6 +13117,7 @@ def preview_aerobic_assessment():
             return jsonify({'success': False, 'error': 'activity_id is required'}), 400
 
         warmup_minutes = float(data.get('warmup_minutes', 10.0))
+        cooldown_minutes = float(data.get('cooldown_minutes', 0.0))
         ant_bpm = float(data['ant_bpm']) if data.get('ant_bpm') else None
 
         stream = db_utils.get_hr_stream_data(activity_id, current_user.id)
@@ -13019,7 +13127,7 @@ def preview_aerobic_assessment():
         hr_data = stream['hr_data']
         sample_rate = float(stream.get('sample_rate') or 1.0)
 
-        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm)
+        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm, cooldown_minutes)
 
         if not result['valid']:
             return jsonify({'success': False, 'error': result['error']}), 400
@@ -13042,6 +13150,7 @@ def save_aerobic_assessment_endpoint():
             return jsonify({'success': False, 'error': 'activity_id is required'}), 400
 
         warmup_minutes = float(data.get('warmup_minutes', 10.0))
+        cooldown_minutes = float(data.get('cooldown_minutes', 0.0))
         ant_bpm = float(data['ant_bpm']) if data.get('ant_bpm') else None
         notes = data.get('notes', '').strip() or None
 
@@ -13052,11 +13161,12 @@ def save_aerobic_assessment_endpoint():
         hr_data = stream['hr_data']
         sample_rate = float(stream.get('sample_rate') or 1.0)
 
-        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm)
+        result = analyze_hr_drift_test(hr_data, sample_rate, warmup_minutes, ant_bpm, cooldown_minutes)
         if not result['valid']:
             return jsonify({'success': False, 'error': result['error']}), 400
 
         result['warmup_minutes'] = warmup_minutes
+        result['cooldown_minutes'] = cooldown_minutes
         result['notes'] = notes
 
         saved = db_utils.save_aerobic_assessment(current_user.id, activity_id, result)

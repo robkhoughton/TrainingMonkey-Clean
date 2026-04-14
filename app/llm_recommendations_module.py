@@ -2307,6 +2307,15 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
             zone_compliance=zone_compliance
         )
 
+        # Append coaching context library — readiness state not available at autopsy time,
+        # use UNKNOWN so only unconditional topic files are injected
+        try:
+            _autopsy_coaching_context = _load_coaching_context(user_id, 'UNKNOWN', date_str)
+            if _autopsy_coaching_context:
+                prompt = prompt + f"\n\n{_autopsy_coaching_context}"
+        except Exception as _cc_err:
+            logger.warning(f"Could not load coaching context for autopsy user {user_id}: {_cc_err}")
+
         # Get specialized settings for autopsy analysis from config
         autopsy_settings = CONFIG.get('specialized_prompts', {}).get('autopsy_analysis', {})
         autopsy_temperature = autopsy_settings.get('temperature', 0.25)
@@ -2685,9 +2694,18 @@ INTENSITY TARGET MISSED: Hard session only achieved {q_min:.0f} min above VT2 (t
                     f"Do not invent HR numbers outside these boundaries."
                 )
 
+        # Build explicit date anchor so LLM cannot drift to relative-day confusion
+        from datetime import datetime as _dt, timedelta as _td
+        _autopsy_date_obj = _dt.strptime(date_str, '%Y-%m-%d').date()
+        _autopsy_day_label = _autopsy_date_obj.strftime('%A, %B %d, %Y')
+        _tomorrow_obj = _autopsy_date_obj + _td(days=1)
+        _tomorrow_label = _tomorrow_obj.strftime('%A, %B %d, %Y')
+
         prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
 
-{tone_section}ANALYSIS DATE: {date_str}
+{tone_section}ANALYSIS DATE: {date_str} ({_autopsy_day_label})
+NEXT DAY: {_tomorrow_obj.strftime('%Y-%m-%d')} ({_tomorrow_label})
+DATE RULE: When referring to future sessions, always use the specific day name (e.g. "Tuesday", "Wednesday") — never the word "tomorrow". The prescribed decision below may use relative terms; translate them to specific day names in your analysis.
 
 PRESCRIBED TRAINING DECISION:
 {prescribed_action}
@@ -4407,6 +4425,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # morning readiness, training guide, weekly strategic context         #
         # ------------------------------------------------------------------ #
         static_context_parts = []
+        _agentic_readiness_state = 'UNKNOWN'  # extracted for coaching context gating below
 
         # Morning readiness — same query as standard path
         try:
@@ -4547,6 +4566,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                         rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
                         athlete_model=_athlete_model_raw,
                     )
+                    _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
                     static_context_parts.append(
                         "### MORNING READINESS\n" +
                         "\n".join(f"- {p}" for p in r_parts) +
@@ -4563,6 +4583,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                         rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
                         athlete_model=_athlete_model_raw,
                     )
+                    _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
                     static_context_parts.append(
                         f"### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}"
                     )
@@ -4621,6 +4642,13 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
 
         static_context_block = "\n\n".join(static_context_parts)
 
+        # Coaching context library — state-gated topic files (parity with standard path)
+        try:
+            _agentic_coaching_context = _load_coaching_context(user_id, _agentic_readiness_state, target_date)
+        except Exception as _cc_err:
+            logger.warning(f"[AGENTIC] Could not load coaching context for user {user_id}: {_cc_err}")
+            _agentic_coaching_context = ""
+
         # ------------------------------------------------------------------ #
         # Turn 1 — minimal prompt with metrics + tool list                    #
         # ------------------------------------------------------------------ #
@@ -4641,6 +4669,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             "If no threshold is breached, Decision MUST be 'Proceed as planned.'"
             + (f"\n\n{tone_instructions}" if tone_instructions else "")
             + (f"\n\n{static_context_block}" if static_context_block else "")
+            + (f"\n\n{_agentic_coaching_context}" if _agentic_coaching_context else "")
         )
 
         user_turn1 = (

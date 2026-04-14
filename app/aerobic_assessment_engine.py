@@ -16,6 +16,7 @@ def analyze_hr_drift_test(
     sample_rate: float = 1.0,
     warmup_minutes: float = 10.0,
     ant_bpm: float = None,
+    cooldown_minutes: float = 0.0,
 ) -> dict:
     """Analyze a stored HR stream as an AeT HR Drift Test.
 
@@ -53,7 +54,9 @@ def analyze_hr_drift_test(
                      "Reduce warm-up duration or choose a longer activity.",
         }
 
-    steady_state = hr_data[warmup_samples:]
+    cooldown_samples = int(cooldown_minutes * samples_per_minute)
+    end_idx = len(hr_data) - cooldown_samples if cooldown_samples > 0 else len(hr_data)
+    steady_state = hr_data[warmup_samples:end_idx]
     steady_state_minutes = len(steady_state) / samples_per_minute
 
     # Require at least 20 min of steady-state data for a meaningful split
