@@ -40,14 +40,10 @@ def notify_admin_of_new_user(user_id: int, user_email: str) -> bool:
         
         admin_email = admin_result[0]['email']
         
-        # Import email service (reuse existing infrastructure)
-        from migration_notification_system import MigrationNotificationSystem
-        
-        email_service = MigrationNotificationSystem()
-        
-        # Prepare email
+        from email_verification.core import _send_smtp_email
+
         subject = f"New User Registration - {user_email}"
-        body = f"""
+        html_body = f"""
         <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
             <h2 style="color: #4CAF50;">New User Registration</h2>
@@ -72,9 +68,9 @@ def notify_admin_of_new_user(user_id: int, user_email: str) -> bool:
         </body>
         </html>
         """
-        
-        # Send email
-        success = email_service._send_email(admin_email, subject, body)
+        text_body = f"New user registered: {user_email} (ID: {user_id}) at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+
+        success = _send_smtp_email(admin_email, subject, html_body, text_body)
         
         if success:
             logger.info(f"Admin notified of new user: {user_id} ({user_email})")

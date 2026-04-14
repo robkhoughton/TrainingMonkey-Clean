@@ -599,13 +599,8 @@ def oauth_callback():
                 else:
                     new_user_id = result[0]
                 
-                # Notify admin of new user registration
-                try:
-                    from admin_notifications import notify_admin_of_new_user
-                    notify_admin_of_new_user(new_user_id, email)
-                except Exception as e:
-                    logger.warning(f"Failed to send admin notification: {str(e)}")
-                
+                # Admin notification deferred to /api/user/update-email
+                # (fires when user provides real email, not here with synthetic address)
                 logger.info(f"Created user with ID {new_user_id}, now retrieving...")
                 logger.info(f"Result type: {type(result)}, Result: {result}")
                 
@@ -2648,18 +2643,29 @@ def update_user_email():
         if existing_check:
             return jsonify({'error': 'Email already in use by another account'}), 400
         
+        # Check if this is a first-time real email (upgrading from synthetic)
+        was_synthetic = '@training-monkey.com' in current_user.email
+
         # Update email in database
         db_utils.execute_query(
             "UPDATE user_settings SET email = %s WHERE id = %s",
             (new_email, current_user.id),
             fetch=False
         )
-        
+
         # Update current user object
         current_user.email = new_email
-        
+
         # Log the change
         logger.info(f"User {current_user.id} updated email to {new_email}")
+
+        # Notify admin now that we have a real email
+        if was_synthetic:
+            try:
+                from admin_notifications import notify_admin_of_new_user
+                notify_admin_of_new_user(current_user.id, new_email)
+            except Exception as e:
+                logger.warning(f"Failed to send admin notification for user {current_user.id}: {str(e)}")
         
         return jsonify({
             'success': True, 
