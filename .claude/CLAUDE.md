@@ -58,7 +58,7 @@ Key sections:
 2. **Secure Credentials** - Always use `db_credentials_loader.py`, never hardcode DATABASE_URL
 3. **Dockerfile Updates** - New Python files MUST be added to `app/Dockerfile.strava`
 4. **Frontend Deployment** - After React changes, rebuild and copy to `app/static/`
-5. **No Deployment Commands** - Assistant prepares code; user handles all deployment
+5. **Deployment via `/deploy`** - When the user invokes `/deploy`, run all build, copy, and deploy steps via Bash. Do not defer to the user for these steps.
 6. **Root Cause Solutions** - Always address root causes, not symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds or patches that mask the real issue.
 7. **Timezone-Aware Dates** - Never use `datetime.now()` for user-facing date queries. Use `get_app_current_date()` (imported from `timezone_utils`). `datetime.now()` returns UTC and will show the wrong date for US users after ~4pm Pacific.
 

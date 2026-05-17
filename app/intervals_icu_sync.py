@@ -23,14 +23,13 @@ def sync_wellness_for_user(user_id: int, api_key: str, athlete_id: str, target_d
     """
     Fetch one day of wellness data from intervals.icu and upsert into journal_entries.
 
-    intervals.icu dates sleep/HRV by the night it STARTED (e.g. Friday night = April 3).
-    Readiness applies to the morning AFTER that sleep (Saturday = April 4).
-    So we fetch target_date from intervals.icu but write to target_date + 1 in the DB.
+    intervals.icu uses the same date convention as Garmin Connect: sleep is labeled
+    by the morning you wake up (e.g. sleep ending April 14 morning → labeled "April 14").
+    So we fetch target_date from intervals.icu and write to the same date in the DB.
 
     Returns True if data was found and written, False if no data for that date.
     """
-    date_str = target_date.isoformat()                          # for API request
-    write_date_str = (target_date + timedelta(days=1)).isoformat()  # for DB write
+    date_str = target_date.isoformat()   # for API request and DB write
     url = f"{INTERVALS_ICU_BASE}/athlete/{athlete_id}/wellness"
     params = {"oldest": date_str, "newest": date_str}
 
@@ -80,11 +79,11 @@ def sync_wellness_for_user(user_id: int, api_key: str, athlete_id: str, target_d
             respiration_rate    = COALESCE(EXCLUDED.respiration_rate,    journal_entries.respiration_rate),
             vo2max              = COALESCE(EXCLUDED.vo2max,              journal_entries.vo2max),
             updated_at          = NOW()
-    """, (user_id, write_date_str, hrv_value, resting_hr, sleep_secs,
+    """, (user_id, date_str, hrv_value, resting_hr, sleep_secs,
           sleep_score, weight, spo2, respiration_rate, vo2max))
 
     logger.info(
-        f"[intervals.icu] Synced wellness for user {user_id} on {date_str} → written to {write_date_str}: "
+        f"[intervals.icu] Synced wellness for user {user_id} on {date_str}: "
         f"hrv={hrv_value}, rhr={resting_hr}, sleep={sleep_secs}s, "
         f"weight={weight}, spo2={spo2}, resp={respiration_rate}, vo2max={vo2max}"
     )
@@ -96,8 +95,9 @@ def run_daily_sync(target_date: date = None) -> dict:
     Sync wellness data for all users with intervals.icu credentials.
     Called once daily before the 6AM recommendation job.
 
-    Fetches yesterday's date from intervals.icu and writes it to today's journal_entries
-    row (date + 1 shift). This correctly maps Friday-night sleep → Saturday readiness.
+    Fetches today's date from intervals.icu (same date written to DB). intervals.icu
+    labels sleep by wake-up date, same convention as Garmin Connect. We also sync
+    yesterday as a safety net in case today's data hasn't arrived from Garmin yet.
 
     If target_date is supplied, only that single date is synced (used by tests/backfills).
     Returns summary: {synced: N, skipped: N, errors: N}
@@ -105,7 +105,8 @@ def run_daily_sync(target_date: date = None) -> dict:
     if target_date is not None:
         dates_to_sync = [target_date]
     else:
-        dates_to_sync = [date.today() - timedelta(days=1)]
+        today = date.today()
+        dates_to_sync = [today - timedelta(days=1), today]
 
     users = execute_query(
         """SELECT id, intervals_icu_api_key, intervals_icu_athlete_id

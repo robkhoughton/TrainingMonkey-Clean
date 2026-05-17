@@ -430,7 +430,9 @@ def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_d
     p = proto["protocol"]
     execution_block = (
         f"AEROBIC ASSESSMENT — HR DRIFT TEST PROTOCOL:\n"
-        f"Replaces one Zone 2 easy run this week. Schedule on a day with fresh legs "
+        f"Set workout_type to \"Aerobic Test\" and intensity to \"Low\" for this day.\n"
+        f"Replaces one Zone 2 easy run this week. Place it on an Easy Run day — "
+        f"NOT on the hard-session day. Schedule on a day with fresh legs "
         f"(not within 2 days of a long run or hard session).\n\n"
         f"Warm-up: {p['warmup']}\n"
         f"Steady state: {p['steady_state']}\n"

@@ -82,6 +82,28 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-producti
 
 # API Logging Middleware for Performance Monitoring
 @app.before_request
+def enforce_email_gate_on_api():
+    """Block synthetic-email users from API routes after grace period expires."""
+    if not request.path.startswith('/api/'):
+        return
+    if not current_user.is_authenticated:
+        return
+    try:
+        from email_enforcement import get_email_urgency_level
+        urgency = get_email_urgency_level({
+            'email': current_user.email,
+            'registration_date': current_user.registration_date,
+            'is_admin': current_user.is_admin,
+            'email_modal_dismissals': getattr(current_user, 'email_modal_dismissals', 0)
+        })
+        if urgency['should_block_access']:
+            return jsonify({'error': 'email_required', 'redirect': '/collect-email'}), 403
+    except Exception as e:
+        logger.error(f"Email gate before_request error for user {current_user.id}: {e}")
+        if '@training-monkey.com' in (current_user.email or ''):
+            return jsonify({'error': 'email_required', 'redirect': '/collect-email'}), 403
+
+@app.before_request
 def log_request_start():
     """Log the start of each API request"""
     request.start_time = time.time()
@@ -265,7 +287,7 @@ def needs_onboarding(user_id):
         user_data = data[0]
         
         # Check if all required fields are present
-        required_fields = ['age', 'gender', 'training_experience', 'primary_sport', 'resting_hr', 'max_hr', 'coaching_tone']
+        required_fields = ['age', 'gender', 'primary_sport']
         missing_fields = [field for field in required_fields if not user_data.get(field)]
         
         if missing_fields:
@@ -722,7 +744,12 @@ def oauth_callback():
                         end_date=end_date.strftime('%Y-%m-%d'),
                         user_id=new_user.id
                     )
-                    logger.info(f"Strava sync completed for new user {new_user.id}")
+                    sync_date = datetime.now().strftime('%Y-%m-%d')
+                    db_utils.execute_query(
+                        "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
+                        (sync_date, new_user.id)
+                    )
+                    logger.info(f"Strava sync completed for new user {new_user.id}, last_sync_date={sync_date}")
                     # Note: Cannot update session from background thread
                     
                 except Exception as sync_error:
@@ -952,7 +979,6 @@ def migrate_current_user():
         }), 500
 
 
-@login_required
 @app.route('/sync-with-auto-refresh', methods=['POST'])
 def sync_with_automatic_token_management():
     """Enhanced sync endpoint that handles both user and scheduled requests"""
@@ -1728,14 +1754,15 @@ def get_training_data():
             
             # Check if user has Strava access token (can sync)
             user_data = db_utils.execute_query(
-                "SELECT strava_access_token, strava_athlete_id FROM user_settings WHERE id = %s",
+                "SELECT strava_access_token, strava_athlete_id, last_sync_date FROM user_settings WHERE id = %s",
                 (current_user.id,),
                 fetch=True
             )
-            
+
             has_strava_token = user_data and user_data[0].get('strava_access_token')
             strava_athlete_id = user_data[0].get('strava_athlete_id') if user_data else None
-            
+            last_sync_date = str(user_data[0].get('last_sync_date') or '') if user_data else ''
+
             response_data = {
                 'success': True,
                 'message': 'No activities found',
@@ -1745,7 +1772,8 @@ def get_training_data():
                 'can_sync': has_strava_token,
                 'strava_athlete_id': strava_athlete_id,
                 'has_data': False,
-                'needs_sync': has_strava_token
+                'needs_sync': has_strava_token,
+                'last_sync_date': last_sync_date,
             }
 
             # Add sport breakdown fields even when no data
@@ -1884,6 +1912,26 @@ def get_training_data():
                     f"injury_risk={risk_label}({risk_score}) [{recommendation_style}], "
                     f"days_since_rest={days_since_rest}")
 
+        # Fetch last_sync_date for sync status display
+        sync_info = db_utils.execute_query(
+            "SELECT last_sync_date FROM user_settings WHERE id = %s",
+            (current_user.id,), fetch=True
+        )
+        last_sync_date = str(sync_info[0].get('last_sync_date') or '') if sync_info else ''
+
+        # Rolling 7-day total load — direct sum, avoids avg*7 distortion from decay weighting
+        _today = get_app_current_date()
+        _seven_days_ago = _today - timedelta(days=6)
+        _total_row = db_utils.execute_query(
+            """SELECT COALESCE(SUM(total_load_miles), 0) AS total
+               FROM activities
+               WHERE user_id = %s AND activity_id > 0
+                 AND date >= %s AND date <= %s""",
+            (current_user.id, _seven_days_ago.isoformat(), _today.isoformat()),
+            fetch=True
+        )
+        seven_day_total_load = round(float(_total_row[0]['total']), 1) if _total_row else 0.0
+
         # Build response maintaining existing structure
         response_data = {
             'success': True,
@@ -1892,7 +1940,9 @@ def get_training_data():
             'raw_count': len(activity_list),
             'days_since_rest': days_since_rest,  # backward compat
             'current_metrics': current_metrics,
-            'user_today': user_current_date.strftime('%Y-%m-%d')
+            'seven_day_total_load': seven_day_total_load,
+            'user_today': user_current_date.strftime('%Y-%m-%d'),
+            'last_sync_date': last_sync_date,
         }
 
         # Add sport breakdown fields if requested
@@ -2497,6 +2547,15 @@ def respond_alignment_query(query_id):
                     f"respond_alignment_query: retroactively set deviation_reason="
                     f"'{new_reason}' for user {current_user.id}, date={activity_date_str}"
                 )
+                if new_reason == 'prescription_mismatch':
+                    try:
+                        from llm_recommendations_module import handle_prescription_mismatch_response
+                        handle_prescription_mismatch_response(current_user.id, activity_date_str)
+                    except Exception as pm_err:
+                        logger.warning(
+                            f"respond_alignment_query: prescription_mismatch handler failed "
+                            f"for query {query_id}: {pm_err}"
+                        )
         except Exception as classify_err:
             logger.warning(
                 f"respond_alignment_query: retroactive deviation_reason update failed "
@@ -4675,6 +4734,51 @@ def get_journal_entries():
             'error': str(e),
             'data': []
         }), 500
+
+@app.route('/api/journal/streak', methods=['GET'])
+@login_required
+def get_journal_streak():
+    """Return current journal streak — consecutive days with a logged entry."""
+    try:
+        from timezone_utils import get_user_current_date
+        today = get_user_current_date(current_user.id)
+
+        # Fetch the last 365 days of journal dates in one query
+        rows = db_utils.execute_query(
+            """SELECT date FROM journal_entries
+               WHERE user_id = %s AND date <= %s
+               ORDER BY date DESC
+               LIMIT 365""",
+            (current_user.id, today.strftime('%Y-%m-%d')),
+            fetch=True
+        )
+
+        if not rows:
+            return jsonify({'streak': 0})
+
+        from datetime import timedelta, date as date_type
+        logged = set()
+        for row in rows:
+            d = row['date']
+            if hasattr(d, 'date'):
+                d = d.date()
+            logged.add(d)
+
+        streak = 0
+        cursor = today
+        # Today counts if logged; if not, start from yesterday
+        if cursor not in logged:
+            cursor = today - timedelta(days=1)
+        while cursor in logged:
+            streak += 1
+            cursor -= timedelta(days=1)
+
+        return jsonify({'streak': streak})
+
+    except Exception as e:
+        logger.error(f"Error computing journal streak for user {current_user.id}: {e}")
+        return jsonify({'streak': 0})
+
 # CRITICAL FIX for strava_app.py
 # Replace the existing get_unified_recommendation_for_date function with this corrected version
 
@@ -5523,6 +5627,116 @@ def get_historical_decision_for_date(user_id, date_obj):
     except Exception as e:
         logger.error(f"Error getting historical decision: {str(e)}")
         return "Error retrieving historical recommendation."
+# ── Journal Power scoring ────────────────────────────────────────────────────
+# Mirrors the noteSignal logic in PostWorkoutEntryPage.tsx / JournalPage.tsx
+
+_PHYSIO_KEYWORDS = [
+    'legs', 'leg', 'breathing', 'breath', 'lungs', 'lung',
+    'heart', 'heavy', 'sharp', 'tight', 'fatigued', 'fatigue',
+    'strong', 'flat', 'dead', 'muscles', 'muscle', 'tired',
+    'fresh', 'stiff', 'sore', 'weak', 'powerful', 'labored',
+    'sluggish', 'snappy', 'responsive', 'burn', 'burning',
+    'ache', 'pain', 'effort', 'exhausted', 'energized',
+]
+_EXO_KEYWORDS = [
+    'sleep', 'slept', 'nutrition', 'fuel', 'fueling', 'stress',
+    'heat', 'cold', 'altitude', 'hydration', 'hydrated',
+    'dehydrated', 'alcohol', 'food', 'eating', 'ate',
+    'drank', 'drink', 'weather', 'conditions', 'sick',
+    'illness', 'coffee', 'work', 'travel', 'humidity',
+    'humid', 'wind', 'rain', 'snow', 'hot', 'nausea',
+    'stomach', 'busy', 'late', 'early',
+]
+
+def _note_signal_level(text):
+    """Return 0–4 signal level for note text (mirrors frontend noteSignal bars)."""
+    if not text:
+        return 0
+    lower = text.lower()
+    word_count = len([w for w in text.split() if w])
+    physio_hits = sum(1 for k in _PHYSIO_KEYWORDS if k in lower)
+    exo_hits    = sum(1 for k in _EXO_KEYWORDS    if k in lower)
+    bars = [
+        word_count >= 8  or physio_hits > 0 or exo_hits > 0,
+        word_count >= 16 or (physio_hits > 0 and exo_hits > 0),
+        (word_count >= 16 and (physio_hits > 0 or exo_hits > 0))
+            or word_count >= 24 or physio_hits >= 2 or exo_hits >= 2,
+        word_count >= 24 and physio_hits > 0 and exo_hits > 0,
+    ]
+    return sum(bars)
+
+def compute_journal_power(row):
+    """Score a journal_entries row 0–100.
+
+    7 structured fields × 1 pt each + notes signal 0–4 pt = 11 pt max.
+    """
+    structured_pts = sum([
+        1 if row.get('energy_level')     is not None else 0,
+        1 if row.get('rpe_score')        is not None else 0,
+        1 if row.get('pain_percentage')  is not None else 0,
+        1 if row.get('sleep_quality')    is not None else 0,
+        1 if row.get('morning_soreness') is not None else 0,
+        1 if row.get('hrv_value')        is not None else 0,
+        1 if row.get('resting_hr')       is not None else 0,
+    ])
+    note_pts = _note_signal_level((row.get('notes') or '').strip())
+    return round((structured_pts + note_pts) / 11 * 100)
+
+def _recompute_journal_power(user_id, date_str):
+    """Fetch the full journal row, recompute power score, and persist it."""
+    rows = db_utils.execute_query(
+        """SELECT energy_level, rpe_score, pain_percentage, notes,
+                  sleep_quality, morning_soreness, hrv_value, resting_hr
+           FROM journal_entries WHERE user_id = %s AND date = %s""",
+        (user_id, date_str), fetch=True
+    )
+    if not rows:
+        return
+    score = compute_journal_power(dict(rows[0]))
+    db_utils.execute_query(
+        "UPDATE journal_entries SET journal_power_score = %s WHERE user_id = %s AND date = %s",
+        (score, user_id, date_str)
+    )
+
+
+@login_required
+@app.route('/api/today-activity-info', methods=['GET'])
+def get_today_activity_info():
+    """Returns today's activity type so the post-sync modal can prompt for treadmill elevation."""
+    try:
+        from timezone_utils import get_app_current_date
+        today = get_app_current_date().strftime('%Y-%m-%d')
+
+        result = db_utils.execute_query(
+            """
+            SELECT activity_id, type, sport_type, elevation_gain_feet
+            FROM activities
+            WHERE user_id = %s AND date = %s AND activity_id > 0
+            LIMIT 1
+            """,
+            (current_user.id, today),
+            fetch=True
+        )
+
+        if not result or not result[0]:
+            return jsonify({'activity_id': None, 'is_indoor': False})
+
+        row = result[0]
+        activity_type = (row.get('type') or '').lower()
+        is_indoor = 'treadmill' in activity_type
+        elevation = row.get('elevation_gain_feet')
+
+        return jsonify({
+            'activity_id': row['activity_id'],
+            'is_indoor': is_indoor,
+            'needs_elevation': is_indoor,
+            'elevation_gain_feet': round(elevation) if elevation else None,
+        })
+    except Exception as e:
+        logger.error(f"Error getting today activity info: {str(e)}")
+        return jsonify({'activity_id': None, 'is_indoor': False})
+
+
 @login_required
 @app.route('/api/journal', methods=['POST'])
 def save_journal_entry():
@@ -5582,6 +5796,7 @@ def save_journal_entry():
             data.get('notes', '')
         ))
 
+        _recompute_journal_power(current_user.id, date_str)
         logger.info(f"Saved journal entry for user {current_user.id} on {date_str}")
 
         # EXISTING AUTOPSY TRIGGER LOGIC - ONLY ENHANCED WITH BETTER TRACKING
@@ -6040,9 +6255,44 @@ def get_readiness():
         )
         row = dict(rows[0]) if rows else {}
 
-        # intervals.icu labels last night's wellness by sleep-start date (yesterday).
-        # If today has no HRV/wellness data, fall back to the most recent entry that does
-        # so the readiness panel always shows current data regardless of the date offset.
+        # If HRV is missing for today, attempt an on-demand intervals.icu sync.
+        # The 6AM scheduled sync often runs before Garmin delivers overnight data;
+        # this pull ensures late-arriving data is captured on the first page load.
+        today_str = get_app_current_date().strftime('%Y-%m-%d')
+        if row.get('hrv_value') is None and date_str == today_str:
+            try:
+                creds = db_utils.execute_query(
+                    """SELECT intervals_icu_api_key, intervals_icu_athlete_id
+                       FROM user_settings
+                       WHERE id = %s
+                         AND intervals_icu_api_key IS NOT NULL
+                         AND intervals_icu_athlete_id IS NOT NULL""",
+                    (current_user.id,), fetch=True
+                )
+                if creds:
+                    from intervals_icu_sync import sync_wellness_for_user
+                    from datetime import date as _date
+                    synced = sync_wellness_for_user(
+                        current_user.id,
+                        creds[0]['intervals_icu_api_key'],
+                        creds[0]['intervals_icu_athlete_id'],
+                        _date.fromisoformat(date_str),
+                    )
+                    if synced:
+                        rows = db_utils.execute_query(
+                            """SELECT sleep_quality, morning_soreness, hrv_value, hrv_source,
+                                      resting_hr, sleep_duration_secs, sleep_score,
+                                      weight, spo2, respiration_rate, vo2max
+                               FROM journal_entries
+                               WHERE user_id = %s AND date = %s""",
+                            (current_user.id, date_str), fetch=True
+                        )
+                        row = dict(rows[0]) if rows else row
+            except Exception as _sync_err:
+                logger.warning(f"On-demand intervals.icu sync failed (non-fatal): {_sync_err}")
+
+        # If today has no HRV/wellness data (e.g. Garmin hasn't synced yet),
+        # fall back to the most recent entry that does.
         _has_wellness = any(row.get(f) is not None for f in ['hrv_value', 'resting_hr', 'sleep_duration_secs'])
         if not _has_wellness:
             fallback = db_utils.execute_query(
@@ -6180,6 +6430,7 @@ def save_readiness():
             resting_hr
         ))
 
+        _recompute_journal_power(current_user.id, date_str)
         logger.info(f"Saved readiness data for user {current_user.id} on {date_str}: sleep_quality={sleep_quality}, morning_soreness={morning_soreness}, hrv_value={hrv_value}, resting_hr={resting_hr}")
 
         return jsonify({'success': True})
@@ -6285,24 +6536,23 @@ def get_journal_context():
                         }
                         break
 
-        # Per-day mileage for the current week (Sunday–Saturday, user's timezone).
-        # On Sunday (dow=0) the new week just started with no activities yet.
-        # Show the just-completed previous week (last Sun–Sat) so mileage is always visible.
+        # Per-day mileage for the active rolling plan window (plan_start to plan_start+6).
         from timezone_utils import get_app_current_date
         from datetime import timedelta as _td
-        today_tz  = get_app_current_date()
-        dow       = (today_tz.weekday() + 1) % 7   # 0=Sunday … 6=Saturday
-        if dow == 0:
-            week_sun = today_tz - _td(days=7)   # last Sunday
-            week_sat = today_tz - _td(days=1)   # last Saturday
+        today_tz = get_app_current_date()
+        if week_ctx and week_ctx.get('week_start_date'):
+            week_sun = week_ctx['week_start_date']
+            if hasattr(week_sun, 'date'):
+                week_sun = week_sun.date()
         else:
-            week_sun = today_tz - _td(days=dow)
-            week_sat = week_sun + _td(days=6)
+            week_sun = today_tz
+        week_sat = week_sun + _td(days=6)
 
+        # Per-day load for the plan display strip (plan window, elevation-adjusted)
         day_rows = db_utils.execute_query(
             """SELECT date,
-                      COALESCE(SUM(distance_miles), 0)      AS miles,
-                      COALESCE(SUM(elevation_gain_feet), 0) AS vert
+                      COALESCE(SUM(total_load_miles), 0)     AS miles,
+                      COALESCE(SUM(elevation_gain_feet), 0)  AS vert
                FROM activities
                WHERE user_id = %s AND activity_id > 0
                  AND date >= %s AND date <= %s
@@ -6316,10 +6566,21 @@ def get_journal_context():
             for r in (day_rows or [])
         ]
         actual_by_date = {d['date']: d for d in week_days}
-        week_total_miles = sum(d['miles'] for d in week_days)
-        week_total_vert  = sum(d['vert']  for d in week_days)
+        week_total_vert = sum(d['vert'] for d in week_days)
 
-        # Planned mileage per day from the weekly program (future days + today if not yet run)
+        # Rolling 7-day total load — direct sum, today-6 through today (matches CompactDashboardBanner)
+        _roll_start = today_tz - _td(days=6)
+        _roll_row = db_utils.execute_query(
+            """SELECT COALESCE(SUM(total_load_miles), 0) AS total
+               FROM activities
+               WHERE user_id = %s AND activity_id > 0
+                 AND date >= %s AND date <= %s""",
+            (user_id, _roll_start.isoformat(), today_tz.isoformat()),
+            fetch=True
+        )
+        week_total_miles = round(float(_roll_row[0]['total']), 1) if _roll_row else 0.0
+
+        # Planned load-equivalent per day (distance + vert/750 for running)
         planned_days = []
         if week_ctx:
             pj = week_ctx.get('program_json') or {}
@@ -6331,10 +6592,13 @@ def get_journal_context():
                 d_str = entry.get('date') or ''
                 if not d_str:
                     continue
+                planned_dist = float(entry.get('distance_miles') or 0)
+                planned_vert = float(entry.get('elevation_gain_feet') or 0)
+                planned_load = planned_dist + planned_vert / 750.0
                 planned_days.append({
                     'date':  d_str,
-                    'miles': float(entry.get('distance_miles') or 0),
-                    'vert':  float(entry.get('elevation_gain_feet') or 0),
+                    'miles': round(planned_load, 2),
+                    'vert':  planned_vert,
                 })
 
         # Merge: for each day in the display window, use actual if available, else planned
@@ -6351,8 +6615,8 @@ def get_journal_context():
                 merged_days.append({**planned_by_date[iso], 'is_actual': False})
             cur += _td2(days=1)
 
-        # Planned weekly total (for display alongside actual)
-        planned_week_miles = sum(d['miles'] for d in planned_days)
+        # Planned 7-day total in load equivalents
+        planned_week_miles = round(sum(d['miles'] for d in planned_days), 1)
 
         return jsonify({
             'stage_name': stage_name,
@@ -6365,6 +6629,7 @@ def get_journal_context():
             'week_total_miles': week_total_miles,
             'week_total_vert': week_total_vert,
             'planned_week_miles': planned_week_miles,
+            'plan_start_date': week_sun.isoformat(),
         })
 
     except Exception as e:
@@ -6372,7 +6637,7 @@ def get_journal_context():
         return jsonify({
             'stage_name': None, 'weeks_to_race': None, 'race_name': None,
             'today_session': None, 'sessions_completed': 0, 'total_sessions': 0,
-            'week_days': [], 'week_total_miles': 0, 'week_total_vert': 0, 'planned_week_miles': 0,
+            'week_days': [], 'week_total_miles': 0, 'week_total_vert': 0, 'planned_week_miles': 0, 'plan_start_date': None,
         })
 
 
@@ -7309,13 +7574,10 @@ def weekly_synthesis_cron():
         from datetime import timedelta
         from timezone_utils import get_app_current_date
 
-        # Synthesize the most recently completed week (Sun–Sat structure).
-        # Works correctly whether cron fires Saturday evening or Sunday morning.
-        # weekday(): Mon=0 … Sat=5, Sun=6
-        today = get_app_current_date()  # Pacific time — avoids UTC midnight crossing Saturday→Sunday
-        days_since_saturday = (today.weekday() - 5) % 7   # 0 on Sat, 1 on Sun, …
-        last_saturday = today - timedelta(days=days_since_saturday)
-        week_start = last_saturday - timedelta(days=6)     # Sunday that started the week
+        # Synthesize the trailing 7-day window that just closed.
+        # With rolling plans the window is always today-7 regardless of calendar day.
+        today = get_app_current_date()  # Pacific time
+        week_start = today - timedelta(days=7)
 
         users = db_utils.execute_query(
             "SELECT DISTINCT user_id FROM activities WHERE date >= %s",
@@ -7383,10 +7645,18 @@ def get_weekly_synthesis():
             return jsonify({'synthesis': None, 'week_start': None})
 
         r = row[0]
+        # week_start for display: synthesis always covers the 7 days before it was generated
+        # (both cron and manual use today-7 as the activity window), so
+        # synthesis_generated_at - 7 days gives the correct synthesis window start date.
+        from datetime import timedelta as _td
+        gen_at = r['synthesis_generated_at']
+        synthesis_week_start = (gen_at.date() - _td(days=7)).isoformat() if gen_at else (
+            r['week_start_date'].isoformat() if r['week_start_date'] else None
+        )
         return jsonify({
             'synthesis': r['weekly_synthesis'],
-            'week_start': r['week_start_date'].isoformat() if r['week_start_date'] else None,
-            'generated_at': r['synthesis_generated_at'].isoformat() if r['synthesis_generated_at'] else None,
+            'week_start': synthesis_week_start,
+            'generated_at': gen_at.isoformat() if gen_at else None,
             'strategic_summary': r['strategic_summary'],
         })
 
@@ -7413,11 +7683,9 @@ def generate_weekly_synthesis_manual():
         if week_start_str:
             week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
         else:
-            # Default: Sunday that started the most recently completed week (Sun–Sat)
+            # Default: trailing 7-day window that just closed
             today = get_app_current_date()
-            days_since_saturday = (today.weekday() - 5) % 7  # 0 on Sat, 1 on Sun, …
-            last_saturday = today - timedelta(days=days_since_saturday)
-            week_start = last_saturday - timedelta(days=6)
+            week_start = today - timedelta(days=7)
 
         synthesis = generate_weekly_synthesis(user_id, week_start)
 
@@ -11635,9 +11903,8 @@ def welcome_stage1():
     user_id = current_user.id
 
     try:
-        birth_month = request.form.get('birth_month')
-        birth_year = request.form.get('birth_year')
-        training_experience = request.form.get('training_experience')
+        age_input = request.form.get('age_input')
+        training_experience = None  # No longer collected at signup; encouraged via model confidence gamification
         primary_sport = request.form.get('primary_sport')
 
         # Default coaching tone (can be changed later in settings)
@@ -11648,20 +11915,25 @@ def welcome_stage1():
         privacy_accepted = True
         disclaimer_accepted = True
 
-        # Validate required fields (gender, resting_hr, max_hr already set from Strava during OAuth)
-        if not all([birth_month, birth_year, training_experience, primary_sport]):
+        # Validate required fields (gender already set from Strava during OAuth)
+        if not all([age_input, primary_sport]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('welcome_post_strava'))
 
-        # Create birthdate from month and year (set day to 1 for privacy)
+        # Accept age directly; synthesize a July 1 birthdate so age stays correct ±6 months
+        # going forward using existing calculate_age_from_birthdate() logic
         from datetime import date
         try:
-            birthdate = date(int(birth_year), int(birth_month), 1)
-        except (ValueError, TypeError) as e:
-            flash('Invalid birth date provided.', 'error')
+            age = int(age_input)
+            if not (13 <= age <= 99):
+                raise ValueError("Age out of range")
+            current_year = date.today().year
+            birthdate = date(current_year - age, 7, 1)
+        except (ValueError, TypeError):
+            flash('Please enter a valid age.', 'error')
             return redirect(url_for('welcome_post_strava'))
 
-        # Calculate age from birthdate
+        # Recalculate age from the synthetic birthdate for consistency
         from settings_utils import calculate_age_from_birthdate
         age = calculate_age_from_birthdate(birthdate)
 
@@ -11994,57 +12266,195 @@ def proactive_token_refresh():
 @app.route('/api/athlete-model', methods=['GET'])
 @login_required
 def get_athlete_model_api():
-    """Return the athlete model for the current user (ACWR sweet spot, confidence, alignment trend)."""
+    """Return the athlete model and 8-component model confidence for the current user."""
     try:
         user_id = current_user.id
         model = db_utils.get_athlete_model(user_id)
         if not model:
             return jsonify({'success': True, 'model': None})
 
-        # Round floats for clean display; convert Decimal/date types
         def safe_float(v, decimals=2):
             try:
                 return round(float(v), decimals) if v is not None else None
             except (TypeError, ValueError):
                 return None
 
-        # Journal coverage: activities with journal entries in last 30 days
-        coverage_rows = db_utils.execute_query(
-            """
-            SELECT
-                COUNT(DISTINCT a.activity_id) AS activity_count,
-                COUNT(DISTINCT j.date)        AS journal_count
-            FROM activities a
-            LEFT JOIN journal_entries j
-                   ON j.user_id = a.user_id AND j.date = a.date
-            WHERE a.user_id = %s
-              AND a.date >= CURRENT_DATE - INTERVAL '30 days'
-              AND a.activity_id > 0
-              AND a.type != 'rest'
-            """,
-            (user_id,),
-            fetch=True
+        # ── 1. Athlete Profile ─────────────────────────────────────────────────
+        profile_row = db_utils.execute_query(
+            "SELECT age, gender, primary_sport, training_experience FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
         )
-        coverage = coverage_rows[0] if coverage_rows else {}
-        activity_count = int(coverage.get('activity_count') or 0)
-        journal_count = int(coverage.get('journal_count') or 0)
-        journal_coverage_pct = round((journal_count / activity_count * 100)) if activity_count > 0 else 0
+        profile = dict(profile_row[0]) if profile_row else {}
+        profile_fields = ['age', 'gender', 'primary_sport', 'training_experience']
+        profile_pts = sum(1 for f in profile_fields if profile.get(f) not in (None, ''))
+        profile_score = round(profile_pts / len(profile_fields) * 100)
+        profile_missing = [f for f in profile_fields if profile.get(f) in (None, '')]
+
+        # ── 2. HR Calibration ─────────────────────────────────────────────────
+        hr_row = db_utils.execute_query(
+            "SELECT max_hr, resting_hr FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        hr = dict(hr_row[0]) if hr_row else {}
+        hr_pts = sum([1 if hr.get('max_hr') else 0, 1 if hr.get('resting_hr') else 0])
+        hr_score = hr_pts * 50  # 0, 50, or 100
+
+        # ── 3. Coaching Preferences ───────────────────────────────────────────
+        prefs_row = db_utils.execute_query(
+            "SELECT coaching_tone, recommendation_style, coaching_style_spectrum FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        prefs = dict(prefs_row[0]) if prefs_row else {}
+        prefs_complete = all(prefs.get(f) is not None for f in ['coaching_tone', 'recommendation_style', 'coaching_style_spectrum'])
+        prefs_score = 100 if prefs_complete else 0
+
+        # ── 4. Season Plan ────────────────────────────────────────────────────
+        goal_row = db_utils.execute_query(
+            """SELECT race_name, race_date, distance_miles
+               FROM race_goals
+               WHERE user_id = %s AND priority = 'A'
+               ORDER BY race_date ASC LIMIT 1""",
+            (user_id,), fetch=True
+        )
+        if goal_row:
+            goal = dict(goal_row[0])
+            has_name_date = bool(goal.get('race_name') and goal.get('race_date'))
+            has_distance  = bool(goal.get('distance_miles'))
+            season_score  = 100 if (has_name_date and has_distance) else (50 if has_name_date else 0)
+        else:
+            season_score  = 0
+            has_name_date = False
+            has_distance  = False
+
+        # ── 5. Weekly Schedule ────────────────────────────────────────────────
+        sched_row = db_utils.execute_query(
+            "SELECT training_schedule_json FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        sched_json = (dict(sched_row[0]) if sched_row else {}).get('training_schedule_json') or {}
+        if isinstance(sched_json, str):
+            import json as _json
+            try:
+                sched_json = _json.loads(sched_json)
+            except Exception:
+                sched_json = {}
+        schedule_score = 100 if sched_json.get('available_days') else 0
+
+        # ── 6. Activity History (last 60 days, binary at 28-day chronic window) ─
+        history_row = db_utils.execute_query(
+            """SELECT COUNT(*) AS recent_count,
+                      COUNT(*) FILTER (WHERE date <= CURRENT_DATE - INTERVAL '28 days') AS chronic_count
+               FROM activities
+               WHERE user_id = %s
+                 AND date >= CURRENT_DATE - INTERVAL '60 days'
+                 AND activity_id > 0 AND type != 'rest'""",
+            (user_id,), fetch=True
+        )
+        history = dict(history_row[0]) if history_row else {}
+        activity_history_score = 100 if int(history.get('chronic_count') or 0) >= 1 else 0
+        recent_activity_count  = int(history.get('recent_count') or 0)
+
+        # ── 7. Journal Power (last 30 days, quality × coverage) ───────────────
+        journal_row = db_utils.execute_query(
+            """SELECT
+                   COUNT(DISTINCT a.activity_id)                              AS activity_count,
+                   COUNT(DISTINCT j.date)                                      AS journal_count,
+                   COALESCE(AVG(j.journal_power_score), 0)                    AS avg_power,
+                   COUNT(DISTINCT CASE WHEN j.energy_level IS NOT NULL THEN j.date END)                  AS energy_count,
+                   COUNT(DISTINCT CASE WHEN j.rpe_score IS NOT NULL THEN j.date END)                    AS rpe_count,
+                   COUNT(DISTINCT CASE WHEN j.pain_percentage IS NOT NULL THEN j.date END)              AS pain_count,
+                   COUNT(DISTINCT CASE WHEN j.sleep_quality IS NOT NULL THEN j.date END)                AS sleep_count,
+                   COUNT(DISTINCT CASE WHEN j.morning_soreness IS NOT NULL THEN j.date END)             AS soreness_count,
+                   COUNT(DISTINCT CASE WHEN j.hrv_value IS NOT NULL THEN j.date END)                    AS hrv_count,
+                   COUNT(DISTINCT CASE WHEN j.resting_hr IS NOT NULL THEN j.date END)                   AS resting_hr_count,
+                   COUNT(DISTINCT CASE WHEN j.notes IS NOT NULL AND j.notes != '' THEN j.date END)      AS notes_count
+               FROM activities a
+               LEFT JOIN journal_entries j
+                      ON j.user_id = a.user_id AND j.date = a.date
+               WHERE a.user_id = %s
+                 AND a.date >= CURRENT_DATE - INTERVAL '30 days'
+                 AND a.activity_id > 0 AND a.type != 'rest'""",
+            (user_id,), fetch=True
+        )
+        jrow = dict(journal_row[0]) if journal_row else {}
+        j_activity_count = int(jrow.get('activity_count') or 0)
+        j_journal_count  = int(jrow.get('journal_count') or 0)
+        j_avg_power      = float(jrow.get('avg_power') or 0)
+        coverage_rate    = (j_journal_count / j_activity_count) if j_activity_count > 0 else 0
+        journal_power_score = round(j_avg_power * coverage_rate)
+
+        # Per-field coverage: % of journal entries where each field is non-null
+        def _field_pct(key: str) -> int:
+            if j_journal_count == 0:
+                return 0
+            return round(int(jrow.get(key) or 0) / j_journal_count * 100)
+
+        field_coverage = {
+            'energy_level':     _field_pct('energy_count'),
+            'rpe_score':        _field_pct('rpe_count'),
+            'pain_percentage':  _field_pct('pain_count'),
+            'sleep_quality':    _field_pct('sleep_count'),
+            'morning_soreness': _field_pct('soreness_count'),
+            'hrv_value':        _field_pct('hrv_count'),
+            'resting_hr':       _field_pct('resting_hr_count'),
+            'notes':            _field_pct('notes_count'),
+        }
+
+        # ── 8. Aerobic Assessment (binary: 1+ in last 28 days) ────────────────
+        aerobic_row = db_utils.execute_query(
+            """SELECT COUNT(*) AS count FROM aerobic_assessments
+               WHERE user_id = %s AND test_date >= CURRENT_DATE - INTERVAL '28 days'""",
+            (user_id,), fetch=True
+        )
+        aerobic_count = int((dict(aerobic_row[0]) if aerobic_row else {}).get('count') or 0)
+        aerobic_score = 100 if aerobic_count >= 1 else 0
+
+        # ── Composite (Journal Power counts double, 9-part denominator) ───────
+        composite = round((
+            profile_score + hr_score + prefs_score + season_score +
+            schedule_score + activity_history_score +
+            journal_power_score * 2 +    # double-weight
+            aerobic_score
+        ) / 9)
 
         total_autopsies = model.get('total_autopsies') or 0
-        div_low = safe_float(model.get('typical_divergence_low'), 3)
-        div_threshold = safe_float(model.get('divergence_injury_threshold'), 3)
+        div_low         = safe_float(model.get('typical_divergence_low'), 3)
+        div_threshold   = safe_float(model.get('divergence_injury_threshold'), 3)
 
         payload = {
-            'avg_lifetime_alignment': safe_float(model.get('avg_lifetime_alignment'), 1),
-            'recent_alignment_trend': model.get('recent_alignment_trend'),
-            'total_autopsies': total_autopsies,
-            'last_autopsy_date': str(model['last_autopsy_date']) if model.get('last_autopsy_date') else None,
-            'typical_divergence_low': div_low,
+            # Existing fields (used elsewhere in the app)
+            'avg_lifetime_alignment':    safe_float(model.get('avg_lifetime_alignment'), 1),
+            'recent_alignment_trend':    model.get('recent_alignment_trend'),
+            'total_autopsies':           total_autopsies,
+            'last_autopsy_date':         str(model['last_autopsy_date']) if model.get('last_autopsy_date') else None,
+            'typical_divergence_low':    div_low,
             'divergence_injury_threshold': div_threshold,
-            'journal_count': journal_count,
-            'activity_count': activity_count,
-            'journal_coverage_pct': journal_coverage_pct,
+            # Legacy journal fields (keep for any other consumers)
+            'journal_count':             j_journal_count,
+            'activity_count':            j_activity_count,
+            'journal_coverage_pct':      round(coverage_rate * 100),
+            # Model confidence
+            'model_confidence': {
+                'composite':             composite,
+                'components': {
+                    'athlete_profile':   {'score': profile_score,         'missing': profile_missing},
+                    'hr_calibration':    {'score': hr_score,              'max_hr': bool(hr.get('max_hr')), 'resting_hr': bool(hr.get('resting_hr'))},
+                    'coaching_prefs':    {'score': prefs_score},
+                    'season_plan':       {'score': season_score,          'has_name_date': has_name_date, 'has_distance': has_distance},
+                    'weekly_schedule':   {'score': schedule_score},
+                    'activity_history':  {'score': activity_history_score, 'recent_count': recent_activity_count},
+                    'journal_power':     {'score': journal_power_score,   'avg_power': round(j_avg_power), 'coverage_pct': round(coverage_rate * 100), 'journal_count': j_journal_count, 'activity_count': j_activity_count, 'field_coverage': field_coverage},
+                    'aerobic_assessment':{'score': aerobic_score,         'count': aerobic_count},
+                },
+            },
         }
+
+        # Persist composite so LLM context can cite the actual value
+        db_utils.execute_query(
+            "UPDATE athlete_models SET model_confidence_pct = %s, updated_at = NOW() WHERE user_id = %s",
+            (composite, user_id)
+        )
+
         return jsonify({'success': True, 'model': payload})
     except Exception as e:
         logger.error(f"Error fetching athlete model: {e}")
@@ -13178,6 +13588,19 @@ def save_aerobic_assessment_endpoint():
         saved = db_utils.save_aerobic_assessment(current_user.id, activity_id, result)
         if not saved:
             return jsonify({'success': False, 'error': 'Failed to save assessment.'}), 500
+
+        # Promote aet_bpm into athlete_models so get_user_hr_thresholds() can use it as VT1
+        try:
+            from llm_recommendations_module import upsert_athlete_model
+            aet_test_date = saved['test_date']
+            if hasattr(aet_test_date, 'strftime'):
+                aet_test_date = aet_test_date.strftime('%Y-%m-%d')
+            upsert_athlete_model(current_user.id, {
+                'aet_bpm': float(result['aet_bpm']),
+                'aet_test_date': aet_test_date,
+            })
+        except Exception as _aet_err:
+            logger.warning(f"Could not promote aet_bpm to athlete model for user {current_user.id}: {_aet_err}")
 
         # Serialize for JSON response
         assessment = dict(saved)
@@ -14779,6 +15202,18 @@ def dismiss_revision_proposal():
         logger.error(f"Error in dismiss_revision_proposal: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+# =============================================================================
+# LEGACY URL REDIRECTS
+# =============================================================================
+
+@app.route('/terms-and-conditions')
+def redirect_terms():
+    return redirect('/legal/terms', code=301)
+
+@app.route('/medical-disclaimer')
+def redirect_disclaimer():
+    return redirect('/legal/disclaimer', code=301)
 
 # =============================================================================
 # CATCH-ALL ROUTE FOR REACT CLIENT-SIDE ROUTING

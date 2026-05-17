@@ -170,6 +170,17 @@ interface GoalModalProps {
   onClose: () => void;
 }
 
+const PANEL_EXPAND_STYLE = `
+  @keyframes panelExpand {
+    from { opacity: 0; transform: scale(0.88) translateX(28px); }
+    to   { opacity: 1; transform: scale(1)    translateX(0);     }
+  }
+  @keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+`;
+
 const GoalModal: React.FC<GoalModalProps> = ({ mode, initialData, onSave, onClose }) => {
   const [form, setForm] = useState<GoalFormData>(() => {
     if (mode === 'edit' && initialData) {
@@ -237,30 +248,35 @@ const GoalModal: React.FC<GoalModalProps> = ({ mode, initialData, onSave, onClos
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        backgroundColor: 'rgba(0,0,0,0.65)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '20px',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{
-        ...CARBON,
-        border: '1px solid rgba(255,87,34,0.7)',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        width: '100%',
-        maxWidth: '560px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-      }}>
-        {/* Header */}
+    <>
+      <style>{PANEL_EXPAND_STYLE}</style>
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px',
+          animation: 'backdropFadeIn 0.2s ease-out',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
         <div style={{
-          background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
-          padding: '12px 24px',
+          ...CARBON,
+          border: '1px solid rgba(255,87,34,0.7)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: '560px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          animation: 'panelExpand 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transformOrigin: 'right top',
         }}>
+          {/* Header */}
+          <div style={{
+            background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+            padding: '12px 24px',
+          }}>
           <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
             {mode === 'add' ? 'Add Race Goal' : 'Modify Goal'}
           </span>
@@ -444,6 +460,7 @@ const GoalModal: React.FC<GoalModalProps> = ({ mode, initialData, onSave, onClos
         </div>
       </div>
     </div>
+  </>
   );
 };
 
@@ -477,6 +494,7 @@ const AthleteProfileModal: React.FC<AthleteProfileModalProps> = ({
         backgroundColor: 'rgba(0,0,0,0.65)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '20px',
+        animation: 'backdropFadeIn 0.2s ease-out',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -487,6 +505,8 @@ const AthleteProfileModal: React.FC<AthleteProfileModalProps> = ({
         overflow: 'hidden',
         width: '100%',
         maxWidth: '480px',
+        animation: 'panelExpand 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        transformOrigin: 'right top',
       }}>
         <div style={{
           background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
@@ -586,6 +606,7 @@ const PrefModal: React.FC<PrefModalProps> = ({
         backgroundColor: 'rgba(0,0,0,0.65)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '20px',
+        animation: 'backdropFadeIn 0.2s ease-out',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -598,6 +619,8 @@ const PrefModal: React.FC<PrefModalProps> = ({
         maxWidth: '560px',
         maxHeight: '90vh',
         overflowY: 'auto',
+        animation: 'panelExpand 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        transformOrigin: 'right top',
       }}>
         {/* Header */}
         <div style={{
@@ -1180,6 +1203,15 @@ const SeasonPage: React.FC = () => {
 
   useEffect(() => { fetchAll(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Scroll to anchor after data loads (supports links like /?tab=coach&subtab=season#athlete-model)
+  useEffect(() => {
+    if (isLoading) return;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const el = document.getElementById(hash);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [isLoading]);
+
   // ──────────────────────────────────────────
   // HANDLERS — RACE LIST
   // ──────────────────────────────────────────
@@ -1469,7 +1501,7 @@ const SeasonPage: React.FC = () => {
         />
       )}
 
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', background: '#f0f4f8', borderRadius: '10px', padding: '16px' }}>
+      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', background: '#f0f4f8', borderRadius: '10px', padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* ── LEFT SIDEBAR COLUMN ── */}
         <div style={{ width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1744,7 +1776,12 @@ const SeasonPage: React.FC = () => {
         {/* ── RIGHT MAIN AREA ── */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <RaceReadinessCard readiness={raceReadiness} />
-          <AthleteModelPanel model={athleteModel} />
+          <AthleteModelPanel
+            model={athleteModel}
+            onOpenGoalModal={() => { setEditingGoal(null); setModalMode('add'); }}
+            onOpenProfileModal={() => setEditingProfile(true)}
+            onOpenPrefsModal={() => setEditingPref('communication')}
+          />
           <AerobicAssessmentPanel
             assessments={assessments}
             hrActivities={hrActivities}

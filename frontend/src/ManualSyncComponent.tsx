@@ -45,16 +45,20 @@ interface AutopsyData {
 interface QuickJournalModalProps {
   date: string;
   onDone: () => void;
+  isIndoor?: boolean;
+  activityId?: number | null;
+  storedElevation?: number | null;
 }
 
 // ─── Quick Journal Modal ───────────────────────────────────────────────────
 
-const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone }) => {
+const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone, isIndoor = false, activityId = null, storedElevation = null }) => {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>('form');
   const [energy, setEnergy] = useState<number | null>(null);
   const [rpe, setRpe]       = useState<number | null>(null);
   const [pain, setPain]     = useState<number | null>(null);
+  const [elevationGain, setElevationGain] = useState<string>(storedElevation ? String(storedElevation) : '');
   const [statusMsg, setStatusMsg] = useState(PROCESSING_MESSAGES[0]);
   const [autopsyData, setAutopsyData] = useState<AutopsyData | null>(null);
   const msgIdxRef = useRef(0);
@@ -77,6 +81,16 @@ const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone }) =
     if (!complete) return;
     setPhase('processing');
     try {
+      // If indoor and user entered elevation, update the activity first
+      const elevFeet = parseFloat(elevationGain);
+      if (isIndoor && activityId && !isNaN(elevFeet) && elevFeet > 0) {
+        await fetch('/api/activities-management/update-elevation', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activity_id: activityId, elevation_gain_feet: elevFeet }),
+        });
+      }
+
       const res = await fetch('/api/journal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -243,6 +257,36 @@ const QuickJournalModal: React.FC<QuickJournalModalProps> = ({ date, onDone }) =
                 </div>
               </div>
 
+              {/* Elevation — indoor/treadmill runs only */}
+              {isIndoor && (
+                <div>
+                  <span style={FIELD_LABEL}>{storedElevation ? 'Treadmill elevation gain (ft) — confirm or correct' : 'Treadmill elevation gain (ft)'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="15000"
+                      placeholder="e.g. 500"
+                      value={elevationGain}
+                      onChange={e => setElevationGain(e.target.value)}
+                      style={{
+                        width: '120px',
+                        padding: '6px 10px',
+                        background: 'rgba(230,240,255,0.05)',
+                        border: '1px solid rgba(125,156,184,0.3)',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        color: '#E6F0FF',
+                        outline: 'none',
+                      }}
+                    />
+                    <span style={{ fontSize: '11px', color: '#7D9CB8', fontStyle: 'italic' }}>
+                      {storedElevation ? 'from Strava — confirm or correct' : 'GPS cannot capture treadmill incline'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
                 <button onClick={onDone} style={{
@@ -378,6 +422,9 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [showJournalModal, setShowJournalModal] = useState(false);
+  const [todayActivityId, setTodayActivityId] = useState<number | null>(null);
+  const [todayIsIndoor, setTodayIsIndoor] = useState(false);
+  const [todayStoredElevation, setTodayStoredElevation] = useState<number | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -444,7 +491,16 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
 
       if (data.success) {
         setResult(data);
-        // Show quick journal modal before refreshing dashboard
+        // Fetch today's activity type to detect indoor/treadmill runs
+        try {
+          const infoRes = await fetch('/api/today-activity-info');
+          const info = await infoRes.json();
+          setTodayActivityId(info.activity_id ?? null);
+          setTodayIsIndoor(info.needs_elevation ?? false);
+          setTodayStoredElevation(info.elevation_gain_feet ?? null);
+        } catch (_) {
+          // Non-fatal — modal still shows without elevation prompt
+        }
         setTimeout(() => { setShowJournalModal(true); }, 600);
       } else {
         setError(data.error || 'Sync failed');
@@ -459,7 +515,13 @@ const ManualSyncComponent: React.FC<ManualSyncProps> = ({ onSyncComplete }) => {
   return (
     <>
     {showJournalModal && (
-      <QuickJournalModal date={todayStr} onDone={handleJournalDone} />
+      <QuickJournalModal
+        date={todayStr}
+        onDone={handleJournalDone}
+        isIndoor={todayIsIndoor}
+        activityId={todayActivityId}
+        storedElevation={todayStoredElevation}
+      />
     )}
     <div className={styles.chartContainer} style={{
       background: 'linear-gradient(135deg, #FC5200, #ff8c00)',

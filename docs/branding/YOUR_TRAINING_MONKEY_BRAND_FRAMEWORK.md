@@ -24,6 +24,24 @@
 
 We reveal the training insights your Garmin can't show you through patent-pending divergence analysis.
 
+### Brand Philosophy: Training the Monkey
+
+Every athlete carries a monkey on their back — the persistent internal voice that narrates every training decision. "Push harder." "Maybe rest." "Was that too much?" That voice is already there. YTM doesn't replace it. **YTM trains it.**
+
+The product name is the product philosophy. "Your Training Monkey" is that internal chatter — and the goal is to make it evidence-based, calibrated, and effective. Not to create a dependency on an external tool, but to internalize the coaching intelligence until the athlete carries it with them on every run.
+
+**What this means in practice:**
+
+- **The Athlete Model is a mirror, not a black box.** When athletes feed it data — workouts, journal notes, honest RPE scores — they're not filling out forms. They're teaching their own inner voice what patterns to look for.
+
+- **Journal notes are the highest-signal input** because free text is the closest channel to the internal monologue. Structured fields capture what happened. Notes capture what it *felt* like — and that's what the monkey runs on.
+
+- **"Your Coach" is the right language** because the coach isn't external software. It's the athlete's own voice, trained. "AI Coach" or "YTM Coach" would imply a third party; the possessive is philosophically accurate.
+
+- **Success looks like departure, not dependency.** A user who has fully internalized YTM's reasoning — who can read their own divergence, anticipate load responses, and trust their rest decisions — has achieved the goal. They carry the monkey with them. The app confirms what they already know.
+
+This philosophy distinguishes YTM from every other training platform. Others optimize metrics. **YTM trains judgment.**
+
 ### Brand Personality (The 5 Pillars)
 
 1. **Intelligent Yet Approachable**
@@ -50,6 +68,11 @@ We reveal the training insights your Garmin can't show you through patent-pendin
    - Coaching tone, not commanding
    - Encourages informed decisions
    - Celebrates sustainable progress
+
+6. **Internalization Over Dependency**
+   - The goal is athletes who trust their own judgment, not athletes who need the app
+   - Every recommendation explains its reasoning — so the pattern transfers to the athlete
+   - We celebrate when users "already knew" what we told them — that's working as intended
 
 ### Target Audience
 
@@ -402,8 +425,13 @@ Respectful ←————5——→ Irreverent
 - Be direct about risks and limitations
 - Celebrate sustainable progress, not just PRs
 - Use data to inform, not intimidate
+- Refer to the coaching feature as **"Your Coach"** (nav shorthand: "Coach") — the possessive is philosophically accurate; the coach is the athlete's own voice, calibrated
+- Frame data input (journaling, notes) as the athlete *teaching* their own inner voice, not as form-filling
+- When users say "I already knew that" — celebrate it. That's the product working.
 
 **DON'T:**
+- Use "AI Coach" or "YTM Coach" — externalizes what should feel internal
+- Frame YTM as a dependency or authority; it's a training partner, not a crutch
 - Use corporate jargon or buzzwords
 - Over-promise results
 - Shame or guilt users
@@ -453,6 +481,9 @@ Respectful ←————5——→ Irreverent
 
 **For Trail Running Community:**
 > "Finally, a platform that understands vertical gain isn't just a nice-to-have stat—it's essential for calculating true training load in the mountains."
+
+**For Athletes Who Value Autonomy:**
+> "YTM doesn't tell you what to do. It trains the part of you that already knows — sharpening your instincts until the data confirms what you feel."
 
 ### Messaging Do's and Don'ts
 

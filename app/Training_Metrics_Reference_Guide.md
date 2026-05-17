@@ -141,14 +141,26 @@ This provides a more complete picture of the total external work performed durin
 
 ## Wellness Metrics
 
-### Perceived Effort Scale (1-5) - Garmin Compatible
-| Score | Description | HR Zone Correlation | RPE Equivalent |
-|-------|-------------|-------------------|----------------|
-| 1     | Very Easy   | Zone 1-2          | 6-9 RPE        |
-| 2     | Easy        | Zone 2            | 10-12 RPE      |
-| 3     | Moderate    | Zone 3            | 13-15 RPE      |
-| 4     | Hard        | Zone 4            | 16-18 RPE      |
-| 5     | Maximum     | Zone 5            | 19-20 RPE      |
+### RPE Scale (1-10) — Rate of Perceived Exertion
+
+**Session RPE:** Rate the overall session holistically, ~30 minutes after finishing. Not peak effort. Not an average. The gestalt cost of the whole workout.
+
+For mixed-intensity sessions (intervals, fartlek): the hard reps dominate the session's physiological imprint even with recovery periods. A VO2max interval session typically rates 7–8, not 4 because "most of the time I was recovering."
+
+For long easy sessions: duration accumulates load. A 3-hour Zone 2 run that felt comfortable throughout rates 4–5, not 2. Underselling duration undersells the load the coach needs to see.
+
+| Score | Label | Character | Breathing | Typical workout |
+|-------|-------|-----------|-----------|-----------------|
+| 1 | Trivial | Could continue for hours | Normal | Active recovery, easy walk |
+| 2 | Very easy | No real effort | Fully conversational | Recovery run, warm-up |
+| 3 | Easy | Comfortable pace | Conversational throughout | Aerobic base, Zone 2 short |
+| 4 | Moderate | Slightly elevated | Full sentences, some effort | Long run first half, aerobic tempo |
+| 5 | Moderate-hard | Noticeable fatigue | Shorter sentences | Long run (full), threshold approaching |
+| 6 | Hard | Sustained discomfort | Brief answers only | Tempo, sustained climb |
+| 7 | Very hard | Lactate building | Can't hold a sentence | Threshold intervals, hard climb |
+| 8 | Very very hard | High discomfort | Single words | VO2max intervals, race-pace effort |
+| 9 | Near maximal | Redline | No speech | Hard race, sprint finish |
+| 10 | Maximal | Cannot continue longer | No speech | True all-out sprint |
 
 ### Pain Score (% of workout time the athlete is aware of pain)
 

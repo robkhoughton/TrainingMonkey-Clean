@@ -69,5 +69,3 @@ echo Build:    %BUILD_TIME%
 echo Image:    %IMAGE_NAME%:%BUILD_TIME%
 echo ==============================================
 echo.
-
-pause

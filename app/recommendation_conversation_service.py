@@ -182,15 +182,12 @@ def run_extraction_pass(user_id, recommendation_date, conversation_messages):
             f'  "injury_or_pain_notes": null,\n'
             f'  "preference_note": null,\n'
             f'  "rpe_calibration_signal": null,\n'
-            f'  "rpe_offset_delta": null,\n'
             f'  "nothing_significant": true\n'
             f"}}\n\n"
             f"Rules:\n"
             f"- injury_or_pain_notes: any injury, pain, physical issue, or rehab mention\n"
             f"- preference_note: any training preference (\"prefer mornings\", \"can't do back-to-back hard days\")\n"
             f"- rpe_calibration_signal: athlete says effort felt harder/easier than metrics suggest\n"
-            f"- rpe_offset_delta: float — suggested RPE calibration adjustment "
-            f"(+0.5 if consistently over-reporting ease)\n"
             f"- Set nothing_significant: true if none of the above apply"
         )
 
@@ -242,25 +239,6 @@ def run_extraction_pass(user_id, recommendation_date, conversation_messages):
             )
             upsert_athlete_model(user_id, {'preference_notes': updated_preference_notes})
             logger.info(f"run_extraction_pass: updated preference_notes for user {user_id}")
-
-        rpe_offset_delta = extracted.get('rpe_offset_delta')
-        if rpe_offset_delta is not None:
-            try:
-                delta = float(rpe_offset_delta)
-                current_model = get_athlete_model(user_id) or {}
-                current_offset = float(current_model.get('rpe_calibration_offset') or 0.0)
-                current_count = int(current_model.get('rpe_sample_count') or 0)
-                new_offset = max(-2.0, min(2.0, current_offset + delta))
-                upsert_athlete_model(user_id, {
-                    'rpe_calibration_offset': new_offset,
-                    'rpe_sample_count': current_count + 1,
-                })
-                logger.info(
-                    f"run_extraction_pass: updated rpe_calibration_offset to {new_offset} "
-                    f"for user {user_id}"
-                )
-            except (TypeError, ValueError) as e:
-                logger.error(f"run_extraction_pass: invalid rpe_offset_delta value for user {user_id}: {e}")
 
         mark_conversation_extraction_done(user_id, recommendation_date, extracted)
         logger.info(f"run_extraction_pass: marked extraction done for user {user_id}, date={recommendation_date}")

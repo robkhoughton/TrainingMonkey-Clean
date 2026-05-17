@@ -267,6 +267,7 @@ interface JournalContext {
   week_total_miles: number;
   week_total_vert: number;
   planned_week_miles: number;
+  plan_start_date?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -282,22 +283,23 @@ function formatDateLong(): string {
   });
 }
 
-function getWeekDates(): Array<{ iso: string; abbrev: string }> {
+function getWeekDates(planStartDate?: string): Array<{ iso: string; abbrev: string }> {
   const DAY_ABBREVS = ['S', 'M', 'Tu', 'W', 'Th', 'F', 'S'];
-  const today = new Date();
-  const dow = today.getDay(); // 0=Sunday
-  // On Sunday the new week just started and has no activities yet.
-  // Show the just-completed previous week (last Sun–Sat) so mileage is always visible.
-  const offset = dow === 0 ? 7 : dow;
-  const sunday = new Date(today);
-  sunday.setDate(today.getDate() - offset);
+  let start: Date;
+  if (planStartDate) {
+    // Use the active plan's start date (rolling window, not Sunday-anchored)
+    start = new Date(planStartDate + 'T12:00:00');
+  } else {
+    // Fallback before context loads: anchor to today
+    start = new Date();
+    start.setHours(12, 0, 0, 0);
+  }
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(sunday);
-    d.setDate(sunday.getDate() + i);
-    // Use local date components — toISOString() converts to UTC and can shift the date
-    // for users in negative-offset timezones (e.g. Pacific), matching todayIso() behaviour.
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return { iso, abbrev: DAY_ABBREVS[i] };
+    const dayIndex = d.getDay(); // 0=Sun
+    return { iso, abbrev: DAY_ABBREVS[dayIndex] };
   });
 }
 
@@ -837,6 +839,10 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
   const [loading,          setLoading]          = useState(true);
   const [programLoading,   setProgramLoading]   = useState(true);
   const [raceReadiness,    setRaceReadiness]    = useState<RaceReadiness | null>(null);
+  const [streak,           setStreak]           = useState<number | null>(null);
+  const [lastSyncDate,     setLastSyncDate]     = useState<string | null>(null);
+  const [isSyncing,        setIsSyncing]        = useState(false);
+  const [syncMsg,          setSyncMsg]          = useState<string | null>(null);
 
   useEffect(() => {
     // Fast endpoints — page renders as soon as these complete
@@ -848,6 +854,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
       fetch('/api/coach/race-readiness',          { credentials: 'include' }).then(r => r.ok ? r.json() : null),
     ]).then(([well, training, ctx, recData, readinessData]) => {
       if (well) setWellness(well);
+      if (training?.last_sync_date) setLastSyncDate(training.last_sync_date);
       if (training?.data?.length) {
         const rows = [...training.data].sort((a: any, b: any) => b.date.localeCompare(a.date));
         const r  = rows[0];
@@ -877,6 +884,12 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
       setLoading(false);
     }).catch(() => setLoading(false));
 
+    // Streak — fast, independent
+    fetch('/api/journal/streak', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.streak != null) setStreak(d.streak); })
+      .catch(() => {});
+
     // Weekly program fetches independently — slow LLM call, ~60–90s
     // Page renders without it; week schedule populates when ready
     fetch('/api/coach/weekly-program', { credentials: 'include' })
@@ -893,7 +906,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
     if (s.date)        sessionByDate[s.date] = s;
     if (s.day_of_week) sessionByDow[s.day_of_week] = s;
   });
-  const weekDates    = getWeekDates();
+  const weekDates    = getWeekDates(context?.plan_start_date);
   const todayDate    = todayIso();
   const getSession   = (iso: string): DailyWorkout | null =>
     sessionByDate[iso] || sessionByDow[dayOfWeekName(iso)] || null;
@@ -936,6 +949,42 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
     return type && dur ? `${type} · ${dur}` : type || dur || null;
   })();
 
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/sync-with-auto-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ days: 14 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const today = new Date().toISOString().slice(0, 10);
+        setLastSyncDate(today);
+        setSyncMsg('Synced');
+      } else {
+        setSyncMsg('Sync failed');
+      }
+    } catch {
+      setSyncMsg('Connection error');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncMsg(null), 3000);
+    }
+  };
+
+  const syncLabel = (() => {
+    if (!lastSyncDate) return 'Never synced';
+    const today = new Date();
+    const synced = new Date(lastSyncDate + 'T12:00:00');
+    const days = Math.round((today.getTime() - synced.getTime()) / 86400000);
+    if (days === 0) return 'Synced today';
+    if (days === 1) return 'Synced yesterday';
+    return `Synced ${days}d ago`;
+  })();
+
   const dividerStyle: React.CSSProperties = {
     width: '1px', background: 'rgba(125,156,184,0.15)', alignSelf: 'stretch', margin: '0 4px',
   };
@@ -974,7 +1023,37 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
               </span>
             </span>
           </div>
-          <div style={{ fontSize: '0.8rem', color: MUTED, marginTop: '4px', fontFamily: FONT, textAlign: 'left' }}>{formatDateLong()}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+            <div style={{ fontSize: '0.8rem', color: MUTED, fontFamily: FONT }}>{formatDateLong()}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: syncMsg ? (syncMsg === 'Synced' ? SAGE : RED_C) : MUTED, fontFamily: FONT }}>
+                  {syncMsg || syncLabel}
+                </span>
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    fontSize: '0.75rem', fontWeight: 600,
+                    color: isSyncing ? MUTED : 'white',
+                    background: isSyncing ? 'transparent' : '#FC5200',
+                    border: `1px solid ${isSyncing ? MUTED : '#FC5200'}`,
+                    borderRadius: '4px', padding: '3px 10px',
+                    cursor: isSyncing ? 'not-allowed' : 'pointer',
+                    fontFamily: FONT, transition: 'all 0.2s',
+                  }}
+                >
+                  {!isSyncing && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.172"/>
+                    </svg>
+                  )}
+                  {isSyncing ? 'Syncing…' : 'Sync with Strava'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── 1. Rx card (two-column prose) ── */}
@@ -1026,16 +1105,105 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                   }
                 </div>
 
+                {/* Journal → Rx feedback loop callout */}
+                {(() => {
+                  const yesterday = (() => {
+                    const d = new Date(); d.setDate(d.getDate() - 1);
+                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                  })();
+                  const yEntry = journalEntries.find(e => e.date === yesterday);
+                  const obs = yEntry?.observations;
+                  const driver: string | null = structuredOutput?.assessment?.primary_driver ?? null;
+
+                  // Pick the most notable signal logged yesterday
+                  let signal: string | null = null;
+                  if (obs && driver) {
+                    const pain     = obs.pain_percentage ?? 0;
+                    const energy   = obs.energy_level ?? 3;
+                    const soreness = obs.morning_soreness ?? 1;
+                    if (pain >= 40)         signal = 'pain';
+                    else if (energy <= 2)   signal = 'low energy';
+                    else if (soreness >= 4) signal = 'high soreness';
+                    else if (energy >= 5)   signal = 'high energy';
+                  }
+
+                  const hasStreak = streak != null && streak > 0;
+                  if (!signal && !hasStreak) return null;
+
+                  return (
+                    <div style={{
+                      marginTop: '14px', padding: '10px 14px',
+                      background: 'rgba(107,143,127,0.08)', borderLeft: '3px solid #6B8F7F',
+                      borderRadius: '0 6px 6px 0', fontFamily: FONT, textAlign: 'left',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: SAGE, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          What your coach saw in your journal
+                        </span>
+                        {hasStreak && (
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, color: SAGE, fontFamily: FONT,
+                            border: `1px solid ${SAGE}50`, borderRadius: '20px',
+                            padding: '1px 9px', letterSpacing: '0.03em', whiteSpace: 'nowrap',
+                          }}>
+                            {streak} day streak
+                          </span>
+                        )}
+                      </div>
+                      {signal && (
+                        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: TEXT, lineHeight: '1.5', textAlign: 'left' }}>
+                          Yesterday you logged <strong>{signal}</strong> · {driver}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Why this Rx? */}
                 <WhyRecommendationPanel
                   structuredOutput={structuredOutput}
                   targetDate={recTargetDate || todayDate}
                 />
+
+                {/* Model confidence footer */}
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                  {structuredOutput?.assessment?.confidence != null && (
+                    <span style={{ fontSize: '0.78rem', color: '#6b7280', fontFamily: FONT }}>
+                      Model confidence: <strong style={{ color: TEXT }}>{Math.round(structuredOutput.assessment.confidence * 100)}%</strong>
+                    </span>
+                  )}
+                  <a
+                    href="/?tab=coach&subtab=season#athlete-model"
+                    style={{
+                      display: 'inline-block',
+                      fontSize: '0.75rem', fontWeight: 700, fontFamily: FONT,
+                      color: SAGE, textDecoration: 'none', marginLeft: 'auto',
+                      padding: '4px 11px',
+                      border: `1px solid ${SAGE}55`,
+                      borderRadius: '4px',
+                      background: `rgba(107,143,127,0.1)`,
+                      letterSpacing: '0.03em',
+                    }}
+                  >
+                    Improve model confidence →
+                  </a>
+                </div>
               </>
             ) : (
-              <p style={{ margin: 0, color: MUTED, fontSize: '0.9rem', fontStyle: 'italic', fontFamily: FONT }}>
-                No coaching recommendation yet. Visit the Coach tab to generate one.
-              </p>
+              <div style={{ fontFamily: FONT }}>
+                <p style={{ margin: '0 0 8px 0', color: TEXT, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                  Your daily prescription will appear here once you've logged a few journal entries.
+                </p>
+                <p style={{ margin: '0 0 14px 0', color: MUTED, fontSize: '0.85rem', lineHeight: '1.6' }}>
+                  Open the Journal tab, find today's activity, and fill in your RPE, how you felt, and any notes. After a few entries the coach will start generating personalized recommendations.
+                </p>
+                <button
+                  onClick={() => onNavigateToTab('journal')}
+                  style={{ background: BLUE, color: 'white', border: 'none', borderRadius: '4px', padding: '8px 18px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}
+                >
+                  Go to Journal
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -1086,7 +1254,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                 <div style={{ fontSize: '0.88rem', color: MUTED, fontFamily: FONT, marginTop: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   {context && (
                     <span>
-                      Week: <strong style={{ color: TEXT }}>{(context.week_total_miles ?? 0).toFixed(1)} mi</strong>
+                      7-Day: <strong style={{ color: TEXT }}>{(context.week_total_miles ?? 0).toFixed(1)} mi equiv</strong>
                       {(context.week_total_vert ?? 0) > 0 && (
                         <> · <strong style={{ color: TEXT }}>{Math.round(context.week_total_vert ?? 0).toLocaleString()} ft</strong></>
                       )}
@@ -1164,14 +1332,14 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                     {/* Weekly totals */}
                     <div style={{ width: '1px', background: 'rgba(125,156,184,0.15)', margin: '0 8px', alignSelf: 'stretch' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px', minWidth: '52px' }}>
-                      <div style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Week</div>
+                      <div style={{ fontSize: '0.75rem', color: MUTED, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>7-Day</div>
                       <div style={{ fontSize: '1.05rem', fontWeight: 700, color: TEXT, fontFamily: FONT, whiteSpace: 'nowrap' }}>
                         {totalMiles > 0 ? totalMiles.toFixed(1) : '0'}
-                        <span style={{ fontSize: '0.78rem', fontWeight: 400, color: MUTED }}> mi</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 400, color: MUTED }}> mi eq</span>
                       </div>
                       {plannedMiles > 0 && (
                         <div style={{ fontSize: '0.78rem', color: MUTED, fontFamily: FONT, whiteSpace: 'nowrap', fontStyle: 'italic' }}>
-                          {plannedMiles.toFixed(0)} planned
+                          {plannedMiles.toFixed(0)} planned eq
                         </div>
                       )}
                       {totalVert > 0 && (

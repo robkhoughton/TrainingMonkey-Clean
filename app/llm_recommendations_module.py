@@ -165,9 +165,12 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     """State-gated injection of coaching context library.
 
     Injection rules:
+    - _context_index.md       — always, injected first (LLM orientation: gating awareness, conflict priority)
     - trail_specifics.md      — always (athlete is always a trail runner)
     - intensity_zones.md      — always (polarized model; foundational for any prescription)
     - strength_integration.md — always (eccentric overlap scheduling applies every week)
+    - neuromuscular.md        — always (hill sprints, strides, overstriding form)
+    - fueling.md              — always (carb timing for hard vs. easy sessions applies every week)
     - readiness.md            — when readiness_state != GREEN (extra ANS interpretation needed)
     - periodization.md        — when nearest race is within 4 weeks (taper planning)
     - zone2_training.md       — when race > 28 days or no upcoming race (base period)
@@ -180,7 +183,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     Returns a formatted prompt block, or empty string if nothing to inject.
     """
     context_dir = os.path.join(os.path.dirname(__file__), 'coaching_context')
-    files_to_load = ['trail_specifics.md', 'intensity_zones.md', 'strength_integration.md', 'neuromuscular.md']
+    files_to_load = ['_context_index.md', 'trail_specifics.md', 'intensity_zones.md', 'strength_integration.md', 'neuromuscular.md', 'fueling.md']
 
     if readiness_state and readiness_state != 'GREEN':
         files_to_load.append('readiness.md')
@@ -450,11 +453,27 @@ def get_user_hr_thresholds(user_id):
                     if c.get('max') is not None:
                         zones[zone_key]['max'] = int(c['max'])
 
+        # Use empirically measured AeT as VT1 when available and within 42 days.
+        # Zone display is unchanged — only the coaching threshold is overridden.
+        vt1 = zones['zone2']['max']
+        try:
+            am = get_athlete_model(user_id)
+            if am and am.get('aet_bpm') and am.get('aet_test_date'):
+                aet_date = am['aet_test_date']
+                if not hasattr(aet_date, 'year'):
+                    from datetime import datetime as _dt
+                    aet_date = _dt.strptime(str(aet_date), '%Y-%m-%d').date()
+                from datetime import date as _date
+                if (_date.today() - aet_date).days <= 42:
+                    vt1 = int(am['aet_bpm'])
+        except Exception:
+            pass  # fall back to formula VT1 silently
+
         return {
             'resting_hr': resting_hr,
             'max_hr': max_hr,
             'zone_method': method,
-            'vt1_bpm': zones['zone2']['max'],
+            'vt1_bpm': vt1,
             'vt2_bpm': zones['zone4']['max'],
             'zones': zones,
         }
@@ -1543,6 +1562,39 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         else:
             readiness_context = f"\n### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
 
+    # Yesterday's RPE + session type — contextualises today's readiness signals (low HRV from
+    # hard session vs low HRV from non-training stress are different coaching responses)
+    try:
+        from datetime import timedelta as _td
+        _yesterday = (get_user_current_date(user_id) - _td(days=1)).strftime(DEFAULT_DATE_FORMAT)
+        _yrpe_row = execute_query(
+            "SELECT rpe_score, energy_level FROM journal_entries WHERE user_id = %s AND date = %s",
+            (user_id, _yesterday),
+            fetch=True
+        )
+        if _yrpe_row and _yrpe_row[0] and _yrpe_row[0].get('rpe_score') is not None:
+            _yrpe = _yrpe_row[0]['rpe_score']
+            _yenergy = _yrpe_row[0].get('energy_level')
+            _yact_row = execute_query(
+                """SELECT workout_type, type FROM activities
+                   WHERE user_id = %s AND date = %s
+                   ORDER BY trimp DESC NULLS LAST LIMIT 1""",
+                (user_id, _yesterday),
+                fetch=True
+            )
+            _ytype = None
+            if _yact_row and _yact_row[0]:
+                _ytype = _yact_row[0].get('workout_type') or _yact_row[0].get('type')
+            _session_str = f" ({_ytype})" if _ytype else ""
+            _energy_str = f", energy {_yenergy}/5" if _yenergy else ""
+            _yrpe_line = f"- Yesterday's session{_session_str}: RPE {_yrpe}/10{_energy_str}\n"
+            if readiness_context:
+                readiness_context += _yrpe_line
+            else:
+                readiness_context = f"\n### MORNING READINESS\n{_yrpe_line}"
+    except Exception as _yrpe_err:
+        logger.debug(f"Yesterday RPE injection skipped for user {user_id}: {_yrpe_err}")
+
     # State-gated coaching context library injection
     coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), current_date)
 
@@ -1597,6 +1649,20 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
             load_high = summary.get('load_target_high', 'N/A')
             strategic_notes = summary.get('strategic_notes', '')
             key_sessions = summary.get('key_sessions', [])
+
+            # Race context — server-computed at plan generation time.
+            # Fallback for programs generated before this fix was deployed.
+            _weeks_to_race = summary.get('weeks_to_a_race')
+            _a_race_name = summary.get('a_race_name', '') or ''
+            if _weeks_to_race is None:
+                try:
+                    from coach_recommendations import get_current_training_stage
+                    _ts = get_current_training_stage(user_id)
+                    _weeks_to_race = _ts.get('weeks_to_race')
+                    _a_race_name = _ts.get('race_name', '') or ''
+                except Exception:
+                    pass
+            _race_ctx = f" | {_weeks_to_race} weeks to {_a_race_name}" if (_weeks_to_race is not None and _a_race_name) else ""
 
             # Format key sessions list
             if key_sessions:
@@ -1674,7 +1740,7 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 
             weekly_context_block = f"""
 ### WEEKLY PROGRAM (week of {week_start})
-Training stage: {training_stage} | Intensity target: {intensity_target} | Target load: {load_low}–{load_high} ACWR
+Training stage: {training_stage}{_race_ctx} | Intensity target: {intensity_target} | Target load: {load_low}–{load_high} ACWR
 Strategic notes: {strategic_notes}
 
 Full week schedule:
@@ -1894,10 +1960,14 @@ Using the Training Reference Framework above and applying the specified coaching
 - Tailor complexity and terminology to athlete's experience level
 
 **PATTERN INSIGHTS:**
-- Identify 2-3 specific observations using the pattern recognition framework
-- Apply your coaching tone to the delivery of insights
-- Interpret metrics relative to this athlete's personalized thresholds
-- Include forward-looking trend analysis based on recent patterns
+Write 2-3 observations in flowing prose that demonstrate you have been watching this athlete over time — not just reading today's numbers. Each observation must feel personal and longitudinal.
+
+Rules:
+- Open at least one observation with a specific timeframe and cite actual data: "Over your last [N] autopsies..." or "In [N] of your last [M] sessions..." Use the RECENT AUTOPSY LEARNING figures (avg alignment score, trend direction, deviation cause breakdown) as your source. Do not generalize.
+- Each observation must name what the pattern predicts for the next 1-2 weeks — not just describe what happened.
+- If a positive pattern is present (from Positive Patterns data), name it explicitly and state what it has earned: "You've done X consistently, which means we can now Y." This directly reinforces the value of compliance.
+- If a recurring deviation cause dominates (e.g., 3 of 4 autopsies = physical), name the pattern and what it signals about training tolerance.
+- Apply your coaching tone throughout.
 
 WEEKLY PLAN RULE: The weekly program prescription and the autopsy/readiness data carry EQUAL WEIGHT. Begin your DAILY RECOMMENDATION by stating what the weekly plan prescribes for today. Then either:
 - CONFIRM: "The weekly plan calls for [X]. Your metrics support this — [reason]." Then give execution details.
@@ -2810,6 +2880,13 @@ def parse_enhanced_autopsy_response(response):
             cleaned_analysis,
             flags=re.IGNORECASE | re.DOTALL
         ).strip()
+        # Also catch bare "STRUCTURED OUTPUT" without dashes (model occasionally omits them)
+        cleaned_analysis = re.sub(
+            r'\n*STRUCTURED OUTPUT.*',
+            '',
+            cleaned_analysis,
+            flags=re.IGNORECASE | re.DOTALL
+        ).strip()
         # Also catch any stray NEXT_SESSION_TYPE/NEXT_SESSION_ADJUSTMENT that leaked through
         cleaned_analysis = re.sub(
             r'\n*NEXT[_ ]SESSION[_ ](?:ADJUSTMENT|TYPE):.*',
@@ -3074,7 +3151,15 @@ def get_athlete_model_context(user_id, athlete_model=None):
             else "population default — calibrating"
         )
 
+        confidence_pct = model.get('model_confidence_pct')
+        confidence_line = (
+            f"- Model Confidence: {confidence_pct}%"
+            if confidence_pct is not None
+            else "- Model Confidence: building (not yet computed)"
+        )
+
         context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies)
+{confidence_line}
 - Productive window edge: {div_low:.3f} ({div_low_calibration})
 - Breakdown threshold: {-div_injury:.3f} ({threshold_calibration})
 - Avg Lifetime Alignment Score: {avg_alignment:.1f}/10
@@ -3720,19 +3805,35 @@ deviating from prescription, these override normal training progression logic.
     try:
         answered_queries = get_answered_alignment_queries(user_id, days=30)
         if answered_queries:
-            lines = []
+            external_lines = []
+            mismatch_lines = []
             for q in answered_queries:
                 date_val = q.get('activity_date', '')
                 date_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val)
-                lines.append(f"  {date_str} (alignment {q.get('alignment_score', '?')}/10): {q['response']}")
-            preference_context = f"""
-ATHLETE PREFERENCE FEEDBACK (responses to off-plan queries):
-{chr(10).join(lines)}
+                line = f"  {date_str} (alignment {q.get('alignment_score', '?')}/10): {q['response']}"
+                if q.get('deviation_reason') == 'prescription_mismatch':
+                    mismatch_lines.append(line)
+                else:
+                    external_lines.append(line)
 
-CRITICAL: These are the athlete's own words explaining why the prescription didn't fit
-their reality. Treat repeated themes (terrain, environment, schedule constraints) as
-HARD CONSTRAINTS — adjust future prescriptions to work within them, not against them.
-"""
+            sections = []
+            if external_lines:
+                sections.append(
+                    "EXTERNAL CONSTRAINTS (life/schedule caused deviation):\n"
+                    + "\n".join(external_lines)
+                    + "\nTreat repeated themes (terrain, environment, schedule) as HARD CONSTRAINTS — "
+                    "adjust future prescriptions to work within them, not against them."
+                )
+            if mismatch_lines:
+                sections.append(
+                    "PLAN QUALITY FEEDBACK (athlete confirmed prescription didn't fit):\n"
+                    + "\n".join(mismatch_lines)
+                    + "\nCRITICAL: These are plan calibration signals — the prescribed session "
+                    "type, intensity, or volume was wrong for the athlete's state. "
+                    "Adjust what you prescribe, not just when."
+                )
+            if sections:
+                preference_context = "\n\n".join(sections) + "\n"
     except Exception as pref_err:
         logger.warning(f"Could not load preference feedback for user {user_id}: {pref_err}")
 
@@ -3861,16 +3962,23 @@ Begin your response with this header on its own line, then write the prescriptio
 
 DAILY RECOMMENDATION
 
-Your prescription must be flowing prose (no bullets, no sub-headers, no numbered lines) and must be 200-230 words. You are not done until you have addressed all eight elements below. Do not stop after the workout description — the metrics, decision, and execution cues are mandatory.
+Your prescription must be flowing prose (no bullets, no sub-headers, no numbered lines) and must be 240-280 words. You are not done until you have addressed all ten elements below. Do not stop after the workout description — the metrics, decision, execution cues, pre-mortem, and probe are mandatory.
 
 Element 1 — PLAN (~30 words): State the planned workout (type, distance, terrain, vert). Use one of: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", "your weekly training plan calls for". If no plan exists, prescribe from metrics.
-Element 2 — STAGE (~20 words): Name the training stage and what it means for today's effort quality.
-Element 3 — ALIGNMENT (~20 words): Cite the K-of-N figure from ALIGNMENT data and what it says about recent execution.
+Element 2 — STAGE (~30 words): Name the training stage. If a race goal exists, state weeks remaining and what this stage is building toward for that race. Then connect today's specific session type to the stage purpose — why this stimulus, why now. If no race goal exists, state what the current phase is developing and when the athlete would expect to feel its effect.
+Element 3 — ALIGNMENT (~30 words): Cite the K-of-N figure from ALIGNMENT data. Then make the consequence explicit — connect the compliance record directly to today's prescription:
+- If K-of-N is strong (≥4/5 or ≥3/4): name what that consistency has earned or enabled today. Example: "You've hit your targets in 4 of your last 5 sessions — that's why we can add strides today" or "...which is why I'm comfortable holding this volume." Make the athlete see that their compliance has direct consequence.
+- If K-of-N is weak (≤2/5): name what the execution gap means for today's prescription. Example: "2 of your last 5 sessions hit target — until that improves, we keep today conservative." This frames constraint as earned, not arbitrary.
+- If insufficient data: state that plainly and note what would change the prescription.
 Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each against the athlete's personal thresholds from ATHLETE MODEL — state where they sit in their productive training window.
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
 Element 6 — DECISION (~20 words): Write "Proceed as planned." or "Adjust: [specific change] because [one reason]."
-Element 7 — EXECUTION (~45 words): Give 2-3 specific execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain (grade, hill steepness, trail type) as a proxy for managing internal load — always give the HR number instead. Example: "if HR approaches 148 bpm on climbs, shorten your stride" NOT "power hike climbs over 10%". Terrain cues are only acceptable when managing a specific injury (e.g., "avoid technical rock sections for ankle recovery").
+Element 7 — EXECUTION (~45 words): On training days: give 2-3 execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain as a proxy for internal load — always give the HR number. Terrain cues are only acceptable when managing a specific injury. On rest or recovery days (decision = rest or reduce): replace execution cues with a recovery protocol — name the specific physiological process completing today (e.g., glycogen resynthesis, connective tissue remodeling, neural fatigue clearance), connect it to the training stimulus it is responding to, and give 2-3 active recovery actions (sleep, nutrition, easy movement). Frame recovery as active training, not the absence of it.
 Element 8 — INJURY (≤15 words, only if signals are present): One sentence on managing the injury this workout.
+Element 9 — PRE-MORTEM (≤25 words, conditional): Include only when a meaningful failure mode exists — assessment category is overtraining_risk, high_acwr_risk, recovery_needed, or divergence_warning; or today is a hard session; or red flags are present; or recent autopsies show physical deviation as the dominant cause. Name: (1) the most likely way this session goes wrong, (2) the early warning sign that precedes it, (3) one decision rule in the form "If [early sign], [specific action]." Use natural coaching voice: "The risk today is X." Omit entirely on normal_progression or undertraining_opportunity sessions with no red flags and no hard session type.
+Element 10 — PROBE (~25 words): Identify the one diagnostic signal that will reveal most about how this session landed — specific to today's session type (e.g., for a Z2 run: when HR first drifts above threshold; for strides: stride feel at rep 4-6 vs rep 1; for a long run: leg quality in the final 20 minutes). State what a strong response looks like vs a concerning one. End with this exact sentence: "Log this in your journal — it shapes tomorrow's prescription."
+
+REST DAY FRAMING RULE: When decision = rest or reduce, never frame the rest day as absence of training. The recommendation must convey that recovery is where adaptation is completed — the workout was the stimulus, today is where it becomes fitness. The tone should communicate purpose and intent, not permission to stop. The probe (Element 10) on rest days should ask the athlete to observe something meaningful about their recovery state (e.g., energy level by afternoon, leg freshness, sleep quality) and log it — recovery quality data is as valuable as workout data.
 
 Plain text only — no markdown, no bold, no headers within the prose.
 
@@ -5099,6 +5207,49 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
             f"classify_deviation: unexpected error for user {user_id}, "
             f"date={activity_date}, alignment={alignment_score}: {e}",
             exc_info=True
+        )
+
+
+def handle_prescription_mismatch_response(user_id, activity_date):
+    """Set revision_pending when the athlete confirms a prescription_mismatch.
+
+    Called from respond_alignment_query after retroactive deviation_reason
+    classification resolves to prescription_mismatch. Sets revision_pending
+    on the current active week so the next plan generation picks up the signal.
+
+    Wrapped in broad except at call site — must never raise.
+    """
+    try:
+        activity_date_str = (
+            activity_date.strftime('%Y-%m-%d')
+            if hasattr(activity_date, 'strftime')
+            else str(activity_date)
+        )
+        week_ctx = get_current_week_context(user_id)
+        if not week_ctx:
+            logger.info(
+                f"handle_prescription_mismatch_response: no active week for user {user_id} — skipping"
+            )
+            return
+        week_start = week_ctx.get('week_start_date')
+        proposal = {
+            "note": (
+                f"Prescription mismatch confirmed by athlete for {activity_date_str}. "
+                "The prescribed session didn't fit their reality — review session type, "
+                "intensity, or volume targets for alignment."
+            ),
+            "triggered_by": activity_date_str,
+            "tier2_reason": "prescription_mismatch",
+        }
+        set_revision_pending(user_id, week_start, proposal)
+        logger.info(
+            f"handle_prescription_mismatch_response: revision_pending set for user {user_id}, "
+            f"triggered by {activity_date_str}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"handle_prescription_mismatch_response: failed for user {user_id}, "
+            f"date={activity_date}: {e}"
         )
 
 

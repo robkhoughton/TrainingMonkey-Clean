@@ -164,10 +164,10 @@ def get_weekly_program_day(user_id: int, target_date: str) -> dict:
         logger.warning(f"get_weekly_program_day: invalid date {target_date!r}")
         return {}
 
-    # Find the Sunday of the week containing target_date (weeks are Sunday-Saturday,
-    # matching how coach_recommendations.py stores week_start_date via get_current_week_start())
-    days_since_sunday = (target_dt.weekday() + 1) % 7  # Sun=0, Mon=1, ..., Sat=6
-    week_start = target_dt - timedelta(days=days_since_sunday)
+    # Find the active plan's start date for the target date
+    from db_utils import get_current_week_context as _get_week_ctx
+    _week_ctx = _get_week_ctx(user_id)
+    week_start = _week_ctx['week_start_date'] if _week_ctx else target_dt
 
     # Look back up to 4 weeks for a relevant program
     for week_offset in range(4):

@@ -10,6 +10,7 @@ interface CompactDashboardBannerProps {
     internalAcwr: number;
     sevenDayAvgLoad: number;
     sevenDayAvgTrimp: number;
+    sevenDayTotalLoad?: number;
     daysSinceRest: number;
     normalizedDivergence: number;
     // Backend-computed risk fields — must not be recalculated in the frontend
@@ -982,7 +983,7 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
                   fontWeight: 'bold',
                   color: colors.primary
                 }}>
-                  {typeof metrics?.sevenDayAvgLoad === 'number' && !isNaN(metrics.sevenDayAvgLoad) ? (metrics.sevenDayAvgLoad * 7).toFixed(1) : "N/A"}
+                  {typeof metrics?.sevenDayTotalLoad === 'number' && !isNaN(metrics.sevenDayTotalLoad) ? metrics.sevenDayTotalLoad.toFixed(1) : "N/A"}
                 </p>
 
                 {/* Unit only - small gray to match label */}
@@ -1097,14 +1098,11 @@ const CompactDashboardBanner: React.FC<CompactDashboardBannerProps> = ({
 
 
           {/* Powered by Strava - Compliant with Brand Guidelines */}
-          <div style={{
-            fontSize: '0.65rem',
-            fontWeight: '500',
-            color: '#FC5200',
-            textAlign: 'center'
-          }}>
-            POWERED BY STRAVA
-          </div>
+          <img
+            src="/static/powered-by-strava-orange.svg"
+            alt="Powered by Strava"
+            style={{ height: '16px', opacity: 0.9 }}
+          />
         </div>
       </div>
 

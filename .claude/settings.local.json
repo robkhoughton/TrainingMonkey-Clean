@@ -65,7 +65,9 @@
       "Bash(USE_MOCK_DB=true DATABASE_URL=mock://localhost/trainingmonkey python run_mock_server.py)",
       "Bash(netstat -ano)",
       "Bash(taskkill /PID 49020 /F)",
-      "WebFetch(domain:evokeendurance.com)"
+      "WebFetch(domain:evokeendurance.com)",
+      "WebFetch(domain:localhost)",
+      "Bash(gcloud scheduler *)"
     ],
     "deny": [],
     "ask": []

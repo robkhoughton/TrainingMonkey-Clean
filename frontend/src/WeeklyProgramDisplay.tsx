@@ -261,7 +261,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
             margin: 0,
             marginBottom: '0.25rem'
           }}>
-            Training Plan for the Week of {formatHeaderDate(program.week_start_date)}
+            Your Next 7 Days — from {formatHeaderDate(program.week_start_date)}
           </h2>
           {program.from_cache && (
             <span style={{ 
@@ -418,7 +418,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
           <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '3px' }}>
             {program.predicted_metrics.total_weekly_miles.toFixed(1)}
           </div>
-          <div style={{ fontSize: '11px', opacity: 0.9 }}>Total Miles</div>
+          <div style={{ fontSize: '11px', opacity: 0.9 }}>Planned Miles</div>
           {program.predicted_metrics.total_weekly_elevation_feet != null && program.predicted_metrics.total_weekly_elevation_feet > 0 && (
             <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '2px' }}>
               +{program.predicted_metrics.total_weekly_elevation_feet.toLocaleString()} ft vert

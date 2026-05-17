@@ -228,6 +228,19 @@ export interface AthleteModel {
   journal_count: number;
   activity_count: number;
   journal_coverage_pct: number;
+  model_confidence?: {
+    composite: number;
+    components: {
+      athlete_profile:    { score: number; missing: string[] };
+      hr_calibration:     { score: number; max_hr: boolean; resting_hr: boolean };
+      coaching_prefs:     { score: number };
+      season_plan:        { score: number; has_name_date: boolean; has_distance: boolean };
+      weekly_schedule:    { score: number };
+      activity_history:   { score: number; recent_count: number };
+      journal_power:      { score: number; avg_power: number; coverage_pct: number; journal_count: number; activity_count: number; field_coverage?: Record<string, number> };
+      aerobic_assessment: { score: number; count: number };
+    };
+  };
 }
 
 interface DailyWorkout {
@@ -641,7 +654,7 @@ export const WeeklySynthesisCard: React.FC<{
             textAlign: 'left',
             fontStyle: 'italic',
           }}>
-            Weekly synthesis generates Saturday evening after your training week closes.
+            Weekly synthesis generates after each 7-day training window closes.
           </p>
         ) : (
           <>
@@ -733,13 +746,16 @@ export const WeeklySynthesisCard: React.FC<{
 // ATHLETE MODEL PANEL
 // ============================================================================
 
-export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ model }) => {
+export const AthleteModelPanel: React.FC<{
+  model: AthleteModel | null;
+  onOpenGoalModal?: () => void;
+  onOpenProfileModal?: () => void;
+  onOpenPrefsModal?: () => void;
+}> = ({ model, onOpenGoalModal, onOpenProfileModal, onOpenPrefsModal }) => {
   const autopsyCount = model?.total_autopsies ?? 0;
-  const journalCount = model?.journal_count ?? 0;
-  const activityCount = model?.activity_count ?? 0;
-  const coveragePct = model?.journal_coverage_pct ?? 0;
+  const [jpExpanded, setJpExpanded] = useState(false);
 
-  // Calibration state: based on real data, not autopsy count proxy
+  // Calibration state
   const divLow = model?.typical_divergence_low ?? null;
   const divThreshold = model?.divergence_injury_threshold ?? null;
   const hasEnvelope = divLow !== null && divLow !== -0.05;
@@ -755,17 +771,12 @@ export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ mo
   else if (trend === 'declining') { trendLabel = 'Declining ↓'; trendColor = '#dc2626'; }
   else if (trend === 'stable') { trendLabel = 'Stable'; trendColor = '#7D9CB8'; }
 
-  // Coverage bar color
-  const coverageColor = coveragePct >= 70 ? '#16a34a' : coveragePct >= 40 ? '#d97706' : '#9ca3af';
+  const mc = model?.model_confidence;
+  const composite = mc?.composite ?? 0;
+  const c = mc?.components;
 
-  // Milestones for gamification
-  const milestones = [
-    { label: 'Baseline', threshold: 5, unlocks: 'Training window calibration' },
-    { label: 'Learning', threshold: 10, unlocks: 'Breakdown threshold' },
-    { label: 'Calibrated', threshold: 20, unlocks: 'Full envelope characterization' },
-  ];
-  const nextMilestone = milestones.find(m => autopsyCount < m.threshold);
-  const toNext = nextMilestone ? nextMilestone.threshold - autopsyCount : 0;
+  const confLabel = composite >= 70 ? 'High' : composite >= 40 ? 'Building' : 'Low';
+  const confColor = composite >= 70 ? '#16a34a' : composite >= 40 ? '#d97706' : '#9ca3af';
 
   const badgeStyle = {
     display: 'flex', alignItems: 'center', gap: '6px',
@@ -777,8 +788,193 @@ export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ mo
   const badgeText = isCalibrated ? 'Calibrated' : isLearning ? 'Learning' : 'Getting Started';
   const badgeTextColor = isCalibrated ? '#4ade80' : isLearning ? '#7D9CB8' : '#fcd34d';
 
+  // Full-width stat bar with glow on completion
+  const StatBar: React.FC<{ pct: number; color: string }> = ({ pct, color }) => {
+    const complete = pct >= 100;
+    return (
+      <div style={{
+        height: '8px', borderRadius: '4px', width: '100%',
+        background: 'linear-gradient(180deg, #edf0f4 0%, #e2e6ec 100%)',
+        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.10)',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          height: '100%', width: `${Math.min(100, pct)}%`,
+          background: complete
+            ? `linear-gradient(90deg, ${color}cc 0%, ${color} 100%)`
+            : `linear-gradient(90deg, ${color}77 0%, ${color}cc 100%)`,
+          borderRadius: '4px',
+          boxShadow: complete ? `0 0 6px ${color}88` : 'none',
+          transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
+        }} />
+      </div>
+    );
+  };
+
+  // Confidence component row — full-width bar layout
+  const ConfRow: React.FC<{
+    label: string;
+    sublabel?: string;
+    score: number;
+    detail: string;
+    action?: { href: string; label: string };
+    onAction?: () => void;
+    weight2x?: boolean;
+    toggle?: { expanded: boolean; onToggle: () => void };
+    children?: React.ReactNode;
+  }> = ({ label, sublabel, score, detail, action, onAction, weight2x, toggle, children }) => {
+    const complete = score >= 100;
+    const rowColor = complete ? '#16a34a' : score >= 50 ? '#d97706' : '#9ca3af';
+    const hasLink = !!(onAction || action);
+    const linkStyle: React.CSSProperties = {
+      fontSize: '10px', fontWeight: '600', color: '#7D9CB8',
+      textDecoration: 'none', letterSpacing: '0.04em',
+      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+    };
+    return (
+      <div style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
+        {/* Label row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+            {/* Completion dot */}
+            <div style={{
+              width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0,
+              backgroundColor: complete ? '#16a34a' : 'transparent',
+              border: `2px solid ${complete ? '#16a34a' : '#d1d5db'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '8px', color: 'white', fontWeight: '900',
+              boxShadow: complete ? '0 0 5px #16a34a66' : 'none',
+            }}>
+              {complete ? '✓' : ''}
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#1f2937', whiteSpace: 'nowrap' }}>{label}</span>
+            {weight2x && (
+              <span style={{
+                fontSize: '9px', fontWeight: '800', color: '#FF5722',
+                border: '1px solid #FF572244', borderRadius: '3px',
+                padding: '0 3px', letterSpacing: '0.06em', flexShrink: 0,
+              }}>2×</span>
+            )}
+            {sublabel && (
+              <span style={{ fontSize: '10px', color: '#9ca3af', fontWeight: '400' }}>{sublabel}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
+            {toggle && (
+              <button onClick={toggle.onToggle} style={{
+                background: toggle.expanded ? 'rgba(125,156,184,0.18)' : 'rgba(125,156,184,0.10)',
+                border: '1px solid rgba(125,156,184,0.35)',
+                borderRadius: '4px', cursor: 'pointer',
+                fontSize: '9px', fontWeight: '700', color: '#7D9CB8',
+                padding: '2px 6px', letterSpacing: '0.04em', lineHeight: 1.4,
+              }}>
+                {toggle.expanded ? '▾ hide' : '▸ detail'}
+              </button>
+            )}
+            <span style={{
+              fontSize: '13px', fontWeight: '800', color: rowColor,
+              fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em',
+            }}>
+              {score}%
+            </span>
+          </div>
+        </div>
+        {/* Full-width bar */}
+        <StatBar pct={score} color={rowColor} />
+        {/* Detail + link row: link left, detail centered */}
+        <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '3px' }}>
+          {hasLink && (
+            onAction
+              ? <button onClick={onAction} style={linkStyle}>update / review →</button>
+              : <a href={action!.href} style={linkStyle}>update / review →</a>
+          )}
+          <div style={{ flex: 1, textAlign: 'center', fontSize: '10px', color: '#9ca3af', lineHeight: 1.3 }}>{detail}</div>
+        </div>
+        {/* Expandable sub-rows */}
+        {toggle?.expanded && children}
+      </div>
+    );
+  };
+
+  // Sub-row for Journal Power field breakdown
+  const SubRow: React.FC<{
+    label: string;
+    pct: number;
+    badge4x?: boolean;
+    separator?: boolean;
+  }> = ({ label, pct, badge4x, separator }) => {
+    const subColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#9ca3af';
+    return (
+      <div style={{
+        padding: separator ? '5px 0 3px' : '3px 0',
+        borderTop: separator ? '1px dashed #e5e7eb' : 'none',
+        marginTop: separator ? '4px' : 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '11px', color: '#4b5563', fontWeight: '500' }}>{label}</span>
+            {badge4x && (
+              <span style={{
+                fontSize: '8px', fontWeight: '800', color: '#FF5722',
+                border: '1px solid #FF572244', borderRadius: '3px',
+                padding: '0 3px', letterSpacing: '0.06em',
+              }}>4×</span>
+            )}
+          </div>
+          <span style={{
+            fontSize: '11px', fontWeight: '700', color: subColor,
+            fontVariantNumeric: 'tabular-nums',
+          }}>{pct}%</span>
+        </div>
+        {/* Bar — notes is 4× as wide as a 1-pt field bar; tick marks at each 1-pt interval */}
+        <div style={{
+          height: '5px', borderRadius: '3px',
+          width: badge4x ? '100%' : '25%',
+          background: '#edf0f4', overflow: 'hidden',
+          position: 'relative',
+        }}>
+          <div style={{
+            height: '100%', width: `${Math.min(100, pct)}%`,
+            background: pct >= 80
+              ? `linear-gradient(90deg, ${subColor}99 0%, ${subColor} 100%)`
+              : `linear-gradient(90deg, ${subColor}66 0%, ${subColor}aa 100%)`,
+            borderRadius: '3px',
+            transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)',
+          }} />
+          {badge4x && [25, 50, 75].map(tick => (
+            <div key={tick} style={{
+              position: 'absolute', top: 0, bottom: 0,
+              left: `${tick}%`, width: '1px',
+              backgroundColor: 'rgba(0,0,0,0.18)', zIndex: 1,
+            }} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Journal Power detail string
+  const jpDetail = c?.journal_power
+    ? `${c.journal_power.journal_count}/${c.journal_power.activity_count} activities · avg quality ${c.journal_power.avg_power}%`
+    : '—';
+
+  // Profile missing fields → readable labels
+  const profileFieldLabels: Record<string, string> = {
+    age: 'age', gender: 'gender', primary_sport: 'sport', training_experience: 'experience',
+  };
+  const profileDetail = c?.athlete_profile
+    ? c.athlete_profile.missing.length === 0
+      ? 'Complete'
+      : `Missing: ${c.athlete_profile.missing.map(f => profileFieldLabels[f] ?? f).join(', ')}`
+    : '—';
+
+  const hrDetail = c?.hr_calibration
+    ? [!c.hr_calibration.max_hr && 'max HR', !c.hr_calibration.resting_hr && 'resting HR']
+        .filter(Boolean).join(', ') || 'Complete'
+    : '—';
+
   return (
-    <div style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.10)' }}>
+    <div id="athlete-model" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.10)' }}>
 
       {/* Header */}
       <div style={{
@@ -804,186 +1000,185 @@ export const AthleteModelPanel: React.FC<{ model: AthleteModel | null }> = ({ mo
 
       <div style={{ backgroundColor: 'white' }}>
 
-        {/* ── Section 1: Coach Learning (always shown) ── */}
+        {/* ── Section 1: Model Confidence ── */}
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6' }}>
-          <div style={{ fontSize: '10px', letterSpacing: '0.12em', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-            Coach Learning
+
+          {/* Composite score hero */}
+          <div style={{
+            borderRadius: '10px', backgroundColor: '#1B2E4B',
+            padding: '16px 20px 14px', marginBottom: '16px',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            {/* Background glow when high */}
+            {composite >= 70 && (
+              <div style={{
+                position: 'absolute', inset: 0, borderRadius: '10px',
+                background: `radial-gradient(ellipse at 50% 0%, ${confColor}22 0%, transparent 70%)`,
+                pointerEvents: 'none',
+              }} />
+            )}
+            {/* Label row */}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontWeight: '700' }}>
+                Model Confidence
+              </div>
+              <div style={{
+                fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em',
+                color: confColor, textTransform: 'uppercase',
+                background: `${confColor}22`, borderRadius: '4px', padding: '1px 7px',
+              }}>
+                {confLabel}
+              </div>
+            </div>
+            {/* Big number + game instructions on same row */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginBottom: '10px' }}>
+              <div style={{
+                fontSize: '56px', fontWeight: '900', lineHeight: 1,
+                color: confColor, fontVariantNumeric: 'tabular-nums',
+                textShadow: composite >= 70 ? `0 0 24px ${confColor}66` : 'none',
+                transition: 'color 0.4s ease',
+                flexShrink: 0,
+              }}>
+                {composite}
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: '700', color: confColor, paddingBottom: '8px', opacity: 0.8, flexShrink: 0 }}>%</div>
+              <div style={{
+                flex: 1, fontSize: '11px', lineHeight: 1.5,
+                color: 'rgba(255,255,255,0.55)', paddingBottom: '6px',
+              }}>
+                {(() => {
+                  if (!c) return null;
+                  const notesCoverage = c.journal_power?.field_coverage?.notes ?? 100;
+                  const journalCoverage = c.journal_power?.coverage_pct ?? 100;
+                  const jpScore = c.journal_power?.score ?? 100;
+                  const profileScore = c.athlete_profile?.score ?? 100;
+                  const prefsScore = c.coaching_prefs?.score ?? 100;
+                  const seasonScore = c.season_plan?.score ?? 100;
+                  const scheduleScore = c.weekly_schedule?.score ?? 100;
+                  const hrScore = c.hr_calibration?.score ?? 100;
+                  const aerobicScore = c.aerobic_assessment?.score ?? 100;
+                  const hi = (text: string) => (
+                    <span style={{ color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>{text}</span>
+                  );
+                  if (notesCoverage < 50 && jpScore < 80)
+                    return <>{hi('Highest ROI: add notes.')} You're logging {notesCoverage}% with notes — they're worth 4× any other field.</>;
+                  if (journalCoverage < 50 && jpScore < 60)
+                    return <>{hi('Log more, gain more.')} Journal coverage is {journalCoverage}% — each entry with notes moves the needle most.</>;
+                  const zeroWins: string[] = [];
+                  if (profileScore === 0) zeroWins.push('athlete profile');
+                  if (prefsScore === 0) zeroWins.push('coaching preferences');
+                  if (hrScore === 0) zeroWins.push('HR zones');
+                  if (seasonScore === 0) zeroWins.push('race goal');
+                  if (scheduleScore === 0) zeroWins.push('weekly schedule');
+                  if (zeroWins.length >= 2)
+                    return <>{hi('Quick wins available.')} {zeroWins.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' and ')} {zeroWins.length > 2 ? `(+${zeroWins.length - 2} more) are` : 'are'} unset — each lifts a slider for free.</>;
+                  if (zeroWins.length === 1)
+                    return <>{hi('One free win left.')} Your {zeroWins[0]} is unset. Fill it and recommendations sharpen immediately.</>;
+                  if (aerobicScore === 0)
+                    return <>{hi('Unlock aerobic assessment.')} Log a steady run with HR data. Your coach needs HR drift to calibrate your aerobic baseline.</>;
+                  if (notesCoverage < 70)
+                    return <>{hi('Notes gap.')} {notesCoverage}% coverage. Notes are 4× any structured field — closing this raises signal fastest.</>;
+                  if (journalCoverage < 70)
+                    return <>{hi('Getting sharper.')} Journal at {journalCoverage}% — keep logging after each run, notes especially.</>;
+                  return <>{hi('Strong signal, low noise.')} Your coach knows your patterns. Keep logging notes after each run.</>;
+                })()}
+              </div>
+            </div>
+            {/* Progress track */}
+            <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${composite}%`,
+                background: `linear-gradient(90deg, ${confColor}99 0%, ${confColor} 100%)`,
+                borderRadius: '3px',
+                boxShadow: composite >= 70 ? `0 0 8px ${confColor}88` : 'none',
+                transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+              }} />
+            </div>
+            {/* Milestone ticks */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+              {[0, 40, 70, 100].map(tick => (
+                <div key={tick} style={{
+                  fontSize: '9px', fontWeight: '600',
+                  color: composite >= tick ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)',
+                }}>
+                  {tick === 0 ? '' : `${tick}%`}
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* ── Combined confidence inputs ── */}
-          {(() => {
-            const journalScore = Math.min(100, coveragePct);
-            const autopsyScore = Math.min(100, Math.round((autopsyCount / 20) * 100));
-            const compositeScore = Math.round((journalScore * 0.5) + (autopsyScore * 0.5));
-            const confLabel = compositeScore >= 70 ? 'High' : compositeScore >= 40 ? 'Building' : 'Low';
-            const confColor = compositeScore >= 70 ? '#16a34a' : compositeScore >= 40 ? '#d97706' : '#9ca3af';
-
-            const TRACK_H = 14;
-            const TICK_BELOW = 5;
-
-            // Shared bar renderer: track + fill + tick stems + tick labels
-            const renderBar = (
-              fillPct: number,
-              fillColor: string,
-              ticks: { pos: number; label: string; bold?: boolean; color?: string }[],
-              extraInner?: React.ReactNode,
-            ) => (
-              <div style={{ position: 'relative', paddingBottom: `${TICK_BELOW}px` }}>
-                {/* Track */}
-                <div style={{
-                  position: 'relative', height: `${TRACK_H}px`,
-                  background: 'linear-gradient(180deg, #f0f3f7 0%, #e5e9ef 100%)',
-                  borderRadius: `${TRACK_H / 2}px`,
-                  boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.10), inset 0 1px 1px rgba(0,0,0,0.06)',
-                  border: '1px solid #d1d9e0',
-                  overflow: 'hidden',
-                }}>
-                  {extraInner}
-                  <div style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: `${Math.min(100, fillPct)}%`,
-                    background: `linear-gradient(90deg, ${fillColor}bb 0%, ${fillColor} 100%)`,
-                    borderRadius: `${TRACK_H / 2}px`,
-                    transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
-                    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.25)',
-                    zIndex: 1,
-                  }} />
+          {/* 8 component rows — ordered by significance */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <ConfRow
+              label="Activity History"
+              sublabel="last 60 days"
+              score={c?.activity_history.score ?? 0}
+              detail={c?.activity_history.score === 100
+                ? `${c?.activity_history.recent_count} activities · ACWR window established`
+                : `${c?.activity_history.recent_count ?? 0} activities · need data from 28+ days ago`}
+            />
+            <ConfRow
+              label="Journal Power"
+              sublabel="last 30 days"
+              score={c?.journal_power.score ?? 0}
+              detail={jpDetail}
+              weight2x
+              toggle={{ expanded: jpExpanded, onToggle: () => setJpExpanded(v => !v) }}
+            >
+              {c?.journal_power.field_coverage && (
+                <div style={{ marginTop: '6px', paddingLeft: '20px', borderLeft: '2px solid #f0f2f5' }}>
+                  <SubRow label="Energy level (1 pt)"    pct={c.journal_power.field_coverage['energy_level']     ?? 0} />
+                  <SubRow label="RPE score (1 pt)"       pct={c.journal_power.field_coverage['rpe_score']        ?? 0} />
+                  <SubRow label="Pain score (1 pt)"      pct={c.journal_power.field_coverage['pain_percentage']  ?? 0} />
+                  <SubRow label="Sleep quality (1 pt)"   pct={c.journal_power.field_coverage['sleep_quality']    ?? 0} />
+                  <SubRow label="Morning soreness (1 pt)"pct={c.journal_power.field_coverage['morning_soreness'] ?? 0} />
+                  <SubRow label="HRV value (1 pt)"       pct={c.journal_power.field_coverage['hrv_value']        ?? 0} />
+                  <SubRow label="Resting HR (1 pt)"      pct={c.journal_power.field_coverage['resting_hr']       ?? 0} />
+                  <SubRow label="Notes signal (up to 4 pts)" pct={c.journal_power.field_coverage['notes'] ?? 0} badge4x separator />
                 </div>
-                {/* Tick stems (skip first and last) */}
-                {ticks.slice(1, -1).map(({ pos }) => (
-                  <div key={pos} style={{
-                    position: 'absolute',
-                    left: `${pos}%`,
-                    top: `${TRACK_H - 2}px`,
-                    height: `${TICK_BELOW + 2}px`,
-                    width: '1px',
-                    backgroundColor: '#c5cdd6',
-                    transform: 'translateX(-50%)',
-                  }} />
-                ))}
-              </div>
-            );
-
-            const renderLabels = (
-              ticks: { pos: number; label: string; bold?: boolean; color?: string }[],
-            ) => (
-              <div style={{ position: 'relative', height: '16px', marginTop: '2px', marginBottom: '2px' }}>
-                {ticks.map(({ pos, label, bold, color }, i) => {
-                  const isFirst = i === 0;
-                  const isLast = i === ticks.length - 1;
-                  return (
-                    <div key={pos} style={{
-                      position: 'absolute', left: `${pos}%`,
-                      transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
-                      fontSize: '10px',
-                      fontWeight: bold ? '700' : '400',
-                      color: color ?? '#9ca3af',
-                      whiteSpace: 'nowrap', lineHeight: 1,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}>
-                      {label}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-
-            // Journal ticks
-            const journalTicks = [
-              { pos: 0,   label: '0%' },
-              { pos: 25,  label: '25%' },
-              { pos: 50,  label: '50%' },
-              { pos: 75,  label: '75%' },
-              { pos: 100, label: '100%' },
-            ];
-
-            // Autopsies: uniform 0,5,10,15,20 — bar saturates at 20, count shown in header
-            const autopsyTicks = [
-              { pos: 0,   label: '0' },
-              { pos: 25,  label: '5',  bold: autopsyCount >= 5,  color: autopsyCount >= 5  ? '#7D9CB8' : '#9ca3af' },
-              { pos: 50,  label: '10', bold: autopsyCount >= 10, color: autopsyCount >= 10 ? '#6B8F7F' : '#9ca3af' },
-              { pos: 75,  label: '15', bold: autopsyCount >= 15, color: autopsyCount >= 15 ? '#6B8F7F' : '#9ca3af' },
-              { pos: 100, label: '20' },
-            ];
-
-            return (
-              <>
-                {/* Model Confidence — prominent band */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderRadius: '6px',
-                  backgroundColor: '#1B2E4B',
-                  marginBottom: '16px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* Signal bars — larger */}
-                    <div style={{ display: 'flex', gap: '3px', alignItems: 'flex-end' }}>
-                      {[25, 50, 75, 100].map((threshold, i) => (
-                        <div key={threshold} style={{
-                          width: '5px',
-                          height: `${9 + i * 4}px`,
-                          borderRadius: '2px',
-                          backgroundColor: compositeScore >= threshold ? confColor : 'rgba(255,255,255,0.15)',
-                          transition: 'background-color 0.3s ease',
-                        }} />
-                      ))}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '9px', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontWeight: '600', marginBottom: '1px' }}>
-                        Model Confidence
-                      </div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: confColor, letterSpacing: '0.04em' }}>
-                        {confLabel}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '22px', fontWeight: '800', color: confColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                    {compositeScore}%
-                  </div>
-                </div>
-
-                {/* Journal Coverage */}
-                <div style={{ marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
-                    <span style={{ fontSize: '12px', color: '#374151', fontWeight: '600' }}>
-                      Journal Coverage
-                      <span style={{ fontSize: '10px', fontWeight: '400', color: '#9ca3af', marginLeft: '5px' }}>last 30 days</span>
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: coverageColor, fontVariantNumeric: 'tabular-nums' }}>
-                      {journalCount}/{activityCount} · {coveragePct}%
-                    </span>
-                  </div>
-                  {renderBar(coveragePct, coverageColor, journalTicks)}
-                  {renderLabels(journalTicks)}
-                </div>
-
-                {/* Autopsies */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
-                    <span style={{ fontSize: '12px', color: '#374151', fontWeight: '600' }}>
-                      Autopsies
-                      <span style={{ fontSize: '10px', fontWeight: '400', color: '#9ca3af', marginLeft: '5px' }}>workout analyses</span>
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#1B2E4B', fontVariantNumeric: 'tabular-nums' }}>
-                      {autopsyCount >= 20 ? `${autopsyCount} (max)` : `${autopsyCount} / 20`}
-                    </span>
-                  </div>
-                  {renderBar(autopsyScore, '#7D9CB8', autopsyTicks)}
-                  {renderLabels(autopsyTicks)}
-                  {nextMilestone ? (
-                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                      {toNext} more unlock{toNext === 1 ? 's' : ''}: {nextMilestone.unlocks}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px' }}>
-                      Full envelope characterized
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
+              )}
+            </ConfRow>
+            <ConfRow
+              label="Athlete Profile"
+              score={c?.athlete_profile.score ?? 0}
+              detail={profileDetail}
+              onAction={onOpenProfileModal}
+              action={onOpenProfileModal ? undefined : { href: '/settings/hrzones', label: 'Settings' }}
+            />
+            <ConfRow
+              label="HR Calibration"
+              score={c?.hr_calibration.score ?? 0}
+              detail={hrDetail}
+              action={{ href: '/settings/hrzones', label: 'Settings' }}
+            />
+            <ConfRow
+              label="Season Plan"
+              score={c?.season_plan.score ?? 0}
+              detail={c?.season_plan.score === 100 ? 'A-goal complete' : c?.season_plan.has_name_date ? 'Missing distance' : 'No A-goal set'}
+              onAction={onOpenGoalModal}
+              action={onOpenGoalModal ? undefined : { href: '/?tab=coach&subtab=season', label: 'Season' }}
+            />
+            <ConfRow
+              label="Weekly Schedule"
+              score={c?.weekly_schedule.score ?? 0}
+              detail={c?.weekly_schedule.score === 100 ? 'Availability set' : 'Days not configured'}
+              action={{ href: '/?tab=coach&subtab=week', label: 'Week' }}
+            />
+            <ConfRow
+              label="Coaching Preferences"
+              score={c?.coaching_prefs.score ?? 0}
+              detail={c?.coaching_prefs.score === 100 ? 'Complete' : 'Not yet configured'}
+              onAction={onOpenPrefsModal}
+              action={onOpenPrefsModal ? undefined : { href: '/?tab=coach&subtab=season', label: 'Season' }}
+            />
+            <ConfRow
+              label="Aerobic Assessment"
+              sublabel="last 28 days"
+              score={c?.aerobic_assessment.score ?? 0}
+              detail={c?.aerobic_assessment.score === 100 ? 'Assessment on file' : 'No recent assessment'}
+              action={{ href: '/?tab=coach&subtab=season', label: 'Season' }}
+            />
+          </div>
         </div>
 
         {/* ── Section 2: Training Envelope (shown when calibrated) ── */}
@@ -1316,7 +1511,12 @@ const CoachPage: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   
   // Secondary navigation state
-  const [activeSubTab, setActiveSubTab] = useState<'week' | 'season' | 'history'>('week');
+  const getInitialSubTab = (): 'week' | 'season' | 'history' => {
+    const p = new URLSearchParams(window.location.search).get('subtab');
+    if (p === 'season' || p === 'history') return p;
+    return 'week';
+  };
+  const [activeSubTab, setActiveSubTab] = useState<'week' | 'season' | 'history'>(getInitialSubTab);
 
   const [athleteModel, setAthleteModel] = useState<AthleteModel | null>(null);
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);

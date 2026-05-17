@@ -571,13 +571,14 @@ def upsert_athlete_model(user_id, model_data):
         allowed_columns = {
             'acwr_sweet_spot_low', 'acwr_sweet_spot_high', 'acwr_sweet_spot_confidence',
             'typical_divergence_low', 'typical_divergence_high', 'divergence_injury_threshold',
-            'rpe_calibration_offset', 'rpe_sample_count', 'avg_days_recover_after_hard',
+            'avg_days_recover_after_hard',
             'total_autopsies', 'avg_lifetime_alignment', 'recent_alignment_trend',
             'last_autopsy_date', 'injury_notes', 'preference_notes',
             'early_warning_active', 'early_warning_message',
             'div_low_n', 'threshold_n',
             'hrv_suppression_threshold', 'hrv_baseline_30d',
             'rhr_elevation_threshold', 'rhr_baseline_7d',
+            'aet_bpm', 'aet_test_date',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}
@@ -1680,27 +1681,31 @@ def get_pending_alignment_query(user_id):
 
 
 def get_answered_alignment_queries(user_id, days=30):
-    """Return recent answered alignment queries with response text.
+    """Return recent answered alignment queries with response text and deviation reason.
 
     Used to inject athlete preference feedback into recommendation prompts so
     the coach can honour environment/prescription constraints the athlete has
     explicitly stated (e.g. 'I live in the mountains — I can't avoid vert').
 
-    Returns a list of dicts with keys: activity_date, alignment_score, response.
-    Ordered oldest-first so the prompt reads chronologically.
+    Returns a list of dicts with keys: activity_date, alignment_score, response,
+    deviation_reason. Ordered oldest-first so the prompt reads chronologically.
+    deviation_reason is joined from ai_autopsies and may be None for older rows.
     """
     try:
         cutoff_date = (datetime.utcnow().date() - timedelta(days=days)).strftime('%Y-%m-%d')
         rows = execute_query(
             """
-            SELECT activity_date, alignment_score, response
-            FROM alignment_queries
-            WHERE user_id = %s
-              AND status = 'answered'
-              AND response IS NOT NULL
-              AND response != ''
-              AND activity_date >= %s
-            ORDER BY activity_date ASC
+            SELECT aq.activity_date, aq.alignment_score, aq.response,
+                   aa.deviation_reason
+            FROM alignment_queries aq
+            LEFT JOIN ai_autopsies aa
+                   ON aa.user_id = aq.user_id AND aa.date = aq.activity_date
+            WHERE aq.user_id = %s
+              AND aq.status = 'answered'
+              AND aq.response IS NOT NULL
+              AND aq.response != ''
+              AND aq.activity_date >= %s
+            ORDER BY aq.activity_date ASC
             LIMIT 10
             """,
             (user_id, cutoff_date),
@@ -1830,7 +1835,7 @@ def get_aerobic_assessments(user_id):
             a.name  AS activity_name,
             a.distance_miles
         FROM aerobic_assessments aa
-        JOIN activities a ON a.activity_id = aa.activity_id
+        LEFT JOIN activities a ON a.activity_id = aa.activity_id
         WHERE aa.user_id = %s
         ORDER BY aa.test_date DESC
     """
@@ -1838,11 +1843,15 @@ def get_aerobic_assessments(user_id):
 
 
 def get_latest_aerobic_assessment(user_id):
-    """Return the most recent aerobic assessment for a user, or None."""
+    """Return the most recent aerobic assessment for a user, or None.
+
+    Uses LEFT JOIN so the assessment is returned even if the source activity
+    was deleted or re-synced with a different ID after the test was saved.
+    """
     query = """
         SELECT aa.*, a.name AS activity_name
         FROM aerobic_assessments aa
-        JOIN activities a ON a.activity_id = aa.activity_id
+        LEFT JOIN activities a ON a.activity_id = aa.activity_id
         WHERE aa.user_id = %s
         ORDER BY aa.test_date DESC
         LIMIT 1

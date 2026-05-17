@@ -2,6 +2,12 @@
 User-agent: *
 Disallow: /api/
 Disallow: /dashboard
+Disallow: /activities
+Disallow: /settings
+Disallow: /journal
+Disallow: /coach
+Disallow: /today
+Disallow: /auth/
 Disallow: /welcome-post-strava
 Disallow: /oauth-callback
 Disallow: /strava-setup
@@ -12,9 +18,10 @@ Allow: /guide
 Allow: /getting-started
 Allow: /login
 Allow: /signup
-Allow: /terms-and-conditions
+Allow: /legal/terms
+Allow: /legal/privacy
+Allow: /legal/disclaimer
 Allow: /privacy-policy
-Allow: /medical-disclaimer
 
 # Sitemap location
 Sitemap: https://yourtrainingmonkey.com/sitemap.xml

@@ -31,17 +31,12 @@ def get_app_date_string():
 
 
 def get_current_week_start():
-    """Return the start date of the current training week (always a Sunday).
+    """Return the plan generation date for the current rolling 7-day window.
 
-    Week structure is Sunday-Saturday. Plans are generated Sunday morning after
-    the Saturday Strava sync, so the current Sunday is always day 1.
+    Plans are anchored to the date they were generated (not Sunday). The most
+    recent plan with week_start_date <= today is always the active plan.
     """
-    current_date = get_app_current_date()
-    day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
-    if day_of_week == 6:
-        return current_date
-    days_since_sunday = (day_of_week + 1) % 7
-    return current_date - timedelta(days=days_since_sunday)
+    return get_app_current_date()
 
 
 def get_user_current_date(user_id):

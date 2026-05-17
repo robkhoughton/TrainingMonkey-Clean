@@ -18,8 +18,10 @@ cd /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/frontend && npm run build
 
 ### 2. Clean stale build artifacts
 
+Only delete React-generated versioned files — do NOT wipe entire directories (getting_started.css/js and other non-React assets live here too).
+
 ```bash
-rm -f /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/static/js/* /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/static/css/* /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/build/static/js/* /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/build/static/css/*
+rm -f /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/static/js/main.*.js /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/static/js/main.*.js.LICENSE.txt /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/static/css/main.*.css /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/build/static/js/main.*.js /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/build/static/js/main.*.js.LICENSE.txt /c/Users/robho/Documents/VAULT/TrainingMonkey-Clean/app/build/static/css/main.*.css
 ```
 
 ### 3. Copy build artifacts

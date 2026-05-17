@@ -9,7 +9,7 @@ This is the same as VT1 / the top of the polarized easy band.
 
 ## Intensity — How to Verify
 
-- **Gold standard:** HR Drift Test (anchors to AeT directly)
+- **Gold standard:** HR Drift Test (anchors to AeT directly) — establishes the *ideal-state* VT1 ceiling, not the daily mandatory target
 - **Field check:** upper limit of comfortable nose breathing; can hold a full conversation
 - **Do not use** % of HRmax — individual accuracy is too low to be reliable
 - If AeT is within 10% of AnT HR, aerobic base is well-developed
@@ -30,6 +30,7 @@ This is the same as VT1 / the top of the polarized easy band.
 
 - Builds mitochondrial density, aerobic enzyme capacity, capillary density in slow-twitch fibers
 - Develops the lactate shuttle: fast-twitch fibers produce lactate → slow-twitch fibers oxidize it aerobically
+- **FatMax occurs in the middle of Zone 2, not at the ceiling.** Riding the absolute top of the zone does not yield superior aerobic adaptations but increases sympathetic stress. Target the middle of the zone, not the VT1 ceiling.
 - Adaptations accumulate over months to years; cannot be rushed
 
 ## Common Coaching Errors to Avoid

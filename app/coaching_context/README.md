@@ -12,10 +12,12 @@ Gating logic lives in `_load_coaching_context()` in `llm_recommendations_module.
 
 | File | Injected when |
 |------|---------------|
+| `_context_index.md` | Always — injected first; LLM orientation and conflict priority |
 | `trail_specifics.md` | Always |
 | `intensity_zones.md` | Always |
 | `strength_integration.md` | Always |
 | `neuromuscular.md` | Always — hill sprints, strides principle, overstriding form |
+| `fueling.md` | Always — carb timing for hard vs. easy sessions |
 | `readiness.md` | Readiness state != GREEN |
 | `periodization.md` | Race ≤ 28 days away |
 | `zone2_training.md` | Race > 28 days away, or no race goal |
@@ -41,6 +43,22 @@ Gating logic lives in `_load_coaching_context()` in `llm_recommendations_module.
 - **Imperative voice.** "Do X when Y" not "Athletes should consider X."
 - **No source citations or background theory** — those belong in `docs/reference/`.
 - **Include thresholds and decision rules explicitly** — the model cannot infer them.
+- **Never cross-reference other context files by name.** The LLM does not know which files are present. If a rule requires context from another file, repeat the relevant constraint inline. A reference to `zone2_training.md` is a dangling pointer when that file is gated out.
+- **Write as if this file is the only one injected.** Each directive must stand alone.
+
+---
+
+## Cross-file Dependencies and Known Overlaps
+
+When editing any file, check its overlap partners for consistency. Conflicts here are invisible to the LLM — it receives both and must reconcile them.
+
+| File | Overlapping topic | Partner files to check |
+|------|-------------------|------------------------|
+| `intensity_zones.md` | Zone 2 ceiling / VT1 | `zone2_training.md`, `readiness.md` |
+| `intensity_zones.md` | Strides classification | `neuromuscular.md` |
+| `intensity_zones.md` | Hard session intensity defaults | `readiness.md` (readiness overrides when present) |
+| `fueling.md` | Zone 4–5 session prescription | `intensity_zones.md` |
+| `strength_integration.md` | CNS/ANS fatigue load | `readiness.md`, `intensity_zones.md` |
 
 ---
 

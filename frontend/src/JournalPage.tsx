@@ -892,16 +892,22 @@ const RecommendationMetaPanel: React.FC<RecommendationMetaPanelProps> = ({ struc
 
       {autopsyInformed && (
         <div style={{ marginTop: '4px' }}>
-          <span style={{
-            fontSize: '0.7rem',
-            color: '#059669',
-            fontWeight: '600',
-            backgroundColor: '#d1fae5',
-            padding: '2px 6px',
-            borderRadius: '3px'
-          }}>
-            Autopsy-informed
-          </span>
+          <a
+            href="/?tab=coach&subtab=season"
+            style={{ textDecoration: 'none' }}
+          >
+            <span style={{
+              fontSize: '0.7rem',
+              color: '#059669',
+              fontWeight: '600',
+              backgroundColor: '#d1fae5',
+              padding: '2px 6px',
+              borderRadius: '3px',
+              cursor: 'pointer',
+            }}>
+              Autopsy-informed ↗
+            </span>
+          </a>
         </div>
       )}
     </div>
@@ -1554,6 +1560,7 @@ const JournalPage: React.FC = () => {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <style>{`@media (max-width: 640px) { .rx-prose { column-count: 1 !important; } }`}</style>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -1665,10 +1672,10 @@ const JournalPage: React.FC = () => {
                     Energy
                   </span>
                 </th>
-                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '70px' }}>
-                  <span 
+                <th style={{ padding: '12px 4px', textAlign: 'center', minWidth: '155px' }}>
+                  <span
                     style={{ cursor: 'help', borderBottom: '1px dotted #6b7280' }}
-                    title="Rate of Perceived Exertion: How hard did the workout feel? 1 = Very Easy, 10 = Maximum Effort"
+                    title="Session RPE: How hard did the whole workout feel? Rate 30 min after finishing — not peak effort, not an average. 1=Trivial, 3=Easy, 5=Moderate-hard, 7=Very hard, 10=Maximal"
                   >
                     RPE
                   </span>
@@ -1744,16 +1751,22 @@ const JournalPage: React.FC = () => {
                                 }}>
                                   Training Decision for {formatDate(entry.date)}
                                 </span>
-                                <span style={{
-                                  backgroundColor: '#10b981',
-                                  color: 'white',
-                                  padding: '4px 8px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600'
-                                }}>
-                                  Autopsy-Informed
-                                </span>
+                                <a
+                                  href="/?tab=coach&subtab=season"
+                                  style={{ textDecoration: 'none' }}
+                                >
+                                  <span style={{
+                                    backgroundColor: '#10b981',
+                                    color: 'white',
+                                    padding: '4px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                  }}>
+                                    Autopsy-Informed ↗
+                                  </span>
+                                </a>
                               </div>
                               {/* Compact Mark as Rest Day button - hide if activity already recorded (real or manual rest).
                                   == null intentionally catches both null and undefined:
@@ -1781,14 +1794,18 @@ const JournalPage: React.FC = () => {
                                 </button>
                               )}
                             </div>
-                            <div style={{
-                              fontSize: '0.9rem',
-                              lineHeight: '1.6',
-                              color: '#374151',
-                              textAlign: 'left',
-                              maxHeight: '400px',
-                              overflowY: 'auto'
-                            }}>
+                            <div
+                              className="rx-prose"
+                              style={{
+                                columnCount: 2,
+                                columnGap: '32px',
+                                columnRule: '1px solid rgba(59,130,246,0.15)',
+                                fontSize: '0.9rem',
+                                lineHeight: '1.6',
+                                color: '#374151',
+                                textAlign: 'left',
+                              }}
+                            >
                               {formatTrainingDecision(entry.todays_decision)}
                             </div>
 
@@ -1983,7 +2000,7 @@ const JournalPage: React.FC = () => {
                           e.target.value ? parseInt(e.target.value) : null
                         )}
                         style={{
-                          width: '50px',
+                          width: '140px',
                           padding: '4px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
@@ -1991,9 +2008,16 @@ const JournalPage: React.FC = () => {
                         }}
                       >
                         <option value="">-</option>
-                        {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                          <option key={n} value={n}>{n}</option>
-                        ))}
+                        <option value="1">1 — Trivial</option>
+                        <option value="2">2 — Very easy</option>
+                        <option value="3">3 — Easy</option>
+                        <option value="4">4 — Moderate</option>
+                        <option value="5">5 — Moderate-hard</option>
+                        <option value="6">6 — Hard</option>
+                        <option value="7">7 — Very hard</option>
+                        <option value="8">8 — Very very hard</option>
+                        <option value="9">9 — Near maximal</option>
+                        <option value="10">10 — Maximal</option>
                       </select>
                     </td>
 

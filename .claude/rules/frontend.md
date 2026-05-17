@@ -93,9 +93,9 @@ const displayDate = new Date(dateString).toLocaleDateString();
 This applies everywhere a `YYYY-MM-DD` string is passed to `new Date()` for display:
 `toLocaleDateString`, `toLocaleDateString` with options, weekday derivation, etc.
 
-**Week structure:** The training week runs **Sunday–Saturday**. Plans are generated Sunday
-morning (after the 2am Strava sync captures Saturday's activity). `week_start_date` is always
-a Sunday.
+**Week structure:** Training plans use a **rolling 7-day window** anchored to the generation
+date (not Sunday). Plans generate Sunday and Wednesday. `week_start_date` is the gen date —
+use `plan_start_date` from the journal context API to drive 7-day display strips.
 
 ## API Communication
 

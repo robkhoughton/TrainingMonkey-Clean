@@ -9,9 +9,7 @@ import defaultTheme from './chartTheme';
 import { useChartDimensions } from './useChartDimensions';
 import CompactDashboardBanner from './CompactDashboardBanner';
 import { usePagePerformanceMonitoring, useComponentPerformanceMonitoring } from './usePerformanceMonitoring';
-import DailyStatusPopup from './DailyStatusPopup';
 import JournalTeaserCard from './JournalTeaserCard';
-import DashboardTour from './DashboardTour';
 
 // Define interfaces for your data (keeping your original structure)
 interface TrainingDataRow {
@@ -54,6 +52,7 @@ interface Metrics {
   internalAcwr: number;
   sevenDayAvgLoad: number;
   sevenDayAvgTrimp: number;
+  sevenDayTotalLoad: number;
   daysSinceRest: number;
   normalizedDivergence: number;
   // Backend-computed risk fields (user-specific thresholds from get_adjusted_thresholds())
@@ -112,6 +111,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     internalAcwr: 0,
     sevenDayAvgLoad: 0,
     sevenDayAvgTrimp: 0,
+    sevenDayTotalLoad: 0,
     daysSinceRest: 0,
     normalizedDivergence: 0
   });
@@ -126,8 +126,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [hasRowingData, setHasRowingData] = useState(false);
   const [hasBackcountrySkiingData, setHasBackcountrySkiingData] = useState(false);
   const [hasStrengthData, setHasStrengthData] = useState(false);
-  const [showStatusPopup, setShowStatusPopup] = useState(false);
-  const [tourStep, setTourStep] = useState(0);
 
   // FIXED: Proper frozen tooltip state management
   const [frozenTooltipData, setFrozenTooltipData] = useState<{
@@ -622,6 +620,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             internalAcwr: coerceNumber(cm?.internal_acwr, 0),
             sevenDayAvgLoad: coerceNumber(cm?.seven_day_avg_load, 0),
             sevenDayAvgTrimp: coerceNumber(cm?.seven_day_avg_trimp, 0),
+            sevenDayTotalLoad: coerceNumber(result.seven_day_total_load, 0),
             daysSinceRest: typeof result.days_since_rest === 'number' ? result.days_since_rest : 0,
             normalizedDivergence: coerceNumber(cm?.normalized_divergence, 0),
             injuryRiskScore: typeof cm?.injury_risk_score === 'number' ? cm.injury_risk_score : undefined,
@@ -715,85 +714,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   useEffect(() => {
     setRenderKey(prevKey => prevKey + 1);
   }, [dateRange]);
-
-  // Check if should show tour or pop-up (after metrics are loaded, with delay)
-  useEffect(() => {
-    const checkShowTourOrPopup = async () => {
-      const today = new Date().toDateString();
-      let tourCompleted = localStorage.getItem('dashboardTour_completed');
-      const lastShown = localStorage.getItem('statusPopup_lastShown');
-      const visitedJournalToday = localStorage.getItem('journal_visited_' + today);
-
-      // For local deployment: Check journal count - if >= 3, disable tour
-      try {
-        const journalResponse = await fetch('/api/journal-entries-count');
-        if (journalResponse.ok) {
-          const journalData = await journalResponse.json();
-          if (journalData.success && journalData.count_last_week >= 3) {
-            // Journal count above threshold - disable tour for local deployment
-            localStorage.setItem('dashboardTour_completed', 'true');
-            tourCompleted = 'true';
-            console.log('Tour disabled: Journal count >= 3 (local deployment mode)');
-          }
-        }
-      } catch (error) {
-        console.error('Error checking journal count:', error);
-        // Continue with normal tour logic if check fails
-      }
-
-      console.log('Tour check:', {
-        tourCompleted,
-        externalAcwr: metrics.externalAcwr,
-        lastShown,
-        visitedJournalToday
-      });
-
-      // If tour not completed, start tour after 3 seconds
-      if (!tourCompleted && metrics.externalAcwr > 0) {
-        console.log('Starting tour in 3 seconds...');
-        setTimeout(() => {
-          console.log('Setting tour step to 1');
-          setTourStep(1);
-        }, 3000);
-      }
-      // Otherwise, show popup if appropriate
-      else if (lastShown !== today && !visitedJournalToday && metrics.externalAcwr > 0) {
-        console.log('Starting popup in 5 seconds...');
-        setTimeout(() => {
-          setShowStatusPopup(true);
-        }, 5000);
-      }
-    };
-
-    // Only check after data is loaded
-    if (!isLoading && metrics.externalAcwr > 0) {
-      checkShowTourOrPopup();
-    }
-  }, [isLoading, metrics.externalAcwr]);
-
-  // Handle navigation to Journal
-  const handleNavigateToJournal = () => {
-    localStorage.setItem('statusPopup_lastShown', new Date().toDateString());
-    setShowStatusPopup(false);
-    onNavigateToTab?.('journal');
-  };
-
-  // Handle dismiss popup
-  const handleDismissPopup = () => {
-    localStorage.setItem('statusPopup_lastShown', new Date().toDateString());
-    setShowStatusPopup(false);
-    // Badge will show on Journal tab (handled by App.tsx)
-  };
-
-  // Handle tour navigation
-  const handleTourNext = () => {
-    setTourStep(tourStep + 1);
-  };
-
-  const handleTourSkip = () => {
-    localStorage.setItem('dashboardTour_completed', 'true');
-    setTourStep(0);
-  };
 
   // Loading state
   if (isLoading) {
@@ -891,24 +811,6 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   // Main dashboard render
   return (
     <div className={styles.container}>
-      {/* Dashboard Tour (for new users) */}
-      <DashboardTour
-        step={tourStep}
-        onNext={handleTourNext}
-        onSkip={handleTourSkip}
-        metrics={metrics}
-        onNavigateToJournal={() => onNavigateToTab?.('journal')}
-      />
-
-      {/* Daily Status Pop-up (conditional) */}
-      {showStatusPopup && (
-        <DailyStatusPopup
-          metrics={metrics}
-          onNavigateToJournal={handleNavigateToJournal}
-          onDismiss={handleDismissPopup}
-        />
-      )}
-
       {/* Journal Teaser Card (always visible at top) */}
       <JournalTeaserCard
         metrics={metrics}
