@@ -50,8 +50,8 @@ logging.basicConfig(
 logger = logging.getLogger('coach_recommendations')
 
 # Constants
-CACHE_EXPIRY_DAYS = 3  # Weekly programs valid for 3 days
-DEFAULT_MAX_TOKENS = 4000  # Longer for structured 7-day programs
+CACHE_EXPIRY_DAYS = 7  # Weekly programs valid for their full 7-day window
+DEFAULT_MAX_TOKENS = 6000  # Longer for structured 7-day programs
 
 # Temperature settings optimized for different generation tasks
 WEEKLY_PROGRAM_TEMPERATURE = 0.5  # Structured JSON output - needs consistency
@@ -278,7 +278,7 @@ def get_current_training_stage(user_id: int) -> Dict:
     current_date = get_app_current_date()
     race_date = datetime.strptime(a_race['race_date'], '%Y-%m-%d').date()
     
-    stage_info = _calculate_training_stage(current_date, race_date)
+    stage_info = _calculate_training_stage(race_date, current_date)
     stage_info['race_name'] = a_race['race_name']
     stage_info['priority'] = a_race['priority']
     
@@ -1011,7 +1011,7 @@ Return your response as a valid JSON object with this exact structure:
   }},
   "daily_program": [
     {{
-      "day": "Sunday",
+      "day": "{target_week_start.strftime('%A')}",
       "date": "{target_week_start.isoformat()}",
       "workout_type": "Easy Run",
       "description": "6 miles easy, conversational pace, flat terrain",
@@ -1036,7 +1036,8 @@ Return your response as a valid JSON object with this exact structure:
 **IMPORTANT:**
 - Return ONLY the JSON object, no markdown formatting, no extra text
 - Ensure all 7 days (Sunday-Saturday) are included in daily_program
-- Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training
+- Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training, Aerobic Test
+- If a day is prescribed as an HR drift test / aerobic assessment, set workout_type to "Aerobic Test" and intensity to "Low"
 - Intensity levels: Low, Moderate, High
 - hard_session_type: set to "tempo", "intervals", "hills", or "race_sim" for High-intensity days; set to null for Low/Moderate/Rest days. "tempo" = sustained Z4 effort (25-35 min); "intervals" = repeated Z4/Z5 blocks with Z1/Z2 recovery; "hills" = uphill quality efforts with descent recovery; "race_sim" = event-specific pacing
 - strides: set to true on qualifying easy run days per the stride placement rules above; false on all other days (hard sessions, long run, rest, day after long run)
@@ -1052,52 +1053,51 @@ Generate the weekly program now:"""
 def parse_weekly_program_response(response_text: str) -> Dict:
     """
     Parse Claude's response to extract weekly program JSON.
-    
+
     Returns:
         Parsed program dictionary or raises ValueError
     """
     import re
-    
-    # Strip markdown code fences if present (Claude sometimes wraps JSON in ```json)
-    cleaned_text = response_text.strip()
-    json_match = re.search(r'```json\s*(.*?)\s*```', cleaned_text, re.DOTALL)
-    if json_match:
-        cleaned_text = json_match.group(1).strip()
-        logger.info("Stripped markdown code fences from response")
-    
-    try:
-        # Try to parse as JSON directly
-        program = json.loads(cleaned_text)
-        
-        # Validate required fields
+
+    def _validate_and_return(program, source):
         required_fields = ['week_start_date', 'week_summary', 'predicted_metrics', 'daily_program']
         for field in required_fields:
             if field not in program:
                 raise ValueError(f"Missing required field: {field}")
-        
-        # Validate daily_program has 7 days
         if len(program['daily_program']) != 7:
             logger.warning(f"Expected 7 days in program, got {len(program['daily_program'])}")
-        
-        logger.info("Successfully parsed weekly program JSON")
+        logger.info(f"Successfully parsed weekly program JSON ({source})")
         return program
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response: {e}")
-        logger.error(f"Response text: {response_text[:500]}")
-        
-        # Try to extract JSON from markdown code blocks
-        import re
-        json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
-        if json_match:
-            try:
-                program = json.loads(json_match.group(1))
-                logger.info("Extracted JSON from markdown code block")
-                return program
-            except json.JSONDecodeError:
-                pass
-        
-        raise ValueError(f"Could not parse weekly program response: {e}")
+
+    cleaned_text = response_text.strip()
+
+    # 1. Strip markdown code fences
+    fence_match = re.search(r'```(?:json)?\s*(.*?)\s*```', cleaned_text, re.DOTALL)
+    if fence_match:
+        try:
+            program = json.loads(fence_match.group(1).strip())
+            return _validate_and_return(program, 'code fence')
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 2. Direct parse (response is bare JSON)
+    try:
+        program = json.loads(cleaned_text)
+        return _validate_and_return(program, 'direct')
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 3. Extract JSON object starting from first '{' — handles prefatory text
+    brace_pos = cleaned_text.find('{')
+    if brace_pos != -1:
+        try:
+            program = json.loads(cleaned_text[brace_pos:])
+            return _validate_and_return(program, 'extracted from prefatory text')
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    logger.error(f"Failed to parse weekly program JSON. Response: {response_text[:500]}")
+    raise ValueError(f"Could not parse weekly program response — no valid JSON found. Response started with: {response_text[:100]!r}")
 
 
 def generate_weekly_program(
@@ -1138,13 +1138,13 @@ def generate_weekly_program(
         program = parse_weekly_program_response(response_text)
         
         # Fix dates to match week_start_date (LLM might generate incorrect dates)
-        # Calculate correct dates for Sunday-Saturday of the target week
-        days_of_week = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        # Derive day name from the actual calendar date, not a fixed Sunday-Saturday array.
+        # The plan start date may not be Sunday (rolling window), so day labels must match
+        # the real weekday of each date to avoid prescription/coach-page mismatches.
         for i, workout in enumerate(program.get('daily_program', [])):
             correct_date = target_week_start + timedelta(days=i)
             workout['date'] = correct_date.strftime('%Y-%m-%d')
-            # Ensure day name matches the actual calendar date
-            workout['day'] = days_of_week[i]
+            workout['day'] = correct_date.strftime('%A')
         
         # Override LLM-generated totals with server-side sums of structured per-day fields
         _apply_structured_totals(program)
@@ -1258,6 +1258,22 @@ Weekly plan:
     missing = required_keys - set(strategic_summary.keys())
     if missing:
         raise ValueError(f"Strategic summary missing required keys: {missing}")
+
+    # Overwrite LLM-inferred weeks_to_a_race with server-computed value from race_goals.
+    # The weekly plan LLM focuses on near-term races, so the A-race is often absent from
+    # week_summary when it's >8 weeks out — making Haiku return null. Compute it here.
+    try:
+        _goals = get_race_goals(user_id) or []
+        _a_race = next((g for g in _goals if g.get('priority') == 'A'), None)
+        if _a_race:
+            _race_dt = datetime.strptime(_a_race['race_date'], '%Y-%m-%d').date()
+            _weeks = max(0, (_race_dt - week_start).days // 7)
+            strategic_summary['weeks_to_a_race'] = _weeks
+            strategic_summary['a_race_name'] = _a_race['race_name']
+        else:
+            strategic_summary['a_race_name'] = None
+    except Exception as _re:
+        logger.debug(f"Server-side weeks_to_a_race computation failed for user {user_id}: {_re}")
 
     upsert_week_strategic_summary(user_id, week_start, strategic_summary)
     logger.info(
@@ -1390,26 +1406,50 @@ def get_or_generate_weekly_program(
 ) -> Dict:
     """
     Get weekly program from cache or generate new one.
-    
+
     Args:
         user_id: User ID
-        week_start: Sunday of target week (defaults to current or most recent Sunday)
-        force_regenerate: Force new generation even if cached
+        week_start: Explicit plan start date. When omitted, returns the most
+                    recently generated plan if it is within its 7-day window —
+                    preventing daily regeneration on Coach page load.
+        force_regenerate: Force new generation even if a valid plan exists.
 
     Returns:
         Program dictionary with metadata
     """
-    # Default to the current week's Sunday (week structure is Sunday-Saturday)
     if week_start is None:
+        # Return the existing active plan rather than keying a cache lookup to
+        # today's date (which would miss on every new calendar day).
+        if not force_regenerate:
+            from db_utils import get_current_week_context
+            ctx = get_current_week_context(user_id)
+            if ctx and ctx.get('program_json'):
+                plan_start = ctx['week_start_date']
+                if not hasattr(plan_start, 'year'):
+                    plan_start = date.fromisoformat(str(plan_start))
+                today = get_app_current_date()
+                if (today - plan_start).days < 7:
+                    try:
+                        raw = ctx['program_json']
+                        program = json.loads(raw) if isinstance(raw, str) else raw
+                        program['from_cache'] = True
+                        _apply_structured_totals(program)
+                        logger.info(
+                            f"Returning existing plan for user {user_id}, "
+                            f"week {plan_start} (day {(today - plan_start).days + 1} of 7)"
+                        )
+                        return program
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"Could not parse cached program_json for user {user_id}: {e}")
         week_start = get_current_week_start()
-
-    # Check cache first
-    if not force_regenerate:
-        cached = get_cached_weekly_program(user_id, week_start)
-        if cached:
-            cached['from_cache'] = True
-            _apply_structured_totals(cached)
-            return cached
+    else:
+        # Explicit week_start — check exact cache entry
+        if not force_regenerate:
+            cached = get_cached_weekly_program(user_id, week_start)
+            if cached:
+                cached['from_cache'] = True
+                _apply_structured_totals(cached)
+                return cached
 
     # Generate new program
     logger.info(f"Generating new weekly program for user {user_id}, week {week_start}")
@@ -1421,7 +1461,6 @@ def get_or_generate_weekly_program(
         program['from_cache'] = False
     except Exception as e:
         logger.error(f"Failed to save program to database: {e}")
-        # Return program anyway, just don't cache it
         program['from_cache'] = False
 
     return program
@@ -1455,11 +1494,14 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
         week_end = week_start + timedelta(days=6)
 
         # --- What was planned ---
+        # Use the most recent plan active at or before the synthesis window start
         planned_row = execute_query(
             """
             SELECT strategic_summary, program_json
             FROM weekly_programs
-            WHERE user_id = %s AND week_start_date = %s
+            WHERE user_id = %s AND week_start_date <= %s
+            ORDER BY week_start_date DESC
+            LIMIT 1
             """,
             (user_id, str(week_start)),
             fetch=True
@@ -1576,18 +1618,30 @@ Write in second person ("you"), use plain text (no markdown), coaching tone. Be 
 
         synthesis = response.strip()
 
-        # Persist to DB
-        execute_query(
+        # Persist to DB — target the most recent prior program row by id so we
+        # don't depend on the synthesis week_start matching a stored week_start_date exactly.
+        result = execute_query(
             """
             UPDATE weekly_programs
             SET weekly_synthesis = %s, synthesis_generated_at = NOW()
-            WHERE user_id = %s AND week_start_date = %s
+            WHERE id = (
+                SELECT id FROM weekly_programs
+                WHERE user_id = %s AND week_start_date <= %s
+                ORDER BY week_start_date DESC
+                LIMIT 1
+            )
+            RETURNING week_start_date
             """,
             (synthesis, user_id, str(week_start)),
-            fetch=False
+            fetch=True
         )
 
-        logger.info(f"Weekly synthesis stored for user {user_id}, week {week_start}")
+        if result:
+            actual_date = result[0]['week_start_date']
+            logger.info(f"Weekly synthesis stored for user {user_id}, row week_start={actual_date} (synthesis window {week_start})")
+        else:
+            logger.warning(f"No weekly_programs row found for user {user_id} at or before {week_start} — synthesis not saved")
+
         return synthesis
 
     except Exception as e:
