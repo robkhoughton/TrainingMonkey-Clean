@@ -67,7 +67,8 @@
       "Bash(taskkill /PID 49020 /F)",
       "WebFetch(domain:evokeendurance.com)",
       "WebFetch(domain:localhost)",
-      "Bash(gcloud scheduler *)"
+      "Bash(gcloud scheduler *)",
+      "Bash(git pull *)"
     ],
     "deny": [],
     "ask": []
