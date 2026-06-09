@@ -189,6 +189,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
     if (type.includes('rest')) return '💤';
     if (type.includes('cross')) return '🚴';
     if (type.includes('strength')) return '💪';
+    if (type.includes('race')) return '🏁';
     return '🏃';
   };
 

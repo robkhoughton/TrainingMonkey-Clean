@@ -53,3 +53,27 @@ nul
 *train-d.txt
 *secret*.txt
 *.secret
+*API Key*.md
+*api key*.md
+
+# Development capture/screenshot scripts
+frontend/capture_*.js
+frontend/review_*.js
+frontend/screenshot_*.js
+frontend/review_today_full.js
+frontend/review_today_hires.js
+frontend/review_today_tab.js
+scripts/capture_*.js
+scripts/capture_*.py
+scripts/crop_*.py
+scripts/screenshot_*.js
+scripts/screenshot_*.py
+scripts/verify_*.js
+scripts/review_*.js
+
+# Screenshot artifacts
+*.png
+
+# Design review outputs
+frontend/DesignReview/
+review/

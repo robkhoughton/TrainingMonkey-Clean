@@ -921,6 +921,8 @@ interface AlignmentQuery {
   activity_date: string;
   alignment_score: number;
   status: string;
+  query_type?: string;
+  context_message?: string;
 }
 
 interface AlignmentQueryCardProps {
@@ -932,6 +934,7 @@ const AlignmentQueryCard: React.FC<AlignmentQueryCardProps> = ({ query, onDismis
   const [responseText, setResponseText] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [planRegenerating, setPlanRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const postAction = async (endpoint: string, body?: object) => {
@@ -959,11 +962,27 @@ const AlignmentQueryCard: React.FC<AlignmentQueryCardProps> = ({ query, onDismis
 
   const handleSubmit = async () => {
     if (!responseText.trim()) return;
-    const ok = await postAction('respond', { response: responseText.trim() });
-    if (ok) {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/alignment-queries/${query.id}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ response: responseText.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.plan_regenerating) setPlanRegenerating(true);
       setConfirmed(true);
-      setTimeout(() => onDismissed(), 2000);
+      setTimeout(() => onDismissed(), planRegenerating ? 4000 : 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed');
     }
+    setIsBusy(false);
   };
 
   const handleSnooze = async () => {
@@ -993,7 +1012,9 @@ const AlignmentQueryCard: React.FC<AlignmentQueryCardProps> = ({ query, onDismis
         color: 'var(--color-text-muted, #374151)',
         fontStyle: 'italic'
       }}>
-        Got it — thanks for letting us know.
+        {planRegenerating
+          ? "Got it — regenerating your weekly plan now. Check the Coach tab shortly."
+          : "Got it — thanks for letting us know."}
       </div>
     );
   }
@@ -1012,7 +1033,7 @@ const AlignmentQueryCard: React.FC<AlignmentQueryCardProps> = ({ query, onDismis
         color: 'var(--color-text, #1f2937)',
         marginBottom: '8px'
       }}>
-        Your training was off-plan on {formattedDate}. What happened?
+        {query.context_message ?? `Your training was off-plan on ${formattedDate}. What happened?`}
       </div>
 
       <textarea

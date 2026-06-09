@@ -2488,6 +2488,8 @@ def get_pending_alignment_query_endpoint():
                 'activity_date': query['activity_date'],
                 'alignment_score': query['alignment_score'],
                 'status': query['status'],
+                'query_type': query.get('query_type', 'per_session'),
+                'context_message': query.get('context_message'),
             })
         return jsonify({'pending': False})
     except Exception as e:
@@ -2562,7 +2564,35 @@ def respond_alignment_query(query_id):
                 f"for query {query_id}: {classify_err}"
             )
 
-        return jsonify({'success': True})
+        # If this was a pattern query, trigger plan regeneration in background
+        plan_regenerating = False
+        try:
+            qtype_row = db_utils.execute_query(
+                "SELECT query_type FROM alignment_queries WHERE id = %s",
+                (query_id,), fetch=True
+            )
+            if qtype_row and qtype_row[0].get('query_type') == 'pattern':
+                import threading
+                from coach_recommendations import get_or_generate_weekly_program
+                regen_user_id = current_user.id
+                def _regen_plan():
+                    try:
+                        get_or_generate_weekly_program(regen_user_id, force_regenerate=True)
+                        logger.info(
+                            f"respond_alignment_query: plan regenerated for user {regen_user_id}"
+                        )
+                    except Exception as _re:
+                        logger.warning(
+                            f"respond_alignment_query: plan regen failed for user {regen_user_id}: {_re}"
+                        )
+                threading.Thread(target=_regen_plan, daemon=True).start()
+                plan_regenerating = True
+        except Exception as _pre:
+            logger.warning(
+                f"respond_alignment_query: pattern regen check failed for query {query_id}: {_pre}"
+            )
+
+        return jsonify({'success': True, 'plan_regenerating': plan_regenerating})
     except Exception as e:
         logger.error(f"Error in respond_alignment_query: {e}")
         return jsonify({'error': str(e)}), 500
@@ -6085,6 +6115,69 @@ def save_journal_entry():
                         f"date {date_str}: {aq_err}"
                     )
 
+            # Phase E: K-of-N pattern check — upgrade to pattern query when ≥2 of last 5 sessions missed.
+            # Fires whenever today is a miss (score < 7), regardless of whether Phase D also fired.
+            # ON CONFLICT DO UPDATE means Phase E supersedes any per_session query Phase D just created.
+            if autopsy_generated and alignment_score is not None and alignment_score < 7:
+                try:
+                    recent_rows = db_utils.execute_query(
+                        """
+                        SELECT alignment_score FROM ai_autopsies
+                        WHERE user_id = %s AND date <= %s AND alignment_score IS NOT NULL
+                        ORDER BY date DESC LIMIT 5
+                        """,
+                        (current_user.id, date_str),
+                        fetch=True
+                    )
+                    if recent_rows and len(recent_rows) >= 3:
+                        scores = [row['alignment_score'] for row in recent_rows]
+                        n = len(scores)
+                        k_on_target = sum(1 for s in scores if s >= 7)
+                        k_missed = n - k_on_target
+                        if k_missed >= 2:
+                            context_msg = (
+                                f"You missed today — that's {k_missed} of your last {n} sessions "
+                                f"off target. Your weekly plan isn't landing the way it should. "
+                                f"Before I regenerate it, is there something going on I should "
+                                f"know about and account for?"
+                            )
+                            db_utils.execute_query(
+                                """
+                                INSERT INTO alignment_queries
+                                    (user_id, activity_date, alignment_score, status,
+                                     query_type, context_message)
+                                VALUES (%s, %s, %s, 'pending', 'pattern', %s)
+                                ON CONFLICT (user_id, activity_date)
+                                DO UPDATE SET query_type = 'pattern',
+                                             context_message = EXCLUDED.context_message
+                                """,
+                                (current_user.id, date_str, alignment_score, context_msg),
+                                fetch=False
+                            )
+                            logger.info(
+                                f"Phase E: pattern query queued for user {current_user.id}, "
+                                f"date {date_str}, k_missed={k_missed}/{n}"
+                            )
+                            if k_on_target <= 2:
+                                week_ctx = db_utils.get_current_week_context(current_user.id)
+                                if week_ctx and week_ctx.get('week_start_date'):
+                                    proposal = (
+                                        f"Alignment K-of-N: {k_on_target}/{n} sessions on target. "
+                                        f"Pattern query pending athlete response before regeneration."
+                                    )
+                                    db_utils.set_revision_pending(
+                                        current_user.id, week_ctx['week_start_date'], proposal
+                                    )
+                                    logger.info(
+                                        f"Phase E: revision_pending set for user {current_user.id}, "
+                                        f"k_on_target={k_on_target}/{n}"
+                                    )
+                except Exception as kn_err:
+                    logger.warning(
+                        f"Phase E: K-of-N check failed for user {current_user.id}, "
+                        f"date {date_str}: {kn_err}"
+                    )
+
             # STEP 2: Generate/update recommendation for TOMORROW using THIS autopsy
             try:
                 logger.info(f"🤖 Step 2: Generating recommendation for {tomorrow_date_str} using autopsy from {date_str}")
@@ -6819,6 +6912,17 @@ def generate_autopsy_for_date(date_str, user_id):
         except Exception as _zce:
             logger.warning(f"Zone compliance computation failed for {date_str}: {_zce}")
 
+        # Detect a scheduled race on this date — completing a planned race is the
+        # prescription, not a deviation. Reframes autopsy scoring around execution.
+        race_goal = None
+        try:
+            from coach_recommendations import get_race_on_date
+            race_goal = get_race_on_date(user_id, date_str)
+            if race_goal:
+                logger.info(f"Autopsy {date_str} user {user_id}: scheduled race detected — {race_goal.get('race_name')}")
+        except Exception as _rge:
+            logger.warning(f"Race-day lookup failed for autopsy {date_str}, user {user_id}: {_rge}")
+
         # Import and use the enhanced autopsy generation
         from llm_recommendations_module import generate_activity_autopsy_enhanced
 
@@ -6828,7 +6932,8 @@ def generate_autopsy_for_date(date_str, user_id):
             prescribed_action=prescribed_action,
             actual_activities=actual_activities,
             observations=observations,
-            zone_compliance=zone_compliance
+            zone_compliance=zone_compliance,
+            race_goal=race_goal
         )
 
         # Extract analysis, alignment score, and next-session adjustment from enhanced result

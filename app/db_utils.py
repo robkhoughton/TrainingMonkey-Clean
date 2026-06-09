@@ -1652,7 +1652,7 @@ def get_pending_alignment_query(user_id):
     try:
         result = execute_query(
             """
-            SELECT id, activity_date, alignment_score, status
+            SELECT id, activity_date, alignment_score, status, query_type, context_message
             FROM alignment_queries
             WHERE user_id = %s
               AND (
@@ -1673,6 +1673,8 @@ def get_pending_alignment_query(user_id):
                 'activity_date': str(row['activity_date'] if hasattr(row, 'keys') else row[1]),
                 'alignment_score': row['alignment_score'] if hasattr(row, 'keys') else row[2],
                 'status': row['status'] if hasattr(row, 'keys') else row[3],
+                'query_type': row['query_type'] if hasattr(row, 'keys') else row[4],
+                'context_message': row['context_message'] if hasattr(row, 'keys') else row[5],
             }
         return None
     except Exception as e:

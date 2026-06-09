@@ -195,7 +195,9 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
         from datetime import datetime as _dt
         goals = get_race_goals(user_id) or []
         today = get_app_current_date()
-        upcoming = [g for g in goals if g.get('race_date', '') > str(today)]
+        # >= so race day itself counts as days_away=0 (loads periodization/taper
+        # context); a scheduled race is the day's plan, not a past event to ignore.
+        upcoming = [g for g in goals if g.get('race_date', '') >= str(today)]
         if upcoming:
             nearest = min(upcoming, key=lambda g: g['race_date'])
             days_away = (_dt.strptime(nearest['race_date'], '%Y-%m-%d').date() - today).days
@@ -1338,7 +1340,11 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         return None
 
 def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
-    """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning."""
+    """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
+
+    Prompt taxonomy: [COMP] = compensates for current LLM weakness (sycophancy, anchoring, vagueness) — remove
+    as model capability improves. [DOMAIN] = encodes non-negotiable physiology — keep indefinitely.
+    """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
@@ -1599,6 +1605,8 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), current_date)
 
     # Build autopsy context section if insights available
+    # [DOMAIN] alignment thresholds (>7 / 4-7 / <4) are coaching judgment calls
+    # [COMP] "IMPORTANT: Use this autopsy learning..." forces model to act on data rather than ignore it
     autopsy_context = ""
     if autopsy_insights and autopsy_insights.get('count', 0) > 0:
         alignment_trend = autopsy_insights.get('alignment_trend', [])
@@ -1738,11 +1746,23 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
             else:
                 week_schedule_str = f"  Key sessions: {key_sessions_str}"
 
+            # Inject full race schedule so all upcoming races (A, B, C) reach the LLM
+            try:
+                from coach_recommendations import get_race_goals, format_race_goals_for_prompt
+                _all_goals = get_race_goals(user_id)
+                _today_str = str(get_app_current_date())
+                _upcoming_goals = [g for g in _all_goals if g.get('race_date', '') >= _today_str]
+                _race_schedule_block = f"\n### UPCOMING RACES\n{format_race_goals_for_prompt(_upcoming_goals)}\n" if _upcoming_goals else ""
+            except Exception:
+                _race_schedule_block = ""
+
+            # [COMP] EQUAL WEIGHT RULE: compensates for model anchoring on most salient input
+            # [COMP] CONFIRM/DEVIATE format: prevents silent omission of weekly plan acknowledgement
             weekly_context_block = f"""
 ### WEEKLY PROGRAM (week of {week_start})
 Training stage: {training_stage}{_race_ctx} | Intensity target: {intensity_target} | Target load: {load_low}–{load_high} ACWR
 Strategic notes: {strategic_notes}
-
+{_race_schedule_block}
 Full week schedule:
 {week_schedule_str}
 
@@ -1786,6 +1806,8 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                 _strides_today = today_full.get('strides', False)
                 try:
                     _hr = get_user_hr_thresholds(user_id)
+                    # [DOMAIN] HR zone boundaries, VT1/VT2 thresholds, polarized minimums — physiological constants
+                    # [DOMAIN] "HR is the authority" / terrain-as-load-proxy prohibition — physiology principle
                     if _hr and _day_intensity == 'low':
                         _vt1 = _hr['vt1_bpm']
                         _z2_min = _hr['zones']['zone2']['min']
@@ -1881,10 +1903,13 @@ Apply this adjustment when prescribing today's {_hard_type} session.
                     except Exception as _adj_err:
                         logger.debug(f"Pending session adjustment injection skipped for user {user_id}: {_adj_err}")
         else:
-            weekly_context_block = """
-### WEEKLY CONTEXT
-[No weekly plan active — recommendation generated independently]
-"""
+            try:
+                from coach_recommendations import get_race_goals, format_race_goals_for_prompt
+                _fallback_goals = get_race_goals(user_id)
+                _goals_str = format_race_goals_for_prompt(_fallback_goals)
+                weekly_context_block = f"\n### WEEKLY CONTEXT\n[No weekly plan active — race goals injected directly]\n{_goals_str}\n"
+            except Exception:
+                weekly_context_block = "\n### WEEKLY CONTEXT\n[No weekly plan active — recommendation generated independently]\n"
     except Exception as e:
         logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Falling back to race goals.")
         try:
@@ -1895,11 +1920,54 @@ Apply this adjustment when prescribing today's {_hard_type} session.
         except Exception:
             weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics only]\n"
 
+    # Race-day awareness — a scheduled race on the target date is a planned event
+    # that overrides whatever the weekly plan says for that day. This also covers
+    # the fallback path and any cached weekly program generated before race-week
+    # planning was added.
+    race_day_block = ""
+    try:
+        from coach_recommendations import get_race_on_date
+        _rd_target = target_date if target_date else current_date
+        _todays_race = get_race_on_date(user_id, _rd_target)
+        if _todays_race:
+            _rd_dist = f"{_todays_race['distance_miles']:.1f} mi" if _todays_race.get('distance_miles') else "distance N/A"
+            _rd_vert = f", {_todays_race['elevation_gain_feet']:,} ft vert" if _todays_race.get('elevation_gain_feet') else ""
+            race_day_block = f"""
+### TODAY IS RACE DAY — THIS OVERRIDES THE WEEKLY PLAN
+A scheduled race falls on {_rd_target}: [{_todays_race['priority']} priority] {_todays_race['race_name']} ({_rd_dist}{_rd_vert}).
+This race IS the plan. Do NOT prescribe rest or a training session that conflicts with it, and do NOT frame it as a missed workout — racing as scheduled is full compliance. Your recommendation must be RACE-EXECUTION guidance:
+- Pacing by effort/HR for the distance and vert: start conservative; manage climbs by HR, not grade.
+- Fueling and hydration cadence for the expected duration.
+- What to monitor and when to ease off (early pace discipline, GI tolerance, hot spots, pain signals).
+- Post-race priority is recovery — refuel, then Rest/Recovery in the following days scaled to race magnitude.
+"""
+    except Exception as _rde:
+        logger.debug(f"Race-day block injection skipped for user {user_id}: {_rde}")
+
+    # Unconditional race goals block — always queried regardless of weekly plan state
+    race_goals_block = ""
+    try:
+        from coach_recommendations import get_race_goals, format_race_goals_for_prompt
+        _today_for_races = str(get_app_current_date())
+        _all_race_goals = get_race_goals(user_id)
+        _upcoming_races = [g for g in _all_race_goals if g.get('race_date', '') >= _today_for_races]
+        if _upcoming_races:
+            race_goals_block = f"\n### RACE GOALS\n{format_race_goals_for_prompt(_upcoming_races)}\n"
+    except Exception as _rge:
+        logger.debug(f"Race goals block injection skipped for user {user_id}: {_rge}")
+
     # Build the enhanced prompt with tone integration and risk tolerance context
+    # [DOMAIN] Decision Framework assessment order (Safety→Overtraining→ACWR→Recovery→Progression)
+    # [DOMAIN] DIVERGENCE-FIRST RULE — divergence is the primary YTM signal
+    # [COMP]   "NOT the standard guide thresholds" — forces model to use personalized not default values
+    # [COMP]   "Never silently ignore the weekly plan" WEEKLY PLAN RULE — fights path-of-least-resistance
+    # [COMP]   PATTERN INSIGHTS citation rules — fights vague generalization; forces specificity
+    # [COMP]   "Do NOT add sub-headers" / prose paragraph rules — format enforcement
+    # [COMP]   "Reference specific numbers" / "keep each section focused" — fights vague advice
     prompt = f"""You are an expert endurance sports coach specializing in data-driven training recommendations.
 
 {tone_instructions}
-
+{race_day_block}
 ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description']})
 - ACWR High Risk Threshold: >{thresholds['acwr_high_risk']}
 - Maximum Days Without Rest: {thresholds['days_since_rest_max']} days
@@ -1910,7 +1978,7 @@ Experience Level: {athlete_profile}
 Age: {f"{athlete_age} years old" if athlete_age else "Not specified"}
 Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
 Assessment Category: {assessment_category}
-
+{race_goals_block}
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
 - Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
@@ -2340,7 +2408,7 @@ def parse_llm_response(response_text):
 
 
 def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, actual_activities, observations,
-                                       zone_compliance=None):
+                                       zone_compliance=None, race_goal=None):
     """
     Generate AI autopsy comparing prescribed vs actual training using Training Reference Guide.
     Enhanced version that includes alignment scoring and structured learning insights.
@@ -2374,7 +2442,8 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
             actual_activities,
             observations,
             tone_instructions,
-            zone_compliance=zone_compliance
+            zone_compliance=zone_compliance,
+            race_goal=race_goal
         )
 
         # Append coaching context library — readiness state not available at autopsy time,
@@ -2667,8 +2736,13 @@ def get_coaching_style_from_spectrum(spectrum_value):
         }
 
 def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, actual_activities, observations,
-                                                tone_instructions=None, zone_compliance=None):
-    """Create autopsy prompt that compares prescribed vs actual without metrics confusion."""
+                                                tone_instructions=None, zone_compliance=None, race_goal=None):
+    """Create autopsy prompt that compares prescribed vs actual without metrics confusion.
+
+    When race_goal is provided, the date is a scheduled race day: scoring is
+    reframed around race execution and recovery rather than compliance with a
+    workout/rest prescription, so completing a planned race is not a deviation.
+    """
     try:
         # Format user observations
         energy_level = observations.get('energy_level', 'Not recorded')
@@ -2771,6 +2845,33 @@ INTENSITY TARGET MISSED: Hard session only achieved {q_min:.0f} min above VT2 (t
         _tomorrow_obj = _autopsy_date_obj + _td(days=1)
         _tomorrow_label = _tomorrow_obj.strftime('%A, %B %d, %Y')
 
+        # Race-day reframing — a scheduled race is a planned event. The stored
+        # PRESCRIBED TRAINING DECISION may say "rest" because it predates race-day
+        # awareness; do not score the race as a deviation from it.
+        race_autopsy_block = ""
+        score_guidance = (
+            "Compare prescribed vs actual training. Score 10=perfect compliance, 8-9=minor deviations, "
+            "5-7=moderate changes, 1-4=major deviations. Consider volume, intensity, workout type, and "
+            "execution quality. If athlete deviated, check notes for reasons (injury, time constraints, etc.)."
+        )
+        if race_goal:
+            _ra_dist = f"{race_goal['distance_miles']:.1f} mi" if race_goal.get('distance_miles') else "distance N/A"
+            _ra_vert = f", {race_goal['elevation_gain_feet']:,} ft vert" if race_goal.get('elevation_gain_feet') else ""
+            race_autopsy_block = f"""
+### THIS WAS A SCHEDULED RACE
+The athlete had a race on the calendar today: [{race_goal['priority']} priority] {race_goal['race_name']} ({_ra_dist}{_ra_vert}). Completing a scheduled race IS the plan — it is NOT a deviation, regardless of any "rest" or training wording in the PRESCRIBED TRAINING DECISION above (that prescription may predate race-day awareness — ignore its rest/workout framing).
+"""
+            score_guidance = (
+                "This was a SCHEDULED RACE. Score alignment on RACE EXECUTION and RECOVERY, NOT on compliance "
+                "with any workout/rest prescription. Do NOT penalize the athlete for \"not resting\" — the race "
+                "was on the calendar. "
+                "8-10: raced as scheduled and is following sensible post-race recovery (refuel, easy/rest planned). "
+                "5-7: raced but with execution problems (pacing blow-up, under-fueling, ignoring pain signals) or "
+                "is loading again too soon. "
+                "1-4: only for genuinely counterproductive choices (e.g. racing through a flagged injury against "
+                "guidance, or stacking hard training onto race day)."
+            )
+
         prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
 
 {tone_section}ANALYSIS DATE: {date_str} ({_autopsy_day_label})
@@ -2779,7 +2880,7 @@ DATE RULE: When referring to future sessions, always use the specific day name (
 
 PRESCRIBED TRAINING DECISION:
 {prescribed_action}
-
+{race_autopsy_block}
 ACTUAL TRAINING COMPLETED:
 {activity_summary}
 {zone_block}
@@ -2802,7 +2903,7 @@ You must provide analysis in EXACTLY this format for parsing{', applying the spe
 ALIGNMENT_SCORE: [X/10]
 
 ALIGNMENT ASSESSMENT:
-[{('Apply the specified coaching tone. ' if tone_instructions else '')}Compare prescribed vs actual training. Score 10=perfect compliance, 8-9=minor deviations, 5-7=moderate changes, 1-4=major deviations. Consider volume, intensity, workout type, and execution quality. If athlete deviated, check notes for reasons (injury, time constraints, etc.).]
+[{('Apply the specified coaching tone. ' if tone_instructions else '')}{score_guidance}]
 
 PHYSIOLOGICAL RESPONSE ANALYSIS:
 [{('Use the specified coaching style. ' if tone_instructions else '')}Evaluate energy/RPE/pain levels relative to the workout completed. Was the response appropriate for the effort? Signs of positive adaptation, fatigue, or concerns? How did pre-session energy affect execution?]
@@ -3742,10 +3843,18 @@ CRITICAL REQUIREMENTS:
 
 def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_metrics, autopsy_insights):
     """Create daily decision prompt that learns from recent autopsy analyses.
-    
-    Enhanced version includes Training Reference Framework and Risk Tolerance personalization
-    for evidence-based, consistent recommendations aligned with the comprehensive prompt.
-    Also includes reference to Coach page weekly plan for consistency.
+
+    Prompt taxonomy: [COMP] = compensates for LLM weakness, remove as capability improves.
+    [DOMAIN] = encodes physiology / coaching rules, keep indefinitely.
+
+    [DOMAIN] Steps 1-4: decision framework hierarchy (safety → metrics → plan) — physiological priority order
+    [DOMAIN] ACWR/divergence thresholds and positive-divergence-means-more-capacity — real physiology
+    [DOMAIN] terrain-as-load-proxy prohibition in Element 7 — HR is the authority on internal load
+    [COMP]   10-element format requirements, word-count ranges, "plain text only" — format enforcement
+    [COMP]   Element 6 "Never write Proceed as planned" — fights metric-less deference to plan
+    [COMP]   Element 1 metric-driven verdict framing — fights anchoring on plan without metric justification
+    [COMP]   Element 3 K-of-N citation requirement — fights vague compliance generalizations
+    [COMP]   REST DAY FRAMING RULE — fights model framing rest as absence rather than active adaptation
     """
 
     # Get user's risk tolerance and personalized thresholds
@@ -3787,6 +3896,23 @@ Otherwise, provide tactical execution guidance for the planned workout."""
     except Exception as e:
         logger.warning(f"Could not fetch weekly program context: {str(e)}")
         weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
+
+    # Race-day awareness — a scheduled race on the target date is the day's plan and
+    # overrides the weekly program prescription. Decision hierarchy below references this.
+    race_day_context = ""
+    try:
+        from coach_recommendations import get_race_on_date
+        _todays_race = get_race_on_date(user_id, target_date_str)
+        if _todays_race:
+            _rd_dist = f"{_todays_race['distance_miles']:.1f} mi" if _todays_race.get('distance_miles') else "distance N/A"
+            _rd_vert = f", {_todays_race['elevation_gain_feet']:,} ft vert" if _todays_race.get('elevation_gain_feet') else ""
+            race_day_context = f"""
+### TODAY IS RACE DAY (HIGHEST PRIORITY — OVERRIDES THE WEEK PLAN)
+Scheduled race on {target_date_str}: [{_todays_race['priority']} priority] {_todays_race['race_name']} ({_rd_dist}{_rd_vert}).
+This race IS today's prescription. Do NOT prescribe rest or training that conflicts, and do NOT frame it as a deviation — racing as scheduled is full compliance. Provide RACE-EXECUTION guidance: pacing by HR/effort (conservative start, manage climbs by HR not grade), fueling/hydration cadence, what to monitor and when to ease off, and that post-race recovery is the priority afterward.
+"""
+    except Exception as _rde:
+        logger.debug(f"Race-day context skipped for user {user_id}: {_rde}")
 
     # Get recent journal notes for additional context (may contain injury/medical info)
     recent_notes = get_recent_journal_notes(user_id, days=3)
@@ -3919,6 +4045,7 @@ CURRENT METRICS:
 
 {athlete_model_context}
 
+{race_day_context}
 {weekly_program_context}
 
 {notes_context}
@@ -3935,6 +4062,7 @@ Using the Training Reference Framework above, provide a complete training analys
 Adapt your coaching approach based on the athlete's demonstrated preferences, adherence patterns, and risk tolerance.
 
 CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
+0. SCHEDULED RACE TODAY (if a TODAY IS RACE DAY block appears above) — the race is the prescription; give race-execution guidance, not a training/rest decision. Injury still overrides into a do-not-start warning if a flagged injury is present.
 1. INJURY/MEDICAL STATUS (from autopsy or notes) - HIGHEST PRIORITY
    - If injury/pain/rehabilitation mentioned → Conservative protocol overrides all other metrics
    - Ignore ACWR optimization when injury present
@@ -3947,10 +4075,25 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
 3. AUTOPSY-SPECIFIC GUIDANCE (from Key Learning above)
    - Apply the exact strategy changes recommended in autopsy analysis
    - Don't assume low alignment = simplify; read what autopsy actually says
-4. WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED
-   - The weekly plan is the default prescription. Positive divergence means more available capacity, not less — it is never a reason to reduce load. Deviate only when metrics breach a threshold, an injury is present, or the autopsy identifies a specific adaptation or scheduling adjustment.
-5. CURRENT METRICS (ACWR, divergence, days since rest)
-   - Only apply normal training progression if no injury/medical issues present
+4. CURRENT METRICS (ACWR, divergence, days since rest) — PRIMARY TRAINING DRIVER
+   - Evaluate ALL threshold conditions from the Training Guide BEFORE consulting the weekly plan:
+     a. Both ACWR < 0.8 → undertraining signal; plan's rest prescription is overridden unless another factor applies
+     b. Both ACWR > 1.3 → reduce load regardless of what the plan prescribes
+     c. Normalized divergence < -0.15 → rest or very light activity
+     d. Divergence between -0.05 and -0.15 AND days since rest > 5 → active recovery
+     e. Metrics within productive range → proceed to step 5 to determine workout type
+   - Positive divergence means more available capacity — never a reason to reduce load.
+   - The metric verdict (train / reduce / rest) is determined here. Step 5 refines what kind.
+5. WEEKLY PLAN — WORKOUT TYPE, STRUCTURE, AND ALIGNMENT-WEIGHTED AUTHORITY
+   - After metrics determine the action in step 4, consult the weekly plan for workout TYPE and progressive sequence.
+   - Plan authority scales with recent alignment (K-of-N from ALIGNMENT data above):
+     * ≥4 of 5 sessions on target: plan is well-calibrated — use prescribed session type as-is
+     * 2–3 of 5 on target: plan is partially informative — allow metric-driven adjustments to volume/intensity
+     * ≤1 of 5 on target: plan has low predictive value — treat as a loose structural guide; metrics drive the prescription
+   - Metrics support training + plan says train → use plan's prescribed session (scaled by authority above).
+   - Metrics support training + plan says rest → prescribe training; state the metric justification explicitly.
+   - Metrics indicate rest/reduce + plan says train → rest or reduce; state the metric override explicitly.
+   - The plan shapes WHAT to do; metrics determine WHETHER and HOW MUCH.
 6. ATHLETE RISK TOLERANCE
    - Respect personalized thresholds, but medical safety always trumps risk tolerance
 
@@ -3964,7 +4107,7 @@ DAILY RECOMMENDATION
 
 Your prescription must be flowing prose (no bullets, no sub-headers, no numbered lines) and must be 240-280 words. You are not done until you have addressed all ten elements below. Do not stop after the workout description — the metrics, decision, execution cues, pre-mortem, and probe are mandatory.
 
-Element 1 — PLAN (~30 words): State the planned workout (type, distance, terrain, vert). Use one of: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", "your weekly training plan calls for". If no plan exists, prescribe from metrics.
+Element 1 — PRESCRIPTION (~30 words): Lead with the metric-driven verdict, then name the workout. Examples: "Your metrics are in the productive zone — your weekly plan calls for [X]." Or if overriding the plan: "Your metrics call for [rest/reduced load], overriding the planned [X]." Or if plan authority is low: "Your metrics and recent compliance call for [Y] — adjusting today's planned [X] accordingly." If no plan exists, prescribe directly from metrics.
 Element 2 — STAGE (~30 words): Name the training stage. If a race goal exists, state weeks remaining and what this stage is building toward for that race. Then connect today's specific session type to the stage purpose — why this stimulus, why now. If no race goal exists, state what the current phase is developing and when the athlete would expect to feel its effect.
 Element 3 — ALIGNMENT (~30 words): Cite the K-of-N figure from ALIGNMENT data. Then make the consequence explicit — connect the compliance record directly to today's prescription:
 - If K-of-N is strong (≥4/5 or ≥3/4): name what that consistency has earned or enabled today. Example: "You've hit your targets in 4 of your last 5 sessions — that's why we can add strides today" or "...which is why I'm comfortable holding this volume." Make the athlete see that their compliance has direct consequence.
@@ -3972,7 +4115,7 @@ Element 3 — ALIGNMENT (~30 words): Cite the K-of-N figure from ALIGNMENT data.
 - If insufficient data: state that plainly and note what would change the prescription.
 Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each against the athlete's personal thresholds from ATHLETE MODEL — state where they sit in their productive training window.
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
-Element 6 — DECISION (~20 words): Write "Proceed as planned." or "Adjust: [specific change] because [one reason]."
+Element 6 — DECISION (~20 words): State the metric-driven verdict: "Train: [workout type] — metrics support this." or "Rest: [specific metric threshold]." or "Reduce: [specific change] — [metric trigger]." Never write "Proceed as planned" — the decision must be grounded in metrics, not deference to the plan.
 Element 7 — EXECUTION (~45 words): On training days: give 2-3 execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain as a proxy for internal load — always give the HR number. Terrain cues are only acceptable when managing a specific injury. On rest or recovery days (decision = rest or reduce): replace execution cues with a recovery protocol — name the specific physiological process completing today (e.g., glycogen resynthesis, connective tissue remodeling, neural fatigue clearance), connect it to the training stimulus it is responding to, and give 2-3 active recovery actions (sleep, nutrition, easy movement). Frame recovery as active training, not the absence of it.
 Element 8 — INJURY (≤15 words, only if signals are present): One sentence on managing the injury this workout.
 Element 9 — PRE-MORTEM (≤25 words, conditional): Include only when a meaningful failure mode exists — assessment category is overtraining_risk, high_acwr_risk, recovery_needed, or divergence_warning; or today is a hard session; or red flags are present; or recent autopsies show physical deviation as the dominant cause. Name: (1) the most likely way this session goes wrong, (2) the early warning sign that precedes it, (3) one decision rule in the form "If [early sign], [specific action]." Use natural coaching voice: "The risk today is X." Omit entirely on normal_progression or undertraining_opportunity sessions with no red flags and no hard session type.
@@ -4095,13 +4238,22 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     else:
                         actual_activities = str(activity_summary)
                     
+                    # Detect a scheduled race — racing as planned is not a deviation.
+                    _race_goal = None
+                    try:
+                        from coach_recommendations import get_race_on_date
+                        _race_goal = get_race_on_date(user_id, journal_date)
+                    except Exception as _rge:
+                        logger.warning(f"Race-day lookup failed for autopsy {journal_date}, user {user_id}: {_rge}")
+
                     # Generate enhanced autopsy
                     autopsy_result = generate_activity_autopsy_enhanced(
                         user_id,
                         journal_date,
                         prescribed_action,
                         actual_activities,
-                        observations
+                        observations,
+                        race_goal=_race_goal
                     )
 
                 if autopsy_result:
@@ -4760,21 +4912,31 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # ------------------------------------------------------------------ #
         # Turn 1 — minimal prompt with metrics + tool list                    #
         # ------------------------------------------------------------------ #
+        # [COMP] CONFIRM/DEVIATE rule: every recommendation must acknowledge the weekly plan explicitly
+        # [DOMAIN] VALID deviation triggers (ACWR threshold, negative divergence, active injury) — real physiology
+        # [DOMAIN] "positive divergence = more capacity, not a reason to downgrade" — physiology principle
+        # [DOMAIN] terrain-elevated TRIMP as invalid deviation reason — internal load is HR only
         system_turn1 = (
             "You are an expert endurance sports coach with deep knowledge of "
             "training load science (ACWR, TRIMP, divergence). "
             "You have access to tools that can retrieve specific athlete data. "
             "Request ONLY the data you need to generate a high-quality daily "
             "training recommendation. Do not request redundant data.\n\n"
-            "WEEKLY PLAN ADHERENCE — DEFAULT IS TO PROCEED AS PLANNED: "
-            "The Coach page weekly plan is the primary prescription. "
+            "WEEKLY PLAN RULE: Every recommendation must explicitly acknowledge the weekly plan. "
+            "State what it prescribes for today, then either:\n"
+            "- CONFIRM: 'The weekly plan calls for [X]. Your metrics support this — [specific metric reason].' "
+            "Then give execution details.\n"
+            "- DEVIATE: 'The weekly plan calls for [X]. Based on [specific metric/threshold breach], "
+            "I'm recommending [Y] instead.' Then explain the deviation.\n"
+            "Never ground the decision in deference to the plan alone — always in the metrics. "
+            "If no threshold is breached, that IS the metric justification for confirming the plan; "
+            "say so explicitly.\n\n"
             "VALID reasons to deviate: ACWR exceeds athlete's high-risk threshold, "
             "OR divergence is NEGATIVE beyond the athlete's personal breakdown threshold, "
             "OR active injury. "
             "INVALID reasons to deviate: positive divergence (means MORE available capacity — "
             "never a reason to downgrade intensity), terrain-elevated TRIMP from prior day, "
-            "starting energy 3/5 or higher, or generic 'fatigue carryover' without a threshold breach. "
-            "If no threshold is breached, Decision MUST be 'Proceed as planned.'"
+            "starting energy 3/5 or higher, or generic 'fatigue carryover' without a threshold breach."
             + (f"\n\n{tone_instructions}" if tone_instructions else "")
             + (f"\n\n{static_context_block}" if static_context_block else "")
             + (f"\n\n{_agentic_coaching_context}" if _agentic_coaching_context else "")

@@ -88,6 +88,29 @@ def get_race_goals(user_id: int) -> List[Dict]:
     return goals
 
 
+def get_race_on_date(user_id: int, target_date) -> Optional[Dict]:
+    """Return the race goal scheduled on target_date, or None.
+
+    A scheduled race is a planned event — the coaching pipeline must treat the
+    race day itself as the prescription, not as a deviation from a workout.
+    Every other race lookup in the codebase filters with `race_date > today`,
+    which excludes the race day itself; this is the deliberate exception used to
+    detect "today IS race day".
+
+    Args:
+        user_id: User ID.
+        target_date: A date object or 'YYYY-MM-DD' string.
+    """
+    if hasattr(target_date, 'isoformat'):
+        date_str = target_date.isoformat()
+    else:
+        date_str = str(target_date)[:10]
+    for goal in get_race_goals(user_id):
+        if goal.get('race_date') == date_str:
+            return goal
+    return None
+
+
 def get_race_history(user_id: int, limit: int = 10) -> List[Dict]:
     """Fetch user's race history (last 5 years, most recent first)."""
     query = """
@@ -831,6 +854,45 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
     # Build prompt sections
     week_end = target_week_start + timedelta(days=6)
 
+    # Scheduled races falling within this program week are PLANNED EVENTS, not
+    # deviations. The race day's workout must BE the race; surrounding days taper
+    # into it and recover after it. Without this constraint the LLM has no signal
+    # that a race occupies a calendar day and may prescribe rest/training over it.
+    races_this_week = []
+    for _g in race_goals:
+        try:
+            _rd = datetime.strptime(_g['race_date'], '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            continue
+        if target_week_start <= _rd <= week_end:
+            races_this_week.append((_rd, _g))
+    races_this_week.sort(key=lambda x: x[0])
+
+    if races_this_week:
+        _race_lines = []
+        for _rd, _g in races_this_week:
+            _dist = f"{_g['distance_miles']:.1f} mi" if _g.get('distance_miles') else "distance N/A"
+            _vert = f", {_g['elevation_gain_feet']:,} ft vert" if _g.get('elevation_gain_feet') else ""
+            _race_lines.append(
+                f"- {_rd.strftime('%A, %B %d')} — [{_g['priority']} priority] {_g['race_name']} "
+                f"({_dist}{_vert})"
+            )
+        race_week_block = (
+            "**SCHEDULED RACES THIS WEEK (HARD CONSTRAINT):**\n"
+            + "\n".join(_race_lines)
+            + "\n\nRACE-DAY RULES (override all other planning logic for these dates):\n"
+            "- The race day's workout_type MUST be \"Race\". Its description must name the race and its "
+            "distance/vert. NEVER prescribe Rest, Easy, or a training session that overrides a scheduled race.\n"
+            "- Taper into the race: the 1-2 days before a B/C race (2-3 days before an A race) must be "
+            "Easy, Recovery, or Rest — no hard sessions or long runs.\n"
+            "- Recover after the race: the day immediately after MUST be Rest or Recovery, scaled to race "
+            "magnitude (a long mountain ultra demands more recovery than a short race).\n"
+            "- Account for race load when setting total_weekly_miles and the ACWR estimates — the race itself "
+            "is a large external and internal training stress.\n"
+        )
+    else:
+        race_week_block = ""
+
     # Format metrics with proper handling of None/missing values
     def format_metric(value, format_spec):
         """Format a metric value or return 'N/A' if not a number."""
@@ -891,6 +953,30 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
     ans_summary = get_weekly_ans_summary(user_id)
     ans_prompt_block = _build_ans_prompt_block(ans_summary)
 
+    # Alignment-failure calibration context — feed answered pattern queries into the plan
+    from db_utils import get_answered_alignment_queries
+    alignment_calibration_block = ""
+    try:
+        answered = get_answered_alignment_queries(user_id, days=30)
+        pattern_answers = [q for q in answered if q.get('response')]
+        if pattern_answers:
+            reason_lines = []
+            for q in pattern_answers[-5:]:
+                reason_lines.append(f"  - {q['activity_date']}: \"{q['response']}\"")
+            alignment_calibration_block = (
+                "\n**PLAN CALIBRATION REQUIRED**\n\n"
+                "The previous weekly plan had low alignment — the athlete reported the following "
+                "reasons for missing sessions:\n"
+                + "\n".join(reason_lines)
+                + "\n\nAdjust the new plan to directly address these failure modes. "
+                "If the athlete reports fatigue/physical reasons, reduce load or add recovery. "
+                "If schedule/external constraints, work within them. "
+                "If the sessions felt wrong (too hard, wrong terrain, wrong type), recalibrate "
+                "the prescription to match the athlete's demonstrated capacity and environment.\n"
+            )
+    except Exception as _ace:
+        logger.debug(f"Alignment calibration context skipped: {_ace}")
+
     prompt = f"""You are an expert ultra-trail running coach creating a divergence-optimized weekly training program.
 
 **ATHLETE PROFILE**
@@ -942,7 +1028,7 @@ Guide context: {assessment_category}
 **RACE GOALS**
 
 {format_race_goals_for_prompt(race_goals)}
-
+{(chr(10) + race_week_block) if race_week_block else ""}
 **PERFORMANCE HISTORY**
 
 {format_race_history_for_prompt(race_history, perf_trend)}
@@ -978,7 +1064,7 @@ Focus: {training_stage.get('details', 'N/A')}
 **COACHING TONE**
 
 {tone_instructions}
-
+{alignment_calibration_block}
 **YOUR TASK**
 
 Generate a divergence-optimized 7-day training program for the week of {target_week_start.strftime('%B %d, %Y')}.
@@ -1036,7 +1122,8 @@ Return your response as a valid JSON object with this exact structure:
 **IMPORTANT:**
 - Return ONLY the JSON object, no markdown formatting, no extra text
 - Ensure all 7 days (Sunday-Saturday) are included in daily_program
-- Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training, Aerobic Test
+- Workout types: Long Run, Easy Run, Tempo Run, Interval/Speed Work, Hill Repeats, Recovery Run, Rest Day, Cross-Training, Aerobic Test, Race
+- Use "Race" ONLY on a date listed under SCHEDULED RACES THIS WEEK; set intensity to "High" and hard_session_type to "race_sim" for race days
 - If a day is prescribed as an HR drift test / aerobic assessment, set workout_type to "Aerobic Test" and intensity to "Low"
 - Intensity levels: Low, Moderate, High
 - hard_session_type: set to "tempo", "intervals", "hills", or "race_sim" for High-intensity days; set to null for Low/Moderate/Rest days. "tempo" = sustained Z4 effort (25-35 min); "intervals" = repeated Z4/Z5 blocks with Z1/Z2 recovery; "hills" = uphill quality efforts with descent recovery; "race_sim" = event-specific pacing
