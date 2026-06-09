@@ -6943,6 +6943,8 @@ def generate_autopsy_for_date(date_str, user_id):
         if isinstance(autopsy_result, dict):
             autopsy_analysis = autopsy_result.get('analysis', '')
             alignment_score = autopsy_result.get('alignment_score', 5)
+            quality_score = autopsy_result.get('quality_score')
+            composite_score = autopsy_result.get('composite_score')
             is_fallback = autopsy_result.get('is_fallback', False)
             next_session_type = autopsy_result.get('next_session_type')
             next_session_adjustment = autopsy_result.get('next_session_adjustment')
@@ -6950,17 +6952,22 @@ def generate_autopsy_for_date(date_str, user_id):
             # Fallback for old format
             autopsy_analysis = autopsy_result if autopsy_result else ''
             alignment_score = extract_alignment_score(autopsy_analysis)
+            quality_score = None
+            composite_score = None
 
         # Use PostgreSQL syntax
         query = """
-            INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities, autopsy_analysis, alignment_score)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO ai_autopsies (user_id, date, prescribed_action, actual_activities,
+                                      autopsy_analysis, alignment_score, quality_score, composite_score)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id, date)
             DO UPDATE SET
                 prescribed_action = EXCLUDED.prescribed_action,
                 actual_activities = EXCLUDED.actual_activities,
                 autopsy_analysis = EXCLUDED.autopsy_analysis,
                 alignment_score = EXCLUDED.alignment_score,
+                quality_score = EXCLUDED.quality_score,
+                composite_score = EXCLUDED.composite_score,
                 generated_at = NOW()
         """
 
@@ -6970,7 +6977,9 @@ def generate_autopsy_for_date(date_str, user_id):
             prescribed_action,
             actual_activities,
             autopsy_analysis,
-            alignment_score
+            alignment_score,
+            quality_score,
+            composite_score
         ))
 
         logger.info(f"Successfully generated and saved enhanced AI autopsy for user {user_id} on {date_str}")
