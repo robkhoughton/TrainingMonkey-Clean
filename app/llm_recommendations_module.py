@@ -10,6 +10,7 @@ import os
 import json
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date, timedelta
 import time
 from timezone_utils import get_app_current_date
@@ -897,7 +898,7 @@ def get_model_for_task(task):
     """Route to the appropriate Claude model based on task type."""
     task_routing = {
         'daily': MODEL_SONNET,
-        'autopsy': MODEL_HAIKU,
+        'autopsy': MODEL_SONNET,  # upgraded — zone compliance analysis requires real reasoning
         'weekly': MODEL_SONNET,
         'weekly_comprehensive': MODEL_OPUS,
     }
@@ -2429,56 +2430,83 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         dict: Contains 'analysis' (str) and 'alignment_score' (int 1-10)
     """
     try:
-        logger.info(f"Generating enhanced autopsy for user {user_id}, date {date_str}")
+        logger.info(f"Generating dual-track autopsy for user {user_id}, date {date_str}")
 
-        # Get user's coaching style preference
         spectrum_value = get_user_coaching_spectrum(user_id)
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
+        w_align, w_quality = get_user_autopsy_weights(user_id)
 
-        # Create autopsy prompt - focuses on comparing prescribed vs actual, no metrics needed
-        prompt = create_enhanced_autopsy_prompt_with_scoring(
-            date_str,
-            prescribed_action,
-            actual_activities,
-            observations,
-            tone_instructions,
-            zone_compliance=zone_compliance,
-            race_goal=race_goal
+        # Build both track prompts
+        alignment_prompt = create_enhanced_autopsy_prompt_with_scoring(
+            date_str, prescribed_action, actual_activities, observations,
+            tone_instructions, zone_compliance=zone_compliance, race_goal=race_goal
+        )
+        quality_prompt = create_quality_track_prompt(
+            date_str, actual_activities, observations, tone_instructions, zone_compliance
         )
 
-        # Append coaching context library — readiness state not available at autopsy time,
-        # use UNKNOWN so only unconditional topic files are injected
+        # Append coaching context (unconditional files only — readiness state unknown at autopsy time)
         try:
-            _autopsy_coaching_context = _load_coaching_context(user_id, 'UNKNOWN', date_str)
-            if _autopsy_coaching_context:
-                prompt = prompt + f"\n\n{_autopsy_coaching_context}"
+            coaching_context = _load_coaching_context(user_id, 'UNKNOWN', date_str)
+            if coaching_context:
+                alignment_prompt += f"\n\n{coaching_context}"
+                quality_prompt += f"\n\n{coaching_context}"
         except Exception as _cc_err:
             logger.warning(f"Could not load coaching context for autopsy user {user_id}: {_cc_err}")
 
-        # Get specialized settings for autopsy analysis from config
         autopsy_settings = CONFIG.get('specialized_prompts', {}).get('autopsy_analysis', {})
-        autopsy_temperature = autopsy_settings.get('temperature', 0.25)
-        autopsy_max_tokens = autopsy_settings.get('max_tokens', 3000)
-        
-        logger.info(f"Calling API for autopsy with temperature={autopsy_temperature}, max_tokens={autopsy_max_tokens}")
+        temperature = autopsy_settings.get('temperature', 0.25)
 
-        # Call Claude — use Haiku for autopsy scoring (Phase 2 routing)
-        response = call_claude(prompt, temperature=autopsy_temperature, max_tokens=autopsy_max_tokens, task='autopsy')
+        # Fire both tracks in parallel — independent contexts, no cross-contamination
+        logger.info(f"Firing parallel autopsy tracks (alignment + quality), weights={w_align}/{w_quality}")
+        alignment_response = None
+        quality_response = None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f_align = executor.submit(call_claude, alignment_prompt, temperature, 1500, task='autopsy')
+            f_quality = executor.submit(call_claude, quality_prompt, temperature, 800, task='autopsy')
+            alignment_response = f_align.result()
+            quality_response = f_quality.result()
 
-        if not response:
-            logger.error("No response from Anthropic API for enhanced autopsy generation")
+        if not alignment_response and not quality_response:
+            logger.error("Both autopsy tracks returned no response")
             return generate_basic_autopsy_fallback_enhanced(prescribed_action, actual_activities, observations)
 
-        # Parse autopsy response to extract analysis and alignment score
-        autopsy_data = parse_enhanced_autopsy_response(response)
+        # Parse each track independently
+        alignment_data = parse_enhanced_autopsy_response(alignment_response) if alignment_response else {
+            'alignment_score': 5, 'analysis': '', 'next_session_type': None, 'next_session_adjustment': None
+        }
+        quality_data = parse_quality_track_response(quality_response) if quality_response else {
+            'quality_score': 5, 'quality_analysis': ''
+        }
+
+        # Compute weighted composite score
+        composite_score = round(
+            w_align * alignment_data['alignment_score'] + w_quality * quality_data['quality_score'], 2
+        )
+        logger.info(
+            f"Autopsy scores — alignment: {alignment_data['alignment_score']}, "
+            f"quality: {quality_data['quality_score']}, composite: {composite_score}"
+        )
+
+        # Merge narratives: alignment → quality section → coaching takeaways
+        combined_analysis = _merge_autopsy_analyses(
+            alignment_data.get('analysis', ''),
+            quality_data.get('quality_analysis', '')
+        )
 
         # NOTE: update_athlete_model() is called in save_journal_entry() AFTER Phase C
-        # (classify_deviation) so that deviation_reason is available for threshold calibration.
-        return autopsy_data
+        # (classify_deviation) so deviation_reason is available for threshold calibration.
+        return {
+            'analysis': combined_analysis,
+            'alignment_score': alignment_data['alignment_score'],
+            'quality_score': quality_data['quality_score'],
+            'composite_score': composite_score,
+            'next_session_type': alignment_data.get('next_session_type'),
+            'next_session_adjustment': alignment_data.get('next_session_adjustment'),
+        }
 
     except Exception as e:
         logger.error(f"Error generating enhanced autopsy: {str(e)}", exc_info=True)
-        logger.error(f"Falling back to basic autopsy due to error")
         return generate_basic_autopsy_fallback_enhanced(prescribed_action, actual_activities, observations)
 
 
@@ -2518,6 +2546,27 @@ def map_coaching_tone_to_spectrum(coaching_tone):
         'analytical': 87
     }
     return tone_map.get(coaching_tone, 50)
+
+
+def get_user_autopsy_weights(user_id):
+    """Return (alignment_weight, quality_weight) for composite score calculation.
+
+    Weights sum to 1.0 and default to 0.5/0.5. Stored in user_settings so each
+    athlete can bias the composite toward plan compliance or intrinsic session value.
+    """
+    try:
+        result = execute_query(
+            "SELECT autopsy_weight_alignment, autopsy_weight_quality FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        if result and result[0]:
+            w_align = result[0].get('autopsy_weight_alignment')
+            w_quality = result[0].get('autopsy_weight_quality')
+            if w_align is not None and w_quality is not None:
+                return (float(w_align), float(w_quality))
+    except Exception as e:
+        logger.warning(f"Could not load autopsy weights for user {user_id}: {e}")
+    return (0.5, 0.5)
 
 
 def get_coaching_tone_instructions(spectrum_value):
@@ -2872,7 +2921,8 @@ The athlete had a race on the calendar today: [{race_goal['priority']} priority]
                 "guidance, or stacking hard training onto race day)."
             )
 
-        prompt = f"""You are an expert endurance coach conducting a training autopsy analysis.
+        prompt = f"""You are an expert endurance coach conducting a training autopsy — ALIGNMENT TRACK ONLY.
+Evaluate plan compliance and next-session coaching. A parallel quality track handles physiological response separately.
 
 {tone_section}ANALYSIS DATE: {date_str} ({_autopsy_day_label})
 NEXT DAY: {_tomorrow_obj.strftime('%Y-%m-%d')} ({_tomorrow_label})
@@ -2896,20 +2946,18 @@ DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 ### TRAINING REFERENCE FRAMEWORK
 {training_guide if training_guide else "Apply evidence-based training principles."}
 
-AUTOPSY ANALYSIS INSTRUCTIONS:
+ALIGNMENT TRACK INSTRUCTIONS:
 
 You must provide analysis in EXACTLY this format for parsing{', applying the specified coaching tone throughout' if tone_instructions else ''}:
 
 ALIGNMENT_SCORE: [X/10]
 
 ALIGNMENT ASSESSMENT:
-[{('Apply the specified coaching tone. ' if tone_instructions else '')}{score_guidance}]
+[{('Apply the specified coaching tone. ' if tone_instructions else '')}{score_guidance}
+IMPORTANT: A deviation that reflects good athlete self-regulation (responding to felt state, conditions, injury signals) should NOT automatically reduce this score — assess whether the deviation represented sound judgment. Reserve low scores (1-4) for compliance failures with no reasonable justification.]
 
-PHYSIOLOGICAL RESPONSE ANALYSIS:
-[{('Use the specified coaching style. ' if tone_instructions else '')}Evaluate energy/RPE/pain levels relative to the workout completed. Was the response appropriate for the effort? Signs of positive adaptation, fatigue, or concerns? How did pre-session energy affect execution?]
-
-LEARNING INSIGHTS & COACHING TAKEAWAYS:
-[{('Apply the coaching tone throughout. ' if tone_instructions else '')}Key takeaways from today's session. Why did athlete deviate (if applicable)? What does response reveal about adaptation and adherence patterns? Any coaching adjustments needed based on alignment and physiological response?]
+COACHING TAKEAWAYS:
+[{('Apply the coaching tone throughout. ' if tone_instructions else '')}2-3 sentences: why did athlete deviate (if applicable), what does the compliance pattern reveal about training adherence, and what specific coaching adjustment is needed for the next session based on today?]
 
 --- STRUCTURED OUTPUT (machine-parsed — do NOT include these tags anywhere in your narrative above) ---
 NEXT_SESSION_TYPE: [tempo|intervals|hills|race_sim|none]
@@ -2917,10 +2965,10 @@ NEXT_SESSION_ADJUSTMENT: [one specific, actionable adjustment for the athlete's 
 
 CRITICAL REQUIREMENTS:
 - Start with "ALIGNMENT_SCORE: X/10" where X is a number 1-10
-- Keep total response under 350 words for Journal display
-- Focus on actionable insights about compliance and response
+- Keep total response under 200 words (alignment track only — quality is assessed separately)
+- Focus on plan compliance and coaching implications — NOT physiological response
 - Check user notes for context on deviations{(' - Apply the specified coaching tone consistently throughout all sections' if tone_instructions else '')}
-- NEXT_SESSION_TYPE and NEXT_SESSION_ADJUSTMENT appear ONLY in the STRUCTURED OUTPUT block at the end — never in ALIGNMENT ASSESSMENT, PHYSIOLOGICAL RESPONSE ANALYSIS, or LEARNING INSIGHTS
+- NEXT_SESSION_TYPE and NEXT_SESSION_ADJUSTMENT appear ONLY in the STRUCTURED OUTPUT block — never in ALIGNMENT ASSESSMENT or COACHING TAKEAWAYS
 - NEXT_SESSION_TYPE must be exactly one of: tempo, intervals, hills, race_sim, none
 - NEXT_SESSION_ADJUSTMENT must be a single sentence when a type is specified; "none" otherwise
 """
@@ -2935,6 +2983,142 @@ Prescribed: {prescribed_action}
 Actual: {actual_activities}
 Observations: {observations}
 Provide alignment score and brief analysis."""
+
+
+def create_quality_track_prompt(date_str, actual_activities, observations, tone_instructions, zone_compliance):
+    """Track B: prescription-blind session quality assessment.
+
+    Evaluates intrinsic value of what the athlete actually did, independent of
+    what was prescribed. Receives NO prescribed_action so it cannot anchor on compliance.
+    """
+    try:
+        training_guide = load_training_guide()
+
+        energy_level = observations.get('energy_level', 'Not recorded')
+        rpe_score = observations.get('rpe_score', 'Not recorded')
+        pain_percentage = observations.get('pain_percentage', 'Not recorded')
+        notes = observations.get('notes', 'None')
+
+        if isinstance(actual_activities, dict):
+            activity_type = actual_activities.get('type', 'unknown')
+            distance = actual_activities.get('distance', 0)
+            elevation = actual_activities.get('elevation', 0)
+            trimp = actual_activities.get('total_trimp', 0)
+            classification = actual_activities.get('workout_classification', 'unknown')
+            activity_summary = f"{activity_type} — {distance} miles, {elevation}ft elevation, {trimp} TRIMP, classified as {classification} intensity"
+        else:
+            activity_summary = str(actual_activities)
+
+        tone_section = f"{tone_instructions}\n\n" if tone_instructions else ""
+
+        # Clean zone block: report what happened, no compliance framing
+        zone_block = ""
+        if zone_compliance and zone_compliance.get('has_hr_data'):
+            zp = zone_compliance['z_pcts']
+            vt1 = zone_compliance.get('vt1_bpm')
+            vt2 = zone_compliance.get('vt2_bpm')
+            z2_min = zone_compliance.get('z2_minutes', 0)
+            q_min = zone_compliance.get('quality_minutes', 0)
+            actual_cls = zone_compliance.get('actual_classification', 'Unknown')
+
+            zones_dict = zone_compliance.get('zones')
+            def _zone_label(key):
+                if not zones_dict or key not in zones_dict:
+                    return key.upper()
+                z = zones_dict[key]
+                return f"{key.upper()} ({z.get('min', '?')}–{z.get('max', '?')} bpm)"
+
+            vt_str = (
+                f"VT1 = {vt1} bpm | VT2 = {vt2} bpm"
+            ) if vt1 and vt2 else ""
+
+            zone_block = f"""
+HEART RATE ZONE DISTRIBUTION:
+{_zone_label('zone1')}: {zp.get('z1', 0):.0f}% | {_zone_label('zone2')}: {zp.get('z2', 0):.0f}% | {_zone_label('zone3')}: {zp.get('z3', 0):.0f}% | {_zone_label('zone4')}: {zp.get('z4', 0):.0f}% | {_zone_label('zone5')}: {zp.get('z5', 0):.0f}%
+{vt_str}
+Zone 2 aerobic time: {z2_min:.0f} min | Zone 4+5 high-intensity time: {q_min:.0f} min
+Session intensity classification: {actual_cls}
+"""
+
+        return f"""You are an expert endurance coach evaluating a training session on its own merits.
+You do NOT have access to what the athlete was scheduled to do — evaluate ONLY what they did.
+
+{tone_section}TRAINING SESSION — {date_str}:
+{activity_summary}
+{zone_block}
+ATHLETE REPORT:
+- Energy Level: {energy_level}/5 (pre-session felt state)
+- RPE: {rpe_score}/10 (perceived exertion during session)
+- Pain: {format_pain_signal(pain_percentage) or "0% [pain free]"}
+- Notes: {notes}
+
+### TRAINING REFERENCE FRAMEWORK
+{training_guide if training_guide else "Apply evidence-based training principles."}
+
+QUALITY TRACK INSTRUCTIONS:
+
+Evaluate the intrinsic quality of this session. Provide analysis in EXACTLY this format:
+
+QUALITY_SCORE: [X/10]
+
+SESSION QUALITY:
+[3-4 sentences covering: (1) Was the intensity distribution appropriate for the apparent effort intent? (2) Does HR/zone data show disciplined execution or drift (e.g. black hole accumulation, pacing breakdown)? (3) Does the athlete's felt response (energy/RPE/pain) match what the data shows — are they body-aware? (4) What is the likely adaptation signal from this session?]
+
+Score rubric: 9-10=excellent execution with disciplined intensity and appropriate felt response; 7-8=solid session, minor execution issues; 5-6=meaningful execution problems or mismatch between felt state and data; 3-4=poor execution or concerning physiological response; 1-2=session unlikely to provide positive adaptation.
+
+Keep SESSION QUALITY under 150 words. Do not reference any training plan, prescription, or what the athlete "should" have done — assess only what happened.{(' Apply the specified coaching tone.' if tone_instructions else '')}
+"""
+    except Exception as e:
+        logger.error(f"Error creating quality track prompt: {e}")
+        return f"Evaluate this training session quality:\nActivity: {actual_activities}\nObservations: {observations}\nProvide QUALITY_SCORE: X/10 and brief SESSION QUALITY assessment."
+
+
+def parse_quality_track_response(response):
+    """Parse quality track response — extract QUALITY_SCORE and SESSION QUALITY narrative."""
+    import re
+    try:
+        score_match = re.search(r'QUALITY_SCORE:\s*([\d.]+)/10', response, re.IGNORECASE)
+        quality_score = round(float(score_match.group(1))) if score_match else 5
+        quality_score = max(1, min(10, quality_score))
+
+        cleaned = re.sub(r'QUALITY_SCORE:\s*[\d.]+/10\s*', '', response, flags=re.IGNORECASE).strip()
+        cleaned = process_markdown(cleaned)
+
+        return {'quality_score': quality_score, 'quality_analysis': cleaned}
+    except Exception as e:
+        logger.error(f"Error parsing quality track response: {e}")
+        return {'quality_score': 5, 'quality_analysis': response or ''}
+
+
+def _merge_autopsy_analyses(alignment_text, quality_text):
+    """Combine alignment and quality track narratives for Journal display.
+
+    Inserts the SESSION QUALITY block between ALIGNMENT ASSESSMENT and COACHING TAKEAWAYS
+    so the display reads: compliance → quality → tomorrow's guidance.
+    """
+    import re
+    if not quality_text:
+        return alignment_text
+    if not alignment_text:
+        return quality_text
+
+    # Try to split alignment text at the COACHING TAKEAWAYS section header
+    split_pattern = re.compile(
+        r'(\n+)(\*{0,2}COACHING TAKEAWAYS\*{0,2}:)',
+        re.IGNORECASE
+    )
+    parts = split_pattern.split(alignment_text, maxsplit=1)
+
+    if len(parts) == 4:
+        # parts: [before_split, leading_newlines, header, rest_of_text]
+        # Actually re.split with capturing groups gives: [before, group1, group2, after]
+        pre = parts[0].rstrip()
+        header = parts[2]
+        post = parts[3]
+        return f"{pre}\n\n{quality_text}\n\n{header}{post}"
+    else:
+        # Can't split cleanly — append after alignment text
+        return f"{alignment_text}\n\n{quality_text}"
 
 
 def parse_enhanced_autopsy_response(response):
@@ -3045,6 +3229,8 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
         return {
             'analysis': analysis,
             'alignment_score': alignment_score,
+            'quality_score': None,
+            'composite_score': None,
             'is_fallback': True,
         }
 
@@ -3053,6 +3239,8 @@ Generated: {get_app_current_date().strftime('%Y-%m-%d %H:%M:%S')}"""
         return {
             'analysis': f"Enhanced autopsy generation failed: {str(e)}",
             'alignment_score': 5,
+            'quality_score': None,
+            'composite_score': None,
             'is_fallback': True,
         }
 
@@ -3600,7 +3788,8 @@ def get_recent_autopsy_insights(user_id, days=3):
 
         recent_autopsies = execute_query(
             """
-            SELECT date, autopsy_analysis, alignment_score, deviation_reason, generated_at
+            SELECT date, autopsy_analysis, alignment_score, quality_score, composite_score,
+                   deviation_reason, generated_at
             FROM ai_autopsies
             WHERE user_id = %s AND date >= %s
             ORDER BY date DESC
@@ -3613,19 +3802,24 @@ def get_recent_autopsy_insights(user_id, days=3):
         if not recent_autopsies:
             return None
 
-        # Calculate average alignment and collect full autopsy texts
+        # Calculate average composite (prefer composite_score; fall back to alignment_score for older rows)
+        effective_scores = []
         alignment_scores = []
         latest_full_analysis = None
 
         for row in recent_autopsies:
             autopsy = dict(row)
-            if autopsy['alignment_score']:
-                alignment_scores.append(autopsy['alignment_score'])
-            # Keep the most recent full autopsy text (rows are ordered DESC)
+            composite = autopsy.get('composite_score')
+            align = autopsy.get('alignment_score')
+            effective = float(composite) if composite is not None else (float(align) if align is not None else None)
+            if effective is not None:
+                effective_scores.append(effective)
+            if align is not None:
+                alignment_scores.append(align)
             if latest_full_analysis is None and autopsy.get('autopsy_analysis'):
                 latest_full_analysis = autopsy['autopsy_analysis']
 
-        avg_alignment = sum(alignment_scores) / len(alignment_scores) if alignment_scores else 5
+        avg_alignment = sum(effective_scores) / len(effective_scores) if effective_scores else 5
 
         reason_breakdown = {
             'physical': sum(1 for r in recent_autopsies if dict(r).get('deviation_reason') == 'physical'),
