@@ -1981,27 +1981,15 @@ def update_moving_averages_standard(date, user_id):
 
         logger.info(f"Standard calculation - Date ranges: 7-day ({seven_days_ago} to {date}), 28-day ({twentyeight_days_ago} to {date})")
 
-        # Helper function to safely get sum result
+        # Helper to extract a COALESCE(SUM(...), 0) scalar from a query result.
+        # The query always returns exactly one row (COALESCE guarantees a non-NULL
+        # value even when no activities match), so a missing/empty result here
+        # means the query itself failed - let that exception propagate rather
+        # than masking it as a load/TRIMP sum of 0.
         def get_sum_result(query, params):
-            try:
-                result = execute_query(query, params, fetch=True)
-                if result and len(result) > 0:
-                    row = result[0]
-                    # For SQLite, row is sqlite3.Row object - access by index
-                    # For PostgreSQL, row would be dict-like
-                    try:
-                        # Try direct index access first (works for both SQLite and PostgreSQL)
-                        return row[0] or 0
-                    except (KeyError, TypeError):
-                        # Fallback for dict-like objects
-                        if hasattr(row, 'values'):
-                            return list(row.values())[0] or 0
-                        else:
-                            return 0
-                return 0
-            except Exception as e:
-                logger.error(f"Error in get_sum_result: {str(e)}")
-                return 0
+            result = execute_query(query, params, fetch=True)
+            row = result[0]
+            return list(row.values())[0] or 0
 
         # Time-based aggregation for load
         seven_day_sum = get_sum_result(

@@ -146,19 +146,31 @@ Invoke `/design-review` slash command or `@agent-design-review` subagent for tho
 
 ### Database Access — Migrations
 
-**All DB migrations and schema changes are run directly in Google Cloud SQL Editor, not locally.**
+Run migrations autonomously — do not ask the user to use the Cloud SQL Editor or start the proxy manually.
 
-- Write migration scripts in `scripts/migrations/` as reference/documentation, but do NOT instruct the user to run them locally.
-- When a migration is ready, provide the SQL and tell the user to paste it into the Google Cloud SQL Editor.
-- Never ask the user to start the SQL proxy for migration purposes.
+**Protocol when a migration is ready:**
+1. Check if the proxy is live by attempting a lightweight DB connection (catch the exception — don't crash).
+2. If live: run the migration directly via Python from `app/` using `db_credentials_loader` + `db_utils.execute_query()`.
+3. If not live: start it via the **PowerShell tool** (not Bash — bat files and `Start-Sleep` don't work in Bash on Windows):
+   ```powershell
+   Start-Process -FilePath "$env:USERPROFILE\bin\cloud-sql-proxy.exe" -ArgumentList "dev-ruler-460822-e8:us-central1:train-monk-db-v3","--port","5432" -WindowStyle Hidden; Start-Sleep -Seconds 6
+   ```
+   Then run the migration from the Bash tool as normal.
+4. Always verify with a follow-up query (e.g. `information_schema.columns`) confirming the schema change landed.
 
-The SQL proxy is still needed for running the local Flask server or local scripts against real data:
+The proxy tunnels `localhost:5432 → Cloud SQL`. `.env` points to `127.0.0.1`. Direct public IP is blocked — proxy is the only path.
 
-```bash
-scripts\start_sql_proxy.bat
+**Migration Python pattern (run from `app/` directory):**
+```python
+from dotenv import load_dotenv
+load_dotenv('.env')
+from db_credentials_loader import set_database_url
+import db_utils
+set_database_url()
+db_utils.execute_query("ALTER TABLE ...")
 ```
 
-Keep that window open. Tunnels `localhost:5432 → Cloud SQL`. `.env` is already configured to point to `127.0.0.1`. Direct public IP access is blocked — the proxy is the only path.
+Write migration scripts in `scripts/migrations/` as reference/documentation regardless of how they are executed.
 
 ### Mock Mode (UI development only, no DB)
 For front-end work that doesn't need real data:

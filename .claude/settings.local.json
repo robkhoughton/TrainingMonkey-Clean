@@ -68,7 +68,8 @@
       "WebFetch(domain:evokeendurance.com)",
       "WebFetch(domain:localhost)",
       "Bash(gcloud scheduler *)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(awk -F: '$1>7000 && $1<7110')"
     ],
     "deny": [],
     "ask": []

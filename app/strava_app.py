@@ -7291,10 +7291,11 @@ def daily_recommendations_cron():
             logger.error(f"intervals.icu sync failed (non-fatal): {sync_err}", exc_info=True)
 
         # Generate recommendations for TOMORROW's workout
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        app_today = get_app_current_date()
+        tomorrow = (app_today + timedelta(days=1)).strftime('%Y-%m-%d')
 
         # Get active users (users with activity in last 7 days)
-        cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        cutoff_date = (app_today - timedelta(days=7)).strftime('%Y-%m-%d')
         active_users = db_utils.execute_query(
             """
             SELECT DISTINCT user_id, 
@@ -7315,9 +7316,9 @@ def daily_recommendations_cron():
         auto_rest_days_created = 0
 
         # Calculate yesterday's date for checking incomplete workouts
-        yesterday = (datetime.now() - timedelta(days=1)).date()
+        yesterday = app_today - timedelta(days=1)
         yesterday_str = yesterday.strftime('%Y-%m-%d')
-        today_str = datetime.now().strftime('%Y-%m-%d')
+        today_str = app_today.strftime('%Y-%m-%d')
 
         for user_row in active_users:
             user_data = dict(user_row)
@@ -9534,10 +9535,8 @@ def get_user_account_status():
 def get_user_dashboard_config():
     """Get user's dashboard ACWR configuration"""
     try:
-        user_id = request.args.get('user_id', type=int)
-        if not user_id:
-            user_id = current_user.id
-        
+        user_id = current_user.id
+
         # Check if user has custom dashboard configuration
         result = db_utils.execute_query("""
             SELECT chronic_period_days, decay_rate, is_active, updated_at
