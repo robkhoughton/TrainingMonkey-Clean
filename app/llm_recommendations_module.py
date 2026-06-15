@@ -2462,8 +2462,14 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         alignment_response = None
         quality_response = None
         with ThreadPoolExecutor(max_workers=2) as executor:
-            f_align = executor.submit(call_claude, alignment_prompt, temperature, 1500, task='autopsy')
-            f_quality = executor.submit(call_claude, quality_prompt, temperature, 800, task='autopsy')
+            f_align = executor.submit(
+                call_claude, alignment_prompt,
+                temperature=temperature, max_tokens=1500, task='autopsy'
+            )
+            f_quality = executor.submit(
+                call_claude, quality_prompt,
+                temperature=temperature, max_tokens=800, task='autopsy'
+            )
             alignment_response = f_align.result()
             quality_response = f_quality.result()
 
