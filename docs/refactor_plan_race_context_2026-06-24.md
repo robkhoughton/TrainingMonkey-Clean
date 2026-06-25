@@ -60,7 +60,23 @@ Two fixes shipped without a test asserting "race appears in the daily prompt." T
 
 **Test:** assert `get_current_training_stage(user_with_A_race)` and `(user_with_no_race)` both expose `weeks_until_race`.
 
-### Phase 2 — Canonical race-context builder
+### Phase 2 — Canonical race-context builder 🟡 DAILY BUILDERS DONE (2026-06-25)
+**Done:** Added `get_upcoming_race_goals()`, `build_upcoming_races_block()`, and
+`build_race_day_block()` to `coach_recommendations.py`. Both daily prompt builders
+(`create_autopsy_informed_decision_prompt`, `create_enhanced_prompt_with_tone`) now
+route race context through these — replacing ~7 inline get_race_goals/format
+injections, including the duplicate `### UPCOMING RACES` list and the two no-plan
+fallbacks. Each daily prompt now contains exactly one `### RACE GOALS` block.
+Guardrail: `app/tests/test_race_context_builders.py` (7 tests). Needs deploy.
+
+**Still pending (smaller follow-up):** route the weekly-program prompt
+(`coach_recommendations.py` ~line 1030) and the two chat context loaders
+(`chat/context_loaders/general.py`, `training_plan.py`) through the same builders.
+Lower risk/lower stakes than the daily path; deferred to keep this change focused.
+
+---
+
+Original design notes:
 Add to `coach_recommendations.py`:
 
 ```python

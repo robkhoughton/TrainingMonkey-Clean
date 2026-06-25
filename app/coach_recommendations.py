@@ -360,6 +360,61 @@ def format_race_goals_for_prompt(race_goals: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def get_upcoming_race_goals(user_id: int, as_of=None) -> List[Dict]:
+    """Race goals on or after `as_of` (default: app current date), date-ascending.
+
+    Single source of truth for "which races are still ahead". Every prompt builder
+    that needs the athlete's race calendar should derive from this rather than
+    re-implementing the date filter (which previously drifted across call sites).
+    """
+    today = str(as_of) if as_of is not None else str(get_app_current_date())
+    return [g for g in get_race_goals(user_id) if g.get('race_date', '') >= today]
+
+
+def build_upcoming_races_block(user_id: int) -> str:
+    """Canonical `### RACE GOALS` prompt block (upcoming races only).
+
+    Returns '' when there are no upcoming races, so it is always safe to inject.
+    This is THE place race context enters a coaching prompt — do not re-query and
+    re-format get_race_goals inline. See docs/refactor_plan_race_context_2026-06-24.md.
+    """
+    try:
+        upcoming = get_upcoming_race_goals(user_id)
+        if not upcoming:
+            return ""
+        return f"\n### RACE GOALS\n{format_race_goals_for_prompt(upcoming)}\n"
+    except Exception as e:
+        logger.debug(f"build_upcoming_races_block skipped for user {user_id}: {e}")
+        return ""
+
+
+def build_race_day_block(user_id: int, target_date) -> str:
+    """Canonical `### TODAY IS RACE DAY` prompt block.
+
+    Returns '' unless a race is scheduled on target_date. A scheduled race IS the
+    day's prescription and overrides the weekly plan — the daily prompts' decision
+    hierarchies reference this block.
+    """
+    try:
+        race = get_race_on_date(user_id, target_date)
+        if not race:
+            return ""
+        dist = f"{race['distance_miles']:.1f} mi" if race.get('distance_miles') else "distance N/A"
+        vert = f", {race['elevation_gain_feet']:,} ft vert" if race.get('elevation_gain_feet') else ""
+        return f"""
+### TODAY IS RACE DAY — THIS OVERRIDES THE WEEKLY PLAN
+A scheduled race falls on {target_date}: [{race['priority']} priority] {race['race_name']} ({dist}{vert}).
+This race IS the plan. Do NOT prescribe rest or a training session that conflicts with it, and do NOT frame it as a missed workout — racing as scheduled is full compliance. Your recommendation must be RACE-EXECUTION guidance:
+- Pacing by effort/HR for the distance and vert: start conservative; manage climbs by HR, not grade.
+- Fueling and hydration cadence for the expected duration.
+- What to monitor and when to ease off (early pace discipline, GI tolerance, hot spots, pain signals).
+- Post-race priority is recovery — refuel, then Rest/Recovery in the following days scaled to race magnitude.
+"""
+    except Exception as e:
+        logger.debug(f"build_race_day_block skipped for user {user_id}: {e}")
+        return ""
+
+
 def format_race_history_for_prompt(race_history: List[Dict], trend: Dict) -> str:
     """Format race history with trend analysis for LLM prompt."""
     if not race_history:

@@ -1747,15 +1747,8 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
             else:
                 week_schedule_str = f"  Key sessions: {key_sessions_str}"
 
-            # Inject full race schedule so all upcoming races (A, B, C) reach the LLM
-            try:
-                from coach_recommendations import get_race_goals, format_race_goals_for_prompt
-                _all_goals = get_race_goals(user_id)
-                _today_str = str(get_app_current_date())
-                _upcoming_goals = [g for g in _all_goals if g.get('race_date', '') >= _today_str]
-                _race_schedule_block = f"\n### UPCOMING RACES\n{format_race_goals_for_prompt(_upcoming_goals)}\n" if _upcoming_goals else ""
-            except Exception:
-                _race_schedule_block = ""
+            # Upcoming races reach the LLM via the canonical ### RACE GOALS block
+            # (race_goals_block, built once below) — no per-block re-injection here.
 
             # [COMP] EQUAL WEIGHT RULE: compensates for model anchoring on most salient input
             # [COMP] CONFIRM/DEVIATE format: prevents silent omission of weekly plan acknowledgement
@@ -1763,7 +1756,6 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
 ### WEEKLY PROGRAM (week of {week_start})
 Training stage: {training_stage}{_race_ctx} | Intensity target: {intensity_target} | Target load: {load_low}–{load_high} ACWR
 Strategic notes: {strategic_notes}
-{_race_schedule_block}
 Full week schedule:
 {week_schedule_str}
 
@@ -1904,58 +1896,18 @@ Apply this adjustment when prescribing today's {_hard_type} session.
                     except Exception as _adj_err:
                         logger.debug(f"Pending session adjustment injection skipped for user {user_id}: {_adj_err}")
         else:
-            try:
-                from coach_recommendations import get_race_goals, format_race_goals_for_prompt
-                _fallback_goals = get_race_goals(user_id)
-                _goals_str = format_race_goals_for_prompt(_fallback_goals)
-                weekly_context_block = f"\n### WEEKLY CONTEXT\n[No weekly plan active — race goals injected directly]\n{_goals_str}\n"
-            except Exception:
-                weekly_context_block = "\n### WEEKLY CONTEXT\n[No weekly plan active — recommendation generated independently]\n"
+            # No weekly plan active. Race context is carried canonically by the
+            # ### RACE GOALS block (race_goals_block) — no need to re-inject it here.
+            weekly_context_block = "\n### WEEKLY CONTEXT\n[No weekly plan active — recommendation generated from current metrics and race goals]\n"
     except Exception as e:
-        logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}. Falling back to race goals.")
-        try:
-            from coach_recommendations import get_race_goals, format_race_goals_for_prompt
-            fallback_goals = get_race_goals(user_id)
-            goals_str = format_race_goals_for_prompt(fallback_goals)
-            weekly_context_block = f"\n### WEEKLY CONTEXT\n[Weekly plan unavailable — using race goals directly]\n{goals_str}\n"
-        except Exception:
-            weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics only]\n"
+        logger.warning(f"Phase B: weekly context injection failed for user {user_id}: {e}.")
+        weekly_context_block = "\n### WEEKLY CONTEXT\n[Weekly context unavailable — recommendation generated from current metrics and race goals]\n"
 
-    # Race-day awareness — a scheduled race on the target date is a planned event
-    # that overrides whatever the weekly plan says for that day. This also covers
-    # the fallback path and any cached weekly program generated before race-week
-    # planning was added.
-    race_day_block = ""
-    try:
-        from coach_recommendations import get_race_on_date
-        _rd_target = target_date if target_date else current_date
-        _todays_race = get_race_on_date(user_id, _rd_target)
-        if _todays_race:
-            _rd_dist = f"{_todays_race['distance_miles']:.1f} mi" if _todays_race.get('distance_miles') else "distance N/A"
-            _rd_vert = f", {_todays_race['elevation_gain_feet']:,} ft vert" if _todays_race.get('elevation_gain_feet') else ""
-            race_day_block = f"""
-### TODAY IS RACE DAY — THIS OVERRIDES THE WEEKLY PLAN
-A scheduled race falls on {_rd_target}: [{_todays_race['priority']} priority] {_todays_race['race_name']} ({_rd_dist}{_rd_vert}).
-This race IS the plan. Do NOT prescribe rest or a training session that conflicts with it, and do NOT frame it as a missed workout — racing as scheduled is full compliance. Your recommendation must be RACE-EXECUTION guidance:
-- Pacing by effort/HR for the distance and vert: start conservative; manage climbs by HR, not grade.
-- Fueling and hydration cadence for the expected duration.
-- What to monitor and when to ease off (early pace discipline, GI tolerance, hot spots, pain signals).
-- Post-race priority is recovery — refuel, then Rest/Recovery in the following days scaled to race magnitude.
-"""
-    except Exception as _rde:
-        logger.debug(f"Race-day block injection skipped for user {user_id}: {_rde}")
-
-    # Unconditional race goals block — always queried regardless of weekly plan state
-    race_goals_block = ""
-    try:
-        from coach_recommendations import get_race_goals, format_race_goals_for_prompt
-        _today_for_races = str(get_app_current_date())
-        _all_race_goals = get_race_goals(user_id)
-        _upcoming_races = [g for g in _all_race_goals if g.get('race_date', '') >= _today_for_races]
-        if _upcoming_races:
-            race_goals_block = f"\n### RACE GOALS\n{format_race_goals_for_prompt(_upcoming_races)}\n"
-    except Exception as _rge:
-        logger.debug(f"Race goals block injection skipped for user {user_id}: {_rge}")
+    # Race context — canonical builders (single source of truth). race_day_block is
+    # the "today IS race day" override; race_goals_block is the upcoming-race calendar.
+    from coach_recommendations import build_race_day_block, build_upcoming_races_block
+    race_day_block = build_race_day_block(user_id, target_date if target_date else current_date)
+    race_goals_block = build_upcoming_races_block(user_id)
 
     # Build the enhanced prompt with tone integration and risk tolerance context
     # [DOMAIN] Decision Framework assessment order (Safety→Overtraining→ACWR→Recovery→Progression)
@@ -4097,38 +4049,12 @@ Otherwise, provide tactical execution guidance for the planned workout."""
         logger.warning(f"Could not fetch weekly program context: {str(e)}")
         weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
 
-    # Race-day awareness — a scheduled race on the target date is the day's plan and
-    # overrides the weekly program prescription. Decision hierarchy below references this.
-    race_day_context = ""
-    try:
-        from coach_recommendations import get_race_on_date
-        _todays_race = get_race_on_date(user_id, target_date_str)
-        if _todays_race:
-            _rd_dist = f"{_todays_race['distance_miles']:.1f} mi" if _todays_race.get('distance_miles') else "distance N/A"
-            _rd_vert = f", {_todays_race['elevation_gain_feet']:,} ft vert" if _todays_race.get('elevation_gain_feet') else ""
-            race_day_context = f"""
-### TODAY IS RACE DAY (HIGHEST PRIORITY — OVERRIDES THE WEEK PLAN)
-Scheduled race on {target_date_str}: [{_todays_race['priority']} priority] {_todays_race['race_name']} ({_rd_dist}{_rd_vert}).
-This race IS today's prescription. Do NOT prescribe rest or training that conflicts, and do NOT frame it as a deviation — racing as scheduled is full compliance. Provide RACE-EXECUTION guidance: pacing by HR/effort (conservative start, manage climbs by HR not grade), fueling/hydration cadence, what to monitor and when to ease off, and that post-race recovery is the priority afterward.
-"""
-    except Exception as _rde:
-        logger.debug(f"Race-day context skipped for user {user_id}: {_rde}")
-
-    # Upcoming races block — the athlete's actual race calendar, always present regardless of
-    # weekly-plan state. Without this the model has no dedicated race section and defaults to the
-    # "if no race goal exists" branch in Element 2, falsely claiming "no race is on the calendar"
-    # even when an A-race is months out. Mirrors create_enhanced_prompt_with_tone (the other daily
-    # prompt builder); both should query the same source. See canonical-race-context refactor.
-    race_goals_block = ""
-    try:
-        from coach_recommendations import get_race_goals, format_race_goals_for_prompt
-        from timezone_utils import get_app_current_date
-        _today_for_races = str(get_app_current_date())
-        _upcoming_races = [g for g in (get_race_goals(user_id) or []) if g.get('race_date', '') >= _today_for_races]
-        if _upcoming_races:
-            race_goals_block = f"\n### RACE GOALS\n{format_race_goals_for_prompt(_upcoming_races)}\n"
-    except Exception as _rge:
-        logger.debug(f"Race goals block injection skipped for user {user_id}: {_rge}")
+    # Race context — canonical builders (single source of truth). race_day_context
+    # is the "today IS race day" override; race_goals_block is the upcoming-race
+    # calendar that keeps the model from falsely claiming no race is scheduled.
+    from coach_recommendations import build_race_day_block, build_upcoming_races_block
+    race_day_context = build_race_day_block(user_id, target_date_str)
+    race_goals_block = build_upcoming_races_block(user_id)
 
     # Get recent journal notes for additional context (may contain injury/medical info)
     recent_notes = get_recent_journal_notes(user_id, days=3)
