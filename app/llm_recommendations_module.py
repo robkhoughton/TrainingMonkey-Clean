@@ -1667,7 +1667,7 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
                 try:
                     from coach_recommendations import get_current_training_stage
                     _ts = get_current_training_stage(user_id)
-                    _weeks_to_race = _ts.get('weeks_to_race')
+                    _weeks_to_race = _ts.get('weeks_until_race')
                     _a_race_name = _ts.get('race_name', '') or ''
                 except Exception:
                     pass
@@ -4114,6 +4114,22 @@ This race IS today's prescription. Do NOT prescribe rest or training that confli
     except Exception as _rde:
         logger.debug(f"Race-day context skipped for user {user_id}: {_rde}")
 
+    # Upcoming races block — the athlete's actual race calendar, always present regardless of
+    # weekly-plan state. Without this the model has no dedicated race section and defaults to the
+    # "if no race goal exists" branch in Element 2, falsely claiming "no race is on the calendar"
+    # even when an A-race is months out. Mirrors create_enhanced_prompt_with_tone (the other daily
+    # prompt builder); both should query the same source. See canonical-race-context refactor.
+    race_goals_block = ""
+    try:
+        from coach_recommendations import get_race_goals, format_race_goals_for_prompt
+        from timezone_utils import get_app_current_date
+        _today_for_races = str(get_app_current_date())
+        _upcoming_races = [g for g in (get_race_goals(user_id) or []) if g.get('race_date', '') >= _today_for_races]
+        if _upcoming_races:
+            race_goals_block = f"\n### RACE GOALS\n{format_race_goals_for_prompt(_upcoming_races)}\n"
+    except Exception as _rge:
+        logger.debug(f"Race goals block injection skipped for user {user_id}: {_rge}")
+
     # Get recent journal notes for additional context (may contain injury/medical info)
     recent_notes = get_recent_journal_notes(user_id, days=3)
     notes_context = ""
@@ -4206,7 +4222,7 @@ COACHING STRATEGY: Standard evidence-based recommendation without learning conte
         stage_info = get_current_training_stage(user_id)
         training_stage_context = (
             f"TRAINING STAGE: {stage_info.get('stage', 'Unknown')}"
-            + (f" | Weeks to {stage_info.get('race_name', 'race')}: {stage_info.get('weeks_to_race', 'N/A')}" if stage_info.get('race_name') else "")
+            + (f" | Weeks to {stage_info.get('race_name', 'race')}: {round(stage_info['weeks_until_race']) if stage_info.get('weeks_until_race') is not None else 'N/A'}" if stage_info.get('race_name') else "")
             + (f" | {stage_info.get('details', '')}" if stage_info.get('details') else "")
         )
     except Exception as _e:
@@ -4246,6 +4262,7 @@ CURRENT METRICS:
 {athlete_model_context}
 
 {race_day_context}
+{race_goals_block}
 {weekly_program_context}
 
 {notes_context}

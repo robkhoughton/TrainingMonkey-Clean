@@ -282,10 +282,13 @@ def get_current_training_stage(user_id: int) -> Dict:
     race_goals = get_race_goals(user_id)
     
     if not race_goals:
+        # Shape parity with the has-race path: same keys, same casing.
+        # Canonical "weeks to race" key is weeks_until_race everywhere (see refactor plan).
         return {
-            'stage': 'Base',
-            'weeks_to_race': None,
+            'stage': 'base',
+            'weeks_until_race': None,
             'race_name': None,
+            'priority': None,
             'details': 'No race goal set - focus on base building'
         }
     
@@ -840,7 +843,7 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
     try:
         from workout_library import get_phase_interval_rules
         _stage = training_stage.get('stage', 'base')
-        _weeks_to_race = training_stage.get('weeks_until_race') or training_stage.get('weeks_to_race')
+        _weeks_to_race = training_stage.get('weeks_until_race')
         _phase_rules = get_phase_interval_rules(
             stage=_stage,
             weeks_to_race=_weeks_to_race,
@@ -1040,7 +1043,7 @@ Guide context: {assessment_category}
 **CURRENT TRAINING STAGE**
 
 Stage: {training_stage.get('stage', 'Unknown')}
-Weeks to Primary Race: {training_stage.get('weeks_to_race', 'N/A')}
+Weeks to Primary Race: {training_stage.get('weeks_until_race', 'N/A')}
 Race: {training_stage.get('race_name', 'N/A')}
 Focus: {training_stage.get('details', 'N/A')}
 

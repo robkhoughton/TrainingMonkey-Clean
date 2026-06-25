@@ -77,10 +77,10 @@ def _get_training_stage(user_id: int) -> str:
             return "No active training plan"
 
         stage_name = stage_info.get('stage', 'Unknown')
-        weeks_to_race = stage_info.get('weeks_to_race')
+        weeks_to_race = stage_info.get('weeks_until_race')
 
         if weeks_to_race is not None:
-            return f"{stage_name} ({weeks_to_race} weeks to race)"
+            return f"{stage_name} ({round(weeks_to_race)} weeks to race)"
         else:
             return stage_name
 
