@@ -905,6 +905,21 @@ def get_model_for_task(task):
     return task_routing.get(task, MODEL_SONNET)
 
 
+def get_max_tokens_for_task(task):
+    """Max output tokens by task. 'daily' is generous because the enhanced daily prompt
+    emits three prose sections PLUS the structured_output JSON block; at 2000 it truncated
+    mid-prose (stop_reason=max_tokens), dropping the JSON and breaking the safety-floor
+    guardrail (no decision.action to enforce). This is a cap, not a target — the short
+    autopsy responses still finish well under it, so their cost is unchanged.
+    """
+    return {
+        'daily': 4000,
+        'autopsy': 4000,
+        'weekly': 3000,
+        'weekly_comprehensive': 4000,
+    }.get(task, 2000)
+
+
 def extract_structured_output(response_text):
     """Extract and parse the structured JSON block from <structured_output> XML tags.
 
@@ -925,7 +940,7 @@ def extract_structured_output(response_text):
         return None
 
 
-def call_claude(prompt, model=None, temperature=None, max_tokens=2000, timeout=60, task='daily'):
+def call_claude(prompt, model=None, temperature=None, max_tokens=None, timeout=60, task='daily'):
     """Call Claude API using the Anthropic SDK.
 
     Drop-in replacement for call_anthropic_api() with identical return type (str).
@@ -941,6 +956,8 @@ def call_claude(prompt, model=None, temperature=None, max_tokens=2000, timeout=6
     """
     if model is None:
         model = get_model_for_task(task)
+    if max_tokens is None:
+        max_tokens = get_max_tokens_for_task(task)
     if temperature is None:
         temperature = RECOMMENDATION_TEMPERATURE
 
@@ -970,7 +987,7 @@ def call_claude(prompt, model=None, temperature=None, max_tokens=2000, timeout=6
         raise
 
 
-def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=2000, timeout=30):
+def call_anthropic_api(prompt, model=DEFAULT_MODEL, temperature=RECOMMENDATION_TEMPERATURE, max_tokens=None, timeout=30):
     """Legacy wrapper — delegates to call_claude(). Kept for backward compatibility.
 
     All new code should call call_claude() directly with the appropriate task parameter.
