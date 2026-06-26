@@ -440,9 +440,13 @@ class UnifiedMetricsService:
 
             # Compute injury risk score using user-specific thresholds from get_adjusted_thresholds().
             # This is the authoritative calculation — the frontend must not replicate it.
-            from llm_recommendations_module import get_adjusted_thresholds, get_user_recommendation_style
+            from llm_recommendations_module import get_adjusted_thresholds, get_user_recommendation_style, apply_athlete_model_to_thresholds
             recommendation_style = get_user_recommendation_style(user_id)
             thresholds = get_adjusted_thresholds(recommendation_style)
+            # Apply the athlete's calibrated divergence thresholds so the dashboard injury
+            # verdict and the daily prompts speak ONE personalized threshold (e.g. -0.11),
+            # not the style baseline (-0.20). Single source of truth for the verdict.
+            thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
 
             acwr_high = thresholds['acwr_high_risk']
             acwr_undertraining = thresholds['acwr_undertraining']

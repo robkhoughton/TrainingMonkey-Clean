@@ -1390,10 +1390,12 @@ def format_metric_verdict_block(current_metrics, assessment_category, thresholds
     intl = current_metrics.get('internal_acwr')
     div = current_metrics.get('normalized_divergence')
     dsr = current_metrics.get('days_since_rest')
-    acwr_high = current_metrics.get('acwr_high_threshold', thresholds.get('acwr_high_risk'))
-    div_warn = current_metrics.get('divergence_warn_threshold', thresholds.get('divergence_overtraining'))
-    div_mod = current_metrics.get('divergence_moderate_threshold', thresholds.get('divergence_moderate_risk'))
-    dsr_max = current_metrics.get('days_since_rest_max', thresholds.get('days_since_rest_max'))
+    # Prefer the passed (calibrated) thresholds so the DISPLAYED threshold always matches
+    # the one used to classify the category — never a different source.
+    acwr_high = thresholds.get('acwr_high_risk', current_metrics.get('acwr_high_threshold'))
+    div_warn = thresholds.get('divergence_overtraining', current_metrics.get('divergence_warn_threshold'))
+    div_mod = thresholds.get('divergence_moderate_risk', current_metrics.get('divergence_moderate_threshold'))
+    dsr_max = thresholds.get('days_since_rest_max', current_metrics.get('days_since_rest_max'))
     risk_label = current_metrics.get('injury_risk_label', 'N/A')
     risk_score = current_metrics.get('injury_risk_score')
 
@@ -4081,10 +4083,14 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     # Get user's risk tolerance and personalized thresholds
     recommendation_style = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(recommendation_style)
+    # Use the athlete's CALIBRATED thresholds (personal breakdown threshold, productive
+    # window edge) — not the style baseline. This builder previously skipped calibration,
+    # so the verdict stated -0.20 instead of the athlete's real -0.11. Every other prompt
+    # builder already applies this.
+    thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
 
     # Authoritative server-side verdict — same classifier the dashboard/non-autopsy
-    # builder use. Injected as fact so the model never re-derives or fabricates a
-    # threshold (the "-0.110 breakdown" hallucination came from leaving this to the LLM).
+    # builder use. Injected as fact so the model never re-derives the threshold.
     assessment_category = derive_assessment_category(current_metrics, thresholds)
     metric_verdict_block = format_metric_verdict_block(current_metrics, assessment_category, thresholds)
 
