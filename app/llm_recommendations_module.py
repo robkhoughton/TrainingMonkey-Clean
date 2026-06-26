@@ -1423,6 +1423,124 @@ The weekly plan is CONDITIONAL on this verdict. If the mandate is rest/reduce, t
 """
 
 
+def get_recent_alignment(user_id, n=5):
+    """Recent execution signal for plan-fidelity judgment — last N autopsies BY COUNT
+    (no calendar-day bound; rest days don't shrink the sample).
+
+    Returns raw numbers — the LLM judges plan trust directly from the alignment
+    number and trend, with no strong/moderate/weak word buckets.
+    """
+    try:
+        rows = execute_query(
+            """
+            SELECT alignment_score, deviation_reason
+            FROM ai_autopsies
+            WHERE user_id = %s AND alignment_score IS NOT NULL
+            ORDER BY date DESC
+            LIMIT %s
+            """,
+            (user_id, n), fetch=True
+        )
+        scores = [float(r['alignment_score']) for r in (rows or []) if r.get('alignment_score') is not None]
+        if not scores:
+            return {'avg': None, 'scores': [], 'trend': 'insufficient_data', 'n': 0, 'reasons': {}}
+        avg = round(sum(scores) / len(scores), 1)
+        # scores are DESC (most recent first); endpoint comparison for direction.
+        if len(scores) >= 3:
+            trend = 'improving' if scores[0] > scores[-1] else 'declining' if scores[0] < scores[-1] else 'stable'
+        else:
+            trend = 'insufficient_data'
+        reasons = {}
+        for r in (rows or []):
+            dr = r.get('deviation_reason')
+            if dr:
+                reasons[dr] = reasons.get(dr, 0) + 1
+        return {'avg': avg, 'scores': scores, 'trend': trend, 'n': len(scores), 'reasons': reasons}
+    except Exception as e:
+        logger.warning(f"get_recent_alignment failed for user {user_id}: {e}")
+        return {'avg': None, 'scores': [], 'trend': 'insufficient_data', 'n': 0, 'reasons': {}}
+
+
+def format_recent_execution_block(alignment):
+    """One-line raw-number execution fact for plan-fidelity judgment (no word buckets)."""
+    if not alignment or alignment.get('avg') is None or alignment.get('n', 0) < 1:
+        return "RECENT EXECUTION: no recent autopsy data — plan trust unestablished; default to the plan and gather data."
+    reasons = alignment.get('reasons') or {}
+    reason_str = ", ".join(f"{k}:{v}" for k, v in reasons.items()) if reasons else "none recorded"
+    return (f"RECENT EXECUTION: avg alignment {alignment['avg']}/10 over last {alignment['n']} sessions, "
+            f"trend {alignment['trend']}; deviation reasons: {reason_str}.")
+
+
+# Deterministic safety floor: assessment category -> the minimum-safe action envelope.
+# This is the non-negotiable part (overtraining must not become a training day). Plan
+# fidelity WITHIN the envelope is left to LLM judgment over the alignment number.
+_FLOOR_BY_CATEGORY = {
+    'mandatory_rest': 'rest',
+    'overtraining_risk': 'rest',
+    'high_acwr_risk': 'reduce',
+    'recovery_needed': 'reduce',
+    'normal_progression': 'train_allowed',
+    'undertraining_opportunity': 'train_allowed',
+}
+_FLOOR_ALLOWED_ACTIONS = {
+    'rest': {'rest'},
+    'reduce': {'rest', 'reduce'},
+    'train_allowed': {'rest', 'reduce', 'train', 'maintain'},
+}
+
+
+def mandated_floor(assessment_category):
+    """Return the safety floor ('rest' | 'reduce' | 'train_allowed') for a category."""
+    return _FLOOR_BY_CATEGORY.get(assessment_category, 'train_allowed')
+
+
+def floor_violation(assessment_category, decision_action):
+    """True if the model's decision.action violates the deterministic safety floor."""
+    floor = mandated_floor(assessment_category)
+    if floor == 'train_allowed' or not decision_action:
+        return False
+    return str(decision_action).strip().lower() not in _FLOOR_ALLOWED_ACTIONS[floor]
+
+
+def _safe_floor_recommendation(assessment_category, current_metrics, target_date_str):
+    """Deterministic safe fallback used only when the LLM repeatedly violates the safety
+    floor. Emits a plain rest/reduce recommendation grounded in the verdict — never a
+    training day when the floor mandates rest. Last line of defense, not the normal path.
+    """
+    floor = mandated_floor(assessment_category)
+    ext = current_metrics.get('external_acwr')
+    intl = current_metrics.get('internal_acwr')
+    div = current_metrics.get('normalized_divergence')
+    cat_words = assessment_category.replace('_', ' ')
+    if floor == 'rest':
+        action = 'rest'
+        prose = (f"DAILY RECOMMENDATION\n\nToday is a rest day. Your metrics ({cat_words}) place you beyond your "
+                 f"safe training threshold — external ACWR {ext}, internal ACWR {intl}, divergence {div}. Any planned "
+                 f"session, including a scheduled test, is deferred — a test run in this state produces invalid data and "
+                 f"adds load you cannot absorb. Recovery is where this week's training becomes fitness: prioritize sleep, "
+                 f"refuel, and keep movement to easy walking. Note your leg freshness and energy by mid-afternoon and log "
+                 f"it — it shapes tomorrow's prescription.")
+    else:  # reduce
+        action = 'reduce'
+        prose = (f"DAILY RECOMMENDATION\n\nReduce today. Your metrics ({cat_words}) — external ACWR {ext}, internal ACWR "
+                 f"{intl}, divergence {div} — call for genuinely less than the plan: cut volume and hold easy Zone 1. Defer "
+                 f"any quality work or scheduled test to a fresher day. Log how you feel afterward — it shapes tomorrow's "
+                 f"prescription.")
+    structured = {
+        'target_date': target_date_str,
+        'assessment': {'category': assessment_category, 'primary_signal': 'divergence'},
+        'decision': {'action': action},
+        'meta': {'source': 'floor_guardrail_fallback'},
+    }
+    return {
+        'daily_recommendation': prose,
+        'weekly_recommendation': '',
+        'pattern_insights': '',
+        'raw_response': prose,
+        'structured_output': structured,
+    }
+
+
 def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
     """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
 
@@ -3957,6 +4075,12 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
         if autopsy_insights is None:
             autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
 
+        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds).
+        floor_thresholds = apply_athlete_model_to_thresholds(
+            get_adjusted_thresholds(get_user_recommendation_style(user_id)), user_id
+        )
+        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
+
         # Create enhanced prompt that includes autopsy learning
         prompt = create_autopsy_informed_decision_prompt(
             user_id,
@@ -3973,6 +4097,41 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
 
             # parse_llm_response handles process_markdown and structured_output extraction
             sections = parse_llm_response(response.strip())
+
+            # SAFETY-FLOOR GUARDRAIL: the physiology floor is non-negotiable. If the model's
+            # decision.action exceeds it (e.g. trains on a mandated rest day), regenerate once
+            # with an explicit correction; if it still violates, fall back to a safe Rx.
+            def _action_of(secs):
+                so = secs.get('structured_output')
+                if isinstance(so, str):
+                    try:
+                        so = json.loads(so)
+                    except Exception:
+                        return None
+                if isinstance(so, dict):
+                    return (so.get('decision') or {}).get('action')
+                return None
+
+            if floor_violation(floor_category, _action_of(sections)):
+                floor = mandated_floor(floor_category)
+                logger.warning(
+                    f"FLOOR VIOLATION user {user_id}: category={floor_category} floor={floor} "
+                    f"action={_action_of(sections)} — regenerating once"
+                )
+                correction = (
+                    f"\n\nCORRECTION — your previous decision.action was '{_action_of(sections)}', which VIOLATES the "
+                    f"non-negotiable ACTION MANDATE floor ('{floor}') for category {floor_category}. Re-issue the FULL "
+                    f"response; decision.action must be one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned "
+                    f"training or test and prescribe rest or a genuine reduction accordingly."
+                )
+                response2 = call_anthropic_api(prompt + correction)
+                if response2 and response2.strip() and not floor_violation(floor_category, _action_of(parse_llm_response(response2.strip()))):
+                    response = response2.strip()
+                    sections = parse_llm_response(response)
+                    logger.info(f"Floor guardrail: regeneration compliant for user {user_id}")
+                else:
+                    logger.error(f"Floor guardrail: regeneration still violated floor for user {user_id}; using safe fallback")
+                    return _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
 
             daily_rec = sections.get('daily_recommendation', '')
 
@@ -4235,14 +4394,9 @@ COACHING STRATEGY: Standard evidence-based recommendation without learning conte
     except Exception as _e:
         logger.warning(f"Could not fetch training stage: {_e}")
 
-    # Alignment K of N (raw counts — LLM interprets)
-    alignment_kn_context = ""
-    if autopsy_insights and autopsy_insights.get('alignment_trend'):
-        scores = [s for s in autopsy_insights['alignment_trend'] if isinstance(s, (int, float))]
-        if len(scores) >= 2:
-            n = len(scores)
-            k = sum(1 for s in scores if s >= 7)
-            alignment_kn_context = f"ALIGNMENT: {k} of last {n} workouts scored ≥7 | avg {autopsy_insights.get('avg_alignment', 0):.1f}/10"
+    # Recent execution — count-based (last 5 autopsies), raw number + trend. Replaces the
+    # fragile 3-day K-of-N window; the LLM judges plan trust directly from the number.
+    alignment_kn_context = format_recent_execution_block(get_recent_alignment(user_id, n=5))
 
     prompt = f"""You are an expert endurance coach providing tomorrow's training decision with learning from recent autopsy analyses.
 
@@ -4310,18 +4464,17 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
      e. Metrics within productive range → proceed to step 5 to determine workout type
    - Positive divergence means more available capacity — never a reason to reduce load.
    - The metric verdict (train / reduce / rest) is determined here. Step 5 refines what kind.
-5. WEEKLY PLAN — WORKOUT TYPE, STRUCTURE, AND ALIGNMENT-WEIGHTED AUTHORITY
-   - After metrics determine the action in step 4, consult the weekly plan for workout TYPE and progressive sequence.
-   - Plan authority scales with recent alignment (K-of-N from ALIGNMENT data above):
-     * ≥4 of 5 sessions on target: plan is well-calibrated — use prescribed session type as-is
-     * 2–3 of 5 on target: plan is partially informative — allow metric-driven adjustments to volume/intensity
-     * ≤1 of 5 on target: plan has low predictive value — treat as a loose structural guide; metrics drive the prescription
-   - Metrics support training + plan says train → use plan's prescribed session (scaled by authority above).
-   - Metrics support training + plan says rest → prescribe training; state the metric justification explicitly.
-   - Metrics indicate rest/reduce + plan says train → rest or reduce; state the metric override explicitly.
-   - The plan is CONDITIONAL on the verdict for EVERY session type, including scheduled tests/assessments (HR drift / AeT test). A test is a real session carrying real internal load (HR-driven) — it is NOT a rest substitute and is NOT "low load" just because it is sub-threshold. When the mandate is rest or reduce, DEFER the test to the next eligible fresh day and prescribe rest/recovery; never execute it in full and call that a reduction.
-   - A "reduce" decision must be a GENUINE reduction versus the plan (less volume and/or intensity, or deferring the session). Never relabel a fully-executed planned session as "reduce."
-   - The plan shapes WHAT to do; metrics determine WHETHER and HOW MUCH.
+5. WEEKLY PLAN — CONDITIONAL ON THE FLOOR, THEN TUNED BY EXECUTION
+   - The ACTION MANDATE in TODAY'S METRIC VERDICT is the non-negotiable floor. It is decided in step 4 and CANNOT be overridden upward by the plan:
+     * Mandate REST → rest or very-light Zone 1 only. Defer ANY planned session, including scheduled tests/assessments (HR drift / AeT). A test is a real session carrying real HR-driven internal load — it is NOT a rest substitute and is NOT "low load" just because it is sub-threshold.
+     * Mandate REDUCE → a GENUINE reduction versus the plan (less volume and/or intensity, or deferring the session). Never relabel a fully-executed planned session as "reduce."
+     * Mandate allows training → proceed to tune the planned session by recent execution (below).
+   - WITHIN the floor's envelope, judge how closely to follow the plan using RECENT EXECUTION (the avg alignment number + trend above) — use the number directly, do not bucket it:
+     * Higher alignment / improving → follow the plan's prescribed session as written; the athlete's execution has earned that trust.
+     * Lower alignment / declining → treat the plan as a loose guide; let metrics drive volume/intensity and keep it conservative.
+     * Weigh the deviation reasons: prescription_mismatch = the plan itself was miscalibrated (adjust WHAT you prescribe, not just how much); external = life/schedule (plan may be fine); physical = a body signal (lean conservative).
+   - When the floor ALLOWS training AND capacity is high (undertraining_opportunity) AND recent execution is strong, actively prescribe MORE than the plan — added volume or an extra quality element — and say why.
+   - The plan shapes WHAT to do; the floor and metrics determine WHETHER and HOW MUCH.
 6. ATHLETE RISK TOLERANCE
    - Respect personalized thresholds, but medical safety always trumps risk tolerance
 
@@ -4337,9 +4490,9 @@ Your prescription must be flowing prose (no bullets, no sub-headers, no numbered
 
 Element 1 — PRESCRIPTION (~30 words): Lead with the metric-driven verdict, then name the workout. Examples: "Your metrics are in the productive zone — your weekly plan calls for [X]." Or if overriding the plan: "Your metrics call for [rest/reduced load], overriding the planned [X]." Or if plan authority is low: "Your metrics and recent compliance call for [Y] — adjusting today's planned [X] accordingly." If no plan exists, prescribe directly from metrics.
 Element 2 — STAGE (~30 words): Name the training stage. If a race goal exists, state weeks remaining and what this stage is building toward for that race. Then connect today's specific session type to the stage purpose — why this stimulus, why now. If no race goal exists, state what the current phase is developing and when the athlete would expect to feel its effect.
-Element 3 — ALIGNMENT (~30 words): Cite the K-of-N figure from ALIGNMENT data. Then make the consequence explicit — connect the compliance record directly to today's prescription:
-- If K-of-N is strong (≥4/5 or ≥3/4): name what that consistency has earned or enabled today. Example: "You've hit your targets in 4 of your last 5 sessions — that's why we can add strides today" or "...which is why I'm comfortable holding this volume." Make the athlete see that their compliance has direct consequence.
-- If K-of-N is weak (≤2/5): name what the execution gap means for today's prescription. Example: "2 of your last 5 sessions hit target — until that improves, we keep today conservative." This frames constraint as earned, not arbitrary.
+Element 3 — EXECUTION (~30 words): Cite the recent average alignment number and trend from RECENT EXECUTION. Connect it directly to today's plan trust:
+- Higher/improving alignment: name what that consistency has earned. Example: "You're averaging 8.5 over your last 5 sessions and trending up — that's why we follow the plan as written / add strides today."
+- Lower/declining alignment: name what the execution gap means. Example: "Your last 5 average 5.2 and are sliding — until that improves, we keep today conservative." Frame the constraint as earned, not arbitrary. Cite the number; do not invent a K-of-N count.
 - If insufficient data: state that plainly and note what would change the prescription.
 Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each using ONLY the thresholds and classification given in TODAY'S METRIC VERDICT. Do not introduce, compute, or invent any other threshold value (e.g., never state a breakdown threshold that is not in the verdict).
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
