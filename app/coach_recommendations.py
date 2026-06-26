@@ -788,6 +788,9 @@ def build_weekly_program_prompt(
     max_30d_long_run = float(activities_30d[0]['distance_miles']) if activities_30d else None
     long_run_ceiling = round(max_30d_long_run * 1.1, 1) if max_30d_long_run else None
     race_goals = get_race_goals(user_id)
+    # Upcoming-only for the prompt's RACE GOALS display (canonical filter, shared with the
+    # daily builders). race_goals (all) is still used below for race-week detection.
+    upcoming_race_goals = get_upcoming_race_goals(user_id)
     race_history = get_race_history(user_id)
     perf_trend = calculate_performance_trend(race_history)
     training_schedule = get_training_schedule(user_id)
@@ -1085,7 +1088,7 @@ Guide context: {assessment_category}
 
 **RACE GOALS**
 
-{format_race_goals_for_prompt(race_goals)}
+{format_race_goals_for_prompt(upcoming_race_goals)}
 {(chr(10) + race_week_block) if race_week_block else ""}
 **PERFORMANCE HISTORY**
 

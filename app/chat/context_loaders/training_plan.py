@@ -6,7 +6,7 @@ Token estimate: ~4000-5000
 
 import logging
 from coach_recommendations import (
-    get_race_goals,
+    get_upcoming_race_goals,
     get_race_history,
     get_training_schedule,
     get_current_training_stage,
@@ -47,7 +47,7 @@ def load_context(user_id: int) -> dict:
         week_start = _week_ctx['week_start_date'] if _week_ctx else current_date
 
         weekly_program = get_cached_weekly_program(user_id, week_start) or {}
-        race_goals = get_race_goals(user_id) or []
+        race_goals = get_upcoming_race_goals(user_id) or []
         race_history = get_race_history(user_id) or []
         performance_trend = calculate_performance_trend(race_history) if race_history else {}
         training_stage = get_current_training_stage(user_id) or {}

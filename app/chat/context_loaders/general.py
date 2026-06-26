@@ -7,7 +7,7 @@ Token estimate: ~800-1200
 """
 
 import logging
-from coach_recommendations import get_race_goals, get_current_training_stage, get_recent_journal_observations
+from coach_recommendations import get_upcoming_race_goals, get_current_training_stage, get_recent_journal_observations
 from db_utils import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def load_context(user_id: int) -> dict:
 def _get_a_race_summary(user_id: int) -> str:
     """Get summary of the A-priority race if exists."""
     try:
-        races = get_race_goals(user_id)
+        races = get_upcoming_race_goals(user_id)
         if not races:
             return "No race goals set"
 
