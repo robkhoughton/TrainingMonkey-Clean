@@ -1340,6 +1340,87 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         logger.error(f"Error generating enhanced recommendations for user {user_id}: {str(e)}")
         return None
 
+
+# Action mandate per assessment category. The weekly plan is CONDITIONAL on this —
+# every daily prompt binds the plan's session to the mandate, not just the AeT test.
+_CATEGORY_ACTION_MANDATE = {
+    'mandatory_rest': "REST — full rest day. Override any planned session.",
+    'overtraining_risk': "REST or very-light recovery only (Zone 1). The planned session is deferred, not executed at reduced volume.",
+    'high_acwr_risk': "REDUCE load — genuinely lower volume/intensity below what the plan prescribes. A real reduction, not a relabeled full session.",
+    'recovery_needed': "ACTIVE RECOVERY only (Zone 1). Defer quality/test sessions.",
+    'undertraining_opportunity': "Room to ADD load — the plan may understate what is supportable today.",
+    'normal_progression': "PROCEED with the planned session if metrics support it; adjust volume/intensity to the numbers.",
+}
+
+
+def derive_assessment_category(current_metrics, thresholds):
+    """Server-side metric classification — the single authority for the daily verdict.
+
+    Mirrors the dashboard's risk computation (UnifiedMetricsService) and feeds both
+    daily prompt builders so the LLM never re-derives (and mis-derives) the category.
+    Uses <= on the overtraining boundary: divergence sitting exactly on the threshold
+    is overtraining, not "near" it.
+    """
+    days_since_rest = current_metrics.get('days_since_rest', 0) or 0
+    external_acwr = current_metrics.get('external_acwr', 0) or 0
+    internal_acwr = current_metrics.get('internal_acwr', 0) or 0
+    divergence = current_metrics.get('normalized_divergence', 0) or 0
+
+    if days_since_rest > thresholds['days_since_rest_max']:
+        return 'mandatory_rest'
+    if divergence <= thresholds['divergence_overtraining']:
+        return 'overtraining_risk'
+    if external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
+        return 'high_acwr_risk'
+    if divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
+        return 'recovery_needed'
+    if external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
+        return 'undertraining_opportunity'
+    return 'normal_progression'
+
+
+def format_metric_verdict_block(current_metrics, assessment_category, thresholds):
+    """Authoritative verdict block — computed facts the model must use, not re-derive.
+
+    Pulls the already-computed risk fields from current_metrics (set by
+    UnifiedMetricsService) and states each metric against its REAL threshold, so the
+    model cannot fabricate a threshold or argue with itself in the prose.
+    """
+    ext = current_metrics.get('external_acwr')
+    intl = current_metrics.get('internal_acwr')
+    div = current_metrics.get('normalized_divergence')
+    dsr = current_metrics.get('days_since_rest')
+    acwr_high = current_metrics.get('acwr_high_threshold', thresholds.get('acwr_high_risk'))
+    div_warn = current_metrics.get('divergence_warn_threshold', thresholds.get('divergence_overtraining'))
+    div_mod = current_metrics.get('divergence_moderate_threshold', thresholds.get('divergence_moderate_risk'))
+    dsr_max = current_metrics.get('days_since_rest_max', thresholds.get('days_since_rest_max'))
+    risk_label = current_metrics.get('injury_risk_label', 'N/A')
+    risk_score = current_metrics.get('injury_risk_score')
+
+    def _cmp(value, threshold, worse_when_below=True):
+        if value is None or threshold is None:
+            return "unknown"
+        if worse_when_below:
+            return "AT/BELOW (high-risk)" if value <= threshold else "above (safer)"
+        return "ABOVE (high-risk)" if value > threshold else "at/below (safer)"
+
+    mandate = _CATEGORY_ACTION_MANDATE.get(assessment_category, _CATEGORY_ACTION_MANDATE['normal_progression'])
+    ext_s = f"{ext:.2f}" if isinstance(ext, (int, float)) else "N/A"
+    intl_s = f"{intl:.2f}" if isinstance(intl, (int, float)) else "N/A"
+    div_s = f"{div:.3f}" if isinstance(div, (int, float)) else "N/A"
+    risk_s = f"{risk_label}" + (f" ({risk_score}/100)" if risk_score is not None else "")
+    return f"""### TODAY'S METRIC VERDICT (authoritative — computed server-side; use these values, do NOT re-derive or restate different thresholds)
+Assessment category: {assessment_category.upper()}
+Injury risk: {risk_s}
+External ACWR {ext_s} vs high-risk threshold {acwr_high} — {_cmp(ext, acwr_high, worse_when_below=False)}.
+Internal ACWR {intl_s} vs high-risk threshold {acwr_high} — {_cmp(intl, acwr_high, worse_when_below=False)}.
+Normalized divergence {div_s} vs overtraining threshold {div_warn} (moderate-risk line {div_mod}); more negative is worse — {_cmp(div, div_warn)}.
+Days since rest: {dsr} (mandatory-rest at >{dsr_max}).
+ACTION MANDATE: {mandate}
+The weekly plan is CONDITIONAL on this verdict. If the mandate is rest/reduce, the planned session — including any scheduled test — is deferred or genuinely reduced, never executed in full and relabeled.
+"""
+
+
 def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
     """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
 
@@ -1397,23 +1478,10 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     logger.info(f"  Days since rest: {formatted_metrics['days_since_rest']}")
     logger.info(f"  Risk tolerance: {recommendation_style} (ACWR threshold: {thresholds['acwr_high_risk']})")
 
-    # Determine primary assessment category based on metrics (using adjusted thresholds)
-    days_since_rest = current_metrics.get('days_since_rest', 0)
-    external_acwr = current_metrics.get('external_acwr', 0)
-    internal_acwr = current_metrics.get('internal_acwr', 0)
-    normalized_divergence = current_metrics.get('normalized_divergence', 0)
-
-    assessment_category = "normal_progression"
-    if days_since_rest > thresholds['days_since_rest_max']:
-        assessment_category = "mandatory_rest"
-    elif normalized_divergence < thresholds['divergence_overtraining']:
-        assessment_category = "overtraining_risk"
-    elif external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
-        assessment_category = "high_acwr_risk"
-    elif normalized_divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
-        assessment_category = "recovery_needed"
-    elif external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
-        assessment_category = "undertraining_opportunity"
+    # Determine primary assessment category — shared server-side classifier (single
+    # source of truth; same logic feeds the autopsy daily builder and the dashboard).
+    assessment_category = derive_assessment_category(current_metrics, thresholds)
+    metric_verdict_block = format_metric_verdict_block(current_metrics, assessment_category, thresholds)
 
     # Filter the training guide to sections relevant to this assessment category
     filtered_guide = _select_guide_sections(training_guide, assessment_category) if training_guide else training_guide
@@ -1932,6 +2000,7 @@ Age: {f"{athlete_age} years old" if athlete_age else "Not specified"}
 Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
 Assessment Category: {assessment_category}
 {race_goals_block}
+{metric_verdict_block}
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
 - Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
@@ -4012,7 +4081,13 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     # Get user's risk tolerance and personalized thresholds
     recommendation_style = get_user_recommendation_style(user_id)
     thresholds = get_adjusted_thresholds(recommendation_style)
-    
+
+    # Authoritative server-side verdict — same classifier the dashboard/non-autopsy
+    # builder use. Injected as fact so the model never re-derives or fabricates a
+    # threshold (the "-0.110 breakdown" hallucination came from leaving this to the LLM).
+    assessment_category = derive_assessment_category(current_metrics, thresholds)
+    metric_verdict_block = format_metric_verdict_block(current_metrics, assessment_category, thresholds)
+
     # Load training guide for evidence-based recommendations
     training_guide = load_training_guide()
     if not training_guide:
@@ -4174,6 +4249,7 @@ ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description
 
 DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
+{metric_verdict_block}
 CURRENT METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
@@ -4219,6 +4295,7 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
    - Apply the exact strategy changes recommended in autopsy analysis
    - Don't assume low alignment = simplify; read what autopsy actually says
 4. CURRENT METRICS (ACWR, divergence, days since rest) — PRIMARY TRAINING DRIVER
+   - TODAY'S METRIC VERDICT above is authoritative and already computed server-side. Its ACTION MANDATE decides whether today is train / reduce / rest. Use its category and threshold values verbatim — do NOT compute, restate, or invent different threshold numbers.
    - Evaluate ALL threshold conditions from the Training Guide BEFORE consulting the weekly plan:
      a. Both ACWR < 0.8 → undertraining signal; plan's rest prescription is overridden unless another factor applies
      b. Both ACWR > 1.3 → reduce load regardless of what the plan prescribes
@@ -4236,6 +4313,8 @@ CRITICAL DECISION HIERARCHY (APPLY IN THIS ORDER):
    - Metrics support training + plan says train → use plan's prescribed session (scaled by authority above).
    - Metrics support training + plan says rest → prescribe training; state the metric justification explicitly.
    - Metrics indicate rest/reduce + plan says train → rest or reduce; state the metric override explicitly.
+   - The plan is CONDITIONAL on the verdict for EVERY session type, including scheduled tests/assessments (HR drift / AeT test). A test is a real session carrying real internal load (HR-driven) — it is NOT a rest substitute and is NOT "low load" just because it is sub-threshold. When the mandate is rest or reduce, DEFER the test to the next eligible fresh day and prescribe rest/recovery; never execute it in full and call that a reduction.
+   - A "reduce" decision must be a GENUINE reduction versus the plan (less volume and/or intensity, or deferring the session). Never relabel a fully-executed planned session as "reduce."
    - The plan shapes WHAT to do; metrics determine WHETHER and HOW MUCH.
 6. ATHLETE RISK TOLERANCE
    - Respect personalized thresholds, but medical safety always trumps risk tolerance
@@ -4256,9 +4335,9 @@ Element 3 — ALIGNMENT (~30 words): Cite the K-of-N figure from ALIGNMENT data.
 - If K-of-N is strong (≥4/5 or ≥3/4): name what that consistency has earned or enabled today. Example: "You've hit your targets in 4 of your last 5 sessions — that's why we can add strides today" or "...which is why I'm comfortable holding this volume." Make the athlete see that their compliance has direct consequence.
 - If K-of-N is weak (≤2/5): name what the execution gap means for today's prescription. Example: "2 of your last 5 sessions hit target — until that improves, we keep today conservative." This frames constraint as earned, not arbitrary.
 - If insufficient data: state that plainly and note what would change the prescription.
-Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each against the athlete's personal thresholds from ATHLETE MODEL — state where they sit in their productive training window.
+Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each using ONLY the thresholds and classification given in TODAY'S METRIC VERDICT. Do not introduce, compute, or invent any other threshold value (e.g., never state a breakdown threshold that is not in the verdict).
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
-Element 6 — DECISION (~20 words): State the metric-driven verdict: "Train: [workout type] — metrics support this." or "Rest: [specific metric threshold]." or "Reduce: [specific change] — [metric trigger]." Never write "Proceed as planned" — the decision must be grounded in metrics, not deference to the plan.
+Element 6 — DECISION (~20 words): State the metric-driven verdict matching the ACTION MANDATE: "Train: [workout type] — metrics support this." or "Rest: [specific metric trigger]." or "Reduce: [the concrete reduction versus the plan] — [metric trigger]." If "Reduce", the change must be real (shorter duration, lower cap, or deferring a test) — never describe executing the full planned session. Never write "Proceed as planned."
 Element 7 — EXECUTION (~45 words): On training days: give 2-3 execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain as a proxy for internal load — always give the HR number. Terrain cues are only acceptable when managing a specific injury. On rest or recovery days (decision = rest or reduce): replace execution cues with a recovery protocol — name the specific physiological process completing today (e.g., glycogen resynthesis, connective tissue remodeling, neural fatigue clearance), connect it to the training stimulus it is responding to, and give 2-3 active recovery actions (sleep, nutrition, easy movement). Frame recovery as active training, not the absence of it.
 Element 8 — INJURY (≤15 words, only if signals are present): One sentence on managing the injury this workout.
 Element 9 — PRE-MORTEM (≤25 words, conditional): Include only when a meaningful failure mode exists — assessment category is overtraining_risk, high_acwr_risk, recovery_needed, or divergence_warning; or today is a hard session; or red flags are present; or recent autopsies show physical deviation as the dominant cause. Name: (1) the most likely way this session goes wrong, (2) the early warning sign that precedes it, (3) one decision rule in the form "If [early sign], [specific action]." Use natural coaching voice: "The risk today is X." Omit entirely on normal_progression or undertraining_opportunity sessions with no red flags and no hard session type.
@@ -4267,6 +4346,7 @@ Element 10 — PROBE (~25 words): Identify the one diagnostic signal that will r
 REST DAY FRAMING RULE: When decision = rest or reduce, never frame the rest day as absence of training. The recommendation must convey that recovery is where adaptation is completed — the workout was the stimulus, today is where it becomes fitness. The tone should communicate purpose and intent, not permission to stop. The probe (Element 10) on rest days should ask the athlete to observe something meaningful about their recovery state (e.g., energy level by afternoon, leg freshness, sleep quality) and log it — recovery quality data is as valuable as workout data.
 
 Plain text only — no markdown, no bold, no headers within the prose.
+OUTPUT DISCIPLINE: Write only the final, settled prescription. Do NOT show reasoning, second-guessing, or self-correction in the prose (no "wait", "let me reconsider", "on closer inspection", "that requires honest scrutiny"). Resolve all metric interpretation against TODAY'S METRIC VERDICT before writing — the prose must read as decided coaching, never thinking aloud.
 
 ### STRUCTURED OUTPUT (required)
 After the DAILY RECOMMENDATION section, append a machine-readable JSON block inside XML tags.
