@@ -95,6 +95,40 @@ class TestRecentAlignment(unittest.TestCase):
             self.assertNotIn(word, block.lower())
 
 
+def _sections(action):
+    return {'structured_output': {'decision': {'action': action}},
+            'daily_recommendation': f'rec {action}', 'weekly_recommendation': '', 'pattern_insights': ''}
+
+
+class TestEnforceSafetyFloor(unittest.TestCase):
+    def test_no_violation_does_not_regenerate(self):
+        regen = mock.Mock()
+        res = m.enforce_safety_floor(_sections('rest'), {}, 'overtraining_risk', 'P', regen, 1)
+        self.assertEqual(res['status'], 'ok')
+        regen.assert_not_called()
+
+    @mock.patch.object(m, 'parse_llm_response')
+    def test_violation_then_compliant_regeneration(self, mock_parse):
+        mock_parse.return_value = _sections('rest')
+        regen = mock.Mock(return_value='RAW COMPLIANT')
+        res = m.enforce_safety_floor(_sections('train'), {}, 'overtraining_risk', 'P', regen, 1)
+        self.assertEqual(res['status'], 'ok')
+        self.assertEqual(res['response'], 'RAW COMPLIANT')
+        regen.assert_called_once()
+
+    @mock.patch.object(m, 'parse_llm_response')
+    def test_violation_persists_falls_back(self, mock_parse):
+        mock_parse.return_value = _sections('train')
+        regen = mock.Mock(return_value='RAW STILL BAD')
+        res = m.enforce_safety_floor(_sections('train'), {}, 'overtraining_risk', 'P', regen, 1)
+        self.assertEqual(res['status'], 'fallback')
+
+    def test_empty_regeneration_falls_back(self):
+        regen = mock.Mock(return_value='')
+        res = m.enforce_safety_floor(_sections('train'), {}, 'overtraining_risk', 'P', regen, 1)
+        self.assertEqual(res['status'], 'fallback')
+
+
 class TestMetricCitationRepair(unittest.TestCase):
     METRICS = {'external_acwr': 1.75, 'internal_acwr': 2.13, 'normalized_divergence': -0.20}
 

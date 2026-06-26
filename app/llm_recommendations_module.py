@@ -1283,6 +1283,12 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         else:
             logger.info("Generating standard recommendation without recent autopsy data")
 
+        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds).
+        floor_thresholds = apply_athlete_model_to_thresholds(
+            get_adjusted_thresholds(recommendation_style), user_id
+        )
+        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
+
         prompt = create_enhanced_prompt_with_tone(
             current_metrics, activities, pattern_analysis, training_guide,
             user_id, tone_instructions, autopsy_insights, target_date=target_date,
@@ -1294,11 +1300,40 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
 
         # Parse the response
         sections = parse_llm_response(llm_response)
-        
+
         if is_autopsy_informed:
             logger.info(f"Recommendation is autopsy-informed with {autopsy_insights['count']} recent autopsies, avg alignment: {autopsy_insights['avg_alignment']}")
         else:
             logger.info("Recommendation generated without recent autopsy data")
+
+        # SAFETY-FLOOR GUARDRAIL + numeric repair (shared with the autopsy path).
+        target_date_str = target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date)[:10]
+        floor_result = enforce_safety_floor(
+            sections, current_metrics, floor_category, prompt,
+            lambda p: call_claude(p, task='daily'), user_id
+        )
+        if floor_result['status'] == 'fallback':
+            _safe = _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
+            daily_text = _safe['daily_recommendation']
+            weekly_text = ''
+            pattern_text = ''
+            structured_out = _safe['structured_output']
+            llm_response = _safe['raw_response']
+        else:
+            sections = floor_result['sections']
+            if floor_result['response']:
+                llm_response = floor_result['response']
+            daily_text = sections.get('daily_recommendation', '')
+            weekly_text = sections.get('weekly_recommendation', '')
+            pattern_text = sections.get('pattern_insights', '')
+            structured_out = sections.get('structured_output')
+            # Fix any metric value the prose mis-cited against the authoritative metrics.
+            daily_text, _reps = repair_metric_citations(daily_text, current_metrics)
+            if _reps:
+                logger.warning(
+                    f"Metric-citation repair (enhanced) user {user_id}: "
+                    + "; ".join(f"{lbl} {cited}->{correct}" for lbl, cited, correct in _reps)
+                )
 
         # FIXED: Create recommendation object with proper target_date
         recommendation = {
@@ -1308,9 +1343,9 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
             'data_start_date': start_date,
             'data_end_date': end_date,
             'metrics_snapshot': current_metrics,
-            'daily_recommendation': sections['daily_recommendation'],
-            'weekly_recommendation': sections['weekly_recommendation'],
-            'pattern_insights': sections['pattern_insights'],
+            'daily_recommendation': daily_text,
+            'weekly_recommendation': weekly_text,
+            'pattern_insights': pattern_text,
             'raw_response': llm_response,
             'user_id': user_id,
             # NEW: Autopsy tracking fields
@@ -1318,7 +1353,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
             'autopsy_count': autopsy_insights['count'] if autopsy_insights else 0,
             'avg_alignment_score': autopsy_insights['avg_alignment'] if autopsy_insights else None,
             # Phase 1: Structured output (None if model didn't emit the block)
-            'structured_output': sections.get('structured_output')
+            'structured_output': structured_out
         }
 
         # Save to database
@@ -1500,6 +1535,59 @@ def floor_violation(assessment_category, decision_action):
     if floor == 'train_allowed' or not decision_action:
         return False
     return str(decision_action).strip().lower() not in _FLOOR_ALLOWED_ACTIONS[floor]
+
+
+def _decision_action_of(sections):
+    """Extract decision.action from parsed sections' structured_output (dict or JSON str)."""
+    so = sections.get('structured_output')
+    if isinstance(so, str):
+        try:
+            so = json.loads(so)
+        except Exception:
+            return None
+    if isinstance(so, dict):
+        return (so.get('decision') or {}).get('action')
+    return None
+
+
+def enforce_safety_floor(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id):
+    """Shared safety-floor guardrail for BOTH daily generators (autopsy + enhanced).
+
+    The physiology floor is non-negotiable. If the model's decision.action exceeds it,
+    regenerate once with a correction. Returns:
+      {'status': 'ok',       'sections': <sections>, 'response': <str|None>}  — compliant
+      {'status': 'fallback', 'sections': <sections>, 'response': None}        — caller emits
+                                                          _safe_floor_recommendation
+    regenerate_fn(prompt:str) -> raw response str (path-specific call_claude / call_anthropic_api).
+    """
+    if not floor_violation(floor_category, _decision_action_of(sections)):
+        return {'status': 'ok', 'sections': sections, 'response': None}
+
+    floor = mandated_floor(floor_category)
+    prior = _decision_action_of(sections)
+    logger.warning(
+        f"FLOOR VIOLATION user {user_id}: category={floor_category} floor={floor} action={prior} — regenerating once"
+    )
+    correction = (
+        f"\n\nCORRECTION — your previous decision.action was '{prior}', which VIOLATES the non-negotiable ACTION "
+        f"MANDATE floor ('{floor}') for category {floor_category}. Re-issue the FULL response; decision.action must be "
+        f"one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned training or test and prescribe rest or a "
+        f"genuine reduction accordingly."
+    )
+    try:
+        response2 = regenerate_fn(prompt + correction)
+    except Exception as e:
+        logger.error(f"Floor guardrail regeneration call failed for user {user_id}: {e}")
+        response2 = None
+
+    if response2 and response2.strip():
+        sections2 = parse_llm_response(response2.strip())
+        if not floor_violation(floor_category, _decision_action_of(sections2)):
+            logger.info(f"Floor guardrail: regeneration compliant for user {user_id}")
+            return {'status': 'ok', 'sections': sections2, 'response': response2.strip()}
+
+    logger.error(f"Floor guardrail: regeneration still violated floor for user {user_id}; using safe fallback")
+    return {'status': 'fallback', 'sections': sections, 'response': None}
 
 
 def repair_metric_citations(prose, current_metrics):
@@ -4152,40 +4240,16 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
             # parse_llm_response handles process_markdown and structured_output extraction
             sections = parse_llm_response(response.strip())
 
-            # SAFETY-FLOOR GUARDRAIL: the physiology floor is non-negotiable. If the model's
-            # decision.action exceeds it (e.g. trains on a mandated rest day), regenerate once
-            # with an explicit correction; if it still violates, fall back to a safe Rx.
-            def _action_of(secs):
-                so = secs.get('structured_output')
-                if isinstance(so, str):
-                    try:
-                        so = json.loads(so)
-                    except Exception:
-                        return None
-                if isinstance(so, dict):
-                    return (so.get('decision') or {}).get('action')
-                return None
-
-            if floor_violation(floor_category, _action_of(sections)):
-                floor = mandated_floor(floor_category)
-                logger.warning(
-                    f"FLOOR VIOLATION user {user_id}: category={floor_category} floor={floor} "
-                    f"action={_action_of(sections)} — regenerating once"
-                )
-                correction = (
-                    f"\n\nCORRECTION — your previous decision.action was '{_action_of(sections)}', which VIOLATES the "
-                    f"non-negotiable ACTION MANDATE floor ('{floor}') for category {floor_category}. Re-issue the FULL "
-                    f"response; decision.action must be one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned "
-                    f"training or test and prescribe rest or a genuine reduction accordingly."
-                )
-                response2 = call_anthropic_api(prompt + correction)
-                if response2 and response2.strip() and not floor_violation(floor_category, _action_of(parse_llm_response(response2.strip()))):
-                    response = response2.strip()
-                    sections = parse_llm_response(response)
-                    logger.info(f"Floor guardrail: regeneration compliant for user {user_id}")
-                else:
-                    logger.error(f"Floor guardrail: regeneration still violated floor for user {user_id}; using safe fallback")
-                    return _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
+            # SAFETY-FLOOR GUARDRAIL (shared with the enhanced path): the physiology floor
+            # is non-negotiable. Regenerate once on violation; safe fallback if still violating.
+            floor_result = enforce_safety_floor(
+                sections, current_metrics, floor_category, prompt, call_anthropic_api, user_id
+            )
+            if floor_result['status'] == 'fallback':
+                return _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
+            sections = floor_result['sections']
+            if floor_result['response']:
+                response = floor_result['response']
 
             daily_rec = sections.get('daily_recommendation', '')
 
