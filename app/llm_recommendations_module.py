@@ -1502,6 +1502,60 @@ def floor_violation(assessment_category, decision_action):
     return str(decision_action).strip().lower() not in _FLOOR_ALLOWED_ACTIONS[floor]
 
 
+def repair_metric_citations(prose, current_metrics):
+    """Repair LLM prose that mis-cites an authoritative metric value (e.g. writes
+    "Internal ACWR is 1.13" when it is 2.13). The structured data is always correct;
+    this only fixes the narrative. Anchored on the metric LABEL so threshold numbers
+    (e.g. "high-risk threshold of 1.5") are never touched.
+
+    Returns (repaired_prose, repairs) where repairs is a list of (label, cited, correct).
+    """
+    import re as _re
+    if not prose:
+        return prose, []
+    repairs = []
+    ext = current_metrics.get('external_acwr')
+    intl = current_metrics.get('internal_acwr')
+    div = current_metrics.get('normalized_divergence')
+    out = prose
+
+    connective = r'(?:sits at|sitting at|is|of|at|reaches|=|:)?\s*'
+
+    def _fix_acwr(text, label, value):
+        if not isinstance(value, (int, float)):
+            return text
+        pat = _re.compile(rf'({label}\s*{connective})(-?\d+\.\d+)')
+        def repl(mobj):
+            cited = mobj.group(2)
+            try:
+                if round(float(cited), 2) != round(float(value), 2):
+                    repairs.append((label, cited, f"{value:.2f}"))
+                    return mobj.group(1) + f"{value:.2f}"
+            except ValueError:
+                pass
+            return mobj.group(0)
+        return pat.sub(repl, text)
+
+    out = _fix_acwr(out, 'External ACWR', ext)
+    out = _fix_acwr(out, 'Internal ACWR', intl)
+
+    if isinstance(div, (int, float)):
+        pat = _re.compile(rf'((?:[Nn]ormalized\s+)?divergence\s*{connective})(-?\d+\.\d+)')
+        target = f"{div:.3f}"
+        def repl_div(mobj):
+            cited = mobj.group(2)
+            try:
+                if round(float(cited), 3) != round(float(div), 3):
+                    repairs.append(('divergence', cited, target))
+                    return mobj.group(1) + target
+            except ValueError:
+                pass
+            return mobj.group(0)
+        out = pat.sub(repl_div, out)
+
+    return out, repairs
+
+
 def _safe_floor_recommendation(assessment_category, current_metrics, target_date_str):
     """Deterministic safe fallback used only when the LLM repeatedly violates the safety
     floor. Emits a plain rest/reduce recommendation grounded in the verdict — never a
@@ -4142,6 +4196,15 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
                 ).strip()
                 logger.warning("Parser returned empty daily_recommendation, using stripped raw response")
 
+            # Numeric repair: fix any metric value the prose mis-cited against the
+            # authoritative metrics (structured data is correct; only the narrative slips).
+            daily_rec, _repairs = repair_metric_citations(daily_rec, current_metrics)
+            if _repairs:
+                logger.warning(
+                    f"Metric-citation repair for user {user_id}: "
+                    + "; ".join(f"{lbl} {cited}->{correct}" for lbl, cited, correct in _repairs)
+                )
+
             logger.info(f"✅ Daily recommendation: {len(daily_rec)} chars")
 
             return {
@@ -4494,7 +4557,7 @@ Element 3 — EXECUTION (~30 words): Cite the recent average alignment number an
 - Higher/improving alignment: name what that consistency has earned. Example: "You're averaging 8.5 over your last 5 sessions and trending up — that's why we follow the plan as written / add strides today."
 - Lower/declining alignment: name what the execution gap means. Example: "Your last 5 average 5.2 and are sliding — until that improves, we keep today conservative." Frame the constraint as earned, not arbitrary. Cite the number; do not invent a K-of-N count.
 - If insufficient data: state that plainly and note what would change the prescription.
-Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Interpret each using ONLY the thresholds and classification given in TODAY'S METRIC VERDICT. Do not introduce, compute, or invent any other threshold value (e.g., never state a breakdown threshold that is not in the verdict).
+Element 4 — METRICS (~45 words): Cite External ACWR, Internal ACWR, and Divergence values by number. Copy each number EXACTLY as written in TODAY'S METRIC VERDICT — do not alter a single digit. Interpret each using ONLY the thresholds and classification given in the verdict. Do not introduce, compute, or invent any other threshold value (e.g., never state a breakdown threshold that is not in the verdict).
 Element 5 — CONFIDENCE (~20 words): State the model confidence % and autopsy count. Say what that means for trusting this prescription.
 Element 6 — DECISION (~20 words): State the metric-driven verdict matching the ACTION MANDATE: "Train: [workout type] — metrics support this." or "Rest: [specific metric trigger]." or "Reduce: [the concrete reduction versus the plan] — [metric trigger]." If "Reduce", the change must be real (shorter duration, lower cap, or deferring a test) — never describe executing the full planned session. Never write "Proceed as planned."
 Element 7 — EXECUTION (~45 words): On training days: give 2-3 execution cues covering HR target (bpm), duration, and effort management. RULE: Internal load is always and only a function of HR. Never use terrain as a proxy for internal load — always give the HR number. Terrain cues are only acceptable when managing a specific injury. On rest or recovery days (decision = rest or reduce): replace execution cues with a recovery protocol — name the specific physiological process completing today (e.g., glycogen resynthesis, connective tissue remodeling, neural fatigue clearance), connect it to the training stimulus it is responding to, and give 2-3 active recovery actions (sleep, nutrition, easy movement). Frame recovery as active training, not the absence of it.

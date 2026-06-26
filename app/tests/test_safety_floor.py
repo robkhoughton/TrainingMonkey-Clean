@@ -95,5 +95,41 @@ class TestRecentAlignment(unittest.TestCase):
             self.assertNotIn(word, block.lower())
 
 
+class TestMetricCitationRepair(unittest.TestCase):
+    METRICS = {'external_acwr': 1.75, 'internal_acwr': 2.13, 'normalized_divergence': -0.20}
+
+    def test_corrects_wrong_internal_acwr_only(self):
+        prose = ("External ACWR sits at 1.75, well above the high-risk threshold of 1.5. "
+                 "Internal ACWR is 1.13, also above that same threshold. Normalized divergence "
+                 "is -0.200, which breaches your breakdown threshold of -0.110.")
+        fixed, reps = m.repair_metric_citations(prose, self.METRICS)
+        self.assertEqual(reps, [('Internal ACWR', '1.13', '2.13')])
+        self.assertIn('Internal ACWR is 2.13', fixed)
+
+    def test_preserves_threshold_numbers(self):
+        prose = "Internal ACWR is 1.13, above the high-risk threshold of 1.5, breakdown -0.110."
+        fixed, _ = m.repair_metric_citations(prose, self.METRICS)
+        self.assertIn('threshold of 1.5', fixed)   # not changed to an ACWR value
+        self.assertIn('-0.110', fixed)             # breakdown threshold untouched
+
+    def test_noop_when_all_correct(self):
+        prose = "External ACWR is 1.75, Internal ACWR is 2.13, divergence is -0.200."
+        fixed, reps = m.repair_metric_citations(prose, self.METRICS)
+        self.assertEqual(reps, [])
+        self.assertEqual(fixed, prose)
+
+    def test_formatting_difference_not_flagged(self):
+        # -0.20 and -0.200 are the same value; must not be "repaired".
+        prose = "Normalized divergence is -0.20 today."
+        _, reps = m.repair_metric_citations(prose, self.METRICS)
+        self.assertEqual(reps, [])
+
+    def test_repairs_wrong_divergence(self):
+        prose = "Normalized divergence is -0.150, in the moderate band."
+        fixed, reps = m.repair_metric_citations(prose, self.METRICS)
+        self.assertEqual(reps, [('divergence', '-0.150', '-0.200')])
+        self.assertIn('-0.200', fixed)
+
+
 if __name__ == '__main__':
     unittest.main()
