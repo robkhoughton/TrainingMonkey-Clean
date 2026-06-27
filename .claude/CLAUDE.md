@@ -91,6 +91,7 @@ Detailed standards are organized in `.claude/rules/`:
 - `deployment.md` - Dockerfile, frontend build, deployment process
 - `frontend.md` - React/TypeScript patterns, performance monitoring
 - `code-quality.md` - General standards, error handling, testing
+- `llm-determinism.md` - When to use deterministic code vs prompt vs LLM judgment; [COMP]/[DOMAIN] tagging; what stays deterministic regardless of model capability
 
 ## Coaching Context Library
 
