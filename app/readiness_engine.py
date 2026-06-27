@@ -287,6 +287,13 @@ def get_ans_readiness(user_id):
         df = load_athlete_readiness_dataframe(user_id)
         hrv_reading_count = int(df['hrv'].dropna().shape[0])
         rhr_reading_count = int(df['rhr'].dropna().shape[0])
+        # Age of the most recent HRV reading — drives the dynamic-AeT staleness ceiling
+        # (dynamic_aet.py). None when no HRV reading exists at all.
+        hrv_dates = df.loc[df['hrv'].notna(), 'date']
+        if hrv_dates.empty:
+            days_since_hrv = None
+        else:
+            days_since_hrv = int((pd.Timestamp(get_app_current_date()) - hrv_dates.max()).days)
         hrv_z, rhr_z = get_readiness_metrics(df)
         is_overreaching = evaluate_overreaching_trend(df)
         sleep_modifier = get_sleep_modifier(df)
@@ -304,6 +311,7 @@ def get_ans_readiness(user_id):
             'spo2_flag': spo2_flag,
             'hrv_reading_count': hrv_reading_count,
             'rhr_reading_count': rhr_reading_count,
+            'days_since_hrv': days_since_hrv,
         }
     except Exception as exc:
         logger.error(f"readiness_engine error for user {user_id}: {exc}", exc_info=True)
@@ -317,4 +325,5 @@ def get_ans_readiness(user_id):
             'spo2_flag': False,
             'hrv_reading_count': 0,
             'rhr_reading_count': 0,
+            'days_since_hrv': None,
         }

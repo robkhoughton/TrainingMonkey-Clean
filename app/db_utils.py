@@ -579,6 +579,9 @@ def upsert_athlete_model(user_id, model_data):
             'hrv_suppression_threshold', 'hrv_baseline_30d',
             'rhr_elevation_threshold', 'rhr_baseline_7d',
             'aet_bpm', 'aet_test_date',
+            'aet_offset_deadband', 'aet_offset_slope_neg', 'aet_offset_slope_pos',
+            'aet_offset_cap_neg', 'aet_offset_cap_pos', 'aet_offset_staleness_days',
+            'aet_offset_n', 'aet_offset_confidence',
         }
 
         filtered = {k: v for k, v in model_data.items() if k in allowed_columns}

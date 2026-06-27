@@ -1,6 +1,6 @@
 # Design Guidance — Dynamic AeT in Internal Load & the Rx
 
-**Date:** 2026-06-27 · **Status:** design guidance (not implemented) · **Source concept:** `VAULT/Dynamic AeT.md`
+**Date:** 2026-06-27 · **Status:** decisions resolved — build plan ready (not implemented) · **Source concept:** `VAULT/Dynamic AeT.md`
 **Follows:** `.claude/rules/llm-determinism.md`
 
 ## Intent (Rob)
@@ -35,8 +35,11 @@ them through two different mechanisms — one easy, one a real decision.
 ```
 effective_AeT(today) = baseline_AeT ± readiness_offset(HRV Z-score)
 ```
-- `baseline_AeT` = `athlete_model.aet_bpm` if fresh (≤42d), else formula VT1. The drift
-  test still matters — it **calibrates the baseline**; the dynamic layer modulates around it.
+- `baseline_AeT` = `get_user_hr_thresholds().vt1_bpm`, whose precedence is **fresh drift
+  test (`athlete_model.aet_bpm`, ≤42d) → user-selected custom lab AeT (`custom_hr_zones`
+  Z2 ceiling) → formula VT1**. The drift test still matters — it **calibrates the
+  baseline**; the dynamic layer modulates around it. (Verified 2026-06-27: the custom-zone
+  middle tier was missing from this line originally.)
 - `readiness_offset` from today's HRV Z (**reuse `readiness_engine`'s `hrv_z` — do not
   recompute**). Suppressed HRV → lower AeT.
 - **Per the determinism rule, the offset magnitudes are NOT hard-coded magic numbers.**
@@ -45,17 +48,42 @@ effective_AeT(today) = baseline_AeT ± readiness_offset(HRV Z-score)
   hypothesis, not settled values.
 - Computed in code, injected as fact. Never LLM-derived.
 
+## CORRECTION (2026-06-27, verified against code) — AeT does not reach zone classification today
+
+The original Effect A below assumed flipping `get_user_hr_thresholds` to a dynamic VT1
+would move the classification boundary. **It will not.** Verified:
+
+- `time_in_zone1..5` are bucketed **once at sync** by `calculate_hr_zones_from_streams`
+  (`strava_training_load.py:1530`) from **`user_settings` boundaries only** (50/60/70/80/90%
+  maxHR, HRR, or custom). AeT/`vt1_bpm` never enters bucketing. The buckets are stored
+  columns on `activities`.
+- The measured-AeT override only populates `vt1_bpm`, which is consumed **as a label /
+  prescription string** (`compute_zone_compliance` `:535`; prompt block `:3151`; zone
+  anchor `:3182`). `compute_zone_compliance` classifies black-hole / Z2-target from the
+  **pre-stored bucket percentages**, then prints `vt1_bpm` as "Zone 2 ceiling" beside them.
+- **Latent bug, already present:** the prompt can say "VT1 = 135 (Z2 ceiling)" while the
+  z-pcts were bucketed at Z2 ceiling = 0.70·maxHR. Label and buckets can disagree today.
+
+**Implication:** making "130 bpm land in Z3 on a suppressed day" requires **re-bucketing
+the HR stream against the AeT-anchored boundary** — not a one-line VT1 flip. Machinery
+exists (`calculate_hr_zones_from_streams` + raw streams retained in `hr_streams`,
+`db_utils.py:1063`); it must be invoked with the effective-AeT boundary. Effect A's real
+scope is therefore "introduce AeT into the bucketing path (Z2/Z3 line only)." This also
+means Effect A changes classification **even at offset 0**, because it switches the Z2/Z3
+line from the `user_settings` 70% value to the measured/effective AeT — the intended fix
+of the latent bug, but a behavior change to validate.
+
 ## Effect A — Rx + zone classification (lower risk; can ship first)
 
-1. `get_user_hr_thresholds` returns the **effective (dynamic) AeT** as VT1, so the Z2
-   ceiling moves daily.
-2. Time-in-zone and zone-compliance (polarized black-hole detection) computed against
-   today's dynamic boundaries → a 130 bpm effort correctly lands in Z3 on a suppressed
-   day. **This realizes the concept's core effect using the existing zone machinery.**
+1. `get_user_hr_thresholds` returns the **effective (dynamic) AeT** as VT1.
+2. Zone-compliance (polarized black-hole detection) re-buckets the session's HR stream
+   against the **effective AeT of the session's own date** for the Z2/Z3 line → a 130 bpm
+   effort correctly lands in Z3 on a suppressed day. (Per decision (d): only the Z2/Z3
+   line moves; other boundaries stay from `user_settings`.)
 3. Rx: inject a **"TODAY'S EFFECTIVE AeT"** authoritative fact block (baseline, today's
-   value, delta, why), parallel to the metric-verdict block. Element 7 execution cues use
-   today's AeT for HR targets ("keep HR below 130 today, not 135"). Prose may frame a
-   depressed AeT as a recovery signal.
+   value, delta, source = overnight rMSSD, fallback reason if any), parallel to the
+   metric-verdict block. Element 7 execution cues use today's AeT for HR targets ("keep HR
+   below 130 today, not 135"). Prose may frame a depressed AeT as a recovery signal.
 
 *Determinism map:* effective-AeT calc + zone classification = category 1 (fact); Rx
 framing/voice = category 3.
@@ -101,13 +129,121 @@ the June 2026 safety-floor work). Good emergent behavior.
 - `aerobic_assessment_engine.py` + `athlete_model` — baseline AeT + store offset params.
 - `UnifiedMetricsService` / ACWR pipeline — window consistency (Effect B).
 
-## Open decisions (resolve before building)
+## Resolved decisions (2026-06-27 session)
 
-1. Effect B method: zone-weighted (a) vs Banister multiplier (b) vs dual-track (c).
-2. ACWR consistency: backfill rolling history vs forward-only transition.
-3. Offset function shape/magnitude + calibration home (`athlete_model`); defaults to start.
-4. Does effective AeT shift only the Z2 ceiling, or proportionally rescale all zones?
-5. HRV source/cadence: confirm daily waking rMSSD is reliably populated, and from what device.
+1. **Effect B method → (a) Edwards zone-weighted load on AeT-anchored dynamic zones,
+   deployed dual-track.** Banister keeps running for continuity; the Edwards-dynamic load
+   runs in parallel; divergence cuts over to it only after a clean 28-day baseline;
+   Banister retired post-cutover. Edwards weights (1–2–3–4–5) are category-1 constants,
+   injected as fact, documented in the Training Metrics Reference Guide.
+2. **ACWR consistency → forward-only in production + code-gated 28-day cutover.** Dual-track
+   removes the blind window (Banister covers divergence during warmup), so consistency is
+   satisfied *by construction* at cutover — both 7d and 28d windows fully populated with the
+   new method. Plus a **one-time read-only validation backfill** from `hr_streams` (per-day
+   reconstructed AeT) for sanity comparison only — never fed to the live Rx.
+3. **Offset function → continuous, asymmetric, dead-banded, clamped** (reject the concept's
+   step function — it produces noise-driven boundary cliffs). Defaults seeded into
+   `athlete_model`:
+   `deadband 0.5σ · slope_neg 4.0 bpm/σ · slope_pos 1.5 bpm/σ · cap_neg −8 · cap_pos +3 ·
+   staleness 3d`. Asymmetry (down > up) is a **safety property**, not a tuning knob.
+   `effective_AeT = round(baseline_AeT + offset)`.
+   - **Hard guard (category-2, code-level, not a default):** if readiness state is
+     `YELLOW_PARASYMPATHETIC` (Deep Hole) or `RED` (overreaching), clamp offset ≤ 0 —
+     never raise AeT, regardless of raw `hrv_z` (the parasympathetic-overdrive inversion).
+   - **Missing-HRV rule:** reuse `readiness_engine` `hrv_z` (7-day acute mean already
+     smooths single gaps as a carry-forward); UNKNOWN (<14 readings) → offset 0; staleness
+     ceiling decays offset → 0 when latest reading older than `staleness_days`; inject the
+     fallback as an honest category-1 fact ("AeT held at baseline — HRV stale/absent since
+     {date}").
+   - **Calibration home = `athlete_model`** (new columns + `db_utils.py:571` allowlist),
+     seeded to defaults with paired `aet_offset_n` / `aet_offset_confidence` (mirrors
+     `acwr_sweet_spot_confidence`). Calibration is **deferred to drift-test anchoring**:
+     each drift test yields a `(hrv_z_that_day, measured_AeT − baseline)` pair; fit
+     per-athlete slopes once `aet_offset_n ≥ N`. Honest framing until then: population
+     default, not personalized.
+4. **Zone rescaling → only the VT1 / Z2-ceiling (= Z3 floor) shifts.** VT2 and all higher
+   boundaries and the Z1/Z2 split stay anchored — we have a daily proxy for the aerobic
+   threshold but **none for VT2**; rescaling all zones would fabricate unmeasured VT2
+   movement (determinism violation). Z3 widening downward is the *correct* expression of
+   "easy ceiling fell, hard ceiling didn't." Clamps: `effective_AeT` strictly above the
+   Z1/Z2 boundary and strictly below VT2 (both category-1 sanity asserts).
+5. **HRV source/cadence → single source: intervals.icu, field = rMSSD (ms)** (`hrv_source`
+   tracked). Device is **Oura overnight HRV (rMSSD)** (confirmed by Rob), not waking
+   spot-check — relabel honestly as "overnight HRV (rMSSD)" in the Rx. Cadence is **~⅔ of
+   days same-day** (Rob: 20/30 last 30d, 50/60 60d, 77/90 90d), with occasional 3-day gaps
+   — which *confirms* the decision-3 robustness work is load-bearing. Chronic baseline
+   reliably computable (≥14 readings present).
+
+## Phased build plan
+
+Sequence: **shared core → Effect A (Rx) → Effect B (load, dual-track) → cutover.** Each
+phase ships independently; nothing downstream breaks if a later phase is paused.
+
+### Phase 0 — schema + effective-AeT core (dark; no user-facing change)
+- Migration: add `athlete_model` offset columns (`aet_offset_deadband`, `_slope_neg`,
+  `_slope_pos`, `_cap_neg`, `_cap_pos`, `_staleness_days`, `aet_offset_n`,
+  `aet_offset_confidence`); add all to the `upsert_athlete_model` allowlist; seed defaults
+  on read (fallback to constants if NULL).
+- New pure function `compute_effective_aet(user_id, baseline_aet, vt2, z1z2_floor, today)`
+  → `{effective_aet, offset, state, fallback_reason}`. Implements the offset function,
+  Deep-Hole/RED clamp, staleness decay, UNKNOWN→0, and both sanity clamps. Pulls `hrv_z` +
+  state + latest-HRV-date from `readiness_engine` (no recompute).
+- **Tests (pure, no DB):** offset across the `hrv_z` range; asymmetry; dead-band; both
+  caps; Deep-Hole/RED clamp overrides positive `hrv_z`; staleness decay; UNKNOWN→0;
+  floor/ceiling clamps; integer rounding.
+
+### Phase A — Effect A: dynamic zone classification + Rx (lower risk)
+- Add `rebucket_zone_times(activity_id, activity_date, effective_aet)` — reads the stored
+  `hr_streams` row, re-buckets with the Z2/Z3 line = `effective_aet` (other boundaries from
+  `user_settings`). Falls back to stored `time_in_zone*` if no stream.
+- `compute_zone_compliance` uses AeT-anchored zone times (effective AeT **of the session's
+  date**) for black-hole / Z2-target detection. `get_user_hr_thresholds` `vt1_bpm` =
+  today's effective AeT → label and buckets finally agree (closes the latent bug).
+- Inject **"TODAY'S EFFECTIVE AeT"** fact block + element-7 HR cues into the daily Rx.
+  (Agentic chat + journal endpoint: note as follow-up per the 3-call-site rule; v1 = daily
+  Rx.)
+- **Tests:** re-bucketing moves a 130-bpm-heavy stream from Z2→Z3 as effective AeT drops
+  135→127; Rx fact block renders baseline/today/delta and the honest fallback when HRV
+  stale; **behavior-change check** — at offset 0 classification now uses measured AeT (not
+  70% maxHR); confirm the shift is sensible and intended.
+
+### Phase B — Effect B: Edwards dynamic load (dual-track, dark)
+- Migration: add `activities.trimp_dynamic REAL` (nullable; forward-only — NULL for
+  history).
+- At sync: compute AeT-anchored zone times (effective AeT of the activity's date) → Edwards
+  weighted sum → write `trimp_dynamic`. **Banister `trimp` unchanged and still primary.**
+- Extend `acwr_calculation_service` to compute a **parallel** dynamic internal ACWR from
+  `trimp_dynamic` over the same 7d/28d windows. **Not fed to `normalized_divergence` yet.**
+- **Tests:** Edwards weighting from zone times; `trimp_dynamic` > Banister-equivalent on a
+  suppressed-AeT, Z3-heavy day; parallel ACWR correct over windows.
+
+### Phase B-validate — one-time backfill (analysis only)
+- Offline script: last ~56 days, reconstruct **per-day** effective AeT from that date's
+  HRV, re-bucket stored streams, Edwards-weight → write to a **scratch/analysis location**
+  (not `activities.trimp_dynamic`). Missing HRV → baseline AeT, logged.
+- Chart dynamic divergence vs Banister divergence; decide whether/when to trust cutover.
+
+### Phase B-cutover — code-gated switch
+- Gate: `COUNT(trimp_dynamic NOT NULL in last 28d) >= 28` checked in code (not manual).
+- On gate pass: switch `normalized_divergence` internal input from Banister-ACWR to
+  dynamic-ACWR. Both windows self-consistent by construction (forward-only guarantee).
+- **No new safety floor** — depressed AeT → more Z3 → higher dynamic internal ACWR →
+  existing `enforce_safety_floor` tightens automatically (emergent, desired).
+- Keep Banister computing for a comparison window, then optionally retire from divergence.
+- **Tests:** cutover gate fires only at ≥28 days; **consistency assert** — after cutover no
+  ACWR window mixes Banister and Edwards; backfill dynamic-vs-Banister divergence
+  correlation sane.
+
+### Cross-cutting
+- **Determinism tags:** effective_AeT, AeT-anchored bucketing, Edwards weights,
+  `trimp_dynamic`, dynamic ACWR = category 1. Deep-Hole/RED clamp + safety floor =
+  category 2. Session choice within the floor + Rx prose = category 3. Format/cue scaffolds
+  = category 4 `[COMP]`.
+- **Dockerfile:** any new `.py` module → `app/Dockerfile.strava`.
+- **Reference guide:** document effective-AeT definition, offset defaults, Edwards weights
+  in `app/Training_Metrics_Reference_Guide.md`.
+- **Migrations** run autonomously via the Cloud SQL proxy (proxy confirmed live this
+  session).
 
 ## Deferred for future consideration (memorialized, out of scope here)
 
