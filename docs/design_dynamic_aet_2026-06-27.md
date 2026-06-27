@@ -179,6 +179,11 @@ the June 2026 safety-floor work). Good emergent behavior.
 Sequence: **shared core → Effect A (Rx) → Effect B (load, dual-track) → cutover.** Each
 phase ships independently; nothing downstream breaks if a later phase is paused.
 
+**Implementation status (2026-06-27):** Phase 0 ✅ (commit 349b25c) · Phase A1 ✅
+(f2dda10) · Phase A2 + A3 ✅ (this commit) — Effect A is live: the autopsy classifies
+against the session-date effective AeT, and the daily Rx injects the "TODAY'S EFFECTIVE
+AeT" fact + AeT-anchored easy-day cues. Phase B not started.
+
 ### Phase 0 — schema + effective-AeT core (dark; no user-facing change)
 - Migration: add `athlete_model` offset columns (`aet_offset_deadband`, `_slope_neg`,
   `_slope_pos`, `_cap_neg`, `_cap_pos`, `_staleness_days`, `aet_offset_n`,

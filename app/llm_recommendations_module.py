@@ -1784,6 +1784,18 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     # ANS readiness: z-score based HRV+RHR assessment with overreaching trend detection
     _ans = get_ans_readiness(user_id)
 
+    # Dynamic AeT (Effect A): today's effective aerobic threshold = calibrated baseline
+    # modulated by overnight HRV readiness. Injected as an authoritative fact and used to
+    # anchor the easy-day HR ceiling below. Falls back silently to no block on error.
+    try:
+        from dynamic_aet import get_effective_aet, format_effective_aet_block
+        _eff_aet = get_effective_aet(user_id)
+        effective_aet_block = format_effective_aet_block(_eff_aet)
+    except Exception as _eae:
+        logger.warning(f"Effective AeT computation failed for user {user_id}: {_eae}")
+        _eff_aet = None
+        effective_aet_block = ""
+
     readiness_context = ""
     if readiness_data and readiness_data[0]:
         row = dict(readiness_data[0])
@@ -2146,6 +2158,13 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                 _strides_today = today_full.get('strides', False)
                 try:
                     _hr = get_user_hr_thresholds(user_id)
+                    # Dynamic AeT: anchor today's easy-day cues to the effective AeT (only
+                    # the Z2/Z3 line moves) so "stay below X bpm" matches the injected fact.
+                    if _hr and _eff_aet:
+                        _hr['vt1_bpm'] = _eff_aet['effective_aet']
+                        if _hr.get('zones'):
+                            _hr['zones']['zone2']['max'] = _eff_aet['effective_aet']
+                            _hr['zones']['zone3']['min'] = _eff_aet['effective_aet']
                     # [DOMAIN] HR zone boundaries, VT1/VT2 thresholds, polarized minimums — physiological constants
                     # [DOMAIN] "HR is the authority" / terrain-as-load-proxy prohibition — physiology principle
                     if _hr and _day_intensity == 'low':
@@ -2280,6 +2299,7 @@ Analysis Period: {start_date} to {end_date} ({days_analyzed} days)
 Assessment Category: {assessment_category}
 {race_goals_block}
 {metric_verdict_block}
+{effective_aet_block}
 ### CURRENT METRICS (as of {current_date})
 - External ACWR: {formatted_metrics['external_acwr']} (Optimal: 0.8-1.3)
 - Internal ACWR: {formatted_metrics['internal_acwr']} (Optimal: 0.8-1.3)
@@ -3160,6 +3180,15 @@ Prescribed intent: {prescribed} | Actual session classification: {actual_cls}
 {vt_str}
 Z2 time: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
 """
+            # Dynamic AeT: explain WHY the Z2/Z3 line sits where it does when the effective
+            # AeT differed from baseline, so the classification isn't an unexplained shift.
+            if zone_compliance.get('effective_aet') is not None:
+                _aoff = zone_compliance.get('aet_offset') or 0
+                _afb = zone_compliance.get('aet_fallback')
+                if _afb:
+                    zone_block += f"\nDYNAMIC AeT: HRV {_afb}; classified against baseline AeT {zone_compliance.get('baseline_aet')} bpm (no autonomic adjustment for this date).\n"
+                elif _aoff != 0:
+                    zone_block += f"\nDYNAMIC AeT: classified against this date's effective AeT {zone_compliance['effective_aet']} bpm (baseline {zone_compliance.get('baseline_aet')}, offset {_aoff:+.0f} bpm from overnight HRV). A suppressed AeT widens Zone 3 — more of the session counts as moderate.\n"
             if zone_compliance.get('black_hole'):
                 zone_block += f"""
 BLACK HOLE ALERT: This session was prescribed as Easy but Z3 (moderate intensity) was {zp.get('z3', 0):.0f}% of session time (threshold: 15%). This is a polarized training compliance failure — the athlete accumulated fatigue without a meaningful adaptation stimulus. Address this explicitly in the alignment assessment. The alignment score should reflect this compliance failure.

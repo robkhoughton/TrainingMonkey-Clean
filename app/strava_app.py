@@ -6908,7 +6908,40 @@ def generate_autopsy_for_date(date_str, user_id):
                     structured_output.get('decision', {}).get('polarized_session_intent')
                     or structured_output.get('decision', {}).get('intensity_target')
                 )
+
+            # Dynamic AeT (Effect A): classify this session against the effective AeT that
+            # applied on its OWN date — re-bucket the HR stream so the Z2/Z3 line reflects
+            # autonomic state (a 130 bpm effort lands in Z3 on a suppressed day), and align
+            # the VT1 label so prompt text and buckets agree.
+            eff_aet = None
+            try:
+                from dynamic_aet import get_effective_aet
+                from strava_training_load import rebucket_zone_times
+                session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                eff_aet = get_effective_aet(user_id, as_of_date=session_date)
+                if eff_aet:
+                    rb = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'])
+                    if rb and rb.get('total_zone_seconds', 0) > 0:
+                        activity_summary.update({k: rb[k] for k in (
+                            'time_in_zone1', 'time_in_zone2', 'time_in_zone3',
+                            'time_in_zone4', 'time_in_zone5', 'total_zone_seconds',
+                            'z1_pct', 'z2_pct', 'z3_pct', 'z4_pct', 'z5_pct')})
+                    if hr_thresholds:
+                        hr_thresholds['vt1_bpm'] = eff_aet['effective_aet']
+                        _z = hr_thresholds.get('zones')
+                        if _z and 'zone2' in _z and 'zone3' in _z:
+                            _z['zone2']['max'] = eff_aet['effective_aet']
+                            _z['zone3']['min'] = eff_aet['effective_aet']
+            except Exception as _eae:
+                logger.warning(f"Dynamic AeT re-bucketing failed for {date_str}: {_eae}")
+                eff_aet = None
+
             zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds)
+            if zone_compliance and eff_aet:
+                zone_compliance['effective_aet'] = eff_aet['effective_aet']
+                zone_compliance['baseline_aet'] = eff_aet['baseline_aet']
+                zone_compliance['aet_offset'] = eff_aet['offset']
+                zone_compliance['aet_fallback'] = eff_aet['fallback_reason']
         except Exception as _zce:
             logger.warning(f"Zone compliance computation failed for {date_str}: {_zce}")
 

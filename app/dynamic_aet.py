@@ -153,6 +153,37 @@ def compute_effective_aet(baseline_aet, hrv_z, state, days_since_hrv,
     }
 
 
+def format_effective_aet_block(eff):
+    """Authoritative prompt block stating today's effective AeT (category-1 fact).
+
+    Parallel to format_metric_verdict_block — the model uses this value, never re-derives
+    it. Honest about the fallback path so the prose never implies a live measurement that
+    isn't there. Returns '' when eff is None.
+    """
+    if not eff:
+        return ''
+    baseline = eff['baseline_aet']
+    effective = eff['effective_aet']
+    offset = eff.get('offset') or 0
+    fb = eff.get('fallback_reason')
+
+    lines = [
+        "### TODAY'S EFFECTIVE AeT (authoritative — computed server-side from overnight HRV; use this value, do NOT re-derive)",
+        f"Baseline AeT: {baseline} bpm (last calibrated value — fresh drift test > lab > formula).",
+    ]
+    if fb == 'no_hrv_baseline':
+        lines.append(f"Effective AeT today: {effective} bpm — HRV baseline unavailable, so AeT is held at baseline (no autonomic adjustment).")
+    elif fb == 'hrv_stale':
+        lines.append(f"Effective AeT today: {effective} bpm — recent HRV is stale, so the autonomic adjustment is reduced toward baseline.")
+    elif offset != 0:
+        direction = 'lowered' if offset < 0 else 'raised'
+        lines.append(f"Effective AeT today: {effective} bpm — {direction} {abs(offset):.0f} bpm from baseline by overnight HRV readiness (Oura rMSSD).")
+    else:
+        lines.append(f"Effective AeT today: {effective} bpm — overnight HRV is near baseline, so no adjustment today.")
+    lines.append(f"Use {effective} bpm as today's Zone 2 ceiling for all easy/aerobic HR targets. HR above {effective} bpm is Zone 3 (moderate), not easy.")
+    return "\n".join(lines) + "\n"
+
+
 def get_effective_aet(user_id, as_of_date=None):
     """Integration wrapper: gather baseline + readiness + per-athlete params and compute
     a user's effective AeT, for today or — when as_of_date is given — as it was on a past
