@@ -153,15 +153,19 @@ def compute_effective_aet(baseline_aet, hrv_z, state, days_since_hrv,
     }
 
 
-def get_effective_aet(user_id):
+def get_effective_aet(user_id, as_of_date=None):
     """Integration wrapper: gather baseline + readiness + per-athlete params and compute
-    today's effective AeT for a user.
+    a user's effective AeT, for today or — when as_of_date is given — as it was on a past
+    date (the autopsy anchor: classify a completed session against the AeT that applied on
+    its own date).
 
-    Baseline AeT = get_user_hr_thresholds(user_id)['vt1_bpm'] (already measured-AeT-aware
-    via the <=42d freshness override, else formula VT1). Returns the compute_effective_aet
-    dict, or None if HR thresholds are unavailable.
+    Baseline AeT = get_user_hr_thresholds(user_id)['vt1_bpm'] (precedence: fresh drift test
+    -> custom lab AeT -> formula VT1). NOTE: the baseline anchor is always the *current*
+    calibrated value; only the HRV offset is reconstructed historically. The offset models
+    that day's autonomic deviation relative to the athlete's established AeT — reconstructing
+    a historical baseline (e.g. past drift-test freshness) would be over-engineering.
 
-    Phase 0: dark — not yet wired into any prompt or load path.
+    Returns the compute_effective_aet dict, or None if HR thresholds are unavailable.
     """
     from llm_recommendations_module import get_user_hr_thresholds
     from readiness_engine import get_ans_readiness
@@ -174,7 +178,7 @@ def get_effective_aet(user_id):
     zones = hr.get('zones') or {}
     z1z2_floor = (zones.get('zone2') or {}).get('min')
 
-    readiness = get_ans_readiness(user_id)
+    readiness = get_ans_readiness(user_id, as_of_date=as_of_date)
     params = OffsetParams.from_athlete_model(get_athlete_model(user_id))
 
     return compute_effective_aet(

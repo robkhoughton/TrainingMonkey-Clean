@@ -1527,6 +1527,148 @@ def _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, 
         return 0.0
 
 
+def _build_zone_boundaries(max_hr, resting_hr, hr_zones_method='percentage',
+                           custom_hr_zones=None, vt1_override=None):
+    """Build five (min, max) HR-zone boundary tuples from user settings.
+
+    Boundary priority: custom (lab-tested) > karvonen/reserve (HRR) > percentage (max_hr).
+
+    vt1_override, when provided, replaces the Z2 ceiling (= Z3 floor) — the AeT/VT1 line —
+    AFTER any custom overrides, because the effective (dynamic) AeT is the authoritative
+    Z2/Z3 boundary. Per the dynamic-AeT design (decision d), ONLY this one line moves; all
+    other boundaries are untouched.
+
+    Returns (zones, method_label).
+    """
+    if custom_hr_zones and isinstance(custom_hr_zones, str):
+        try:
+            custom_hr_zones = json.loads(custom_hr_zones)
+        except Exception:
+            logger.warning("Could not parse custom_hr_zones JSON; ignoring custom zones")
+            custom_hr_zones = None
+
+    hr_reserve = max_hr - resting_hr
+
+    if custom_hr_zones:
+        method_label = 'custom'
+        zones = [
+            [resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve],
+            [resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve],
+            [resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve],
+            [resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve],
+            [resting_hr + 0.90 * hr_reserve, max_hr],
+        ]
+        for i, key in enumerate(['zone1', 'zone2', 'zone3', 'zone4', 'zone5']):
+            if key in custom_hr_zones:
+                c = custom_hr_zones[key]
+                if c.get('min') is not None:
+                    zones[i][0] = float(c['min'])
+                if c.get('max') is not None:
+                    zones[i][1] = float(c['max'])
+    elif hr_zones_method in ('karvonen', 'reserve'):
+        method_label = 'karvonen'
+        zones = [
+            [resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve],
+            [resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve],
+            [resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve],
+            [resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve],
+            [resting_hr + 0.90 * hr_reserve, max_hr],
+        ]
+    else:
+        method_label = 'percentage'
+        zones = [
+            [max_hr * 0.50, max_hr * 0.60],
+            [max_hr * 0.60, max_hr * 0.70],
+            [max_hr * 0.70, max_hr * 0.80],
+            [max_hr * 0.80, max_hr * 0.90],
+            [max_hr * 0.90, max_hr],
+        ]
+
+    # Dynamic-AeT: move ONLY the Z2/Z3 line to the effective AeT (after custom overrides).
+    if vt1_override is not None:
+        zones[1][1] = float(vt1_override)  # Z2 ceiling
+        zones[2][0] = float(vt1_override)  # Z3 floor
+
+    return [tuple(z) for z in zones], method_label
+
+
+def bucket_hr_samples(hr_data, zones):
+    """Count seconds (1 Hz samples) into each of the five zone boundary tuples."""
+    zone_times = [0, 0, 0, 0, 0]
+    for hr in hr_data:
+        if hr <= 0:
+            continue
+        for i, (zone_min, zone_max) in enumerate(zones):
+            if zone_min <= hr < zone_max:
+                zone_times[i] += 1
+                break
+    return zone_times
+
+
+def rebucket_zone_times(user_id, date_str, effective_aet):
+    """Re-bucket a user's activities on a date against an effective-AeT Z2/Z3 line.
+
+    Reads each activity's stored HR stream and re-buckets it with the Z2/Z3 boundary set to
+    `effective_aet` (all other boundaries from user settings). Per decision (d) only the
+    VT1 line moves. Falls back to the activity's stored time_in_zone* when no stream exists,
+    so the result degrades gracefully rather than dropping a session.
+
+    Returns an aggregated dict (time_in_zone1..5, total_zone_seconds, z1_pct..z5_pct,
+    rebucketed) shaped like get_activity_summary_for_date's zone fields, or None if user
+    settings are missing.
+    """
+    from db_utils import execute_query, get_hr_stream_data
+
+    us = execute_query(
+        "SELECT resting_hr, max_hr, hr_zones_method, custom_hr_zones FROM user_settings WHERE id = %s",
+        (user_id,), fetch=True
+    )
+    if not us:
+        return None
+    row = us[0]
+    resting_hr = row.get('resting_hr') or 65
+    max_hr = row.get('max_hr') or 185
+    method = row.get('hr_zones_method') or 'percentage'
+    custom = row.get('custom_hr_zones')
+
+    zones, _ = _build_zone_boundaries(max_hr, resting_hr, method, custom,
+                                      vt1_override=effective_aet)
+
+    acts = execute_query(
+        """SELECT activity_id, time_in_zone1, time_in_zone2, time_in_zone3,
+                  time_in_zone4, time_in_zone5
+           FROM activities
+           WHERE user_id = %s AND date = %s AND activity_id > 0""",
+        (user_id, date_str), fetch=True
+    ) or []
+
+    totals = [0, 0, 0, 0, 0]
+    rebucketed = False
+    for a in acts:
+        stream = get_hr_stream_data(a['activity_id'], user_id)
+        if stream and stream.get('hr_data'):
+            zt = bucket_hr_samples(stream['hr_data'], zones)
+            rebucketed = True
+        else:
+            zt = [int(a.get(f'time_in_zone{i + 1}') or 0) for i in range(5)]
+        for i in range(5):
+            totals[i] += zt[i]
+
+    total_sec = sum(totals)
+
+    def _pct(z):
+        return round(z / total_sec * 100, 1) if total_sec > 0 else 0.0
+
+    return {
+        'time_in_zone1': totals[0], 'time_in_zone2': totals[1], 'time_in_zone3': totals[2],
+        'time_in_zone4': totals[3], 'time_in_zone5': totals[4],
+        'total_zone_seconds': total_sec,
+        'z1_pct': _pct(totals[0]), 'z2_pct': _pct(totals[1]), 'z3_pct': _pct(totals[2]),
+        'z4_pct': _pct(totals[3]), 'z5_pct': _pct(totals[4]),
+        'rebucketed': rebucketed,
+    }
+
+
 def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
                                      hr_zones_method='percentage', custom_hr_zones=None):
     """
@@ -1557,56 +1699,9 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
         if not hr_data:
             return [0, 0, 0, 0, 0]
 
-        # Parse custom zones if provided as a JSON string
-        if custom_hr_zones and isinstance(custom_hr_zones, str):
-            try:
-                custom_hr_zones = json.loads(custom_hr_zones)
-            except Exception:
-                logger.warning("Could not parse custom_hr_zones JSON; ignoring custom zones")
-                custom_hr_zones = None
-
-        # Determine which method is active and build zone boundaries
-        if custom_hr_zones:
-            method_label = 'custom'
-            # Build base boundaries then apply custom overrides
-            hr_reserve = max_hr - resting_hr
-            base = [
-                [resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve],
-                [resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve],
-                [resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve],
-                [resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve],
-                [resting_hr + 0.90 * hr_reserve, max_hr],
-            ]
-            zone_keys = ['zone1', 'zone2', 'zone3', 'zone4', 'zone5']
-            for i, key in enumerate(zone_keys):
-                if key in custom_hr_zones:
-                    c = custom_hr_zones[key]
-                    if c.get('min') is not None:
-                        base[i][0] = float(c['min'])
-                    if c.get('max') is not None:
-                        base[i][1] = float(c['max'])
-            zones = [tuple(z) for z in base]
-
-        elif hr_zones_method in ('karvonen', 'reserve'):
-            method_label = 'karvonen'
-            hr_reserve = max_hr - resting_hr
-            zones = [
-                (resting_hr + 0.50 * hr_reserve, resting_hr + 0.60 * hr_reserve),
-                (resting_hr + 0.60 * hr_reserve, resting_hr + 0.70 * hr_reserve),
-                (resting_hr + 0.70 * hr_reserve, resting_hr + 0.80 * hr_reserve),
-                (resting_hr + 0.80 * hr_reserve, resting_hr + 0.90 * hr_reserve),
-                (resting_hr + 0.90 * hr_reserve, max_hr),
-            ]
-
-        else:
-            method_label = 'percentage'
-            zones = [
-                (max_hr * 0.50, max_hr * 0.60),
-                (max_hr * 0.60, max_hr * 0.70),
-                (max_hr * 0.70, max_hr * 0.80),
-                (max_hr * 0.80, max_hr * 0.90),
-                (max_hr * 0.90, max_hr),
-            ]
+        zones, method_label = _build_zone_boundaries(
+            max_hr, resting_hr, hr_zones_method, custom_hr_zones
+        )
 
         logger.info(
             f"HR zone method: {method_label} | "
@@ -1614,14 +1709,7 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
             f"boundaries: {[(round(mn), round(mx)) for mn, mx in zones]}"
         )
 
-        zone_times = [0, 0, 0, 0, 0]
-        for hr in hr_data:
-            if hr <= 0:
-                continue
-            for i, (zone_min, zone_max) in enumerate(zones):
-                if zone_min <= hr < zone_max:
-                    zone_times[i] += 1
-                    break
+        zone_times = bucket_hr_samples(hr_data, zones)
 
         logger.info(f"HR zone times (seconds) [{method_label}]: {zone_times}")
         return zone_times

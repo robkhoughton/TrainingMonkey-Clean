@@ -34,19 +34,25 @@ _DEFAULT_DAYS = 90
 _OVERREACHING_LOOKBACK = 4
 
 
-def load_athlete_readiness_dataframe(user_id, days=_DEFAULT_DAYS):
+def load_athlete_readiness_dataframe(user_id, days=_DEFAULT_DAYS, as_of_date=None):
     """Query journal_entries and return a date-ascending DataFrame.
+
+    as_of_date: when provided, reconstruct readiness *as it was on that date* — the
+    window ends at as_of_date (inclusive) and reaches `days` back from it. Used by the
+    dynamic-AeT autopsy path to anchor a completed session against the AeT that applied
+    on the session's own date, not today's. Defaults to the app's current date.
 
     IMPORTANT: tail() is used throughout this module. Data MUST be sorted
     ascending (oldest first) or window calculations are silently wrong.
     """
-    cutoff = get_app_current_date() - timedelta(days=days)
+    ref = as_of_date or get_app_current_date()
+    cutoff = ref - timedelta(days=days)
     rows = execute_query(
         """SELECT date, hrv_value, resting_hr, sleep_quality, sleep_score, spo2
            FROM journal_entries
-           WHERE user_id = %s AND date >= %s
+           WHERE user_id = %s AND date >= %s AND date <= %s
            ORDER BY date ASC""",
-        (user_id, str(cutoff)),
+        (user_id, str(cutoff), str(ref)),
         fetch=True,
     )
     if not rows:
@@ -276,24 +282,28 @@ def get_weekly_ans_summary(user_id):
     }
 
 
-def get_ans_readiness(user_id):
+def get_ans_readiness(user_id, as_of_date=None):
     """Full pipeline: load → z-scores → overreaching trend → state classification.
 
+    as_of_date: reconstruct readiness as of a past date (dynamic-AeT autopsy anchor).
+        Defaults to the app's current date.
+
     Returns:
-        dict with keys: state, narrative, hrv_z, rhr_z, is_overreaching
+        dict with keys: state, narrative, hrv_z, rhr_z, is_overreaching, days_since_hrv
         On any error, returns UNKNOWN state so callers always get a valid dict.
     """
     try:
-        df = load_athlete_readiness_dataframe(user_id)
+        ref_date = as_of_date or get_app_current_date()
+        df = load_athlete_readiness_dataframe(user_id, as_of_date=as_of_date)
         hrv_reading_count = int(df['hrv'].dropna().shape[0])
         rhr_reading_count = int(df['rhr'].dropna().shape[0])
-        # Age of the most recent HRV reading — drives the dynamic-AeT staleness ceiling
-        # (dynamic_aet.py). None when no HRV reading exists at all.
+        # Age of the most recent HRV reading relative to ref_date — drives the dynamic-AeT
+        # staleness ceiling (dynamic_aet.py). None when no HRV reading exists at all.
         hrv_dates = df.loc[df['hrv'].notna(), 'date']
         if hrv_dates.empty:
             days_since_hrv = None
         else:
-            days_since_hrv = int((pd.Timestamp(get_app_current_date()) - hrv_dates.max()).days)
+            days_since_hrv = int((pd.Timestamp(ref_date) - hrv_dates.max()).days)
         hrv_z, rhr_z = get_readiness_metrics(df)
         is_overreaching = evaluate_overreaching_trend(df)
         sleep_modifier = get_sleep_modifier(df)
