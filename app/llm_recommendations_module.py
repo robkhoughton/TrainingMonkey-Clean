@@ -548,8 +548,9 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
             'prescribed': str,
             'actual_classification': str,   # Easy / Hard / Moderate / Unknown
             'black_hole': bool,             # Easy prescribed, Z3 > 15%
-            'z2_target_met': bool | None,   # None when not an Easy session
-            'z2_minutes': float,
+            'aerobic_base_target_met': bool | None,  # >=45 min below VT1 (Z1+Z2); None unless Easy
+            'below_vt1_minutes': float,
+            'z2_minutes': float,            # display only
             'quality_minutes': float,       # Z4+Z5 minutes
             'insufficient_intensity': bool, # Hard prescribed, Z4+Z5 < 15%
             'z_pcts': dict,                 # z1..z5 percentages
@@ -560,10 +561,15 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
     total_zone_sec = activity_summary.get('total_zone_seconds', 0)
     has_hr = total_zone_sec > 0
 
+    z1_sec = activity_summary.get('time_in_zone1', 0) or 0
     z2_sec = activity_summary.get('time_in_zone2', 0) or 0
     z4_sec = activity_summary.get('time_in_zone4', 0) or 0
     z5_sec = activity_summary.get('time_in_zone5', 0) or 0
     z2_min = z2_sec / 60
+    # Aerobic base = all time BELOW the (dynamic) VT1 = Z1 + Z2. Using the sub-VT1
+    # aggregate (not Z2 alone) keeps the target stable when a lowered effective AeT
+    # narrows Zone 2: time redistributes within "below VT1" instead of vanishing.
+    below_vt1_min = (z1_sec + z2_sec) / 60
     quality_min = (z4_sec + z5_sec) / 60
 
     z_pcts = {
@@ -588,7 +594,7 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
     is_hard_prescribed = isinstance(prescribed_intent, str) and prescribed_intent in ('hard', 'race_effort')
 
     black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
-    z2_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
+    aerobic_base_target_met = (below_vt1_min >= 45) if (has_hr and is_easy_prescribed) else None
     insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
 
     return {
@@ -596,8 +602,9 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
         'prescribed': prescribed_intent or 'unknown',
         'actual_classification': actual,
         'black_hole': black_hole,
-        'z2_target_met': z2_target_met,
-        'z2_minutes': z2_min,
+        'aerobic_base_target_met': aerobic_base_target_met,  # >=45 min below VT1 (Z1+Z2)
+        'below_vt1_minutes': below_vt1_min,
+        'z2_minutes': z2_min,  # display only
         'quality_minutes': quality_min,
         'insufficient_intensity': insufficient_intensity,
         'z_pcts': z_pcts,
@@ -2173,8 +2180,8 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                         _z3_min = _hr['zones']['zone3']['min']
                         weekly_context_block += f"""
 EASY DAY EXECUTION — POLARIZED COMPLIANCE:
-Stay below {_vt1} bpm (VT1 — Zone 2 ceiling, {_hr['zone_method']} method).
-Target: minimum 45 minutes in Zone 2 ({_z2_min}–{_vt1} bpm).
+Stay below {_vt1} bpm (today's effective VT1 / aerobic ceiling, {_hr['zone_method']} method).
+Target: minimum 45 minutes BELOW {_vt1} bpm (aerobic base = Zone 1 + Zone 2 combined; do not chase the narrow Zone 2 band alone — all sub-VT1 time counts).
 HR is the authority — if HR climbs above {_vt1} bpm, reduce effort immediately.
 Zone 3 ({_z3_min}+ bpm) is the black hole: fatigue without meaningful adaptation.
 RULE — INTERNAL LOAD: Never prescribe terrain features (grade, hill steepness) as a proxy for managing internal load. Internal load is always and only a function of HR. If you want the athlete to manage load on a climb, say "if HR approaches {_vt1} bpm on climbs, shorten stride or slow down" — never "power hike climbs steeper than X%". Terrain prescriptions are only acceptable for injury management (e.g. avoid technical footing for ankle recovery), not load management.
@@ -3148,6 +3155,7 @@ def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, act
             vt1 = zone_compliance.get('vt1_bpm')
             vt2 = zone_compliance.get('vt2_bpm')
             z2_min = zone_compliance.get('z2_minutes', 0)
+            base_min = zone_compliance.get('below_vt1_minutes', 0)
             q_min = zone_compliance.get('quality_minutes', 0)
             prescribed = zone_compliance.get('prescribed', 'unknown')
             actual_cls = zone_compliance.get('actual_classification', 'Unknown')
@@ -3178,7 +3186,7 @@ ZONE COMPLIANCE (POLARIZED TRAINING):
 Prescribed intent: {prescribed} | Actual session classification: {actual_cls}
 {z1_lbl}: {zp.get('z1', 0):.0f}% | {z2_lbl}: {zp.get('z2', 0):.0f}% | {z3_lbl}: {zp.get('z3', 0):.0f}% | {z4_lbl}: {zp.get('z4', 0):.0f}% | {z5_lbl}: {zp.get('z5', 0):.0f}%
 {vt_str}
-Z2 time: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
+Aerobic base (below VT1 = Z1+Z2): {base_min:.0f} min | Z2 alone: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
 """
             # Dynamic AeT: explain WHY the Z2/Z3 line sits where it does when the effective
             # AeT differed from baseline, so the classification isn't an unexplained shift.
@@ -3193,9 +3201,9 @@ Z2 time: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
                 zone_block += f"""
 BLACK HOLE ALERT: This session was prescribed as Easy but Z3 (moderate intensity) was {zp.get('z3', 0):.0f}% of session time (threshold: 15%). This is a polarized training compliance failure — the athlete accumulated fatigue without a meaningful adaptation stimulus. Address this explicitly in the alignment assessment. The alignment score should reflect this compliance failure.
 """
-            elif zone_compliance.get('z2_target_met') is False:
+            elif zone_compliance.get('aerobic_base_target_met') is False:
                 zone_block += f"""
-Z2 TARGET MISSED: Easy session had only {z2_min:.0f} min in Zone 2 (target: 45 min). Insufficient aerobic base stimulus accumulated.
+AEROBIC BASE TARGET MISSED: Easy session had only {base_min:.0f} min below VT1 (Z1+Z2 combined; target: 45 min). Insufficient aerobic base stimulus accumulated. (Measured as time below the effective VT1, not Zone 2 alone, so a narrow dynamic Zone 2 does not penalize correctly-paced easy volume.)
 """
             if zone_compliance.get('insufficient_intensity'):
                 zone_block += f"""
@@ -3353,6 +3361,7 @@ def create_quality_track_prompt(date_str, actual_activities, observations, tone_
             vt1 = zone_compliance.get('vt1_bpm')
             vt2 = zone_compliance.get('vt2_bpm')
             z2_min = zone_compliance.get('z2_minutes', 0)
+            base_min = zone_compliance.get('below_vt1_minutes', 0)
             q_min = zone_compliance.get('quality_minutes', 0)
             actual_cls = zone_compliance.get('actual_classification', 'Unknown')
 
@@ -3371,7 +3380,7 @@ def create_quality_track_prompt(date_str, actual_activities, observations, tone_
 HEART RATE ZONE DISTRIBUTION:
 {_zone_label('zone1')}: {zp.get('z1', 0):.0f}% | {_zone_label('zone2')}: {zp.get('z2', 0):.0f}% | {_zone_label('zone3')}: {zp.get('z3', 0):.0f}% | {_zone_label('zone4')}: {zp.get('z4', 0):.0f}% | {_zone_label('zone5')}: {zp.get('z5', 0):.0f}%
 {vt_str}
-Zone 2 aerobic time: {z2_min:.0f} min | Zone 4+5 high-intensity time: {q_min:.0f} min
+Aerobic base (below VT1 = Z1+Z2): {base_min:.0f} min | Zone 4+5 high-intensity time: {q_min:.0f} min
 Session intensity classification: {actual_cls}
 """
 

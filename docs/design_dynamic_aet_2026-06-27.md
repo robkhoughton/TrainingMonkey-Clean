@@ -167,6 +167,12 @@ the June 2026 safety-floor work). Good emergent behavior.
    movement (determinism violation). Z3 widening downward is the *correct* expression of
    "easy ceiling fell, hard ceiling didn't." Clamps: `effective_AeT` strictly above the
    Z1/Z2 boundary and strictly below VT2 (both category-1 sanity asserts).
+   - **Measurement refinement (added post-build):** because only the top of Z2 moves, Z2 *as
+     a band* can narrow. So aerobic-base time and the easy-day target are measured as **time
+     below the effective VT1 = Z1+Z2 combined** (`below_vt1_minutes` /
+     `aerobic_base_target_met`), not Z2 alone — stable as the ceiling moves. Polarized 80:20
+     is unaffected (it keys off Z3 black-hole and Z4+Z5 hard); a lowered AeT pushing Z2→Z3
+     time is the correct slow-down signal, not a tracking artifact.
 5. **HRV source/cadence → single source: intervals.icu, field = rMSSD (ms)** (`hrv_source`
    tracked). Device is **Oura overnight HRV (rMSSD)** (confirmed by Rob), not waking
    spot-check — relabel honestly as "overnight HRV (rMSSD)" in the Rx. Cadence is **~⅔ of

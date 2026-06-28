@@ -273,6 +273,17 @@ so rescaling all zones would fabricate unmeasured VT2 movement. A lowered AeT th
 **widens Zone 3 downward**: the correct expression of "the easy ceiling fell but the hard
 ceiling did not."
 
+**Aerobic-base tracking under a dynamic VT1 (important):** because only the top of Zone 2
+moves, Zone 2 *as a band* can narrow on a suppressed day. So aerobic base is **measured as
+time BELOW the effective VT1 (Zone 1 + Zone 2 combined), not Zone 2 alone.** Sub-VT1 time is
+the physiologically meaningful quantity and is stable as the ceiling moves (time
+redistributes within "below VT1" rather than vanishing). The 45-minute easy-base target and
+the polarized "easy" bucket both use this sub-VT1 aggregate (`below_vt1_minutes` /
+`aerobic_base_target_met` in `compute_zone_compliance`). Polarized 80:20 itself is unchanged:
+it keys off Z3 (black hole) and Z4+Z5 (hard), so when a lowered AeT pushes above-threshold
+time from Z2 into Z3, that is the correct signal — at that HR the athlete *is* above today's
+aerobic threshold and should slow down.
+
 **Effect A — classification & Rx (live):** zone time-in-zone for the autopsy is re-bucketed
 against the effective AeT of the *session's own date*, so a 130 bpm effort lands in Z3 on a
 suppressed day (black-hole detection becomes autonomic-aware). The daily recommendation
@@ -304,6 +315,12 @@ recalibrated for the dynamic distribution first (it runs more negative during bu
 | 3   | 5 |
 | 4   | 10 |
 | 5   | 5 |
+
+**Note (dynamic VT1):** treat the aerobic-base target as **~75% below VT1 (Zone 1 + Zone 2
+combined)** rather than "70% in Zone 2." When the effective AeT lowers and narrows Zone 2,
+easy time shifts between Z1 and Z2 but stays below VT1 — the sub-VT1 aggregate is the stable,
+correct measure. Z3 should stay low (~5%); a lowered AeT pushing time into Z3 is the
+black-hole signal to slow down, not a target to fill.
 
 ## Quick Assessment Protocol
 
