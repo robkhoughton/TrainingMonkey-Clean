@@ -45,7 +45,19 @@ def is_feature_enabled(feature_name, user_id=None):
         'enhanced_trimp_calculation': False,  # Default OFF - uses heart rate stream data
         'enhanced_acwr_calculation': False,  # Default OFF - uses exponential decay weighting
         'agentic_context': False,  # Phase 4: Agentic Context Assembly — OFF by default
+        'dynamic_aet_divergence_cutover': False,  # Effect B cutover — see special-case below
     }
+
+    # Dynamic AeT divergence cutover: switches the internal-load track feeding divergence
+    # from Banister to the AeT-anchored Edwards dynamic load. This is a DELIBERATE,
+    # post-recalibration flip — it must NOT be auto-enabled by admin status (the catch-all
+    # below would otherwise turn it on for Rob the moment it deploys). It also only takes
+    # effect when dynamic_acwr_cutover_ready() confirms 28d of consistent coverage.
+    # To cut over: (1) recalibrate divergence thresholds for the dynamic distribution,
+    # then (2) add the user id to cutover_user_ids.
+    if feature_name == 'dynamic_aet_divergence_cutover':
+        cutover_user_ids = []  # e.g. [1] once thresholds are recalibrated
+        return user_id in cutover_user_ids
 
     # Phase 4: Agentic context — enabled for user_id=1 (Rob) only
     if feature_name == 'agentic_context':

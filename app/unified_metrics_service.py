@@ -438,6 +438,37 @@ class UnifiedMetricsService:
                 'user_id': user_id
             }
 
+            # --- Dynamic AeT cutover (Effect B) ----------------------------------
+            # Operator-gated swap of the internal-load track from Banister to the
+            # AeT-anchored Edwards dynamic load. Two independent gates must both pass:
+            #   * feature flag 'dynamic_aet_divergence_cutover' — the human decision
+            #     (never auto-enabled by admin; flipped only after threshold recalibration)
+            #   * dynamic_acwr_cutover_ready() — the data gate (>=28d consistent coverage)
+            # When the data is ready but the flag is still off, emit a recurring banner so
+            # the cutover is triggered by STATE, not memory. Fully no-op until both pass.
+            try:
+                from utils.feature_flags import is_feature_enabled
+                from dynamic_aet import (calculate_dynamic_internal_acwr, dynamic_divergence,
+                                         dynamic_acwr_cutover_ready)
+                _cut_ready = dynamic_acwr_cutover_ready(user_id)
+                _cut_on = is_feature_enabled('dynamic_aet_divergence_cutover', user_id)
+                if _cut_on and _cut_ready:
+                    _dyn = calculate_dynamic_internal_acwr(user_id, str(activity_date))
+                    if _dyn and _dyn.get('internal_acwr_dynamic', 0) > 0:
+                        metrics['internal_acwr'] = _dyn['internal_acwr_dynamic']
+                        metrics['normalized_divergence'] = dynamic_divergence(
+                            metrics['external_acwr'], _dyn['internal_acwr_dynamic'])
+                        metrics['internal_acwr_method'] = 'dynamic_aet_edwards'
+                        logger.info(f"[DYNAMIC-AET] user {user_id}: divergence using the dynamic AeT track")
+                elif _cut_ready and not _cut_on:
+                    logger.warning(
+                        f"[DYNAMIC-AET CUTOVER READY] user {user_id}: 28-day dynamic coverage is "
+                        f"complete. Recalibrate divergence thresholds for the dynamic distribution, "
+                        f"then enable 'dynamic_aet_divergence_cutover' to switch divergence over.")
+            except Exception as _ce:
+                logger.warning(f"dynamic-AeT cutover check failed for user {user_id}: {_ce}")
+            # ---------------------------------------------------------------------
+
             # Compute injury risk score using user-specific thresholds from get_adjusted_thresholds().
             # This is the authoritative calculation — the frontend must not replicate it.
             from llm_recommendations_module import get_adjusted_thresholds, get_user_recommendation_style, apply_athlete_model_to_thresholds

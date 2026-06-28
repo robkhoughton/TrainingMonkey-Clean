@@ -230,6 +230,71 @@ IF user settings unavailable:
 - Reference user-specific zones when providing workout intensity guidance
 - State confidence level when using fallback estimates
 
+### Dynamic Aerobic Threshold (Dynamic AeT)
+
+**What it is:** AeT (the Zone 2 ceiling / VT1) is treated as **dynamic** — it shifts day to
+day with autonomic readiness rather than being a fixed annual number. A slow, calibrated
+**baseline** is modulated by a fast **daily HRV correction** to produce today's *effective
+AeT*, which drives both zone classification and an internal-load signal.
+
+**Baseline AeT precedence (the calibrated anchor):**
+```
+fresh HR drift test (athlete_models.aet_bpm, <= 42 days)   # most authoritative
+  -> user-selected custom lab AeT (custom_hr_zones Z2 ceiling)
+    -> formula VT1 (Z2 ceiling from the zone method above)
+```
+
+**Daily correction (effective AeT):** `effective_AeT = round(baseline ± offset)`, where the
+offset is a continuous, asymmetric, dead-banded, clamped function of the readiness
+`hrv_z` (7-day acute vs 30-day chronic; source = overnight rMSSD via intervals.icu). The
+daily HRV is a *correction of the baseline*, not a fix for a stale baseline (staleness is
+handled by the >42-day retest scheduler).
+
+Per-athlete offset parameters live in `athlete_models` (seeded with the defaults below;
+calibrated over time via drift-test anchoring — population default until enough pairs):
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `aet_offset_deadband` | 0.5 σ | no shift inside ±0.5σ (ignore HRV noise) |
+| `aet_offset_slope_neg` | 4.0 bpm/σ | downward gain below the dead-band |
+| `aet_offset_slope_pos` | 1.5 bpm/σ | upward gain (gentler — safety bias) |
+| `aet_offset_cap_neg` | −8 bpm | max downward shift |
+| `aet_offset_cap_pos` | +3 bpm | max upward shift |
+| `aet_offset_staleness_days` | 3 | HRV older than this decays the offset toward 0 |
+
+**Hard safety guard:** in `RED` or `YELLOW_PARASYMPATHETIC` (Deep Hole) readiness states the
+offset is clamped ≤ 0 — AeT is **never raised** in parasympathetic overdrive, regardless of
+raw `hrv_z`. Missing HRV → no shift (offset 0), surfaced honestly; never implies a live
+measurement that isn't there.
+
+**Only the VT1 / Z2 ceiling (= Z3 floor) moves.** VT2 and all other boundaries are fixed —
+there is a daily proxy for the aerobic threshold (HRV) but none for the lactate threshold,
+so rescaling all zones would fabricate unmeasured VT2 movement. A lowered AeT therefore
+**widens Zone 3 downward**: the correct expression of "the easy ceiling fell but the hard
+ceiling did not."
+
+**Effect A — classification & Rx (live):** zone time-in-zone for the autopsy is re-bucketed
+against the effective AeT of the *session's own date*, so a 130 bpm effort lands in Z3 on a
+suppressed day (black-hole detection becomes autonomic-aware). The daily recommendation
+injects a `TODAY'S EFFECTIVE AeT` authoritative fact and anchors easy-day HR cues to it.
+
+**Effect B — dynamic internal load (dual-track):** an **Edwards** summated-HR-zone TRIMP on
+the AeT-anchored zones, `trimp_dynamic = Σ(minutes_in_zone_i × i)` with weights 1–5. On a
+suppressed-AeT day more time falls into higher-weighted Z3+, so the same effort scores
+higher internal strain. This runs in **parallel** to the incumbent Banister TRIMP (which
+stays primary) and feeds a parallel internal ACWR / divergence using the *same* 7d/28d
+windows. It only replaces Banister in the live divergence after a code-gated cutover:
+both the feature flag `dynamic_aet_divergence_cutover` AND `dynamic_acwr_cutover_ready`
+(≥28 days of consistent dynamic coverage) must pass, AND the divergence thresholds must be
+recalibrated for the dynamic distribution first (it runs more negative during builds).
+
+**AI Implementation Notes:**
+- Use the injected effective AeT as today's Z2 ceiling; do not re-derive it.
+- A depressed effective AeT is a recovery signal — frame it as such, do not push effort up
+  to "reach" the old ceiling.
+- These values are computed server-side (`dynamic_aet.py`); the model must not recompute or
+  invent them.
+
 ### Diversity in intensity with workload optimally distributed across HR zones as follows:
 
 | HR Zone | % Time in Zone |

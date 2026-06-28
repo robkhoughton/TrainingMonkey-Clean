@@ -256,6 +256,39 @@ def dynamic_acwr_cutover_ready(user_id, as_of_date=None):
         return False
 
 
+def dynamic_aet_cutover_status(user_id, as_of_date=None):
+    """Operator-facing cutover status, for admin surfacing so the flip is triggered by
+    state rather than memory. Reports data readiness, flag state, dynamic coverage, and a
+    one-line recommended action.
+    """
+    from utils.feature_flags import is_feature_enabled
+    from db_utils import execute_query
+    ready = dynamic_acwr_cutover_ready(user_id, as_of_date)
+    flag_on = is_feature_enabled('dynamic_aet_divergence_cutover', user_id)
+    cov = execute_query(
+        "SELECT COUNT(*) AS n, MIN(date) AS earliest, MAX(date) AS latest "
+        "FROM activities WHERE user_id = %s AND trimp_dynamic IS NOT NULL",
+        (user_id,), fetch=True
+    )
+    c = cov[0] if cov else {}
+    if flag_on and ready:
+        action = "ACTIVE: divergence is using the dynamic AeT track."
+    elif flag_on and not ready:
+        action = "FLAG ON but data gate not ready yet (waiting for 28d consistent coverage)."
+    elif ready and not flag_on:
+        action = "READY: recalibrate divergence thresholds, then enable 'dynamic_aet_divergence_cutover'."
+    else:
+        action = "Accumulating forward coverage; not yet ready to cut over."
+    return {
+        'cutover_ready': ready,
+        'flag_on': flag_on,
+        'dynamic_rows': int(c.get('n') or 0),
+        'earliest': str(c.get('earliest')) if c.get('earliest') else None,
+        'latest': str(c.get('latest')) if c.get('latest') else None,
+        'action': action,
+    }
+
+
 def format_effective_aet_block(eff):
     """Authoritative prompt block stating today's effective AeT (category-1 fact).
 

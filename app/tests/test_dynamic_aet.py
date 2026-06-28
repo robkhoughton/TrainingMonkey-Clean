@@ -158,5 +158,24 @@ class TestDynamicDivergence(unittest.TestCase):
         self.assertAlmostEqual(da.dynamic_divergence(1.3, 1.0), 0.2609, places=4)
 
 
+class TestCutoverFlagSafety(unittest.TestCase):
+    """The cutover flag must NOT be auto-enabled by admin status — it bypasses the
+    is_feature_enabled catch-all so cutover stays a deliberate, post-recalibration flip."""
+
+    def test_cutover_flag_off_for_admin(self):
+        from utils.feature_flags import is_feature_enabled
+        self.assertFalse(is_feature_enabled('dynamic_aet_divergence_cutover', 1))
+
+    def test_cutover_flag_off_for_other_users(self):
+        from utils.feature_flags import is_feature_enabled
+        self.assertFalse(is_feature_enabled('dynamic_aet_divergence_cutover', 2))
+        self.assertFalse(is_feature_enabled('dynamic_aet_divergence_cutover', None))
+
+    def test_admin_catchall_still_works_for_other_features(self):
+        # Guards that the special-case didn't break admin early-access generally.
+        from utils.feature_flags import is_feature_enabled
+        self.assertTrue(is_feature_enabled('some_unregistered_feature', 1))
+
+
 if __name__ == '__main__':
     unittest.main()
