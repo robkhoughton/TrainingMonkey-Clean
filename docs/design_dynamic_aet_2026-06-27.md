@@ -179,10 +179,13 @@ the June 2026 safety-floor work). Good emergent behavior.
 Sequence: **shared core → Effect A (Rx) → Effect B (load, dual-track) → cutover.** Each
 phase ships independently; nothing downstream breaks if a later phase is paused.
 
-**Implementation status (2026-06-27):** Phase 0 ✅ (commit 349b25c) · Phase A1 ✅
-(f2dda10) · Phase A2 + A3 ✅ (this commit) — Effect A is live: the autopsy classifies
-against the session-date effective AeT, and the daily Rx injects the "TODAY'S EFFECTIVE
-AeT" fact + AeT-anchored easy-day cues. Phase B not started.
+**Implementation status (2026-06-27):** Phase 0 ✅ (349b25c) · A1 ✅ (f2dda10) · A2+A3 ✅
+(f5e1f77) — Effect A live (autopsy classifies against session-date effective AeT; daily Rx
+injects the "TODAY'S EFFECTIVE AeT" fact + AeT-anchored cues). B1 ✅ (adc10be, Edwards
+`trimp_dynamic` at sync, dark) · B2 ✅ (6e1bde8, parallel dynamic ACWR + cutover gate,
+dark) · B-validate ✅ (afdba38, read-only report). **B-cutover NOT done** — deferred
+pending forward coverage + divergence-threshold recalibration (see B-cutover below).
+Nothing deployed (local-deploy model).
 
 ### Phase 0 — schema + effective-AeT core (dark; no user-facing change)
 - Migration: add `athlete_model` offset columns (`aet_offset_deadband`, `_slope_neg`,
@@ -222,22 +225,52 @@ AeT" fact + AeT-anchored easy-day cues. Phase B not started.
 - **Tests:** Edwards weighting from zone times; `trimp_dynamic` > Banister-equivalent on a
   suppressed-AeT, Z3-heavy day; parallel ACWR correct over windows.
 
-### Phase B-validate — one-time backfill (analysis only)
-- Offline script: last ~56 days, reconstruct **per-day** effective AeT from that date's
-  HRV, re-bucket stored streams, Edwards-weight → write to a **scratch/analysis location**
-  (not `activities.trimp_dynamic`). Missing HRV → baseline AeT, logged.
-- Chart dynamic divergence vs Banister divergence; decide whether/when to trust cutover.
+### Phase B-validate — one-time backfill (analysis only) ✅ DONE
+- `scripts/validate_dynamic_aet.py` — **read-only** (writes nothing to the DB): reconstructs
+  per-day effective AeT, re-buckets stored streams, Edwards-weights in memory, and compares
+  the dynamic internal-ACWR/divergence series against Banister; reports the no-stream load
+  fraction. Prints a summary + a CSV to the scratch dir.
 
-### Phase B-cutover — code-gated switch
-- Gate: `COUNT(trimp_dynamic NOT NULL in last 28d) >= 28` checked in code (not manual).
-- On gate pass: switch `normalized_divergence` internal input from Banister-ACWR to
-  dynamic-ACWR. Both windows self-consistent by construction (forward-only guarantee).
+**Results (2026-06-27, user 1, trailing 60d):**
+- **No-stream load fraction = 0.0%** (all 87 activities have HR streams) → the B2 no-stream
+  fork is moot for this athlete; NULL handling is unbiased. (Re-check for any athlete with
+  appreciable stream-less load before trusting their dynamic track.)
+- **The dynamic track amplifies the overtraining signal during hard blocks** — it runs more
+  negative than Banister (hard week: dynamic divergence ≈ −0.45 vs Banister ≈ −0.30; dynamic
+  internal ACWR ≈ 2.1 vs Banister ≈ 1.8) and leans positive on easy days. This is the
+  intended effect of Edwards-on-dynamic-zones (Z3+ time weighted harder).
+- **22/60 sign flips vs Banister**, but the large-magnitude flips agree in sign during the
+  build; flips are almost all tiny-magnitude wobble near zero on low-load days. Mean |Δ|
+  0.099, max 0.335.
+
+### Phase B-cutover — code-gated switch (NOT done — deferred; plan below)
+
+**Prerequisites (both required before flipping):**
+1. **Forward coverage:** deploy B1, then accrue ≥28 days so `dynamic_acwr_cutover_ready`
+   passes (gate already implemented in `dynamic_aet.py`: ≥28-day dynamic coverage AND no
+   stream-bearing activity in the trailing 28d missing `trimp_dynamic`). Forward-only
+   guarantees both ACWR windows are self-consistent at the flip.
+2. **Divergence threshold recalibration (the load-bearing finding from B-validate):** the
+   `athlete_models` divergence thresholds (`divergence_injury_threshold` default 0.15,
+   `typical_divergence_low/high`) were calibrated to the **Banister** divergence
+   distribution. The dynamic divergence sits systematically **more negative during builds**
+   — flipping the input without recalibrating would **over-flag overtraining**. Cutover is
+   therefore NOT a pure input swap. Recalibrate the thresholds (and/or the personal
+   divergence band) against the dynamic-divergence distribution — derive them from the same
+   reconstruction the B-validate script produces, or re-fit forward once coverage exists.
+
+**The switch itself:** point `normalized_divergence`'s internal input from the stored
+Banister `trimp_acute_chronic_ratio` to `calculate_dynamic_internal_acwr(...)`'s ratio in
+`UnifiedMetricsService` (the live read site), gated on `dynamic_acwr_cutover_ready`.
+
 - **No new safety floor** — depressed AeT → more Z3 → higher dynamic internal ACWR →
-  existing `enforce_safety_floor` tightens automatically (emergent, desired).
+  existing `enforce_safety_floor` tightens automatically (emergent, desired). NOTE: because
+  the dynamic divergence runs more negative, confirm the floor's trigger threshold is part
+  of the recalibration above, not left at the Banister-tuned value.
 - Keep Banister computing for a comparison window, then optionally retire from divergence.
-- **Tests:** cutover gate fires only at ≥28 days; **consistency assert** — after cutover no
-  ACWR window mixes Banister and Edwards; backfill dynamic-vs-Banister divergence
-  correlation sane.
+- **Tests:** cutover gate fires only when ready; **consistency assert** — after cutover no
+  ACWR window mixes Banister and Edwards; recalibrated thresholds applied to the dynamic
+  distribution, not the Banister one.
 
 ### Cross-cutting
 - **Determinism tags:** effective_AeT, AeT-anchored bucketing, Edwards weights,
