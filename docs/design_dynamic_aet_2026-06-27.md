@@ -243,7 +243,18 @@ Nothing deployed (local-deploy model).
   build; flips are almost all tiny-magnitude wobble near zero on low-load days. Mean |Δ|
   0.099, max 0.335.
 
-### Phase B-cutover — code-gated switch (NOT done — deferred; plan below)
+### Phase B-cutover — code-gated switch (mechanism BUILT; flip deferred)
+
+**Mechanism in place (commit 0258b9b) — the cutover is self-announcing, triggered by state
+not memory:**
+- Feature flag `dynamic_aet_divergence_cutover` — special-cased in `utils/feature_flags.py`
+  to **bypass the admin catch-all** (never auto-enables for user 1); flip = add the id to
+  `cutover_user_ids` after recalibration.
+- Gated swap in `UnifiedMetricsService` — replaces internal ACWR/divergence with the dynamic
+  track only when the flag AND `dynamic_acwr_cutover_ready()` both pass; **no-op otherwise**.
+- Self-announcing: when data-ready but flag-off, logs a recurring `[DYNAMIC-AET CUTOVER
+  READY]` banner, and the admin dashboard feature-flags component raises an INFO notice via
+  `dynamic_aet_cutover_status()`.
 
 **Prerequisites (both required before flipping):**
 1. **Forward coverage:** deploy B1, then accrue ≥28 days so `dynamic_acwr_cutover_ready`

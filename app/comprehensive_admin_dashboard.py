@@ -609,7 +609,17 @@ class ComprehensiveAdminDashboard:
                     'regular': is_feature_enabled('enhanced_acwr_calculation', 4)
                 }
             }
-            
+
+            # Dynamic AeT divergence cutover — surface readiness so the flip is triggered by
+            # state, not memory (admin user 1).
+            cutover = None
+            try:
+                from dynamic_aet import dynamic_aet_cutover_status
+                cutover = dynamic_aet_cutover_status(1)
+                feature_flags['dynamic_aet_divergence_cutover'] = cutover
+            except Exception as _ce:
+                feature_flags['dynamic_aet_divergence_cutover'] = {'error': str(_ce)}
+
             # Calculate health score
             health_score = 100
             alerts = []
@@ -640,6 +650,20 @@ class ComprehensiveAdminDashboard:
                     timestamp=datetime.now()
                 ))
             
+            # Dynamic AeT cutover ready but not yet enabled — an actionable notice (does NOT
+            # lower health; the off state is expected until a deliberate, recalibrated flip).
+            if cutover and cutover.get('cutover_ready') and not cutover.get('flag_on'):
+                alerts.append(Alert(
+                    id=f"dynamic_aet_cutover_ready_{int(time.time())}",
+                    component=SystemComponent.FEATURE_FLAGS,
+                    severity=AlertSeverity.INFO,
+                    title="Dynamic AeT Cutover Ready",
+                    message="28-day dynamic coverage complete. Recalibrate divergence "
+                            "thresholds, then enable 'dynamic_aet_divergence_cutover'.",
+                    timestamp=datetime.now(),
+                    details=cutover
+                ))
+
             # Determine status
             if health_score >= 90:
                 status = "healthy"
@@ -647,7 +671,7 @@ class ComprehensiveAdminDashboard:
                 status = "warning"
             else:
                 status = "critical"
-            
+
             return ComponentStatus(
                 component=SystemComponent.FEATURE_FLAGS,
                 status=status,
