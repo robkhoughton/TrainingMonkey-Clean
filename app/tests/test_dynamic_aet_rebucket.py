@@ -70,5 +70,28 @@ class TestBucketing(unittest.TestCase):
         self.assertEqual(s.bucket_hr_samples(hr, lo)[2], 30)  # all Z3
 
 
+class TestEdwardsLoad(unittest.TestCase):
+    def test_edwards_weighting(self):
+        # 1 min each in Z1,Z2,Z3 -> 1*1 + 1*2 + 1*3 = 6.0
+        self.assertEqual(s.edwards_trimp([60, 60, 60, 0, 0]), 6.0)
+
+    def test_edwards_zero(self):
+        self.assertEqual(s.edwards_trimp([0, 0, 0, 0, 0]), 0.0)
+
+    def test_higher_zones_weigh_more(self):
+        z2_only = s.edwards_trimp([0, 600, 0, 0, 0])   # 10 min Z2
+        z4_only = s.edwards_trimp([0, 0, 0, 600, 0])   # 10 min Z4
+        self.assertEqual(z2_only, 20.0)
+        self.assertEqual(z4_only, 40.0)
+
+    def test_dynamic_load_rises_when_aet_drops(self):
+        # Same 130 bpm effort: Z2 at AeT=140 -> Z3 at AeT=127, so Edwards load rises.
+        hr = [130] * 600  # 10 minutes
+        hi = s.dynamic_zone_times(hr, 200, 50, 'percentage', None, 140)
+        lo = s.dynamic_zone_times(hr, 200, 50, 'percentage', None, 127)
+        self.assertEqual(s.edwards_trimp(hi), 20.0)  # all Z2 -> 10*2
+        self.assertEqual(s.edwards_trimp(lo), 30.0)  # all Z3 -> 10*3
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1113,6 +1113,25 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         f"  - Average Speed: {average_speed_mph:.2f} mph" if average_speed_mph else "  - Average Speed: N/A")  # NEW
     logger.info(f"  - TRIMP: {trimp:.2f}")
 
+    # Dynamic-AeT internal load (Effect B, dual-track): Edwards TRIMP on zones anchored to
+    # the effective AeT of THIS activity's date. Runs in parallel to Banister `trimp`,
+    # which stays primary; forward-only (NULL for history). Best-effort — never block sync.
+    trimp_dynamic = None
+    if user_id and hr_stream_data and activity_id > 0:
+        try:
+            from dynamic_aet import get_effective_aet
+            from datetime import datetime as _dt
+            _adate = _dt.strptime(activity_date, '%Y-%m-%d').date()
+            _eff = get_effective_aet(user_id, as_of_date=_adate)
+            if _eff:
+                _dz = dynamic_zone_times(
+                    hr_stream_data, hr_config['max_hr'], hr_config['resting_hr'],
+                    user_hr_zones_method, user_custom_hr_zones, _eff['effective_aet']
+                )
+                trimp_dynamic = edwards_trimp(_dz)
+        except Exception as _tde:
+            logger.warning(f"trimp_dynamic computation failed for activity {activity_id}: {_tde}")
+
     # Return enhanced data structure with new cycling fields and TRIMP metadata
     result = {
         'activity_id': int(activity_id),
@@ -1137,6 +1156,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'max_heart_rate': float(max_hr),
         'duration_minutes': float(round(duration_minutes, 2)),
         'trimp': float(trimp.item()) if hasattr(trimp, 'item') else float(trimp),
+        'trimp_dynamic': trimp_dynamic,
         'time_in_zone1': int(hr_zone_times[0]),
         'time_in_zone2': int(hr_zone_times[1]),
         'time_in_zone3': int(hr_zone_times[2]),
@@ -1590,6 +1610,28 @@ def _build_zone_boundaries(max_hr, resting_hr, hr_zones_method='percentage',
         zones[2][0] = float(vt1_override)  # Z3 floor
 
     return [tuple(z) for z in zones], method_label
+
+
+# Edwards zone weights (category-1 constants): Z1..Z5 contribute 1..5 strain per minute.
+EDWARDS_ZONE_WEIGHTS = (1, 2, 3, 4, 5)
+
+
+def edwards_trimp(zone_times_seconds):
+    """Edwards summated-HR-zone TRIMP from per-zone seconds: Σ(minutes_in_zone_i × i).
+
+    Dynamic-AeT Effect B internal-load metric. When computed on AeT-anchored zones, a
+    suppressed AeT pushes time into higher-weighted Z3+ — so the same effort scores higher
+    strain on a low-readiness day.
+    """
+    return round(sum((s / 60.0) * w for s, w in zip(zone_times_seconds, EDWARDS_ZONE_WEIGHTS)), 2)
+
+
+def dynamic_zone_times(hr_data, max_hr, resting_hr, hr_zones_method, custom_hr_zones,
+                       effective_aet):
+    """Bucket an in-memory HR sample list against an effective-AeT Z2/Z3 line."""
+    zones, _ = _build_zone_boundaries(max_hr, resting_hr, hr_zones_method, custom_hr_zones,
+                                      vt1_override=effective_aet)
+    return bucket_hr_samples(hr_data, zones)
 
 
 def bucket_hr_samples(hr_data, zones):
