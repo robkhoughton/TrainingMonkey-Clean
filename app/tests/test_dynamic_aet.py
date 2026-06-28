@@ -136,5 +136,27 @@ class TestOffsetParams(unittest.TestCase):
         self.assertEqual(p.staleness_days, 4)
 
 
+class TestDynamicDivergence(unittest.TestCase):
+    def test_sign_convention(self):
+        # external > internal -> positive (recovery/detraining)
+        self.assertGreater(da.dynamic_divergence(1.2, 1.0), 0)
+        # internal > external -> negative (hidden stress)
+        self.assertLess(da.dynamic_divergence(1.0, 1.2), 0)
+
+    def test_equal_is_zero(self):
+        self.assertEqual(da.dynamic_divergence(1.1, 1.1), 0.0)
+
+    def test_none_inputs(self):
+        self.assertIsNone(da.dynamic_divergence(None, 1.0))
+        self.assertIsNone(da.dynamic_divergence(1.0, None))
+
+    def test_both_zero(self):
+        self.assertEqual(da.dynamic_divergence(0, 0), 0.0)
+
+    def test_matches_formula(self):
+        # (1.3 - 1.0) / 1.15 = 0.2609
+        self.assertAlmostEqual(da.dynamic_divergence(1.3, 1.0), 0.2609, places=4)
+
+
 if __name__ == '__main__':
     unittest.main()

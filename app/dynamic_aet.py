@@ -27,7 +27,10 @@ The offset parameters are personalized per athlete in athlete_models and seeded 
 DEFAULT_* constants below; calibration is deferred to drift-test anchoring. The constants
 are documented defaults / NULL-column fallbacks, not magic numbers buried in logic.
 """
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # Population-default offset parameters (mirror the athlete_models column defaults).
 DEFAULT_DEADBAND = 0.5        # sigma; no shift within +/- this z-score band
@@ -151,6 +154,106 @@ def compute_effective_aet(baseline_aet, hrv_z, state, days_since_hrv,
         'state': state,
         'fallback_reason': fallback_reason,
     }
+
+
+def calculate_dynamic_internal_acwr(user_id, activity_date):
+    """Parallel internal ACWR from trimp_dynamic (Effect B, dual-track) — DARK.
+
+    Mirrors update_moving_averages_standard exactly: 7d and 28d windows ending at
+    activity_date, summed then divided by 7 and 28. The ratio is the dynamic internal ACWR.
+    Applying the SAME window logic to BOTH windows is the consistency requirement — never
+    mix methods across acute/chronic. Not fed to the live divergence until cutover.
+
+    Caveat (resolve at B-validate): activities without an HR stream have NULL trimp_dynamic
+    and contribute 0 here, which can deflate the dynamic load. See dynamic_acwr_cutover_ready.
+
+    Returns dict or None on error.
+    """
+    from db_utils import execute_query
+    from datetime import datetime, timedelta
+    try:
+        d = activity_date if hasattr(activity_date, 'year') else datetime.strptime(activity_date, '%Y-%m-%d').date()
+        ds = d.strftime('%Y-%m-%d')
+        seven = (d - timedelta(days=6)).strftime('%Y-%m-%d')
+        twentyeight = (d - timedelta(days=27)).strftime('%Y-%m-%d')
+
+        def _avg(start, n):
+            r = execute_query(
+                "SELECT COALESCE(SUM(trimp_dynamic), 0) AS s FROM activities "
+                "WHERE user_id = %s AND date BETWEEN %s AND %s",
+                (user_id, start, ds), fetch=True
+            )
+            return float(r[0]['s'] or 0) / n
+
+        a7 = _avg(seven, 7.0)
+        c28 = _avg(twentyeight, 28.0)
+        ratio = round(a7 / c28, 2) if c28 > 0 else 0.0
+        return {
+            'seven_day_avg_trimp_dynamic': round(a7, 2),
+            'twentyeight_day_avg_trimp_dynamic': round(c28, 2),
+            'internal_acwr_dynamic': ratio,
+        }
+    except Exception as e:
+        logger.warning(f"dynamic internal ACWR failed for user {user_id} @ {activity_date}: {e}")
+        return None
+
+
+def dynamic_divergence(external_acwr, internal_acwr_dynamic):
+    """Normalized divergence using the dynamic internal ACWR.
+
+    Identical formula to UnifiedMetricsService._calculate_normalized_divergence so the
+    cutover is a pure input swap: (external - internal) / avg. Positive = external exceeds
+    internal (recovery/detraining); negative = hidden internal stress (overtraining risk).
+    """
+    if external_acwr is None or internal_acwr_dynamic is None:
+        return None
+    if external_acwr == 0 and internal_acwr_dynamic == 0:
+        return 0.0
+    avg = (external_acwr + internal_acwr_dynamic) / 2
+    if avg == 0:
+        return None
+    return round((external_acwr - internal_acwr_dynamic) / avg, 4)
+
+
+def dynamic_acwr_cutover_ready(user_id, as_of_date=None):
+    """Gate for switching live divergence to the dynamic track.
+
+    True only when the trailing 28-day chronic window is fully represented by the dynamic
+    method — so the cutover never mixes Banister and Edwards across windows:
+      (a) dynamic coverage spans >= 28 days (earliest trimp_dynamic is old enough), AND
+      (b) no stream-bearing activity in the last 28 days is still missing trimp_dynamic.
+    """
+    from db_utils import execute_query
+    from timezone_utils import get_app_current_date
+    from datetime import timedelta
+    try:
+        ref = as_of_date or get_app_current_date()
+        ref_s = ref.strftime('%Y-%m-%d')
+        window_start = (ref - timedelta(days=27)).strftime('%Y-%m-%d')
+
+        earliest = execute_query(
+            "SELECT MIN(date) AS m FROM activities WHERE user_id = %s AND trimp_dynamic IS NOT NULL",
+            (user_id,), fetch=True
+        )
+        m = earliest[0]['m'] if earliest else None
+        if not m:
+            return False
+        if (ref - m).days < 28:
+            return False
+
+        # Stream-bearing activities in the window that haven't been dynamic-scored yet.
+        gap = execute_query(
+            """SELECT COUNT(*) AS n
+               FROM activities a
+               JOIN hr_streams h ON h.activity_id = a.activity_id
+               WHERE a.user_id = %s AND a.date BETWEEN %s AND %s
+                 AND a.activity_id > 0 AND a.trimp_dynamic IS NULL""",
+            (user_id, window_start, ref_s), fetch=True
+        )
+        return int(gap[0]['n'] or 0) == 0
+    except Exception as e:
+        logger.warning(f"cutover-ready check failed for user {user_id}: {e}")
+        return False
 
 
 def format_effective_aet_block(eff):
