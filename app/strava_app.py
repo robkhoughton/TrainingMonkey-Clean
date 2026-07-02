@@ -55,7 +55,9 @@ from optimized_token_management import OptimizedTokenManager, batch_refresh_all_
 from optimized_acwr_service import OptimizedACWRService, batch_recalculate_all_acwr
 from prompt_constants import format_divergence_for_prompt
 from readiness_engine import get_ans_readiness
-from aerobic_assessment_engine import analyze_hr_drift_test
+from aerobic_assessment_engine import (
+    analyze_hr_drift_test, segment_pace_from_distance, parse_pace_from_notes,
+)
 from intervals_icu_sync import run_daily_sync as intervals_icu_daily_sync
 
 # Import Strava processing functions
@@ -6897,7 +6899,7 @@ def generate_autopsy_for_date(date_str, user_id):
         # Compute zone compliance for autopsy
         zone_compliance = None
         try:
-            from llm_recommendations_module import get_user_hr_thresholds, compute_zone_compliance
+            from llm_recommendations_module import get_user_hr_thresholds, compute_zone_compliance, is_diagnostic_session
             hr_thresholds = get_user_hr_thresholds(user_id)
             structured_output, _ = get_recommendation_meta_for_date(
                 datetime.strptime(date_str, '%Y-%m-%d').date(), user_id
@@ -6908,6 +6910,12 @@ def generate_autopsy_for_date(date_str, user_id):
                     structured_output.get('decision', {}).get('polarized_session_intent')
                     or structured_output.get('decision', {}).get('intensity_target')
                 )
+
+            # AeT/HR-drift tests drift into Zone 3 by protocol (that crossing IS the AeT
+            # measurement), so suppress black-hole / aerobic-base compliance for them.
+            is_diagnostic = is_diagnostic_session(structured_output, observations)
+            if is_diagnostic:
+                logger.info(f"Autopsy {date_str} user {user_id}: diagnostic AeT/drift test detected — compliance flags suppressed")
 
             # Dynamic AeT (Effect A): classify this session against the effective AeT that
             # applied on its OWN date — re-bucket the HR stream so the Z2/Z3 line reflects
@@ -6945,7 +6953,7 @@ def generate_autopsy_for_date(date_str, user_id):
                 logger.warning(f"Dynamic AeT re-bucketing failed for {date_str}: {_eae}")
                 eff_aet = None
 
-            zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds)
+            zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, is_diagnostic=is_diagnostic)
             if zone_compliance and eff_aet:
                 zone_compliance['effective_aet'] = eff_aet['effective_aet']
                 zone_compliance['baseline_aet'] = eff_aet['baseline_aet']
@@ -13606,7 +13614,10 @@ def backfill_hr_streams():
                 streams = get_activity_streams(client, activity_id)
                 if streams and 'heartrate' in streams and streams['heartrate']:
                     hr_data = streams['heartrate'].data
-                    db_utils.save_hr_stream_data(activity_id, current_user.id, hr_data, sample_rate=1.0)
+                    distance_data = (streams['distance'].data
+                                     if 'distance' in streams and streams['distance'] else None)
+                    db_utils.save_hr_stream_data(activity_id, current_user.id, hr_data,
+                                                 sample_rate=1.0, distance_data=distance_data)
                     fetched += 1
                     logger.info(f"Backfilled HR stream for activity {activity_id} ({row['name']})")
                 else:
@@ -13717,6 +13728,15 @@ def preview_aerobic_assessment():
         if not result['valid']:
             return jsonify({'success': False, 'error': result['error']}), 400
 
+        # Exact test-segment pace from the (forward-only) distance stream, else parse notes.
+        # Valid here — controlled treadmill/flat test condition, not a trail run.
+        pace = segment_pace_from_distance(
+            stream.get('distance_data'), sample_rate, warmup_minutes, cooldown_minutes
+        ) or parse_pace_from_notes(data.get('notes'))
+        if pace:
+            result['avg_pace_sec_per_mi'] = pace['avg_pace_sec_per_mi']
+            result['pace_source'] = pace['pace_source']
+
         return jsonify({'success': True, 'analysis': result})
 
     except Exception as e:
@@ -13754,6 +13774,16 @@ def save_aerobic_assessment_endpoint():
         result['cooldown_minutes'] = cooldown_minutes
         result['notes'] = notes
 
+        # Persist the exact test-segment pace (distance stream) or, for tests without a
+        # stored stream, a pace parsed from the athlete's notes. Recorded so the history
+        # readout is stable and the value survives for later comparison.
+        pace = segment_pace_from_distance(
+            stream.get('distance_data'), sample_rate, warmup_minutes, cooldown_minutes
+        ) or parse_pace_from_notes(notes)
+        if pace:
+            result['avg_pace_sec_per_mi'] = pace['avg_pace_sec_per_mi']
+            result['pace_source'] = pace['pace_source']
+
         saved = db_utils.save_aerobic_assessment(current_user.id, activity_id, result)
         if not saved:
             return jsonify({'success': False, 'error': 'Failed to save assessment.'}), 500
@@ -13777,7 +13807,8 @@ def save_aerobic_assessment_endpoint():
             if key in assessment and hasattr(assessment[key], 'strftime'):
                 assessment[key] = assessment[key].strftime('%Y-%m-%d') if key == 'test_date' else assessment[key].isoformat()
         for key in ('drift_pct', 'aet_bpm', 'ant_bpm', 'gap_pct', 'first_half_avg_hr',
-                    'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes'):
+                    'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes',
+                    'cooldown_minutes', 'avg_pace_sec_per_mi'):
             if assessment.get(key) is not None:
                 assessment[key] = float(assessment[key])
 
@@ -13797,11 +13828,19 @@ def get_aerobic_assessments_endpoint():
         assessments = []
         for row in rows:
             a = dict(row)
+            # Notes fallback for tests saved before the distance stream / pace feature:
+            # if no pace was recorded, try to extract one from the athlete's notes.
+            if a.get('avg_pace_sec_per_mi') is None and a.get('notes'):
+                parsed = parse_pace_from_notes(a['notes'])
+                if parsed:
+                    a['avg_pace_sec_per_mi'] = parsed['avg_pace_sec_per_mi']
+                    a['pace_source'] = parsed['pace_source']
             for key in ('test_date', 'created_at', 'updated_at'):
                 if key in a and hasattr(a[key], 'strftime'):
                     a[key] = a[key].strftime('%Y-%m-%d') if key == 'test_date' else a[key].isoformat()
             for key in ('drift_pct', 'aet_bpm', 'ant_bpm', 'gap_pct', 'first_half_avg_hr',
-                        'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes', 'distance_miles'):
+                        'second_half_avg_hr', 'steady_state_minutes', 'warmup_minutes',
+                        'cooldown_minutes', 'avg_pace_sec_per_mi', 'distance_miles'):
                 if a.get(key) is not None:
                     a[key] = float(a[key])
             assessments.append(a)
@@ -13826,6 +13865,50 @@ def delete_aerobic_assessment(assessment_id):
         return jsonify({'success': False, 'error': 'Assessment not found'}), 404
     except Exception as e:
         logger.error(f"Error deleting aerobic assessment {assessment_id} for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/effective-aet-history', methods=['GET'])
+@login_required
+def get_effective_aet_history():
+    """Return the recorded daily effective (dynamic) AeT series for the current user.
+
+    Reads effective_aet_daily (one row/user/day, written by the daily Rx; forward-only).
+    The effective AeT is a MODEL OUTPUT — baseline AeT adjusted for overnight HRV — not a
+    measurement; the frontend labels it as such. Returns the full history for the SeasonPage
+    overlay plus `latest` for the TodayPage "aerobic ceiling today" element.
+    """
+    try:
+        days = request.args.get('days', default=365, type=int)
+        rows = db_utils.execute_query(
+            """SELECT date, baseline_aet, effective_aet, aet_offset, hrv_z,
+                      readiness_state, fallback_reason
+               FROM effective_aet_daily
+               WHERE user_id = %s AND date >= CURRENT_DATE - %s::interval
+               ORDER BY date ASC""",
+            (current_user.id, f'{max(1, days)} days'), fetch=True
+        ) or []
+
+        history = []
+        for row in rows:
+            r = dict(row)
+            if hasattr(r.get('date'), 'strftime'):
+                r['date'] = r['date'].strftime('%Y-%m-%d')
+            for key in ('baseline_aet', 'effective_aet'):
+                if r.get(key) is not None:
+                    r[key] = int(r[key])
+            for key in ('aet_offset', 'hrv_z'):
+                if r.get(key) is not None:
+                    r[key] = float(r[key])
+            history.append(r)
+
+        return jsonify({
+            'success': True,
+            'history': history,
+            'latest': history[-1] if history else None,
+        })
+    except Exception as e:
+        logger.error(f"Error fetching effective AeT history for user {current_user.id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

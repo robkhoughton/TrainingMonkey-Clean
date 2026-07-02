@@ -30,6 +30,10 @@ interface WeeklySynthesisData {
   week_start: string | null;
   generated_at: string | null;
   strategic_summary: string | null;
+  alignment_score?: number | null;
+  quality_score?: number | null;
+  composite_score?: number | null;
+  reflection?: string | null;
 }
 
 interface WeeklyProgram {
@@ -80,6 +84,61 @@ interface WeeklyProgramDisplayProps {
   weeklySynthesis?: WeeklySynthesisData | null;
 }
 
+// ── Week in Review helpers ──────────────────────────────────────────────────
+// Lens accents: RX alignment in the app's blue-gray, productive work in brand sage.
+const LENS = {
+  alignment: { rule: '#7D9CB8', chip: '#7D9CB8' },
+  quality: { rule: '#6B8F7F', chip: '#6B8F7F' },
+};
+
+/** Split the merged dual-track synthesis into its two narratives. Backend stores
+ *  `<alignment>\n\n<productive work>`, each led by a section header. Falls back to a
+ *  single narrative (older single-track rows) when the productive-work marker is absent. */
+function splitTracks(text: string): { alignment: string; quality: string } {
+  const idx = text.search(/PRODUCTIVE WORK/i);
+  if (idx > 0) {
+    return {
+      alignment: text.slice(0, idx).replace(/ALIGNMENT ASSESSMENT:?/i, '').trim(),
+      quality: text.slice(idx).replace(/PRODUCTIVE WORK:?/i, '').trim(),
+    };
+  }
+  return { alignment: text.replace(/ALIGNMENT ASSESSMENT:?/i, '').trim(), quality: '' };
+}
+
+function formatWeekRange(weekStart: string | null): string {
+  if (!weekStart) return '';
+  const start = new Date(weekStart + 'T12:00:00');
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const s = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const e = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${s} – ${e}`;
+}
+
+/** One verdict lens — colored rule, label + score chip, then the narrative. */
+const ReviewLens: React.FC<{
+  label: string;
+  score?: number | null;
+  accent: { rule: string; chip: string };
+  body: string;
+}> = ({ label, score, accent, body }) => (
+  <div style={{ borderLeft: `3px solid ${accent.rule}`, paddingLeft: '0.85rem' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
+      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1B2E4B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        {label}
+      </span>
+      {score != null && (
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'white', background: accent.chip, borderRadius: '10px', padding: '2px 9px', lineHeight: 1.5, whiteSpace: 'nowrap' }}>
+          {score}/10
+        </span>
+      )}
+    </div>
+    <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: '#374151', textAlign: 'left' }}>
+      {body}
+    </p>
+  </div>
+);
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -88,6 +147,36 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autopsyScores, setAutopsyScores] = useState<Record<string, number>>({});
+
+  // Week in Review reflection state
+  const [reflectionText, setReflectionText] = useState('');
+  const [reflectionEditing, setReflectionEditing] = useState(false);
+  const [reflectionSubmitting, setReflectionSubmitting] = useState(false);
+  const [reflectionError, setReflectionError] = useState<string | null>(null);
+
+  const handleSubmitReflection = async () => {
+    const reflection = reflectionText.trim();
+    if (!reflection) return;
+    setReflectionSubmitting(true);
+    setReflectionError(null);
+    try {
+      const res = await fetch('/api/coach/weekly-program/reflection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reflection }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Could not rebuild your week. Try again.');
+      }
+      setReflectionEditing(false);
+      onRefresh();
+    } catch (err) {
+      setReflectionError(err instanceof Error ? err.message : 'Could not rebuild your week. Try again.');
+    } finally {
+      setReflectionSubmitting(false);
+    }
+  };
 
   // Fetch autopsy alignment scores for the week
   useEffect(() => {
@@ -310,7 +399,7 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
         </div>
       )}
 
-      {/* At a Glance — two-column: Last Week | This Coming Week */}
+      {/* Reflect & Plan — two columns: Last Week (dual-track review) | This Coming Week + reflection */}
       <div style={{
         borderRadius: '8px',
         marginBottom: '1rem',
@@ -322,38 +411,120 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
           padding: '8px 16px',
         }}>
           <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
-            At a Glance
+            Reflect &amp; Plan
           </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: 'white' }}>
-          {/* Last Week */}
-          <div style={{ padding: '1rem', borderRight: '1px solid #e1e8ed' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.6rem' }}>
-              Last Week
-              {weeklySynthesis?.week_start && (
-                <span style={{ fontWeight: 400, marginLeft: '6px', textTransform: 'none', letterSpacing: 0 }}>
-                  · {new Date(weeklySynthesis.week_start + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </span>
+        <div style={{ backgroundColor: 'white' }}>
+          {/* Two columns: Last Week (dual-track review) | This Coming Week */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+            {/* LAST WEEK — dual-track verdict */}
+            <div style={{ padding: '1rem', borderRight: '1px solid #e1e8ed', minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
+                Last Week
+                {weeklySynthesis?.week_start && (
+                  <span style={{ fontWeight: 400, marginLeft: '6px', textTransform: 'none', letterSpacing: 0 }}>
+                    · {formatWeekRange(weeklySynthesis.week_start)}
+                  </span>
+                )}
+                {weeklySynthesis?.composite_score != null && (
+                  <span style={{ fontWeight: 400, marginLeft: '6px', textTransform: 'none', letterSpacing: 0, color: '#6b7280' }}>
+                    · composite {weeklySynthesis.composite_score.toFixed(1)}
+                  </span>
+                )}
+              </div>
+
+              {weeklySynthesis?.synthesis ? (
+                (() => {
+                  const ws = weeklySynthesis!;
+                  const { alignment, quality } = splitTracks(ws.synthesis || '');
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                      <ReviewLens label="RX Alignment" score={ws.alignment_score} accent={LENS.alignment} body={alignment} />
+                      {quality && (
+                        <ReviewLens label="Productive Work" score={ws.quality_score} accent={LENS.quality} body={quality} />
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af', fontStyle: 'italic', lineHeight: '1.6' }}>
+                  Your review unlocks Saturday evening, once the week closes and your coach reads it back.
+                </p>
               )}
             </div>
-            {weeklySynthesis?.synthesis ? (
-              <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#374151', textAlign: 'left', borderLeft: '3px solid #7D9CB8', paddingLeft: '0.75rem' }}>
-                {weeklySynthesis.synthesis}
+
+            {/* THIS COMING WEEK + your reflection */}
+            <div style={{ padding: '1rem', minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
+                This Coming Week
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#374151', textAlign: 'left' }}>
+                {program.week_summary}
               </p>
-            ) : (
-              <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af', fontStyle: 'italic', lineHeight: '1.6' }}>
-                Synthesis generates Saturday evening after the week closes.
-              </p>
-            )}
-          </div>
-          {/* This Coming Week */}
-          <div style={{ padding: '1rem' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.6rem' }}>
-              This Coming Week
+
+              {/* Your reflection — the athlete's reply, only when there's a review to react to */}
+              {weeklySynthesis?.synthesis && (() => {
+                const ws = weeklySynthesis!;
+                const existing = (ws.reflection || '').trim();
+                const showReadback = existing && !reflectionEditing;
+                return (
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e1e8ed' }}>
+                    <label
+                      htmlFor="week-reflection"
+                      style={{ display: 'block', fontSize: '0.9rem', fontWeight: 700, color: '#2c3e50', marginBottom: '0.2rem', textAlign: 'left' }}
+                    >
+                      How did your week go?
+                    </label>
+                    <p style={{ margin: '0 0 0.65rem', fontSize: '13px', color: '#6b7280', textAlign: 'left', maxWidth: '70ch', lineHeight: 1.6 }}>
+                      Tell me what the data misses — how sessions actually felt, life stress, niggles, and what you want from next week.
+                    </p>
+
+                    {showReadback ? (
+                      <div style={{ borderLeft: '3px solid #7D9CB8', paddingLeft: '0.85rem', fontSize: '13px', lineHeight: 1.65, color: '#374151', textAlign: 'left', maxWidth: '75ch' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                          Your review — shaped this week's plan
+                        </div>
+                        {existing}
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => { setReflectionText(existing); setReflectionEditing(true); }}
+                            style={{ marginTop: '0.6rem', background: 'none', border: 'none', padding: 0, color: '#2563eb', fontSize: '13px', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            Edit &amp; rebuild
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <textarea
+                          id="week-reflection"
+                          value={reflectionText}
+                          onChange={(e) => setReflectionText(e.target.value)}
+                          disabled={reflectionSubmitting}
+                          rows={4}
+                          placeholder="e.g. Tuesday's tempo felt flat — work was brutal. Legs are good though; happy to push the long run if you want."
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '0.7rem 0.8rem', fontSize: '14px', lineHeight: 1.6, color: '#374151', fontFamily: 'inherit', border: '1px solid #e1e8ed', borderRadius: '8px', resize: 'vertical', minHeight: '92px' }}
+                        />
+                        {reflectionError && (
+                          <p style={{ margin: '0.5rem 0 0', fontSize: '13px', color: '#c0392b', textAlign: 'left' }}>{reflectionError}</p>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.7rem' }}>
+                          <button
+                            type="button"
+                            onClick={handleSubmitReflection}
+                            disabled={reflectionSubmitting || !reflectionText.trim()}
+                            style={{ padding: '9px 18px', background: '#FF5722', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: reflectionSubmitting || !reflectionText.trim() ? 'not-allowed' : 'pointer', opacity: reflectionSubmitting || !reflectionText.trim() ? 0.55 : 1, transition: 'opacity 0.15s ease' }}
+                          >
+                            {reflectionSubmitting ? 'Rebuilding your week…' : 'Save & rebuild my week →'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
-            <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#374151', textAlign: 'left' }}>
-              {program.week_summary}
-            </p>
           </div>
         </div>
       </div>

@@ -577,6 +577,10 @@ interface WeeklySynthesisData {
   week_start: string | null;
   generated_at: string | null;
   strategic_summary: string | null;
+  alignment_score?: number | null;
+  quality_score?: number | null;
+  composite_score?: number | null;
+  reflection?: string | null;
 }
 
 export const WeeklySynthesisCard: React.FC<{

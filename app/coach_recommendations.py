@@ -19,6 +19,7 @@ import logging
 import requests
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple, Any
+from concurrent.futures import ThreadPoolExecutor
 
 # Import existing modules
 from timezone_utils import get_app_current_date, get_current_week_start
@@ -27,11 +28,13 @@ from db_utils import execute_query, upsert_week_strategic_summary
 from readiness_engine import get_weekly_ans_summary
 from llm_recommendations_module import (
     call_anthropic_api,
+    call_claude,
     load_training_guide,
     _select_guide_sections,
     get_athlete_model_context,
     get_user_coaching_spectrum,
     get_coaching_tone_instructions,
+    get_user_autopsy_weights,
     get_user_recommendation_style,
     get_adjusted_thresholds,
     apply_athlete_model_to_thresholds,
@@ -437,17 +440,26 @@ def format_race_history_for_prompt(race_history: List[Dict], trend: Dict) -> str
     return "\n".join(lines)
 
 
-def _format_aet_prompt_block(assessment, target_week_start, stage: str = 'base') -> str:
-    """Format latest aerobic assessment for weekly program prompt injection.
+def _format_aet_prompt_block(assessment, target_week_start, stage: str = 'base',
+                             method: str = 'hr_drift', latest_lactate=None) -> str:
+    """Format the latest AeT assessment for weekly program prompt injection.
 
-    Includes scheduling trigger via workout_library.get_aerobic_assessment_prompt_block().
+    One AeT slot, two interchangeable methods. `method` selects which the athlete uses:
+      - 'hr_drift'     → format `assessment` (drift test row), schedule a drift retest.
+      - 'lactate_step' → format `latest_lactate` (LT1 step test row), schedule a step retest.
+    Both produce aet_bpm and are treated identically downstream.
+
+    Scheduling trigger via workout_library.get_aerobic_assessment_prompt_block().
     Thresholds: ≤28d current (no action), 29-42d window open (suggest), >42d overdue (prescribe).
     Blocked during taper, peak, and recovery phases.
     """
     from workout_library import get_aerobic_assessment_prompt_block
 
+    if method == 'lactate_step':
+        return _format_lactate_aet_block(latest_lactate, target_week_start, stage)
+
     if not assessment:
-        sched = get_aerobic_assessment_prompt_block(9999, stage, last_drift_pct=None)
+        sched = get_aerobic_assessment_prompt_block(9999, stage, last_drift_pct=None, method='hr_drift')
         base = "No HR drift test on record."
         if sched['prompt_block']:
             return base + "\n\n" + sched['prompt_block']
@@ -464,6 +476,7 @@ def _format_aet_prompt_block(assessment, target_week_start, stage: str = 'base')
         aet = float(assessment['aet_bpm'])
         drift = float(assessment['drift_pct'])
         lines = [
+            f"Method: HR Drift Test (indirect AeT estimate)",
             f"AeT: {aet:.0f} bpm | Drift: {drift:.1f}% | {assessment.get('interpretation', '')}",
             f"Test date: {test_date} ({days_since} days ago — {freshness})",
         ]
@@ -475,11 +488,60 @@ def _format_aet_prompt_block(assessment, target_week_start, stage: str = 'base')
 
         result = "\n".join(lines)
 
-        sched = get_aerobic_assessment_prompt_block(days_since, stage, last_drift_pct=drift)
+        sched = get_aerobic_assessment_prompt_block(days_since, stage, last_drift_pct=drift, method='hr_drift')
         logger.info(f"Aerobic assessment scheduling: {sched['log_summary']}")
         if sched['prompt_block']:
             result += "\n\n" + sched['prompt_block']
 
+        return result
+    except Exception:
+        return "Aerobic assessment data unavailable."
+
+
+def _format_lactate_aet_block(test, target_week_start, stage: str = 'base') -> str:
+    """Format the latest LT1 lactate step test for prompt injection.
+
+    LT1 is the DIRECT AeT measurement; aet_bpm = LT1 bpm, treated identically to the
+    drift-test result downstream.
+    """
+    from workout_library import get_aerobic_assessment_prompt_block
+
+    if not test:
+        sched = get_aerobic_assessment_prompt_block(9999, stage, method='lactate_step')
+        base = "No LT1 lactate step test on record."
+        if sched['prompt_block']:
+            return base + "\n\n" + sched['prompt_block']
+        return base + " Schedule a step test when the athlete has a well-rested Zone 2 day available."
+
+    try:
+        from datetime import datetime as _dt
+        test_date = test['test_date']
+        if isinstance(test_date, str):
+            test_date = _dt.strptime(test_date, '%Y-%m-%d').date()
+        days_since = (target_week_start - test_date).days
+        freshness = "current" if days_since <= 28 else "retest window open" if days_since <= 42 else "overdue"
+
+        if test.get('valid') and test.get('lt1_bpm') is not None:
+            aet = float(test['lt1_bpm'])
+            grade_txt = f" at {float(test['lt1_grade']):.1f}% grade" if test.get('lt1_grade') is not None else ""
+            base_txt = f" (baseline {float(test['baseline_lactate']):.1f} mmol)" if test.get('baseline_lactate') is not None else ""
+            lines = [
+                f"Method: LT1 Lactate Step Test (direct AeT measurement ≈ first sustained rise)",
+                f"AeT: {aet:.0f} bpm{grade_txt}{base_txt}",
+                f"Test date: {test_date} ({days_since} days ago — {freshness})",
+            ]
+        else:
+            lines = [
+                f"Method: LT1 Lactate Step Test",
+                f"Last step test ({test_date}) did not capture a valid LT1 (no sustained rise). "
+                f"No Zone 2 ceiling was set from it.",
+            ]
+        result = "\n".join(lines)
+
+        sched = get_aerobic_assessment_prompt_block(days_since, stage, method='lactate_step')
+        logger.info(f"Aerobic assessment scheduling: {sched['log_summary']}")
+        if sched['prompt_block']:
+            result += "\n\n" + sched['prompt_block']
         return result
     except Exception:
         return "Aerobic assessment data unavailable."
@@ -840,10 +902,11 @@ def build_weekly_program_prompt(
         fetch=True
     )
 
-    # Get prior week: strategic_summary + synthesis in one query
+    # Get prior week: strategic_summary + synthesis + athlete reflection in one query
     prior_week_rows = execute_query(
         """
-        SELECT strategic_summary, weekly_synthesis, deviation_log, week_start_date
+        SELECT strategic_summary, weekly_synthesis, deviation_log, week_start_date,
+               week_reflection
         FROM weekly_programs
         WHERE user_id = %s
           AND week_start_date < %s
@@ -859,11 +922,23 @@ def build_weekly_program_prompt(
     # Get last 3 weeks of strategic summaries for training arc context
     prior_weeks = get_prior_week_summaries(user_id, target_week_start, n=3)
 
-    # Fetch latest aerobic assessment for AeT/AnT prompt injection
+    # Fetch latest AeT assessment for prompt injection. The athlete picks one of two
+    # interchangeable methods (HR drift OR LT1 lactate step); fetch the chosen one.
     latest_aet = None
+    latest_lactate = None
+    aet_method = 'hr_drift'
     try:
-        from db_utils import get_latest_aerobic_assessment
-        latest_aet = get_latest_aerobic_assessment(user_id)
+        from db_utils import get_latest_aerobic_assessment, get_latest_lactate_step_test
+        method_row = execute_query(
+            "SELECT aet_assessment_method FROM user_settings WHERE id = %s",
+            (user_id,), fetch=True
+        )
+        if method_row and method_row[0].get('aet_assessment_method'):
+            aet_method = method_row[0]['aet_assessment_method']
+        if aet_method == 'lactate_step':
+            latest_lactate = get_latest_lactate_step_test(user_id)
+        else:
+            latest_aet = get_latest_aerobic_assessment(user_id)
     except Exception as _aet_err:
         logger.debug(f"Aerobic assessment fetch skipped: {_aet_err}")
 
@@ -1008,6 +1083,23 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
     else:
         prior_week_section = "No prior week data available — this is either the first week or synthesis has not yet run."
 
+    # Athlete's own-words reflection on the just-completed week (the "how did your week go?"
+    # response captured against last week's row). This is direct athlete testimony and
+    # outranks inferred signals where they conflict. Omitted entirely when absent.
+    week_reflection_block = ""
+    _reflection = (dict(prior_week).get('week_reflection') if prior_week else None) or ''
+    _reflection = _reflection.strip()
+    if _reflection:
+        week_reflection_block = (
+            "**ATHLETE'S WEEK IN REVIEW (THEIR OWN WORDS)**\n\n"
+            "Shown last week's synthesis, the athlete reflected:\n"
+            f"\"{_reflection}\"\n\n"
+            "This is the athlete's direct account of how the week went. Weight it ABOVE inferred "
+            "signals (metrics, pattern flags, autopsy stats) wherever they conflict — it captures "
+            "context the data cannot (life stress, how sessions actually felt, what they want next). "
+            "Let it shape load, intensity, and session choices for the coming week.\n"
+        )
+
     decay_str = f" | Decay rate: {decay_rate:.3f}" if decay_rate is not None else ""
 
     # ANS readiness summary for the prior 7 days
@@ -1078,6 +1170,7 @@ Guide context: {assessment_category}
 {(lambda rb: f"Deviation causes: {', '.join(f'{v} {k}' for k, v in rb.items() if v > 0) or 'none classified'}")(autopsy_insights['reason_breakdown']) if autopsy_insights and autopsy_insights.get('reason_breakdown') else ""}
 {f"Key learning: {autopsy_insights['latest_insights']}" if autopsy_insights and autopsy_insights.get('latest_insights') else ""}
 
+{week_reflection_block}
 **PRIOR WEEK PLAN TARGETS**
 
 {prior_week_section}
@@ -1094,9 +1187,9 @@ Guide context: {assessment_category}
 
 {format_race_history_for_prompt(race_history, perf_trend)}
 
-**AEROBIC ASSESSMENT (HR Drift Test)**
+**AEROBIC ASSESSMENT (AeT)**
 
-{_format_aet_prompt_block(latest_aet, target_week_start, stage=training_stage.get('stage', 'base'))}
+{_format_aet_prompt_block(latest_aet, target_week_start, stage=training_stage.get('stage', 'base'), method=aet_method, latest_lactate=latest_lactate)}
 
 **CURRENT TRAINING STAGE**
 
@@ -1631,11 +1724,87 @@ def _apply_structured_totals(program: Dict) -> None:
         program['predicted_metrics']['total_weekly_elevation_feet'] = round(total_vert)
 
 
-def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
-    """Generate a retrospective weekly synthesis narrative for the completed week.
+def _parse_weekly_track(response: Optional[str], score_label: str) -> Tuple[int, str]:
+    """Parse one weekly synthesis track — extract its 1-10 score and the narrative.
 
-    Compares what was planned (strategic_summary) against what actually happened
-    (activities + journal entries). Returns a 150-200 word narrative or None on failure.
+    Mirrors parse_quality_track_response(): strips the score line from the prose so the
+    merged synthesis reads as clean narrative, and clamps the score to [1, 10].
+    Returns (score, narrative). Defaults to (5, '') on a missing/garbled response.
+    """
+    import re
+    if not response:
+        return 5, ''
+    try:
+        score_match = re.search(rf'{score_label}:\s*([\d.]+)\s*/\s*10', response, re.IGNORECASE)
+        score = round(float(score_match.group(1))) if score_match else 5
+        score = max(1, min(10, score))
+        narrative = re.sub(rf'{score_label}:\s*[\d.]+\s*/\s*10\s*', '', response, flags=re.IGNORECASE).strip()
+        return score, narrative
+    except Exception as e:
+        logger.error(f"Error parsing weekly track ({score_label}): {e}")
+        return 5, (response.strip() if response else '')
+
+
+def _merge_weekly_synthesis(alignment_text: str, quality_text: str) -> str:
+    """Stitch the alignment and productive-work narratives into the stored synthesis.
+
+    Display order mirrors the daily autopsy: RX alignment first, then the
+    prescription-blind productive-work assessment. Either track degrades gracefully.
+    """
+    alignment_text = (alignment_text or '').strip()
+    quality_text = (quality_text or '').strip()
+    if not quality_text:
+        return alignment_text
+    if not alignment_text:
+        return quality_text
+    return f"{alignment_text}\n\n{quality_text}"
+
+
+def save_week_reflection(user_id: int, reflection: str) -> Optional[date]:
+    """Persist the athlete's "how did your week go?" reflection on the just-completed
+    week's program row — the most recent plan-bearing row before the current week.
+
+    That row is exactly the one build_weekly_program_prompt reads as the prior week when
+    generating the next plan, so the reflection flows into the regenerated program.
+    Returns the week_start_date of the updated row, or None if no qualifying row exists.
+    """
+    reflection = (reflection or '').strip()
+    if not reflection:
+        return None
+    current_week_start = get_current_week_start()
+    result = execute_query(
+        """
+        UPDATE weekly_programs
+        SET week_reflection = %s, reflection_submitted_at = NOW()
+        WHERE id = (
+            SELECT id FROM weekly_programs
+            WHERE user_id = %s AND week_start_date < %s AND strategic_summary IS NOT NULL
+            ORDER BY week_start_date DESC
+            LIMIT 1
+        )
+        RETURNING week_start_date
+        """,
+        (reflection, user_id, str(current_week_start)),
+        fetch=True
+    )
+    if result:
+        logger.info(f"Week reflection saved for user {user_id} on row week_start={result[0]['week_start_date']}")
+        return result[0]['week_start_date']
+    logger.warning(f"No prior plan-bearing week found for user {user_id} — reflection not attached")
+    return None
+
+
+def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
+    """Generate a retrospective weekly synthesis for the completed week (dual-track).
+
+    Mirrors the daily autopsy architecture: two parallel prescription-aware /
+    prescription-blind Sonnet calls. Track A (alignment) judges adherence to the
+    prescribed plan; Track B (productive work) judges whether the week was intrinsically
+    good training, blind to the plan. The two narratives are merged into the stored
+    synthesis, and a per-user weighted composite score is computed, logged, and
+    persisted alongside the two track scores on the weekly_programs row.
+
+    Returns the merged narrative string, or None on failure.
     Called by the Saturday cron — non-fatal if it fails.
     """
     try:
@@ -1713,8 +1882,13 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
             f"Days since rest: {metrics.get('days_since_rest', 'N/A')}"
         ) if metrics else "Metrics unavailable."
 
-        # Polarized compliance for the completed week
-        polarized_section = ""
+        # Polarized intensity distribution for the completed week.
+        # Two framings are built from the SAME underlying numbers:
+        #   - polarized_aligned: compliance-framed (vs target) for Track A (alignment)
+        #   - polarized_clean:   distribution-only, no target/compliance words, for Track B
+        #     (productive-work track must not see the plan or its targets)
+        polarized_aligned = ""
+        polarized_clean = ""
         try:
             from llm_recommendations_module import compute_weekly_polarized_ratio
             _stage = strategic_summary.get('training_stage', 'unknown') if strategic_summary else 'unknown'
@@ -1725,18 +1899,39 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
             )
             if _pr:
                 _bh = f"Black hole days: {', '.join(_pr['moderate_dates'])}" if _pr['moderate_dates'] else "No black hole sessions."
-                polarized_section = (
+                polarized_aligned = (
                     f"\nPOLARIZED COMPLIANCE:\n"
                     f"{_pr['easy_sessions']} Easy | {_pr['hard_sessions']} Hard | {_pr['moderate_sessions']} Moderate (black hole)\n"
                     f"{_bh}\n"
                     f"Easy%: {_pr['easy_pct']:.0f}% (target: {_pr['target_easy_pct']:.0f}%) — {_pr['compliance'].replace('_', ' ')}\n"
                 )
+                polarized_clean = (
+                    f"\nINTENSITY DISTRIBUTION:\n"
+                    f"{_pr['easy_sessions']} Easy | {_pr['hard_sessions']} Hard | {_pr['moderate_sessions']} Moderate (black hole)\n"
+                    f"{_bh}\n"
+                    f"Easy%: {_pr['easy_pct']:.0f}% of sessions\n"
+                )
         except Exception as _pe:
             logger.debug(f"Polarized section skipped in synthesis: {_pe}")
 
-        prompt = f"""You are an expert trail running coach writing a concise end-of-week synthesis for your athlete.
+        # --- Dual-track synthesis (mirrors the daily autopsy architecture) ---
+        # Two independent Sonnet calls fire in parallel with isolated context:
+        #   Track A (alignment): sees the plan + compliance framing → judges RX adherence.
+        #   Track B (productive work): prescription-BLIND → judges whether the week was
+        #     intrinsically good training on its own merits. It never sees plan_section,
+        #     the load target, or any compliance language — only what actually happened.
+        # This prevents the compliance-anchored bias that the daily autopsy redesign removed.
+        try:
+            tone_instructions = get_coaching_tone_instructions(get_user_coaching_spectrum(user_id))
+        except Exception:
+            tone_instructions = ""
+        tone_section = f"{tone_instructions}\n\n" if tone_instructions else ""
 
-Week: {week_start.strftime('%B %d')} – {week_end.strftime('%B %d, %Y')}
+        week_label = f"{week_start.strftime('%B %d')} – {week_end.strftime('%B %d, %Y')}"
+
+        alignment_prompt = f"""You are an expert trail running coach assessing how a completed training week aligned with the plan you prescribed.
+
+{tone_section}Week: {week_label}
 Total training load: {total_load:.1f} load miles
 
 WHAT WAS PLANNED:
@@ -1750,28 +1945,83 @@ ATHLETE OBSERVATIONS THIS WEEK:
 
 END-OF-WEEK METRICS:
 {metrics_section}
-{polarized_section}
-Write a retrospective synthesis of 150-200 words covering:
-1. What the athlete actually did vs what was planned (alignment assessment)
-2. Key physiological patterns that emerged (ACWR trend, divergence signals, fatigue)
-3. Polarized training compliance — name any black hole sessions by date; note whether Easy:Hard ratio was on target
-4. What this week teaches us about the athlete's current adaptation state
-5. One forward-looking observation for next week
+{polarized_aligned}
+ALIGNMENT TRACK INSTRUCTIONS:
 
-Write in second person ("you"), use plain text (no markdown), coaching tone. Be specific — reference actual numbers and dates. Do not list these as numbered points; write as flowing prose."""
+Judge how the week aligned with what was planned. Adaptive deviations driven by good self-regulation (fatigue management, smart pivots, terrain/schedule reality) are NOT failures and must not lower the score on their own. Reserve low scores (1-4) for unjustified compliance failures — sessions skipped or blown up without good reason. Provide output in EXACTLY this format:
 
-        response = call_anthropic_api(prompt, max_tokens=400)
-        if not response:
+WEEKLY_ALIGNMENT_SCORE: [X/10]
+
+ALIGNMENT ASSESSMENT:
+[120-160 words, flowing prose, second person ("you"), plain text (no markdown). Cover: what you actually did vs what was planned; whether polarized intensity compliance hit target and name any black hole sessions by date; whether deviations were justified self-regulation or drift. Be specific — reference actual numbers and dates.]
+
+Score rubric: 9-10=executed the plan or deviated only via sound self-regulation; 7-8=solid adherence, minor unforced gaps; 5-6=meaningful unjustified deviations; 3-4=plan largely abandoned without cause; 1-2=no meaningful adherence."""
+
+        quality_prompt = f"""You are an expert endurance coach evaluating a completed training week on its own merits.
+You do NOT have access to what the athlete was scheduled to do — evaluate ONLY what actually happened. Do not reference any plan, target, or what the athlete "should" have done.
+
+{tone_section}Week: {week_label}
+Total training load: {total_load:.1f} load miles
+
+WHAT ACTUALLY HAPPENED:
+{activity_section}
+
+ATHLETE OBSERVATIONS THIS WEEK:
+{journal_section}
+
+END-OF-WEEK METRICS:
+{metrics_section}
+{polarized_clean}
+PRODUCTIVE WORK TRACK INSTRUCTIONS:
+
+Judge whether this was a good week of training in itself — regardless of any plan. Provide output in EXACTLY this format:
+
+WEEKLY_QUALITY_SCORE: [X/10]
+
+PRODUCTIVE WORK:
+[120-160 words, flowing prose, second person ("you"), plain text (no markdown). Cover: (1) was the week's intensity distribution disciplined or did black hole/moderate volume accumulate; (2) what the ACWR and divergence trajectory say about whether the work built fitness or accumulated stress; (3) whether the athlete's felt responses (energy/RPE/pain/notes) match the load signals — body awareness; (4) the likely net adaptation signal from the week. Be specific — reference actual numbers and dates.]
+
+Score rubric: 9-10=excellent, disciplined week likely to drive strong adaptation; 7-8=solid week, minor execution issues; 5-6=meaningful execution problems or stress/fatigue mismatch; 3-4=poorly executed or concerning physiological response; 1-2=week unlikely to provide positive adaptation."""
+
+        # Fire both tracks in parallel — task='autopsy' routes to Sonnet (reasoning, not computation).
+        w_align, w_quality = get_user_autopsy_weights(user_id)
+        logger.info(f"Firing parallel weekly synthesis tracks (alignment + productive work), weights={w_align}/{w_quality}")
+        alignment_response = None
+        quality_response = None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f_align = executor.submit(call_claude, alignment_prompt, temperature=0.25, max_tokens=600, task='autopsy')
+            f_quality = executor.submit(call_claude, quality_prompt, temperature=0.25, max_tokens=600, task='autopsy')
+            alignment_response = f_align.result()
+            quality_response = f_quality.result()
+
+        if not alignment_response and not quality_response:
+            logger.error(f"Both weekly synthesis tracks returned no response for user {user_id}")
             return None
 
-        synthesis = response.strip()
+        align_score, align_text = _parse_weekly_track(alignment_response, 'WEEKLY_ALIGNMENT_SCORE')
+        quality_score, quality_text = _parse_weekly_track(quality_response, 'WEEKLY_QUALITY_SCORE')
+
+        composite_score = round(w_align * align_score + w_quality * quality_score, 2)
+        logger.info(
+            f"Weekly synthesis scores — alignment: {align_score}, quality: {quality_score}, "
+            f"composite: {composite_score} (user {user_id}, week {week_start})"
+        )
+
+        synthesis = _merge_weekly_synthesis(align_text, quality_text)
+        if not synthesis:
+            return None
 
         # Persist to DB — target the most recent prior program row by id so we
         # don't depend on the synthesis week_start matching a stored week_start_date exactly.
         result = execute_query(
             """
             UPDATE weekly_programs
-            SET weekly_synthesis = %s, synthesis_generated_at = NOW()
+            SET weekly_synthesis = %s,
+                weekly_alignment_score = %s,
+                weekly_quality_score = %s,
+                weekly_composite_score = %s,
+                synthesis_week_start = %s,
+                synthesis_generated_at = NOW()
             WHERE id = (
                 SELECT id FROM weekly_programs
                 WHERE user_id = %s AND week_start_date <= %s
@@ -1780,7 +2030,8 @@ Write in second person ("you"), use plain text (no markdown), coaching tone. Be 
             )
             RETURNING week_start_date
             """,
-            (synthesis, user_id, str(week_start)),
+            (synthesis, align_score, quality_score, composite_score,
+             week_start, user_id, str(week_start)),
             fetch=True
         )
 

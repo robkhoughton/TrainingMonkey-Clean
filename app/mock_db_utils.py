@@ -462,6 +462,10 @@ def _handle_select(query: str, params: tuple) -> List[Dict]:
             return [{'count': 1}]
         return [{'count': 0}]
 
+    # Effective (dynamic) AeT daily history — for SeasonPage overlay + TodayPage ceiling.
+    if 'effective_aet_daily' in query:
+        return _mock_effective_aet_daily()
+
     # User settings queries
     if 'user_settings' in query:
         # Check WHERE clause to determine lookup type
@@ -764,14 +768,104 @@ def get_trimp_schema_status() -> Dict:
     }
 
 
-def save_hr_stream_data(activity_id: int, user_id: int, hr_data: List, sample_rate: int) -> bool:
+def save_hr_stream_data(activity_id: int, user_id: int, hr_data: List,
+                        sample_rate: int = 1, distance_data: Optional[List] = None) -> bool:
     """Mock save HR stream data."""
     return True
 
 
-def get_hr_stream_data(activity_id: int, user_id: int) -> Optional[Dict]:
-    """Mock get HR stream data."""
-    return {'hr_data': [140, 145, 150, 155, 160], 'sample_rate': 1}
+def get_hr_stream_data(activity_id: int, user_id: int = None) -> Optional[Dict]:
+    """Mock get HR stream data — includes a synthetic distance stream for pace testing."""
+    # ~40 min at 1 Hz, ~8:30/mi (0.00196 mi/s => 3.155 m/s), cumulative metres.
+    n = 2400
+    hr = [150 + int(6 * (i / n)) for i in range(n)]  # gentle upward drift
+    distance = [round(i * 3.155, 1) for i in range(n)]
+    return {'hr_data': hr, 'sample_rate': 1, 'distance_data': distance}
+
+
+def get_aerobic_assessments(user_id: int) -> List[Dict]:
+    """Mock aerobic (AeT) assessment history — a few drift tests with measured baseline AeT
+    and a test-condition pace, newest first (mirrors the real query ordering)."""
+    today = datetime.now().date()
+
+    def _row(days_ago, aet, drift, pace_sec, source, notes):
+        d = (today - timedelta(days=days_ago)).strftime('%Y-%m-%d')
+        return {
+            'id': 1000 + days_ago,
+            'user_id': user_id,
+            'activity_id': 900000 + days_ago,
+            'test_date': d,
+            'warmup_minutes': 10.0,
+            'cooldown_minutes': 0.0,
+            'first_half_avg_hr': aet + 1.0,
+            'second_half_avg_hr': aet + 1.0 + (drift / 100.0) * aet,
+            'drift_pct': drift,
+            'aet_bpm': float(aet),
+            'ant_bpm': None,
+            'gap_pct': None,
+            'gap_status': None,
+            'interpretation': 'Valid test — steady-state at or near AeT.',
+            'steady_state_minutes': 50.0,
+            'avg_pace_sec_per_mi': pace_sec,
+            'pace_source': source,
+            'activity_name': 'Treadmill AeT drift test',
+            'distance_miles': 5.8,
+            'notes': notes,
+        }
+
+    return [
+        _row(12, 152, 3.6, 508.0, 'stream', None),
+        _row(48, 150, 4.1, 521.0, 'stream', None),
+        _row(88, 148, 4.4, None,  'notes',  'Held ~8:50/mi on the treadmill for the steady block.'),
+    ]
+
+
+def _mock_effective_aet_daily() -> List[Dict]:
+    """Synthetic daily effective-AeT series (last 21 days), ordered oldest->newest.
+
+    Effective AeT = baseline (152) adjusted for overnight HRV. Deterministic so screenshots
+    are stable. Shows GREEN/YELLOW variety, a Deep-Hole clamp day, and one stale-HRV
+    fallback day (offset held toward baseline)."""
+    baseline = 152
+    # (offset_bpm, hrv_z, readiness_state, fallback_reason)
+    pattern = [
+        (0, 0.2, 'GREEN', None),
+        (-2, -0.7, 'YELLOW_SYMPATHETIC', None),
+        (-5, -1.4, 'YELLOW_SYMPATHETIC', None),
+        (-3, -0.9, 'YELLOW_SYMPATHETIC', None),
+        (0, 0.1, 'GREEN', None),
+        (2, 0.8, 'GREEN', None),
+        (1, 0.5, 'GREEN', None),
+        (-1, -0.4, 'GREEN', None),
+        (-6, -1.8, 'YELLOW_SYMPATHETIC', None),
+        (-8, -2.3, 'YELLOW_SYMPATHETIC', None),
+        (-4, -1.1, 'YELLOW_SYMPATHETIC', None),
+        (0, None, 'UNKNOWN', 'hrv_stale'),
+        (0, None, 'UNKNOWN', 'hrv_stale'),
+        (1, 0.4, 'GREEN', None),
+        (2, 0.9, 'GREEN', None),
+        (0, 0.0, 'GREEN', None),
+        (-2, -0.6, 'YELLOW_SYMPATHETIC', None),
+        (0, 1.2, 'YELLOW_PARASYMPATHETIC', None),  # Deep Hole — clamp keeps offset <= 0
+        (-3, -0.8, 'YELLOW_SYMPATHETIC', None),
+        (-1, -0.3, 'GREEN', None),
+        (2, 0.7, 'GREEN', None),
+    ]
+    today = datetime.now().date()
+    n = len(pattern)
+    rows = []
+    for i, (offset, hrv_z, state, fb) in enumerate(pattern):
+        d = (today - timedelta(days=(n - 1 - i))).strftime('%Y-%m-%d')
+        rows.append({
+            'date': d,
+            'baseline_aet': baseline,
+            'effective_aet': baseline + offset,
+            'aet_offset': float(offset),
+            'hrv_z': hrv_z,
+            'readiness_state': state,
+            'fallback_reason': fb,
+        })
+    return rows
 
 
 def update_activity_trimp_metadata(activity_id: int, user_id: int,
@@ -824,6 +918,7 @@ __all__ = [
     'get_trimp_schema_status',
     'save_hr_stream_data',
     'get_hr_stream_data',
+    'get_aerobic_assessments',
     'update_activity_trimp_metadata',
     'get_activities_needing_trimp_recalculation',
     'delete_hr_stream_data',

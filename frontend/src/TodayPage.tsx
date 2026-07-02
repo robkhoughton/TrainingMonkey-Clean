@@ -38,6 +38,18 @@ interface WellnessData {
   is_overreaching: boolean;
 }
 
+// Recorded daily effective (dynamic) AeT — the model's aerobic ceiling for today:
+// the measured baseline AeT adjusted for overnight HRV. A model output, not a measurement.
+interface EffectiveAetToday {
+  date: string;
+  baseline_aet: number;
+  effective_aet: number;
+  aet_offset: number;
+  hrv_z: number | null;
+  readiness_state: string | null;
+  fallback_reason: string | null;
+}
+
 interface TrainingMetrics {
   externalAcwr: number;
   internalAcwr: number;
@@ -381,7 +393,29 @@ const READINESS_SEGMENTS = [
   { key: 'GREEN',                  label: 'GREEN',        color: GREEN },
 ];
 
+// Per-state narrative fallbacks — used when the backend readiness_narrative is null.
+// Each line: what the body is doing, then what it allows. The DEEP HOLE case is the
+// load-bearing one — HRV↑ + RHR↓ together is deep fatigue, not freshness.
+const READINESS_FALLBACK: Record<string, string> = {
+  GREEN:
+    'Your nervous system is balanced and recovered relative to your baseline — cleared for intensity if the plan calls for it.',
+  YELLOW_SYMPATHETIC:
+    'Stress signals are up: HRV is below your norm and/or resting HR is above it. Keep it easy — Zone 1–2 — and let the system settle.',
+  YELLOW_PARASYMPATHETIC:
+    'HRV is high and resting HR is low together — that is not freshness, it is your body damping down under deep fatigue. Rest today; do not add load.',
+  RED:
+    'Your readiness signals have stayed suppressed for several days running. This is accumulated fatigue — take recovery now to avoid digging deeper.',
+};
+
+// Explainer copy for the "What's this?" panel — carries the input-vs-decision framing.
+const READINESS_INFO: string[] = [
+  'Training Readiness is not your HRV. HRV is one raw signal — how much your heart-rate timing varies beat to beat. On its own it is noisy and easy to misread.',
+  'Readiness is the decision we make from it: your HRV and resting heart rate compared against your own baselines, read together, and weighted by recent sleep and load.',
+  'A high HRV reading is not proof you are recovered — often it means your body is still shifting toward recovery, not that it is there. And HRV up with resting HR down at the same time can be deep fatigue, not freshness. That is why a "good" number alone does not mean go.',
+];
+
 const TrainingReadinessCard: React.FC<TrainingReadinessProps> = (p) => {
+  const [showInfo, setShowInfo] = useState(false);
   const key = p.readiness_state ?? 'UNKNOWN';
   const isCalibrating = key === 'UNKNOWN' || p.readiness_state === null;
   const activeSeg = READINESS_SEGMENTS.find(s => s.key === key) ?? null;
@@ -421,14 +455,47 @@ const TrainingReadinessCard: React.FC<TrainingReadinessProps> = (p) => {
 
   return (
     <div style={{ marginBottom: '18px' }}>
-      {/* Label — matches ZonedGauge label style */}
-      <span style={{
-        fontSize: '0.78rem', color: MUTED, fontFamily: FONT,
-        letterSpacing: '0.06em', textTransform: 'capitalize',
-        display: 'block', marginBottom: '6px',
+      {/* Label row — label + "What's this?" info toggle */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        marginBottom: '6px',
       }}>
-        Training Readiness
-      </span>
+        <span style={{
+          fontSize: '0.78rem', color: MUTED, fontFamily: FONT,
+          letterSpacing: '0.06em', textTransform: 'capitalize',
+        }}>
+          Training Readiness
+        </span>
+        <button
+          type="button"
+          onClick={() => setShowInfo(v => !v)}
+          aria-expanded={showInfo}
+          style={{
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            fontFamily: FONT, fontSize: '0.7rem', color: MUTED,
+            letterSpacing: '0.04em', textDecoration: 'underline',
+          }}
+        >
+          {showInfo ? 'Hide' : "What's this?"}
+        </button>
+      </div>
+      {/* Explainer panel — input-vs-decision framing */}
+      {showInfo && (
+        <div style={{
+          background: BG, borderRadius: '6px', padding: '10px 12px',
+          marginBottom: '14px',
+        }}>
+          {READINESS_INFO.map((para, i) => (
+            <p key={i} style={{
+              margin: i === 0 ? 0 : '8px 0 0 0',
+              fontSize: '0.72rem', color: MUTED, fontFamily: FONT,
+              lineHeight: 1.5, textAlign: 'left',
+            }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      )}
       {/* Stoplight bar — active segment gets border + top/bottom arrows */}
       <div style={{ display: 'flex', gap: '2px', height: '12px', margin: '10px 0 18px 0' }}>
         {isCalibrating ? (
@@ -484,7 +551,7 @@ const TrainingReadinessCard: React.FC<TrainingReadinessProps> = (p) => {
           ? (daysLeft > 0
               ? `Log morning HRV and resting HR daily — ${daysLeft} more day${daysLeft === 1 ? '' : 's'} needed.`
               : 'Baseline complete — readiness will update on next sync.')
-          : (p.readiness_narrative ?? '')}
+          : (p.readiness_narrative ?? READINESS_FALLBACK[key] ?? '')}
       </div>
       {/* Sub-values: HRV · RHR · SLEEP */}
       <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
@@ -839,6 +906,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
   const [loading,          setLoading]          = useState(true);
   const [programLoading,   setProgramLoading]   = useState(true);
   const [raceReadiness,    setRaceReadiness]    = useState<RaceReadiness | null>(null);
+  const [effectiveAet,     setEffectiveAet]     = useState<EffectiveAetToday | null>(null);
   const [streak,           setStreak]           = useState<number | null>(null);
   const [lastSyncDate,     setLastSyncDate]     = useState<string | null>(null);
   const [isSyncing,        setIsSyncing]        = useState(false);
@@ -852,8 +920,10 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
       fetch('/api/journal/context',               { credentials: 'include' }).then(r => r.ok ? r.json() : null),
       fetch('/api/journal',                       { credentials: 'include' }).then(r => r.ok ? r.json() : null),
       fetch('/api/coach/race-readiness',          { credentials: 'include' }).then(r => r.ok ? r.json() : null),
-    ]).then(([well, training, ctx, recData, readinessData]) => {
+      fetch('/api/coach/effective-aet-history?days=1', { credentials: 'include' }).then(r => r.ok ? r.json() : null),
+    ]).then(([well, training, ctx, recData, readinessData, effAetData]) => {
       if (well) setWellness(well);
+      if (effAetData?.success && effAetData.latest) setEffectiveAet(effAetData.latest);
       if (training?.last_sync_date) setLastSyncDate(training.last_sync_date);
       if (training?.data?.length) {
         const rows = [...training.data].sort((a: any, b: any) => b.date.localeCompare(a.date));
@@ -1248,6 +1318,43 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
                 sleep_duration_secs={wellness?.sleep_duration_secs ?? null}
                 sleep_score={wellness?.sleep_score ?? null}
               />
+
+              {/* Aerobic ceiling today — effective (dynamic) AeT: baseline adjusted for
+                  overnight HRV. Model output, not a measurement. */}
+              {effectiveAet && (() => {
+                const off = effectiveAet.aet_offset ?? 0;
+                const fb = effectiveAet.fallback_reason;
+                let note: string;
+                let noteColor: string;
+                if (fb === 'no_hrv_baseline') {
+                  note = 'held at baseline — no overnight HRV yet'; noteColor = MUTED;
+                } else if (fb === 'hrv_stale') {
+                  note = 'held near baseline — overnight HRV is stale'; noteColor = MUTED;
+                } else if (off <= -0.5) {
+                  note = `−${Math.abs(Math.round(off))} bpm from overnight HRV`; noteColor = AMBER;
+                } else if (off >= 0.5) {
+                  note = `+${Math.round(off)} bpm from overnight HRV`; noteColor = SAGE;
+                } else {
+                  note = 'at baseline — overnight HRV near normal'; noteColor = MUTED;
+                }
+                return (
+                  <div style={{ marginTop: '14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: MUTED, fontFamily: FONT }}>
+                      Aerobic Ceiling Today
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: TEXT, fontFamily: FONT, lineHeight: 1.1, marginTop: '2px' }}>
+                      {effectiveAet.effective_aet}
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: MUTED }}> bpm</span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: noteColor, fontFamily: FONT, marginTop: '2px' }}>
+                      baseline {effectiveAet.baseline_aet} · {note}
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: MUTED, fontFamily: FONT, marginTop: '1px', fontStyle: 'italic' }}>
+                      Zone 2 ceiling, adjusted for overnight HRV
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Volume + rest */}
               {(context || metrics) && (

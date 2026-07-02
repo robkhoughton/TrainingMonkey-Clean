@@ -532,7 +532,32 @@ def classify_session_polarized(zone_times):
     return 'Moderate'
 
 
-def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
+def is_diagnostic_session(structured_output, observations):
+    """True when the session is an AeT / HR-drift diagnostic test.
+
+    A drift test walks HR up through the aerobic threshold into Zone 3 by design —
+    that Zone-3 crossing IS the measurement, so it must be exempt from black-hole /
+    aerobic-base compliance judgments (which assume the session's goal was adaptation,
+    not measurement). Detect from the prescription first (coach prescribes drift tests
+    with workout_type "Aerobic Test"), then fall back to the athlete's journal notes for
+    a self-directed test that was never formally prescribed (e.g. an ad-hoc treadmill test).
+    """
+    import re
+    # 1) Prescription signal — coach sets workout_type="Aerobic Test" for drift tests.
+    if structured_output and isinstance(structured_output, dict):
+        dec = structured_output.get('decision', {}) or {}
+        for key in ('workout_type', 'session_type', 'polarized_session_intent'):
+            val = dec.get(key)
+            if isinstance(val, str) and re.search(r'aerobic\s*test|drift\s*test|\bae[t]\s*test\b', val, re.I):
+                return True
+    # 2) Journal-note signal — self-directed test not captured in the prescription.
+    notes = (observations or {}).get('notes') or ''
+    if re.search(r'drift\s*test|aerobic\s*drift|\bAeT\b', notes, re.I):
+        return True
+    return False
+
+
+def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, is_diagnostic=False):
     """Compute polarized training compliance for a session.
 
     Args:
@@ -541,13 +566,17 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
         prescribed_intent: 'easy' | 'moderate' | 'hard' | 'race_effort' | 'none' | None
                            (from structured_output.decision.intensity_target)
         hr_thresholds: dict from get_user_hr_thresholds()
+        is_diagnostic: True for an AeT / HR-drift test. Drifting into Zone 3 is the
+                       protocol (it locates AeT), so the polarized-compliance and
+                       aerobic-base judgments are suppressed — see is_diagnostic_session().
 
     Returns dict:
         {
             'has_hr_data': bool,
             'prescribed': str,
+            'diagnostic': bool,             # AeT/drift test — compliance flags suppressed
             'actual_classification': str,   # Easy / Hard / Moderate / Unknown
-            'black_hole': bool,             # Easy prescribed, Z3 > 15%
+            'black_hole': bool,             # Easy prescribed, Z3 > 15% (always False when diagnostic)
             'aerobic_base_target_met': bool | None,  # >=45 min in productive Zone 2; None unless Easy
             'below_vt1_minutes': float,     # context only (Z1+Z2)
             'z2_minutes': float,
@@ -589,18 +618,31 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
         'time_in_zone5': activity_summary.get('time_in_zone5', 0),
     })
 
-    is_easy_prescribed = prescribed_intent in ('easy', None) or (
-        isinstance(prescribed_intent, str) and 'easy' in prescribed_intent.lower()
+    # Only an EXPLICIT easy prescription enables black-hole / aerobic-base judgments.
+    # A missing prescription (None) is NOT treated as easy — you cannot fail to comply
+    # with a plan that did not exist, and defaulting None→easy caused unprescribed
+    # sessions (including self-directed drift tests) to be flagged as black-hole failures.
+    is_easy_prescribed = (
+        isinstance(prescribed_intent, str)
+        and (prescribed_intent == 'easy' or 'easy' in prescribed_intent.lower())
     )
     is_hard_prescribed = isinstance(prescribed_intent, str) and prescribed_intent in ('hard', 'race_effort')
 
-    black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
-    aerobic_base_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
-    insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
+    if is_diagnostic:
+        # Drift test: crossing AeT into Zone 3 is the measurement, not a compliance failure.
+        # Validity (pace held, adequate duration, clean drift) is judged by the autopsy prompt.
+        black_hole = False
+        aerobic_base_target_met = None
+        insufficient_intensity = False
+    else:
+        black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
+        aerobic_base_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
+        insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
 
     return {
         'has_hr_data': has_hr,
         'prescribed': prescribed_intent or 'unknown',
+        'diagnostic': bool(is_diagnostic),
         'actual_classification': actual,
         'black_hole': black_hole,
         'aerobic_base_target_met': aerobic_base_target_met,  # >=45 min in productive Zone 2
@@ -3282,6 +3324,24 @@ The athlete had a race on the calendar today: [{race_goal['priority']} priority]
                 "guidance, or stacking hard training onto race day)."
             )
 
+        # Diagnostic reframing — an AeT/HR-drift test is a measurement, not a training
+        # stimulus. Drifting into Zone 3 is the protocol (it locates AeT), so Zone 3 time
+        # is NOT a black-hole failure. Score test validity, not polarized compliance.
+        diagnostic_autopsy_block = ""
+        if zone_compliance and zone_compliance.get('diagnostic') and not race_goal:
+            diagnostic_autopsy_block = """
+### THIS WAS A DIAGNOSTIC AeT / HR-DRIFT TEST
+This session was an aerobic-threshold (AeT) drift test — a measurement, not a training-stimulus session. By protocol the athlete holds a fixed pace and lets HR drift upward until it crosses AeT, so time in Zone 3 (above the current AeT estimate) is the SIGNAL BEING MEASURED, not a black-hole compliance failure. Do NOT penalize Zone 3 / "moderate intensity" time here. The useful outcome is the AeT reading itself (e.g. HR crossing above the assumed threshold tells you the true AeT sits lower).
+"""
+            score_guidance = (
+                "This was a DIAGNOSTIC AeT/HR-drift TEST. Score on TEST-EXECUTION VALIDITY, not polarized "
+                "compliance, and do NOT treat Zone 3 time as a black hole — drifting through AeT is the point. "
+                "8-10: steady controlled pace held for an adequate duration (typically 40-75 min of steady state) "
+                "with a clean, readable HR drift — a usable AeT reading. "
+                "5-7: test completed but with execution noise (pace not held, cut short, ambiguous drift). "
+                "1-4: only if the test was abandoned or so poorly executed it yields no usable AeT signal."
+            )
+
         prompt = f"""You are an expert endurance coach conducting a training autopsy — ALIGNMENT TRACK ONLY.
 Evaluate plan compliance and next-session coaching. A parallel quality track handles physiological response separately.
 
@@ -3291,7 +3351,7 @@ DATE RULE: When referring to future sessions, always use the specific day name (
 
 PRESCRIBED TRAINING DECISION:
 {prescribed_action}
-{race_autopsy_block}
+{race_autopsy_block}{diagnostic_autopsy_block}
 ACTUAL TRAINING COMPLETED:
 {activity_summary}
 {zone_block}
@@ -3372,6 +3432,8 @@ def create_quality_track_prompt(date_str, actual_activities, observations, tone_
 
         tone_section = f"{tone_instructions}\n\n" if tone_instructions else ""
 
+        is_diagnostic = bool(zone_compliance and zone_compliance.get('diagnostic'))
+
         # Clean zone block: report what happened, no compliance framing
         zone_block = ""
         if zone_compliance and zone_compliance.get('has_hr_data'):
@@ -3402,6 +3464,31 @@ Aerobic base (productive Zone 2, below today's AeT): {z2_min:.0f} min | Zone 4+5
 Session intensity classification: {actual_cls}
 """
 
+        if is_diagnostic:
+            # A drift test's "product" is a usable AeT measurement, not an adaptation
+            # stimulus. Judge validity, not black-hole/intensity discipline — Zone 3 is the point.
+            quality_instructions = """QUALITY TRACK INSTRUCTIONS:
+
+This session was a DIAGNOSTIC AeT / HR-drift test — its purpose is to MEASURE the aerobic threshold, not to drive adaptation. By protocol the athlete holds a fixed pace and lets HR drift up through AeT into Zone 3, so Zone 3 time is the signal being measured, NOT undisciplined "black hole" intensity. Do not judge this on adaptation or intensity-distribution discipline. Provide analysis in EXACTLY this format:
+
+QUALITY_SCORE: [X/10]
+
+SESSION QUALITY:
+[3-4 sentences covering: (1) Was the test VALID — steady controlled pace held long enough (typically 40-75 min of steady state) to read a drift? (2) What does the HR behavior reveal about where AeT actually sits (e.g. HR drifting above the held threshold means true AeT is lower)? (3) Does the athlete's felt response (RPE/nasal-breathing/pain) corroborate the HR reading? (4) Is the result usable for recalibrating AeT, or is a cleaner retest needed?]
+
+Score rubric (test validity, NOT adaptation): 9-10=clean, controlled test yielding a confident AeT reading; 7-8=usable reading with minor noise; 5-6=partial/ambiguous result, borderline usable; 3-4=execution problems make the reading unreliable; 1-2=test abandoned or unreadable."""
+        else:
+            quality_instructions = """QUALITY TRACK INSTRUCTIONS:
+
+Evaluate the intrinsic quality of this session. Provide analysis in EXACTLY this format:
+
+QUALITY_SCORE: [X/10]
+
+SESSION QUALITY:
+[3-4 sentences covering: (1) Was the intensity distribution appropriate for the apparent effort intent? (2) Does HR/zone data show disciplined execution or drift (e.g. black hole accumulation, pacing breakdown)? (3) Does the athlete's felt response (energy/RPE/pain) match what the data shows — are they body-aware? (4) What is the likely adaptation signal from this session?]
+
+Score rubric: 9-10=excellent execution with disciplined intensity and appropriate felt response; 7-8=solid session, minor execution issues; 5-6=meaningful execution problems or mismatch between felt state and data; 3-4=poor execution or concerning physiological response; 1-2=session unlikely to provide positive adaptation."""
+
         return f"""You are an expert endurance coach evaluating a training session on its own merits.
 You do NOT have access to what the athlete was scheduled to do — evaluate ONLY what they did.
 
@@ -3417,16 +3504,7 @@ ATHLETE REPORT:
 ### TRAINING REFERENCE FRAMEWORK
 {training_guide if training_guide else "Apply evidence-based training principles."}
 
-QUALITY TRACK INSTRUCTIONS:
-
-Evaluate the intrinsic quality of this session. Provide analysis in EXACTLY this format:
-
-QUALITY_SCORE: [X/10]
-
-SESSION QUALITY:
-[3-4 sentences covering: (1) Was the intensity distribution appropriate for the apparent effort intent? (2) Does HR/zone data show disciplined execution or drift (e.g. black hole accumulation, pacing breakdown)? (3) Does the athlete's felt response (energy/RPE/pain) match what the data shows — are they body-aware? (4) What is the likely adaptation signal from this session?]
-
-Score rubric: 9-10=excellent execution with disciplined intensity and appropriate felt response; 7-8=solid session, minor execution issues; 5-6=meaningful execution problems or mismatch between felt state and data; 3-4=poor execution or concerning physiological response; 1-2=session unlikely to provide positive adaptation.
+{quality_instructions}
 
 Keep SESSION QUALITY under 150 words. Do not reference any training plan, prescription, or what the athlete "should" have done — assess only what happened.{(' Apply the specified coaching tone.' if tone_instructions else '')}
 """

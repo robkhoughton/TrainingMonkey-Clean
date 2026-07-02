@@ -5,10 +5,14 @@ Pure computation module. No database or Flask dependencies.
 Called by strava_app.py endpoints after fetching the HR stream from db_utils.
 """
 
+import re
 import statistics
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Distance streams from Strava are cumulative metres.
+METERS_TO_MILES = 1.0 / 1609.344
 
 
 def analyze_hr_drift_test(
@@ -136,3 +140,128 @@ def _interpret_gap(gap_pct: float) -> str:
         return "moderate gap — continue base"
     else:
         return "aerobic deficiency — prioritise Zone 2"
+
+
+# ============================================================================
+# TEST-SEGMENT PACE
+#
+# Pace-at-HR is invalid for trail runs (terrain variability — YTM rejects it), but
+# VALID here: the AeT drift/LT1 test is a controlled treadmill/flat condition, so the
+# pace held over the steady-state segment is a meaningful, comparable readout. Labelled
+# downstream as "test-condition pace", never as a general fitness pace.
+#
+# Exact pace needs a per-sample distance stream aligned to the HR stream. That stream is
+# stored FORWARD-ONLY (hr_streams.distance_data), so past tests fall back to a pace parsed
+# from the athlete's free-text notes. Both paths are deterministic (category-1): the value
+# is computed/extracted in code, never invented.
+# ============================================================================
+
+
+def segment_pace_from_distance(distance_data, sample_rate=1.0,
+                               warmup_minutes=10.0, cooldown_minutes=0.0):
+    """Exact average pace over the steady-state segment, from a cumulative-distance stream.
+
+    Mirrors analyze_hr_drift_test's segment selection: skip `warmup_minutes` at the start
+    and `cooldown_minutes` at the end, both converted to sample indices at `sample_rate`.
+    The distance stream is index-aligned with the HR stream (same Strava request), so the
+    same time window applies.
+
+    Returns {avg_pace_sec_per_mi, segment_distance_mi, segment_minutes, pace_source:'stream'}
+    or None when the data can't yield a meaningful pace.
+    """
+    if not distance_data or not isinstance(distance_data, list):
+        return None
+
+    samples_per_minute = 60.0 * sample_rate
+    if samples_per_minute <= 0:
+        return None
+
+    n = len(distance_data)
+    start_idx = int(warmup_minutes * samples_per_minute)
+    end_idx = n - int(cooldown_minutes * samples_per_minute)
+    if end_idx <= start_idx or start_idx < 0 or end_idx > n:
+        return None
+
+    def _nearest_valid(seq, idx, step):
+        """First numeric value at/after (step=+1) or at/before (step=-1) idx."""
+        i = idx
+        while 0 <= i < len(seq):
+            v = seq[i]
+            if isinstance(v, (int, float)):
+                return v
+            i += step
+        return None
+
+    d_start = _nearest_valid(distance_data, start_idx, 1)
+    d_end = _nearest_valid(distance_data, end_idx - 1, -1)
+    if d_start is None or d_end is None:
+        return None
+
+    meters = d_end - d_start
+    seconds = (end_idx - start_idx) / sample_rate
+    miles = meters * METERS_TO_MILES
+    if miles <= 0 or seconds <= 0:
+        return None
+
+    return {
+        "avg_pace_sec_per_mi": round(seconds / miles, 1),
+        "segment_distance_mi": round(miles, 2),
+        "segment_minutes": round(seconds / 60.0, 1),
+        "pace_source": "stream",
+    }
+
+
+# Free-text pace patterns, tried in order. Each yields seconds-per-mile.
+# Conservative: every pattern requires an explicit unit/keyword so we never mistake a
+# clock time or arbitrary number for a pace.
+_MI = r'(?:mi\b|mile)'
+_KM = r'km\b'
+_PACE_PATTERNS = (
+    # "8:30/mi", "8:30 min/mile", "8:30 per mile"
+    (re.compile(r'(\d{1,2}):(\d{2})\s*(?:min\s*)?(?:/|per\s+)?\s*' + _MI, re.I),
+     lambda m: int(m.group(1)) * 60 + int(m.group(2))),
+    # "8:30 pace"
+    (re.compile(r'(\d{1,2}):(\d{2})\s*pace\b', re.I),
+     lambda m: int(m.group(1)) * 60 + int(m.group(2))),
+    # "5:00/km" -> sec/mi
+    (re.compile(r'(\d{1,2}):(\d{2})\s*(?:min\s*)?(?:/|per\s+)?\s*' + _KM, re.I),
+     lambda m: (int(m.group(1)) * 60 + int(m.group(2))) * 1.609344),
+    # "8.5 mph" -> sec/mi
+    (re.compile(r'(\d{1,2}(?:\.\d+)?)\s*mph\b', re.I),
+     lambda m: 3600.0 / float(m.group(1)) if float(m.group(1)) > 0 else None),
+    # "13 kph" / "13 km/h" -> sec/mi
+    (re.compile(r'(\d{1,2}(?:\.\d+)?)\s*k(?:ph|m/h)\b', re.I),
+     lambda m: 3600.0 / (float(m.group(1)) * 0.621371) if float(m.group(1)) > 0 else None),
+)
+
+
+def parse_pace_from_notes(notes):
+    """Deterministically extract a test-condition pace (sec/mile) from free-text notes.
+
+    Fallback for past tests that predate the stored distance stream. Returns
+    {avg_pace_sec_per_mi, pace_source:'notes'} or None when no clear pace is present.
+    Requires an explicit unit/keyword so a bare number is never treated as a pace.
+    """
+    if not notes or not isinstance(notes, str):
+        return None
+    for pattern, to_sec in _PACE_PATTERNS:
+        m = pattern.search(notes)
+        if not m:
+            continue
+        sec = to_sec(m)
+        if sec and 180 <= sec <= 1800:  # 3:00–30:00 /mi sanity band
+            return {"avg_pace_sec_per_mi": round(sec, 1), "pace_source": "notes"}
+    return None
+
+
+def format_pace(sec_per_mi):
+    """Format seconds-per-mile as m:ss (e.g. 510 -> '8:30'). None-safe -> None."""
+    if sec_per_mi is None:
+        return None
+    try:
+        total = int(round(float(sec_per_mi)))
+    except (TypeError, ValueError):
+        return None
+    if total <= 0:
+        return None
+    return f"{total // 60}:{total % 60:02d}"

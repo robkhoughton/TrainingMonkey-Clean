@@ -578,7 +578,7 @@ def upsert_athlete_model(user_id, model_data):
             'div_low_n', 'threshold_n',
             'hrv_suppression_threshold', 'hrv_baseline_30d',
             'rhr_elevation_threshold', 'rhr_baseline_7d',
-            'aet_bpm', 'aet_test_date',
+            'aet_bpm', 'aet_test_date', 'aet_method',
             'aet_offset_deadband', 'aet_offset_slope_neg', 'aet_offset_slope_pos',
             'aet_offset_cap_neg', 'aet_offset_cap_pos', 'aet_offset_staleness_days',
             'aet_offset_n', 'aet_offset_confidence',
@@ -1063,7 +1063,7 @@ def get_trimp_schema_status():
         return status
 
 
-def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0):
+def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0, distance_data=None):
     """
     Save heart rate stream data to the hr_streams table
     Args:
@@ -1071,32 +1071,39 @@ def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0):
         user_id (int): The user ID who owns this activity
         hr_data (list): List of heart rate values
         sample_rate (float): Sample rate in Hz (default 1.0)
+        distance_data (list, optional): Per-sample cumulative distance (metres),
+            index-aligned with hr_data. Enables exact test-segment pace for the aerobic
+            assessment. Forward-only — NULL for streams synced before this feature.
     Returns:
         int: The ID of the inserted record, or None if failed
     """
     logger.info(f"db_utils: Saving HR stream data for activity {activity_id}, user {user_id}")
-    
+
     try:
         # Validate inputs
         if not activity_id or not user_id:
             raise ValueError("activity_id and user_id are required")
-        
+
         if not hr_data or not isinstance(hr_data, list):
             raise ValueError("hr_data must be a non-empty list")
-        
+
         if not isinstance(sample_rate, (int, float)) or sample_rate <= 0:
             raise ValueError("sample_rate must be a positive number")
-        
+
         # Convert hr_data to JSON string
         hr_data_json = json.dumps(hr_data)
-        
+        distance_data_json = (
+            json.dumps(distance_data)
+            if distance_data and isinstance(distance_data, list) else None
+        )
+
         # Insert HR stream data
         query = """
-            INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
         """
-        
-        params = (activity_id, user_id, hr_data_json, sample_rate)
+
+        params = (activity_id, user_id, hr_data_json, sample_rate, distance_data_json)
         result = execute_query(query, params)
         
         logger.info(f"db_utils: Successfully saved HR stream data for activity {activity_id} ({len(hr_data)} samples)")
@@ -1122,8 +1129,8 @@ def get_hr_stream_data(activity_id, user_id=None):
         # Build query with optional user_id filter
         if user_id:
             query = """
-                SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
-                FROM hr_streams 
+                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at
+                FROM hr_streams
                 WHERE activity_id = %s AND user_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -1131,8 +1138,8 @@ def get_hr_stream_data(activity_id, user_id=None):
             params = (activity_id, user_id)
         else:
             query = """
-                SELECT id, activity_id, user_id, hr_data, sample_rate, created_at, updated_at
-                FROM hr_streams 
+                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at
+                FROM hr_streams
                 WHERE activity_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -1150,13 +1157,22 @@ def get_hr_stream_data(activity_id, user_id=None):
             except (json.JSONDecodeError, TypeError):
                 logger.error(f"db_utils: Invalid JSON data in hr_streams for activity {activity_id}")
                 return None
-            
+
+            # distance_data is JSONB (nullable, forward-only) — psycopg2 returns it already
+            # deserialized, but tolerate a str too. None for streams predating the feature.
+            raw_distance = row.get('distance_data')
+            try:
+                distance_data = json.loads(raw_distance) if isinstance(raw_distance, str) else raw_distance
+            except (json.JSONDecodeError, TypeError):
+                distance_data = None
+
             hr_stream_info = {
                 'id': row['id'],
                 'activity_id': row['activity_id'],
                 'user_id': row['user_id'],
                 'hr_data': hr_data,
                 'sample_rate': row['sample_rate'],
+                'distance_data': distance_data,
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at'],
                 'sample_count': len(hr_data) if isinstance(hr_data, list) else 0
@@ -1796,13 +1812,14 @@ def save_aerobic_assessment(user_id, activity_id, data):
 
     query = """
         INSERT INTO aerobic_assessments
-            (user_id, activity_id, test_date, warmup_minutes,
+            (user_id, activity_id, test_date, warmup_minutes, cooldown_minutes,
              first_half_avg_hr, second_half_avg_hr, drift_pct,
              aet_bpm, ant_bpm, gap_pct, gap_status, interpretation,
-             steady_state_minutes, notes, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+             steady_state_minutes, avg_pace_sec_per_mi, pace_source, notes, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         ON CONFLICT (user_id, activity_id) DO UPDATE SET
             warmup_minutes       = EXCLUDED.warmup_minutes,
+            cooldown_minutes     = EXCLUDED.cooldown_minutes,
             first_half_avg_hr    = EXCLUDED.first_half_avg_hr,
             second_half_avg_hr   = EXCLUDED.second_half_avg_hr,
             drift_pct            = EXCLUDED.drift_pct,
@@ -1812,17 +1829,20 @@ def save_aerobic_assessment(user_id, activity_id, data):
             gap_status           = EXCLUDED.gap_status,
             interpretation       = EXCLUDED.interpretation,
             steady_state_minutes = EXCLUDED.steady_state_minutes,
+            avg_pace_sec_per_mi  = EXCLUDED.avg_pace_sec_per_mi,
+            pace_source          = EXCLUDED.pace_source,
             notes                = EXCLUDED.notes,
             updated_at           = NOW()
         RETURNING *
     """
     params = (
         user_id, activity_id, test_date,
-        data.get('warmup_minutes', 10.0),
+        data.get('warmup_minutes', 10.0), data.get('cooldown_minutes'),
         data['first_half_avg_hr'], data['second_half_avg_hr'], data['drift_pct'],
         data['aet_bpm'], data.get('ant_bpm'),
         data.get('gap_pct'), data.get('gap_status'),
         data['interpretation'], data['steady_state_minutes'],
+        data.get('avg_pace_sec_per_mi'), data.get('pace_source'),
         data.get('notes'),
     )
     result = execute_query(query, params, fetch=True)
@@ -1859,6 +1879,82 @@ def get_latest_aerobic_assessment(user_id):
         LEFT JOIN activities a ON a.activity_id = aa.activity_id
         WHERE aa.user_id = %s
         ORDER BY aa.test_date DESC
+        LIMIT 1
+    """
+    result = execute_query(query, (user_id,), fetch=True)
+    return result[0] if result else None
+
+
+def save_lactate_step_test(user_id, data):
+    """Save (or update) a lactate step test result.
+
+    Keeps the full lactate curve (JSONB stages) for comparison over time and so the
+    deferred Dmax / LT2 analyzers can re-run on stored data. Upserts on
+    (user_id, test_date) so re-entering the same day's table corrects it.
+
+    Args:
+        user_id: int
+        data:    dict with keys:
+                   test_date (str 'YYYY-MM-DD' or date), speed, speed_unit,
+                   stages (list of dicts), baseline_lactate, lt1_bpm, lt1_grade,
+                   valid (bool), analyzer_method, notes
+
+    Returns:
+        Saved row as dict, or None on failure.
+    """
+    import json as _json
+    query = """
+        INSERT INTO lactate_step_tests
+            (user_id, test_date, speed, speed_unit, stages, baseline_lactate,
+             lt1_bpm, lt1_grade, valid, analyzer_method, method, notes, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (user_id, test_date) DO UPDATE SET
+            speed            = EXCLUDED.speed,
+            speed_unit       = EXCLUDED.speed_unit,
+            stages           = EXCLUDED.stages,
+            baseline_lactate = EXCLUDED.baseline_lactate,
+            lt1_bpm          = EXCLUDED.lt1_bpm,
+            lt1_grade        = EXCLUDED.lt1_grade,
+            valid            = EXCLUDED.valid,
+            analyzer_method  = EXCLUDED.analyzer_method,
+            notes            = EXCLUDED.notes,
+            updated_at       = NOW()
+        RETURNING *
+    """
+    params = (
+        user_id,
+        data.get('test_date'),
+        data.get('speed'),
+        data.get('speed_unit', 'mph'),
+        _json.dumps(data.get('stages', [])),
+        data.get('baseline_lactate'),
+        data.get('lt1_bpm'),
+        data.get('lt1_grade'),
+        data.get('valid', True),
+        data.get('analyzer_method', 'first_sustained_rise'),
+        'lactate_step',
+        data.get('notes'),
+    )
+    result = execute_query(query, params, fetch=True)
+    return result[0] if result else None
+
+
+def get_lactate_step_tests(user_id):
+    """Return all lactate step tests for a user, newest first."""
+    query = """
+        SELECT * FROM lactate_step_tests
+        WHERE user_id = %s
+        ORDER BY test_date DESC
+    """
+    return execute_query(query, (user_id,), fetch=True) or []
+
+
+def get_latest_lactate_step_test(user_id):
+    """Return the most recent lactate step test for a user, or None."""
+    query = """
+        SELECT * FROM lactate_step_tests
+        WHERE user_id = %s
+        ORDER BY test_date DESC
         LIMIT 1
     """
     result = execute_query(query, (user_id,), fetch=True)
@@ -1910,4 +2006,8 @@ __all__ = [
     'get_aerobic_assessments',
     'get_latest_aerobic_assessment',
     'get_activities_with_hr_streams',
+    # Lactate Step Test (LT1 / AeT)
+    'save_lactate_step_test',
+    'get_lactate_step_tests',
+    'get_latest_lactate_step_test',
 ]

@@ -380,8 +380,110 @@ AEROBIC_ASSESSMENT_PROTOCOL = {
 }
 
 
-def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_drift_pct: float = None) -> dict:
-    """Return scheduling status and prompt block for the aerobic assessment.
+LACTATE_STEP_TEST_PROTOCOL = {
+    "name": "LT1 Lactate Step Test",
+    "purpose": (
+        "Diagnostic test to establish Aerobic Threshold (AeT) bpm — the Zone 2 ceiling — "
+        "by DIRECT lactate measurement of LT1. Same AeT-assessment slot as the HR Drift "
+        "Test (one boundary, one scheduler, one aet_bpm field), just a more direct method. "
+        "Not a training session. Generates no adaptive stimulus. "
+        "Replaces one Zone 2 easy run in the week it is scheduled."
+    ),
+    # Shares the drift test's cadence (28/42-day) and blocked phases — same slot.
+    "grade_increment_pct": 1.5,         # default +1.5% grade per stage (configurable)
+    "stage_minutes": "3–4 minutes",     # lactate needs ≥3 min to reflect the stage
+    "rise_threshold_mmol": 0.3,         # LT1 = first sustained rise of this much over baseline
+    "protocol": {
+        "warmup": (
+            "10–15 min very easy. Take a BASELINE fingertip lactate sample at the end of "
+            "the warm-up — a clean, low reading anchors the 'rise'."
+        ),
+        "start": (
+            "Hold a fixed, comfortable running speed at 0–1% grade, at an effort clearly "
+            "below AeT (HR roughly 20–25 bpm under your estimated AeT)."
+        ),
+        "stages": (
+            "3–4 min per stage. Keep SPEED FIXED for the whole test; raise the grade "
+            "+1.5% each stage. At the END of each stage record steady-state HR and draw a "
+            "fingertip lactate sample (a brief step-off to draw blood is fine — resume "
+            "immediately)."
+        ),
+        "stop": (
+            "Stop once TWO consecutive stages show lactate ≥ baseline + 0.3 mmol and "
+            "trending up. Peak lactate should stay ~2.5–3 mmol — this is a light test. "
+            "Do NOT push to LT2."
+        ),
+        "consistency": (
+            "Identical warm-up, stage length, fixed speed, and grade increment every test. "
+            "Control heat, hydration, caffeine, glycogen, and time-of-day so tests are "
+            "comparable over time."
+        ),
+        "analysis": (
+            "After the test, open the Aerobic Assessment panel on the Season page and enter "
+            "the step table (test speed + per-stage grade / HR / lactate, plus the warm-up "
+            "baseline). The system computes baseline, LT1, and your AeT bpm automatically."
+        ),
+    },
+}
+
+
+def _build_drift_execution_block(last_drift_pct: float = None) -> str:
+    """HR Drift Test execution instructions for prompt injection."""
+    proto = AEROBIC_ASSESSMENT_PROTOCOL
+    if last_drift_pct is None:
+        hr_guidance = proto["protocol"]["starting_hr_guidance"].split("If prior")[0].strip()
+    elif last_drift_pct > 5.0:
+        hr_guidance = "Start 3–5 bpm lower than last test — previous drift was too high."
+    elif last_drift_pct < 1.5:
+        hr_guidance = "Start 3–5 bpm higher than last test — previous drift was too low."
+    else:
+        hr_guidance = "Use your recorded AeT bpm as the starting HR target — last test was valid."
+
+    p = proto["protocol"]
+    return (
+        f"AEROBIC ASSESSMENT — HR DRIFT TEST PROTOCOL:\n"
+        f"Set workout_type to \"Aerobic Test\" and intensity to \"Low\" for this day.\n"
+        f"Replaces one Zone 2 easy run this week. Place it on an Easy Run day — "
+        f"NOT on the hard-session day. Schedule on a day with fresh legs "
+        f"(not within 2 days of a long run or hard session).\n\n"
+        f"Warm-up: {p['warmup']}\n"
+        f"Steady state: {p['steady_state']}\n"
+        f"Indoor: {p['terrain_indoor']}\n"
+        f"Outdoor: {p['terrain_outdoor']}\n"
+        f"Starting HR: {hr_guidance}\n"
+        f"After the run: {p['analysis']}\n"
+    )
+
+
+def _build_lactate_execution_block() -> str:
+    """LT1 Lactate Step Test execution instructions for prompt injection."""
+    p = LACTATE_STEP_TEST_PROTOCOL["protocol"]
+    return (
+        f"AEROBIC ASSESSMENT — LT1 LACTATE STEP TEST PROTOCOL:\n"
+        f"Set workout_type to \"Aerobic Test\" and intensity to \"Low\" for this day.\n"
+        f"Replaces one Zone 2 easy run this week. Place it on an Easy Run day — "
+        f"NOT on the hard-session day. Schedule on a day with fresh legs "
+        f"(not within 2 days of a long run or hard session). Treadmill, grade-based.\n\n"
+        f"Warm-up: {p['warmup']}\n"
+        f"Start: {p['start']}\n"
+        f"Stages: {p['stages']}\n"
+        f"Stop criteria: {p['stop']}\n"
+        f"Consistency: {p['consistency']}\n"
+        f"After the test: {p['analysis']}\n"
+    )
+
+
+def get_aerobic_assessment_prompt_block(
+    days_since_test: int,
+    stage: str,
+    last_drift_pct: float = None,
+    method: str = 'hr_drift',
+) -> dict:
+    """Return scheduling status and prompt block for the AeT assessment slot.
+
+    One slot, two interchangeable methods (the athlete's chosen `method`). The
+    status logic (current/window_open/overdue/blocked) and cadence (28/42-day) are
+    shared; only the execution-block text differs by method.
 
     Thresholds:
         ≤ 28 days  → current, no action
@@ -391,7 +493,8 @@ def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_d
     Args:
         days_since_test: Days since last valid test. Use 9999 if no test on record.
         stage:           Training stage string (base, build, specificity, taper, peak, recovery).
-        last_drift_pct:  Drift % from most recent test (to personalise starting HR guidance).
+        last_drift_pct:  Drift % from most recent drift test (HR-drift method only).
+        method:          'hr_drift' (default) | 'lactate_step' — the athlete's chosen method.
 
     Returns:
         dict with:
@@ -399,9 +502,13 @@ def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_d
             prompt_block: str ready for injection into weekly plan prompt
             log_summary:  one-line summary for logging
     """
-    proto = AEROBIC_ASSESSMENT_PROTOCOL
+    # Blocked phases are shared across methods (same slot).
+    blocked_phases = AEROBIC_ASSESSMENT_PROTOCOL["blocked_phases"]
     stage_lower = (stage or 'base').lower()
-    phase_blocked = stage_lower in proto["blocked_phases"]
+    phase_blocked = stage_lower in blocked_phases
+
+    is_lactate = (method == 'lactate_step')
+    test_name = LACTATE_STEP_TEST_PROTOCOL["name"] if is_lactate else AEROBIC_ASSESSMENT_PROTOCOL["name"]
 
     if days_since_test <= 28:
         return {
@@ -417,29 +524,9 @@ def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_d
             'log_summary': f'AeT test overdue ({days_since_test}d) but blocked in {stage_lower} phase',
         }
 
-    # Build starting HR guidance based on last result
-    if last_drift_pct is None:
-        hr_guidance = proto["protocol"]["starting_hr_guidance"].split("If prior")[0].strip()
-    elif last_drift_pct > 5.0:
-        hr_guidance = "Start 3–5 bpm lower than last test — previous drift was too high."
-    elif last_drift_pct < 1.5:
-        hr_guidance = "Start 3–5 bpm higher than last test — previous drift was too low."
-    else:
-        hr_guidance = "Use your recorded AeT bpm as the starting HR target — last test was valid."
-
-    p = proto["protocol"]
     execution_block = (
-        f"AEROBIC ASSESSMENT — HR DRIFT TEST PROTOCOL:\n"
-        f"Set workout_type to \"Aerobic Test\" and intensity to \"Low\" for this day.\n"
-        f"Replaces one Zone 2 easy run this week. Place it on an Easy Run day — "
-        f"NOT on the hard-session day. Schedule on a day with fresh legs "
-        f"(not within 2 days of a long run or hard session).\n\n"
-        f"Warm-up: {p['warmup']}\n"
-        f"Steady state: {p['steady_state']}\n"
-        f"Indoor: {p['terrain_indoor']}\n"
-        f"Outdoor: {p['terrain_outdoor']}\n"
-        f"Starting HR: {hr_guidance}\n"
-        f"After the run: {p['analysis']}\n"
+        _build_lactate_execution_block() if is_lactate
+        else _build_drift_execution_block(last_drift_pct)
     )
 
     if days_since_test <= 42:
@@ -448,21 +535,22 @@ def get_aerobic_assessment_prompt_block(days_since_test: int, stage: str, last_d
             'prompt_block': (
                 f"AEROBIC ASSESSMENT — RETEST WINDOW OPEN ({days_since_test} days since last test):\n"
                 f"The retest window is open (target: every 6 weeks). "
-                f"Suggest the athlete schedules a drift test this week or next if conditions are good.\n\n"
+                f"The athlete's chosen method is the {test_name}. "
+                f"Suggest scheduling it this week or next if conditions are good.\n\n"
                 + execution_block
             ),
-            'log_summary': f'AeT test window open ({days_since_test}d) — suggest scheduling',
+            'log_summary': f'AeT test window open ({days_since_test}d, {method}) — suggest scheduling',
         }
 
     return {
         'status': 'overdue',
         'prompt_block': (
             f"AEROBIC ASSESSMENT — OVERDUE ({days_since_test} days since last test):\n"
-            f"The drift test is overdue. Prescribe it this week. "
+            f"The {test_name} is overdue. Prescribe it this week. "
             f"It replaces one Zone 2 run — do not add it on top of the existing load.\n\n"
             + execution_block
         ),
-        'log_summary': f'AeT test overdue ({days_since_test}d) — prescribe this week',
+        'log_summary': f'AeT test overdue ({days_since_test}d, {method}) — prescribe this week',
     }
 
 

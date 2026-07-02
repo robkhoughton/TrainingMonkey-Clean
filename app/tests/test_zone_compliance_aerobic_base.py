@@ -52,5 +52,45 @@ class TestAerobicBase(unittest.TestCase):
         self.assertIsNone(zc['aerobic_base_target_met'])
 
 
+class TestDiagnosticExemption(unittest.TestCase):
+    """A drift/AeT test drifts into Zone 3 by protocol — that crossing is the measurement,
+    so it must NOT be flagged as a black-hole compliance failure."""
+
+    # A drift test that spends 38% of time in Zone 3 (HR drifted above AeT).
+    DRIFT = dict(z1=330, z2=1236, z3=966)
+
+    def test_easy_run_with_z3_drift_is_black_hole(self):
+        # Baseline: an EASY-prescribed run with the same Z3 drift IS a black hole.
+        zc = m.compute_zone_compliance(_summary(**self.DRIFT), 'easy', HR)
+        self.assertTrue(zc['black_hole'])
+
+    def test_diagnostic_exempts_black_hole_and_base(self):
+        zc = m.compute_zone_compliance(_summary(**self.DRIFT), 'easy', HR, is_diagnostic=True)
+        self.assertTrue(zc['diagnostic'])
+        self.assertFalse(zc['black_hole'])
+        self.assertIsNone(zc['aerobic_base_target_met'])
+        self.assertFalse(zc['insufficient_intensity'])
+
+    def test_none_intent_no_longer_defaults_to_easy(self):
+        # An unprescribed session (None) must not be judged as a black-hole failure —
+        # you cannot fail to comply with a plan that did not exist.
+        zc = m.compute_zone_compliance(_summary(**self.DRIFT), None, HR)
+        self.assertFalse(zc['black_hole'])
+        self.assertIsNone(zc['aerobic_base_target_met'])
+
+
+class TestDiagnosticDetection(unittest.TestCase):
+    def test_detects_from_prescription_workout_type(self):
+        self.assertTrue(m.is_diagnostic_session({'decision': {'workout_type': 'Aerobic Test'}}, {}))
+
+    def test_detects_from_journal_notes(self):
+        self.assertTrue(m.is_diagnostic_session(None, {'notes': 'Executed HR drift test at 8:00 pace'}))
+        self.assertTrue(m.is_diagnostic_session(None, {'notes': 'AeT test on treadmill'}))
+
+    def test_plain_easy_run_not_diagnostic(self):
+        self.assertFalse(m.is_diagnostic_session({'decision': {'workout_type': 'Easy Run'}},
+                                                 {'notes': 'nice easy jog in the hills'}))
+
+
 if __name__ == '__main__':
     unittest.main()

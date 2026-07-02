@@ -66,8 +66,9 @@ def save_activity_safely(load_data):
             logger.info(f"Activity {activity_id} already exists - skipping")
             return False
 
-        # Extract hr_stream_data before insertion (it goes to hr_streams table, not activities table)
+        # Extract stream data before insertion (they go to hr_streams table, not activities table)
         hr_stream_data = load_data.pop('hr_stream_data', None)
+        distance_stream_data = load_data.pop('distance_stream_data', None)
 
         # Build INSERT query
         columns = ', '.join(load_data.keys())
@@ -80,12 +81,13 @@ def save_activity_safely(load_data):
         )
 
         logger.info(f"Successfully saved activity {activity_id}")
-        
+
         # Save HR stream data if available (after main activity record is created)
         if hr_stream_data is not None:
             try:
                 from db_utils import save_hr_stream_data
-                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
+                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data,
+                                                  sample_rate=1.0, distance_data=distance_stream_data)
                 if save_result:
                     logger.info(f"Successfully saved HR stream data for activity {activity_id}")
                 else:

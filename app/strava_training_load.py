@@ -1037,6 +1037,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     # Time in zone is ONLY computed from HR streams — never estimated from average HR.
     hr_zone_times = [0, 0, 0, 0, 0]
     hr_stream_data = None
+    distance_stream_data = None
     try:
         streams = get_activity_streams(client, activity_id)
         if streams and 'heartrate' in streams and streams['heartrate']:
@@ -1049,6 +1050,10 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
                 custom_hr_zones=user_custom_hr_zones,
             )
             hr_stream_data = streams['heartrate'].data
+            # Cumulative-distance stream (metres), index-aligned with HR — stored for exact
+            # test-segment pace on the aerobic assessment. Forward-only; None if absent.
+            if 'distance' in streams and streams['distance']:
+                distance_stream_data = streams['distance'].data
             logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
         else:
             logger.warning(
@@ -1168,7 +1173,9 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'hr_stream_sample_count': hr_stream_sample_count,
         'trimp_processed_at': datetime.now().isoformat(),
         # HR stream data for saving after main activity record is created
-        'hr_stream_data': hr_stream_data
+        'hr_stream_data': hr_stream_data,
+        # Distance stream (metres, index-aligned with HR) — saved alongside the HR stream
+        'distance_stream_data': distance_stream_data
     }
 
     logger.info(
@@ -1863,8 +1870,9 @@ def save_training_load(load_data, filename=None):
             logger.info(f"Activity {activity_id} already in database - skipping")
             return
 
-        # Extract hr_stream_data before insertion (it goes to hr_streams table, not activities table)
+        # Extract stream data before insertion (they go to hr_streams table, not activities table)
         hr_stream_data = load_data.pop('hr_stream_data', None)
+        distance_stream_data = load_data.pop('distance_stream_data', None)
 
         # Build the INSERT query
         columns = ', '.join(load_data.keys())
@@ -1878,12 +1886,13 @@ def save_training_load(load_data, filename=None):
         )
 
         logger.info(f"Saved training load data for activity {activity_id} to database")
-        
+
         # Save HR stream data if available (after main activity record is created)
         if hr_stream_data is not None:
             try:
                 from db_utils import save_hr_stream_data
-                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data, sample_rate=1.0)
+                save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data,
+                                                  sample_rate=1.0, distance_data=distance_stream_data)
                 if save_result:
                     logger.info(f"Successfully saved HR stream data for activity {activity_id}")
                 else:

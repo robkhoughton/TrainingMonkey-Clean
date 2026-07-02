@@ -8,6 +8,21 @@
 - **AnT (Anaerobic Threshold):** Maximum sustainable intensity = VT2 ≈ 4 mMol/L lactate.
 - **Gap:** (AnT_HR − AeT_HR) / AnT_HR × 100. Measured in HR %.
 
+## AeT Can Come From Either of Two Methods
+
+AeT is **one boundary** measured by the athlete's chosen method — they are interchangeable
+inputs to the same `aet_bpm`, not two different thresholds:
+
+- **HR Drift Test (indirect):** estimates AeT from HR drift over a 60-min constant-effort run.
+- **LT1 Lactate Step Test (direct):** measures AeT directly as **LT1** — the first sustained
+  lactate rise (≥ baseline + 0.3 mmol, confirmed across two stages) in a grade-stepped treadmill
+  test. `aet_bpm` = the HR at LT1.
+
+**Both produce `aet_bpm` and are treated identically downstream** (VT1 override, zone system,
+dynamic-AeT baseline). Do not privilege one method's number over the other or try to reconcile
+them — whichever method the athlete uses, the resulting `aet_bpm` is the Zone 2 ceiling. The LT1
+value is protocol-/trend-based, not single-decimal precise (portable meters carry ~±0.2–0.3 mmol).
+
 ## Evaluating HR Drift Test Engine Output
 
 The aerobic assessment engine returns `valid`, `drift_pct`, `aet_bpm`, `interpretation`, and optionally `gap_pct` / `gap_status`.
@@ -22,6 +37,14 @@ The aerobic assessment engine returns `valid`, `drift_pct`, `aet_bpm`, `interpre
 - > 10%: Started significantly above AeT. Tell athlete to retest 8–10 bpm lower.
 
 **Setting Zone 2 ceiling:** `aet_bpm` (first-5-min steady-state average) is the top of Zone 2, not the test average HR.
+
+## Evaluating LT1 Lactate Step Test Output
+
+The lactate engine returns `valid`, `lt1_bpm`, `baseline_lactate`, `lt1_grade`, `peak_lactate`, and `interpretation`.
+
+**If `valid` is false:** No sustained lactate rise was captured — the test likely stayed below LT1, or the rise appeared only at the final stage (unconfirmable). Report this and tell the athlete to retest starting at a higher grade or add stages. **Do not set a Zone 2 ceiling.** Never invent an LT1.
+
+**If `valid` is true:** `lt1_bpm` **is** `aet_bpm` — the Zone 2 ceiling. Accept it exactly as you would a valid drift-test AeT. `lt1_grade` is the treadmill grade at LT1 (test-specific, not a zone). If `peak_lactate` exceeded ~3 mmol the test ran warmer than intended but the LT1 estimate still stands.
 
 ## Gap-Based Prescription Rules
 
