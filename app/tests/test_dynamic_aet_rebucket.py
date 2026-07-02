@@ -50,6 +50,25 @@ class TestBoundaries(unittest.TestCase):
             200, 50, 'custom', custom_hr_zones={'zone2': {'max': 138}}, vt1_override=127)
         self.assertEqual(zones[1][1], 127.0)
 
+    def test_path2_slide_preserves_zone2_width(self):
+        # Path 2: Z2 ceiling = effective AeT and Z1/Z2 floor slides by the same offset,
+        # so Zone 2 keeps its width; VT2 and above unchanged.
+        base, _ = s._build_zone_boundaries(200, 50, 'percentage')  # Z2 = [120, 140]
+        base_w = base[1][1] - base[1][0]
+        slid, _ = s._build_zone_boundaries(200, 50, 'percentage',
+                                           vt1_override=132, aet_offset=-8)
+        self.assertEqual(slid[1][1], 132.0)          # ceiling = effective AeT
+        self.assertEqual(slid[1][0], base[1][0] - 8)  # floor slid down 8
+        self.assertEqual(slid[0][1], base[1][0] - 8)  # Z1 ceiling tracks the slid floor
+        self.assertEqual(slid[1][1] - slid[1][0], base_w)  # width preserved
+        self.assertEqual(slid[3][0], base[3][0])      # Z3/Z4 line (VT2 region) unchanged
+
+    def test_path2_floor_clamped_above_zone1_floor(self):
+        # An extreme downward slide can't push the Z2 floor below Zone 1's own floor.
+        slid, _ = s._build_zone_boundaries(200, 50, 'percentage',
+                                           vt1_override=105, aet_offset=-40)
+        self.assertGreater(slid[1][0], slid[0][0])
+
 
 class TestBucketing(unittest.TestCase):
     def test_basic_counts(self):

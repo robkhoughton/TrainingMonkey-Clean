@@ -267,22 +267,25 @@ offset is clamped ≤ 0 — AeT is **never raised** in parasympathetic overdrive
 raw `hrv_z`. Missing HRV → no shift (offset 0), surfaced honestly; never implies a live
 measurement that isn't there.
 
-**Only the VT1 / Z2 ceiling (= Z3 floor) moves.** VT2 and all other boundaries are fixed —
-there is a daily proxy for the aerobic threshold (HRV) but none for the lactate threshold,
-so rescaling all zones would fabricate unmeasured VT2 movement. A lowered AeT therefore
-**widens Zone 3 downward**: the correct expression of "the easy ceiling fell but the hard
-ceiling did not."
+**The Zone 2 band SLIDES with AeT (Path 2).** The effective AeT sets the Z2 ceiling (= Z3
+floor), AND the Z1/Z2 floor slides down by the **same** daily offset — so Zone 2 keeps its
+**width** as the whole productive-aerobic band tracks AeT. VT2 and every boundary above it
+are fixed (there is a daily proxy for the aerobic threshold but none for the lactate
+threshold, so moving VT2 would fabricate unmeasured movement). Rationale: autonomic
+suppression downshifts the *entire* aerobic operating range, not just the ceiling — on a
+suppressed day a lower HR is genuinely the productive-aerobic intensity. A lowered AeT still
+**widens Zone 3 downward** (Z3 floor drops with the ceiling): the correct expression of
+"the easy ceiling fell but the hard ceiling did not."
 
-**Aerobic-base tracking under a dynamic VT1 (important):** because only the top of Zone 2
-moves, Zone 2 *as a band* can narrow on a suppressed day. So aerobic base is **measured as
-time BELOW the effective VT1 (Zone 1 + Zone 2 combined), not Zone 2 alone.** Sub-VT1 time is
-the physiologically meaningful quantity and is stable as the ceiling moves (time
-redistributes within "below VT1" rather than vanishing). The 45-minute easy-base target and
-the polarized "easy" bucket both use this sub-VT1 aggregate (`below_vt1_minutes` /
-`aerobic_base_target_met` in `compute_zone_compliance`). Polarized 80:20 itself is unchanged:
-it keys off Z3 (black hole) and Z4+Z5 (hard), so when a lowered AeT pushes above-threshold
-time from Z2 into Z3, that is the correct signal — at that HR the athlete *is* above today's
-aerobic threshold and should slow down.
+**Aerobic-base tracking (important):** the aerobic-base target is **productive Zone 2 time
+(≥45 min), measured against the slid band** — NOT Zone 1. Zone 1 (walking / recovery, below
+the slid floor) is not an adequate mitochondrial stimulus and must not count. Because Zone 2
+slides *and keeps its width*, a correctly-paced easy run on a suppressed day still
+accumulates full Zone 2 credit (the band moved down to meet the effort); only genuinely
+above-AeT time spills into Z3. Field `aerobic_base_target_met` (Zone-2-based) in
+`compute_zone_compliance`; `below_vt1_minutes` (Z1+Z2) is retained for context only.
+Polarized 80:20 is unchanged: it keys off Z3 (black hole) and Z4+Z5 (hard), so above-AeT
+time pushed into Z3 is the correct slow-down signal.
 
 **Effect A — classification & Rx (live):** zone time-in-zone for the autopsy is re-bucketed
 against the effective AeT of the *session's own date*, so a 130 bpm effort lands in Z3 on a
@@ -316,11 +319,12 @@ recalibrated for the dynamic distribution first (it runs more negative during bu
 | 4   | 10 |
 | 5   | 5 |
 
-**Note (dynamic VT1):** treat the aerobic-base target as **~75% below VT1 (Zone 1 + Zone 2
-combined)** rather than "70% in Zone 2." When the effective AeT lowers and narrows Zone 2,
-easy time shifts between Z1 and Z2 but stays below VT1 — the sub-VT1 aggregate is the stable,
-correct measure. Z3 should stay low (~5%); a lowered AeT pushing time into Z3 is the
-black-hole signal to slow down, not a target to fill.
+**Note (dynamic VT1):** the ~70% target is **productive Zone 2** (the slid band below
+today's AeT), and Zone 1 (~5%, walking/recovery) is separate and does NOT substitute for it
+— a slow walk is not mitochondrial stimulus. Because Zone 2 slides with AeT and keeps its
+width (Path 2), this target stays fillable on suppressed days without diluting it with Zone
+1. Z3 should stay low (~5%); a lowered AeT pushing time into Z3 is the black-hole signal to
+slow down, not a target to fill.
 
 ## Quick Assessment Protocol
 

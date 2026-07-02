@@ -548,9 +548,9 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
             'prescribed': str,
             'actual_classification': str,   # Easy / Hard / Moderate / Unknown
             'black_hole': bool,             # Easy prescribed, Z3 > 15%
-            'aerobic_base_target_met': bool | None,  # >=45 min below VT1 (Z1+Z2); None unless Easy
-            'below_vt1_minutes': float,
-            'z2_minutes': float,            # display only
+            'aerobic_base_target_met': bool | None,  # >=45 min in productive Zone 2; None unless Easy
+            'below_vt1_minutes': float,     # context only (Z1+Z2)
+            'z2_minutes': float,
             'quality_minutes': float,       # Z4+Z5 minutes
             'insufficient_intensity': bool, # Hard prescribed, Z4+Z5 < 15%
             'z_pcts': dict,                 # z1..z5 percentages
@@ -566,9 +566,10 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
     z4_sec = activity_summary.get('time_in_zone4', 0) or 0
     z5_sec = activity_summary.get('time_in_zone5', 0) or 0
     z2_min = z2_sec / 60
-    # Aerobic base = all time BELOW the (dynamic) VT1 = Z1 + Z2. Using the sub-VT1
-    # aggregate (not Z2 alone) keeps the target stable when a lowered effective AeT
-    # narrows Zone 2: time redistributes within "below VT1" instead of vanishing.
+    # Aerobic base = productive Zone 2 time (above the Z1/Z2 floor, below the effective VT1).
+    # Under Path 2 the whole Zone 2 band slides with AeT and keeps its width, so Zone-2 time
+    # is the right stable metric: a slow walk (Zone 1, below the slid floor) is recovery, not
+    # mitochondrial stimulus, and must not count. (below_vt1_min kept for context only.)
     below_vt1_min = (z1_sec + z2_sec) / 60
     quality_min = (z4_sec + z5_sec) / 60
 
@@ -594,7 +595,7 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
     is_hard_prescribed = isinstance(prescribed_intent, str) and prescribed_intent in ('hard', 'race_effort')
 
     black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
-    aerobic_base_target_met = (below_vt1_min >= 45) if (has_hr and is_easy_prescribed) else None
+    aerobic_base_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
     insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
 
     return {
@@ -602,9 +603,9 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds):
         'prescribed': prescribed_intent or 'unknown',
         'actual_classification': actual,
         'black_hole': black_hole,
-        'aerobic_base_target_met': aerobic_base_target_met,  # >=45 min below VT1 (Z1+Z2)
-        'below_vt1_minutes': below_vt1_min,
-        'z2_minutes': z2_min,  # display only
+        'aerobic_base_target_met': aerobic_base_target_met,  # >=45 min in productive Zone 2
+        'below_vt1_minutes': below_vt1_min,  # context only (Z1+Z2)
+        'z2_minutes': z2_min,
         'quality_minutes': quality_min,
         'insufficient_intensity': insufficient_intensity,
         'z_pcts': z_pcts,
@@ -2128,8 +2129,11 @@ Full week schedule:
 **Today ({day_of_week}) prescribed: {todays_prescribed}**
 
 EQUAL WEIGHT RULE: The weekly program prescription and autopsy/readiness data carry equal weight.
-- If metrics SUPPORT the prescription: confirm it and execute.
-- If metrics CONFLICT with the prescription: you may deviate, but you MUST explicitly state in your DAILY RECOMMENDATION: (1) what the weekly plan prescribes, (2) what you are recommending instead, (3) the specific metric or autopsy finding that justifies the deviation.
+- If metrics SUPPORT the prescription: confirm it and execute as planned — do NOT invent a change.
+- If metrics CONFLICT with the prescription: you may deviate, but you MUST open the recommendation with one explicit adjustment line, then justify it in the body.
+  [COMP] State the deviation as a single plain line, exactly this shape:
+      "Adjusted from plan: <today's planned session> → <what you recommend instead> because <the specific metric or autopsy finding>."
+  Never bury the change in prose, imply it, or reference a session the plan does not actually prescribe today. The Journal daily recommendation and the Coach weekly plan must never silently disagree: either confirm the planned session or name the adjustment on its own line.
 Safety constraints (ACWR thresholds, injury flags) still take precedence over both.
 """
             # Append deviation log / revision pending summary when present
@@ -2165,13 +2169,20 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                 _strides_today = today_full.get('strides', False)
                 try:
                     _hr = get_user_hr_thresholds(user_id)
-                    # Dynamic AeT: anchor today's easy-day cues to the effective AeT (only
-                    # the Z2/Z3 line moves) so "stay below X bpm" matches the injected fact.
+                    # Dynamic AeT (Path 2): anchor today's easy-day cues to the effective AeT.
+                    # The whole Zone 2 band slides — ceiling = effective AeT, and the Z1/Z2
+                    # floor slides by the same offset so Z2 keeps its width.
                     if _hr and _eff_aet:
                         _hr['vt1_bpm'] = _eff_aet['effective_aet']
                         if _hr.get('zones'):
                             _hr['zones']['zone2']['max'] = _eff_aet['effective_aet']
                             _hr['zones']['zone3']['min'] = _eff_aet['effective_aet']
+                            _aoff = _eff_aet.get('offset')
+                            if _aoff:
+                                _nf = int(round(_hr['zones']['zone2']['min'] + _aoff))
+                                _nf = max(_nf, _hr['zones']['zone1']['min'] + 1)
+                                _hr['zones']['zone1']['max'] = _nf
+                                _hr['zones']['zone2']['min'] = _nf
                     # [DOMAIN] HR zone boundaries, VT1/VT2 thresholds, polarized minimums — physiological constants
                     # [DOMAIN] "HR is the authority" / terrain-as-load-proxy prohibition — physiology principle
                     if _hr and _day_intensity == 'low':
@@ -2181,7 +2192,7 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                         weekly_context_block += f"""
 EASY DAY EXECUTION — POLARIZED COMPLIANCE:
 Stay below {_vt1} bpm (today's effective VT1 / aerobic ceiling, {_hr['zone_method']} method).
-Target: minimum 45 minutes BELOW {_vt1} bpm (aerobic base = Zone 1 + Zone 2 combined; do not chase the narrow Zone 2 band alone — all sub-VT1 time counts).
+Target: minimum 45 minutes in the productive aerobic band ({_z2_min}–{_vt1} bpm, today's Zone 2). This band tracks your AeT — on a suppressed day it sits lower; a slow walk below {_z2_min} bpm (Zone 1) is recovery, not aerobic-base stimulus, and does not count toward this target.
 HR is the authority — if HR climbs above {_vt1} bpm, reduce effort immediately.
 Zone 3 ({_z3_min}+ bpm) is the black hole: fatigue without meaningful adaptation.
 RULE — INTERNAL LOAD: Never prescribe terrain features (grade, hill steepness) as a proxy for managing internal load. Internal load is always and only a function of HR. If you want the athlete to manage load on a climb, say "if HR approaches {_vt1} bpm on climbs, shorten stride or slow down" — never "power hike climbs steeper than X%". Terrain prescriptions are only acceptable for injury management (e.g. avoid technical footing for ankle recovery), not load management.
@@ -3186,7 +3197,7 @@ ZONE COMPLIANCE (POLARIZED TRAINING):
 Prescribed intent: {prescribed} | Actual session classification: {actual_cls}
 {z1_lbl}: {zp.get('z1', 0):.0f}% | {z2_lbl}: {zp.get('z2', 0):.0f}% | {z3_lbl}: {zp.get('z3', 0):.0f}% | {z4_lbl}: {zp.get('z4', 0):.0f}% | {z5_lbl}: {zp.get('z5', 0):.0f}%
 {vt_str}
-Aerobic base (below VT1 = Z1+Z2): {base_min:.0f} min | Z2 alone: {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
+Aerobic base (productive Zone 2, below today's AeT): {z2_min:.0f} min | Z4+Z5 quality time: {q_min:.0f} min
 """
             # Dynamic AeT: explain WHY the Z2/Z3 line sits where it does when the effective
             # AeT differed from baseline, so the classification isn't an unexplained shift.
@@ -3203,7 +3214,7 @@ BLACK HOLE ALERT: This session was prescribed as Easy but Z3 (moderate intensity
 """
             elif zone_compliance.get('aerobic_base_target_met') is False:
                 zone_block += f"""
-AEROBIC BASE TARGET MISSED: Easy session had only {base_min:.0f} min below VT1 (Z1+Z2 combined; target: 45 min). Insufficient aerobic base stimulus accumulated. (Measured as time below the effective VT1, not Zone 2 alone, so a narrow dynamic Zone 2 does not penalize correctly-paced easy volume.)
+AEROBIC BASE TARGET MISSED: Easy session had only {z2_min:.0f} min in the productive Zone 2 band (below today's effective AeT; target: 45 min). Insufficient mitochondrial/aerobic-base stimulus. (Zone 2 tracks the dynamic AeT and keeps its width; Zone 1 walking is recovery and does not count toward this target.)
 """
             if zone_compliance.get('insufficient_intensity'):
                 zone_block += f"""
@@ -3380,7 +3391,7 @@ def create_quality_track_prompt(date_str, actual_activities, observations, tone_
 HEART RATE ZONE DISTRIBUTION:
 {_zone_label('zone1')}: {zp.get('z1', 0):.0f}% | {_zone_label('zone2')}: {zp.get('z2', 0):.0f}% | {_zone_label('zone3')}: {zp.get('z3', 0):.0f}% | {_zone_label('zone4')}: {zp.get('z4', 0):.0f}% | {_zone_label('zone5')}: {zp.get('z5', 0):.0f}%
 {vt_str}
-Aerobic base (below VT1 = Z1+Z2): {base_min:.0f} min | Zone 4+5 high-intensity time: {q_min:.0f} min
+Aerobic base (productive Zone 2, below today's AeT): {z2_min:.0f} min | Zone 4+5 high-intensity time: {q_min:.0f} min
 Session intensity classification: {actual_cls}
 """
 

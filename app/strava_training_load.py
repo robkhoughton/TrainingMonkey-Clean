@@ -1126,7 +1126,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             if _eff:
                 _dz = dynamic_zone_times(
                     hr_stream_data, hr_config['max_hr'], hr_config['resting_hr'],
-                    user_hr_zones_method, user_custom_hr_zones, _eff['effective_aet']
+                    user_hr_zones_method, user_custom_hr_zones,
+                    _eff['effective_aet'], aet_offset=_eff.get('offset')
                 )
                 trimp_dynamic = edwards_trimp(_dz)
         except Exception as _tde:
@@ -1548,15 +1549,18 @@ def _calculate_trimp_from_average(duration_minutes, avg_hr, resting_hr, max_hr, 
 
 
 def _build_zone_boundaries(max_hr, resting_hr, hr_zones_method='percentage',
-                           custom_hr_zones=None, vt1_override=None):
+                           custom_hr_zones=None, vt1_override=None, aet_offset=None):
     """Build five (min, max) HR-zone boundary tuples from user settings.
 
     Boundary priority: custom (lab-tested) > karvonen/reserve (HRR) > percentage (max_hr).
 
-    vt1_override, when provided, replaces the Z2 ceiling (= Z3 floor) — the AeT/VT1 line —
-    AFTER any custom overrides, because the effective (dynamic) AeT is the authoritative
-    Z2/Z3 boundary. Per the dynamic-AeT design (decision d), ONLY this one line moves; all
-    other boundaries are untouched.
+    Dynamic AeT (decision d, revised to Path 2 on 2026-07-02): Zone 2 is a fixed-WIDTH
+    productive-aerobic band that SLIDES with AeT.
+    - vt1_override sets the Z2 ceiling (= Z3 floor) to the effective (dynamic) AeT.
+    - aet_offset (the daily bpm delta, negative on suppressed days) slides the Z1/Z2 floor
+      by the SAME amount, so Zone 2 keeps its width as the ceiling moves. Walking/recovery
+      (Z1, below the slid floor) stays excluded from the aerobic-base target.
+    VT2 and all boundaries above it are never touched (no daily proxy for VT2).
 
     Returns (zones, method_label).
     """
@@ -1604,10 +1608,17 @@ def _build_zone_boundaries(max_hr, resting_hr, hr_zones_method='percentage',
             [max_hr * 0.90, max_hr],
         ]
 
-    # Dynamic-AeT: move ONLY the Z2/Z3 line to the effective AeT (after custom overrides).
+    # Dynamic-AeT: set the Z2/Z3 line to the effective AeT (after custom overrides)...
     if vt1_override is not None:
-        zones[1][1] = float(vt1_override)  # Z2 ceiling
+        zones[1][1] = float(vt1_override)  # Z2 ceiling (effective VT1)
         zones[2][0] = float(vt1_override)  # Z3 floor
+
+    # ...and (Path 2) slide the Z1/Z2 floor by the same daily offset so Zone 2 keeps its
+    # width. Clamp so it never crosses Z1's own floor.
+    if aet_offset:
+        new_floor = max(zones[1][0] + float(aet_offset), zones[0][0] + 1)
+        zones[0][1] = new_floor  # Z1 ceiling
+        zones[1][0] = new_floor  # Z2 floor
 
     return [tuple(z) for z in zones], method_label
 
@@ -1627,10 +1638,11 @@ def edwards_trimp(zone_times_seconds):
 
 
 def dynamic_zone_times(hr_data, max_hr, resting_hr, hr_zones_method, custom_hr_zones,
-                       effective_aet):
-    """Bucket an in-memory HR sample list against an effective-AeT Z2/Z3 line."""
+                       effective_aet, aet_offset=None):
+    """Bucket an in-memory HR sample list against the dynamic Zone 2 band (Path 2: the
+    Z2 ceiling = effective AeT and the Z1/Z2 floor slides by aet_offset)."""
     zones, _ = _build_zone_boundaries(max_hr, resting_hr, hr_zones_method, custom_hr_zones,
-                                      vt1_override=effective_aet)
+                                      vt1_override=effective_aet, aet_offset=aet_offset)
     return bucket_hr_samples(hr_data, zones)
 
 
@@ -1647,13 +1659,14 @@ def bucket_hr_samples(hr_data, zones):
     return zone_times
 
 
-def rebucket_zone_times(user_id, date_str, effective_aet):
-    """Re-bucket a user's activities on a date against an effective-AeT Z2/Z3 line.
+def rebucket_zone_times(user_id, date_str, effective_aet, aet_offset=None):
+    """Re-bucket a user's activities on a date against the dynamic Zone 2 band.
 
-    Reads each activity's stored HR stream and re-buckets it with the Z2/Z3 boundary set to
-    `effective_aet` (all other boundaries from user settings). Per decision (d) only the
-    VT1 line moves. Falls back to the activity's stored time_in_zone* when no stream exists,
-    so the result degrades gracefully rather than dropping a session.
+    Reads each activity's stored HR stream and re-buckets it with the Z2 ceiling set to
+    `effective_aet` and (Path 2) the Z1/Z2 floor slid by `aet_offset`, so Zone 2 is the
+    fixed-width productive-aerobic band for that day. All boundaries at VT2 and above are
+    unchanged. Falls back to the activity's stored time_in_zone* when no stream exists, so
+    the result degrades gracefully rather than dropping a session.
 
     Returns an aggregated dict (time_in_zone1..5, total_zone_seconds, z1_pct..z5_pct,
     rebucketed) shaped like get_activity_summary_for_date's zone fields, or None if user
@@ -1674,7 +1687,7 @@ def rebucket_zone_times(user_id, date_str, effective_aet):
     custom = row.get('custom_hr_zones')
 
     zones, _ = _build_zone_boundaries(max_hr, resting_hr, method, custom,
-                                      vt1_override=effective_aet)
+                                      vt1_override=effective_aet, aet_offset=aet_offset)
 
     acts = execute_query(
         """SELECT activity_id, time_in_zone1, time_in_zone2, time_in_zone3,

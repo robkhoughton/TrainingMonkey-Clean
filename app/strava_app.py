@@ -6920,7 +6920,9 @@ def generate_autopsy_for_date(date_str, user_id):
                 session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                 eff_aet = get_effective_aet(user_id, as_of_date=session_date)
                 if eff_aet:
-                    rb = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'])
+                    _off = eff_aet.get('offset')
+                    rb = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'],
+                                             aet_offset=_off)
                     if rb and rb.get('total_zone_seconds', 0) > 0:
                         activity_summary.update({k: rb[k] for k in (
                             'time_in_zone1', 'time_in_zone2', 'time_in_zone3',
@@ -6932,6 +6934,13 @@ def generate_autopsy_for_date(date_str, user_id):
                         if _z and 'zone2' in _z and 'zone3' in _z:
                             _z['zone2']['max'] = eff_aet['effective_aet']
                             _z['zone3']['min'] = eff_aet['effective_aet']
+                            # Path 2: slide the Z1/Z2 floor by the same daily offset so the
+                            # displayed Zone 2 band keeps its width.
+                            if _off and 'zone1' in _z:
+                                _new_floor = int(round(_z['zone2']['min'] + _off))
+                                _new_floor = max(_new_floor, _z['zone1']['min'] + 1)
+                                _z['zone1']['max'] = _new_floor
+                                _z['zone2']['min'] = _new_floor
             except Exception as _eae:
                 logger.warning(f"Dynamic AeT re-bucketing failed for {date_str}: {_eae}")
                 eff_aet = None
@@ -7767,7 +7776,8 @@ def get_weekly_synthesis():
             row = db_utils.execute_query(
                 """
                 SELECT week_start_date, weekly_synthesis, synthesis_generated_at,
-                       strategic_summary
+                       strategic_summary, weekly_alignment_score, weekly_quality_score,
+                       weekly_composite_score, week_reflection, synthesis_week_start
                 FROM weekly_programs
                 WHERE user_id = %s AND week_start_date = %s
                 LIMIT 1
@@ -7779,7 +7789,8 @@ def get_weekly_synthesis():
             row = db_utils.execute_query(
                 """
                 SELECT week_start_date, weekly_synthesis, synthesis_generated_at,
-                       strategic_summary
+                       strategic_summary, weekly_alignment_score, weekly_quality_score,
+                       weekly_composite_score, week_reflection, synthesis_week_start
                 FROM weekly_programs
                 WHERE user_id = %s AND weekly_synthesis IS NOT NULL
                 ORDER BY week_start_date DESC
@@ -7793,19 +7804,27 @@ def get_weekly_synthesis():
             return jsonify({'synthesis': None, 'week_start': None})
 
         r = row[0]
-        # week_start for display: synthesis always covers the 7 days before it was generated
-        # (both cron and manual use today-7 as the activity window), so
-        # synthesis_generated_at - 7 days gives the correct synthesis window start date.
+        # Prefer the explicitly-stored synthesis window start. Fall back to the legacy
+        # derivation (generated_at - 7) only for rows written before that column existed.
         from datetime import timedelta as _td
         gen_at = r['synthesis_generated_at']
-        synthesis_week_start = (gen_at.date() - _td(days=7)).isoformat() if gen_at else (
-            r['week_start_date'].isoformat() if r['week_start_date'] else None
-        )
+        explicit_start = r.get('synthesis_week_start')
+        if explicit_start:
+            synthesis_week_start = explicit_start.isoformat()
+        elif gen_at:
+            synthesis_week_start = (gen_at.date() - _td(days=7)).isoformat()
+        else:
+            synthesis_week_start = r['week_start_date'].isoformat() if r['week_start_date'] else None
+        composite = r.get('weekly_composite_score')
         return jsonify({
             'synthesis': r['weekly_synthesis'],
             'week_start': synthesis_week_start,
             'generated_at': gen_at.isoformat() if gen_at else None,
             'strategic_summary': r['strategic_summary'],
+            'alignment_score': r.get('weekly_alignment_score'),
+            'quality_score': r.get('weekly_quality_score'),
+            'composite_score': float(composite) if composite is not None else None,
+            'reflection': r.get('week_reflection'),
         })
 
     except Exception as e:
@@ -8326,6 +8345,7 @@ def get_settings():
             'injury_risk_alerts': user.get('injury_risk_alerts', True),
             'recommendation_style': user.get('recommendation_style', 'balanced'),
             'coaching_tone': user.get('coaching_tone', 'supportive'),
+            'aet_assessment_method': user.get('aet_assessment_method') or 'hr_drift',
             'is_admin': user.get('is_admin', False),
             'created_at': user.get('created_at'),
             'updated_at': user.get('updated_at')
@@ -8634,7 +8654,8 @@ def get_user_settings():
     try:
         result = db_utils.execute_query("""
             SELECT coaching_style_spectrum, coaching_tone, recommendation_style,
-                   primary_sport, secondary_sport, training_experience
+                   primary_sport, secondary_sport, training_experience,
+                   aet_assessment_method
             FROM user_settings
             WHERE id = %s
         """, (current_user.id,), fetch=True)
@@ -8648,6 +8669,7 @@ def get_user_settings():
                 'primary_sport': settings.get('primary_sport', 'trail_running'),
                 'secondary_sport': settings.get('secondary_sport', ''),
                 'training_experience': settings.get('training_experience', 'intermediate'),
+                'aet_assessment_method': settings.get('aet_assessment_method') or 'hr_drift',
             })
         else:
             return jsonify({
@@ -8657,6 +8679,7 @@ def get_user_settings():
                 'primary_sport': 'trail_running',
                 'secondary_sport': '',
                 'training_experience': 'intermediate',
+                'aet_assessment_method': 'hr_drift',
             })
 
     except Exception as e:
@@ -13806,6 +13829,163 @@ def delete_aerobic_assessment(assessment_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ── LT1 LACTATE STEP TEST (second AeT assessment method) ──────────────────────
+
+@app.route('/api/coach/aet-method', methods=['POST'])
+@login_required
+def set_aet_assessment_method():
+    """Set the athlete's chosen AeT assessment method: 'hr_drift' | 'lactate_step'."""
+    try:
+        data = request.get_json() or {}
+        method = data.get('method')
+        if method not in ('hr_drift', 'lactate_step'):
+            return jsonify({'success': False, 'error': "method must be 'hr_drift' or 'lactate_step'"}), 400
+        db_utils.execute_query(
+            "UPDATE user_settings SET aet_assessment_method = %s, updated_at = NOW() WHERE id = %s",
+            (method, current_user.id)
+        )
+        return jsonify({'success': True, 'method': method})
+    except Exception as e:
+        logger.error(f"Error setting AeT method for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _run_lactate_analyzer(data):
+    """Shared parse + analyze for the lactate step preview/save endpoints.
+
+    Returns (result_dict, error_response_or_None). On bad input returns
+    (None, (json, status)).
+    """
+    from lactate_step_test_engine import analyze_lactate_step_test
+    stages = data.get('stages')
+    if not stages or not isinstance(stages, list):
+        return None, (jsonify({'success': False, 'error': 'stages (a list) is required'}), 400)
+
+    baseline = data.get('baseline_lactate')
+    baseline = float(baseline) if baseline not in (None, '') else None
+    result = analyze_lactate_step_test(stages, baseline_lactate=baseline)
+    return result, None
+
+
+@app.route('/api/coach/lactate-step-tests/preview', methods=['POST'])
+@login_required
+def preview_lactate_step_test():
+    """Run the deterministic LT1 analyzer on an entered step table without saving."""
+    try:
+        data = request.get_json() or {}
+        result, err = _run_lactate_analyzer(data)
+        if err:
+            return err
+        if not result['valid']:
+            return jsonify({'success': False, 'error': result['error'],
+                            'analysis': result}), 400
+        return jsonify({'success': True, 'analysis': result})
+    except Exception as e:
+        logger.error(f"Error previewing lactate step test for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/lactate-step-tests', methods=['POST'])
+@login_required
+def save_lactate_step_test_endpoint():
+    """Analyze an entered step table and save it; promote LT1 to aet_bpm if valid."""
+    try:
+        from timezone_utils import get_app_current_date
+        data = request.get_json() or {}
+
+        result, err = _run_lactate_analyzer(data)
+        if err:
+            return err
+        if not result['valid']:
+            # Never invent an AeT from an invalid test (category-2 guard). Do not save.
+            return jsonify({'success': False, 'error': result['error'],
+                            'analysis': result}), 400
+
+        test_date = data.get('test_date') or get_app_current_date().strftime('%Y-%m-%d')
+        speed = data.get('speed')
+        speed = float(speed) if speed not in (None, '') else None
+
+        saved = db_utils.save_lactate_step_test(current_user.id, {
+            'test_date': test_date,
+            'speed': speed,
+            'speed_unit': data.get('speed_unit', 'mph'),
+            'stages': data.get('stages', []),
+            'baseline_lactate': result.get('baseline_lactate'),
+            'lt1_bpm': result.get('lt1_bpm'),
+            'lt1_grade': result.get('lt1_grade'),
+            'valid': True,
+            'analyzer_method': result.get('analyzer_method', 'first_sustained_rise'),
+            'notes': (data.get('notes') or '').strip() or None,
+        })
+        if not saved:
+            return jsonify({'success': False, 'error': 'Failed to save step test.'}), 500
+
+        # Promote LT1 bpm into athlete_models as aet_bpm — identical contract to the
+        # drift test; aet_method records which method produced it.
+        try:
+            from llm_recommendations_module import upsert_athlete_model
+            upsert_athlete_model(current_user.id, {
+                'aet_bpm': float(result['lt1_bpm']),
+                'aet_test_date': test_date,
+                'aet_method': 'lactate_step',
+            })
+        except Exception as _aet_err:
+            logger.warning(f"Could not promote LT1 aet_bpm to athlete model for user {current_user.id}: {_aet_err}")
+
+        test = dict(saved)
+        for key in ('test_date', 'created_at', 'updated_at'):
+            if key in test and hasattr(test[key], 'strftime'):
+                test[key] = test[key].strftime('%Y-%m-%d') if key == 'test_date' else test[key].isoformat()
+        for key in ('speed', 'baseline_lactate', 'lt1_bpm', 'lt1_grade'):
+            if test.get(key) is not None:
+                test[key] = float(test[key])
+
+        return jsonify({'success': True, 'test': test, 'analysis': result}), 201
+
+    except Exception as e:
+        logger.error(f"Error saving lactate step test for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/lactate-step-tests', methods=['GET'])
+@login_required
+def get_lactate_step_tests_endpoint():
+    """Return all lactate step tests for the current user, newest first."""
+    try:
+        rows = db_utils.get_lactate_step_tests(current_user.id)
+        tests = []
+        for row in rows:
+            t = dict(row)
+            for key in ('test_date', 'created_at', 'updated_at'):
+                if key in t and hasattr(t[key], 'strftime'):
+                    t[key] = t[key].strftime('%Y-%m-%d') if key == 'test_date' else t[key].isoformat()
+            for key in ('speed', 'baseline_lactate', 'lt1_bpm', 'lt1_grade'):
+                if t.get(key) is not None:
+                    t[key] = float(t[key])
+            tests.append(t)
+        return jsonify({'success': True, 'tests': tests})
+    except Exception as e:
+        logger.error(f"Error fetching lactate step tests for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/lactate-step-tests/<int:test_id>', methods=['DELETE'])
+@login_required
+def delete_lactate_step_test(test_id):
+    """Delete a single lactate step test (ownership enforced by WHERE clause)."""
+    try:
+        result = db_utils.execute_query(
+            "DELETE FROM lactate_step_tests WHERE id = %s AND user_id = %s RETURNING id",
+            (test_id, current_user.id), fetch=True
+        )
+        if result:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Test not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting lactate step test {test_id} for user {current_user.id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/race-history/screenshot', methods=['POST'])
 @login_required
 def upload_race_history_screenshot():
@@ -15243,6 +15423,21 @@ def get_weekly_program():
         return jsonify({'error': str(e)}), 500
 
 
+def _refresh_daily_rx_after_plan_change(user_id):
+    """Force-regenerate today's daily recommendation so it reflects a just-changed
+    weekly plan. Without this, the Journal daily Rx can contradict the new Coach plan
+    until the next daily cron. Non-fatal — plan changes must still succeed if this fails.
+    """
+    try:
+        from llm_recommendations_module import generate_recommendations
+        from timezone_utils import get_user_current_date
+        today_str = get_user_current_date(user_id).strftime('%Y-%m-%d')
+        generate_recommendations(force=True, user_id=user_id, target_date=today_str)
+        logger.info(f"Refreshed daily Rx for user {user_id} target {today_str} after plan change")
+    except Exception as e:
+        logger.warning(f"Daily Rx refresh after plan change failed (non-fatal) for user {user_id}: {e}")
+
+
 @app.route('/api/coach/weekly-program/generate', methods=['POST'])
 @login_required
 def generate_weekly_program_manual():
@@ -15279,15 +15474,67 @@ def generate_weekly_program_manual():
             program_data=program,
             generation_type='manual'
         )
-        
+
+        # Keep today's daily Rx in sync with the regenerated plan.
+        _refresh_daily_rx_after_plan_change(user_id)
+
         return jsonify({
             'success': True,
             'program': program,
             'message': 'Weekly program generated successfully'
         })
-        
+
     except Exception as e:
         logger.error(f"Error generating weekly program: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/coach/weekly-program/reflection', methods=['POST'])
+@login_required
+def submit_week_reflection():
+    """Capture the athlete's 'how did your week go?' reflection and regenerate the
+    upcoming weekly plan so it incorporates their own-words account of the past week.
+
+    Body: { "reflection": "<free text>" }
+    """
+    from coach_recommendations import (
+        save_week_reflection, generate_weekly_program, save_weekly_program
+    )
+    from timezone_utils import get_current_week_start
+
+    try:
+        user_id = current_user.id
+        data = request.get_json() or {}
+        reflection = (data.get('reflection') or '').strip()
+        if not reflection:
+            return jsonify({'error': 'Reflection text is required'}), 400
+
+        # 1. Save the reflection onto the just-completed week's row.
+        reflected_week = save_week_reflection(user_id, reflection)
+
+        # 2. Regenerate the current week's plan — build_weekly_program_prompt now reads
+        #    the reflection as the prior-week's own-words review.
+        week_start = get_current_week_start()
+        program = generate_weekly_program(
+            user_id=user_id, target_week_start=week_start, force_regenerate=True
+        )
+        save_weekly_program(
+            user_id=user_id, week_start=week_start,
+            program_data=program, generation_type='reflection'
+        )
+
+        # 3. Keep today's daily Rx in sync with the rebuilt plan.
+        _refresh_daily_rx_after_plan_change(user_id)
+
+        return jsonify({
+            'success': True,
+            'program': program,
+            'reflected_week': str(reflected_week) if reflected_week else None,
+            'message': 'Reflection saved and weekly plan regenerated'
+        })
+
+    except Exception as e:
+        logger.error(f"Error submitting week reflection: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

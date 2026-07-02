@@ -1,8 +1,10 @@
 """
-Tests for the sub-VT1 aerobic-base metric in compute_zone_compliance.
+Tests for the aerobic-base metric in compute_zone_compliance.
 
-Aerobic base is measured as time BELOW the effective VT1 (Z1 + Z2 combined), not Zone 2
-alone, so a narrow dynamic Zone 2 never penalizes correctly-paced easy volume.
+Path 2 (decision d, 2026-07-02): Zone 2 is a fixed-width productive band that slides with
+AeT, so the aerobic-base target is measured as productive Zone 2 time (>=45 min). Zone 1
+(walking/recovery, below the slid floor) is NOT an adequate mitochondrial stimulus and does
+not count. below_vt1_minutes (Z1+Z2) is retained for context only.
 """
 import os
 import sys
@@ -30,19 +32,19 @@ def _summary(z1=0, z2=0, z3=0, z4=0, z5=0):
 
 
 class TestAerobicBase(unittest.TestCase):
-    def test_below_vt1_sums_z1_and_z2(self):
-        # 20 min Z1 + 30 min Z2 = 50 min below VT1.
+    def test_below_vt1_context_field_still_sums_z1_and_z2(self):
         zc = m.compute_zone_compliance(_summary(z1=1200, z2=1800), 'easy', HR)
-        self.assertEqual(zc['below_vt1_minutes'], 50.0)
+        self.assertEqual(zc['below_vt1_minutes'], 50.0)  # context only
         self.assertEqual(zc['z2_minutes'], 30.0)
 
-    def test_target_met_via_z1_plus_z2_even_with_narrow_z2(self):
-        # Narrow Z2 (only 10 min) but 40 min Z1 -> 50 min below VT1 -> target MET.
-        zc = m.compute_zone_compliance(_summary(z1=2400, z2=600), 'easy', HR)
+    def test_target_met_requires_productive_zone2(self):
+        # 45 min in Zone 2 -> target MET.
+        zc = m.compute_zone_compliance(_summary(z1=600, z2=2700), 'easy', HR)
         self.assertTrue(zc['aerobic_base_target_met'])
 
-    def test_target_missed_when_sub_vt1_under_45(self):
-        zc = m.compute_zone_compliance(_summary(z1=600, z2=600), 'easy', HR)  # 20 min total
+    def test_walking_zone1_does_not_count(self):
+        # 40 min Z1 (walking) + only 10 min Z2 -> target NOT met (Z1 is not stimulus).
+        zc = m.compute_zone_compliance(_summary(z1=2400, z2=600), 'easy', HR)
         self.assertFalse(zc['aerobic_base_target_met'])
 
     def test_target_none_when_not_easy(self):

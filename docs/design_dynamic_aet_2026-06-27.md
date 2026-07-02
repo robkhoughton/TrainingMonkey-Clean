@@ -167,12 +167,17 @@ the June 2026 safety-floor work). Good emergent behavior.
    movement (determinism violation). Z3 widening downward is the *correct* expression of
    "easy ceiling fell, hard ceiling didn't." Clamps: `effective_AeT` strictly above the
    Z1/Z2 boundary and strictly below VT2 (both category-1 sanity asserts).
-   - **Measurement refinement (added post-build):** because only the top of Z2 moves, Z2 *as
-     a band* can narrow. So aerobic-base time and the easy-day target are measured as **time
-     below the effective VT1 = Z1+Z2 combined** (`below_vt1_minutes` /
-     `aerobic_base_target_met`), not Z2 alone — stable as the ceiling moves. Polarized 80:20
-     is unaffected (it keys off Z3 black-hole and Z4+Z5 hard); a lowered AeT pushing Z2→Z3
-     time is the correct slow-down signal, not a tracking artifact.
+   - **RESOLVED to Path 2 (2026-07-02):** decision (d) was revised. The narrow-Z2 problem is
+     fixed by SLIDING the whole Zone 2 band with AeT — the effective AeT sets the Z2 ceiling
+     AND the Z1/Z2 floor slides by the same offset (`aet_offset` in `_build_zone_boundaries`),
+     so Zone 2 keeps its width. VT2 and above stay fixed (decision (d)'s real concern — no
+     fabricated VT2 movement — preserved). Aerobic-base target = **productive Zone 2 time**
+     (`aerobic_base_target_met` reverted to Zone-2-based); Zone 1 (walking) does NOT count —
+     the earlier Z1+Z2 aggregate was rejected because a walk is not a mitochondrial stimulus.
+     Verified on a real session: an 8 bpm suppressed day slides Z2 [132–148]→[124–140] (width
+     preserved), keeps productive-Z2 time ~205 min (no narrow-band penalty), pushes genuinely
+     above-AeT time into Z3 (45→153 min), and raises Edwards load 745→960. Polarized 80:20
+     unaffected (keys off Z3 + Z4+Z5).
 5. **HRV source/cadence → single source: intervals.icu, field = rMSSD (ms)** (`hrv_source`
    tracked). Device is **Oura overnight HRV (rMSSD)** (confirmed by Rob), not waking
    spot-check — relabel honestly as "overnight HRV (rMSSD)" in the Rx. Cadence is **~⅔ of
