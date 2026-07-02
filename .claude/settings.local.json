@@ -75,7 +75,8 @@
       "Bash(python -c \"import fitz; print\\('pymupdf ok'\\)\")",
       "Bash(python -c \"import pdfplumber; print\\('pdfplumber ok'\\)\")",
       "Bash(python -c ' *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Skill(wrap)"
     ],
     "deny": [],
     "ask": []
