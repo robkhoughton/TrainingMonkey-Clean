@@ -256,6 +256,40 @@ def dynamic_acwr_cutover_ready(user_id, as_of_date=None):
         return False
 
 
+def upsert_effective_aet_daily(user_id, date, eff, hrv_z=None):
+    """Persist the day's APPLIED effective AeT (one row per user per day).
+
+    Recording — rather than relying on get_effective_aet(as_of_date) reconstruction —
+    because reconstruction uses the CURRENT offset params; once those are calibrated the
+    historical applied value is only faithfully known if it was stored. Feeds the effective-
+    vs-baseline trend chart and future per-athlete offset calibration. Best-effort: never
+    raises into the caller.
+    """
+    if not eff:
+        return
+    from db_utils import execute_query
+    try:
+        d = date if isinstance(date, str) else date.strftime('%Y-%m-%d')
+        execute_query(
+            """INSERT INTO effective_aet_daily
+                   (user_id, date, baseline_aet, effective_aet, aet_offset, hrv_z,
+                    readiness_state, fallback_reason, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+               ON CONFLICT (user_id, date) DO UPDATE SET
+                   baseline_aet    = EXCLUDED.baseline_aet,
+                   effective_aet   = EXCLUDED.effective_aet,
+                   aet_offset      = EXCLUDED.aet_offset,
+                   hrv_z           = EXCLUDED.hrv_z,
+                   readiness_state = EXCLUDED.readiness_state,
+                   fallback_reason = EXCLUDED.fallback_reason,
+                   updated_at      = NOW()""",
+            (user_id, d, eff.get('baseline_aet'), eff.get('effective_aet'),
+             eff.get('offset'), hrv_z, eff.get('state'), eff.get('fallback_reason'))
+        )
+    except Exception as e:
+        logger.warning(f"effective_aet_daily upsert failed for user {user_id} {date}: {e}")
+
+
 def dynamic_aet_cutover_status(user_id, as_of_date=None):
     """Operator-facing cutover status, for admin surfacing so the flip is triggered by
     state rather than memory. Reports data readiness, flag state, dynamic coverage, and a

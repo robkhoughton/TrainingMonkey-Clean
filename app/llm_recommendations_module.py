@@ -1799,6 +1799,13 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         from dynamic_aet import get_effective_aet, format_effective_aet_block
         _eff_aet = get_effective_aet(user_id)
         effective_aet_block = format_effective_aet_block(_eff_aet)
+        # Persist today's APPLIED effective AeT (one row/user/day) for trending +
+        # future offset calibration. Best-effort; never blocks the Rx.
+        if _eff_aet:
+            from dynamic_aet import upsert_effective_aet_daily
+            from timezone_utils import get_app_current_date
+            upsert_effective_aet_daily(user_id, get_app_current_date(), _eff_aet,
+                                       _ans.get('hrv_z') if _ans else None)
     except Exception as _eae:
         logger.warning(f"Effective AeT computation failed for user {user_id}: {_eae}")
         _eff_aet = None
