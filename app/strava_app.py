@@ -2509,7 +2509,7 @@ def respond_alignment_query(query_id):
     """
     try:
         data = request.get_json() or {}
-        response_text = data.get('response', '').strip()
+        response_text = (data.get('response') or '').strip()
         if not response_text:
             return jsonify({'error': 'response is required'}), 400
         db_utils.update_alignment_query(query_id, status='answered', response=response_text)
@@ -2716,8 +2716,8 @@ def get_current_user():
 def update_user_email():
     """Update user's email address"""
     try:
-        data = request.get_json()
-        new_email = data.get('email', '').strip().lower()
+        data = request.get_json() or {}
+        new_email = (data.get('email') or '').strip().lower()
         
         if not new_email or '@' not in new_email or '.' not in new_email:
             return jsonify({'error': 'Invalid email address'}), 400
@@ -9139,8 +9139,8 @@ def save_integrations():
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
-        api_key    = data.get('intervals_icu_api_key', '').strip() or None
-        athlete_id = data.get('intervals_icu_athlete_id', '').strip() or None
+        api_key    = (data.get('intervals_icu_api_key') or '').strip() or None
+        athlete_id = (data.get('intervals_icu_athlete_id') or '').strip() or None
 
         # Both must be provided together, or both cleared together
         if bool(api_key) != bool(athlete_id):
@@ -13737,7 +13737,7 @@ def save_aerobic_assessment_endpoint():
         warmup_minutes = float(data.get('warmup_minutes', 10.0))
         cooldown_minutes = float(data.get('cooldown_minutes', 0.0))
         ant_bpm = float(data['ant_bpm']) if data.get('ant_bpm') else None
-        notes = data.get('notes', '').strip() or None
+        notes = (data.get('notes') or '').strip() or None
 
         stream = db_utils.get_hr_stream_data(activity_id, current_user.id)
         if not stream:
@@ -14576,8 +14576,8 @@ def add_schedule_constraint():
         user_id = current_user.id
         data = request.get_json() or {}
 
-        constraint_date = data.get('date', '').strip()
-        reason = data.get('reason', '').strip()
+        constraint_date = (data.get('date') or '').strip()
+        reason = (data.get('reason') or '').strip()
 
         if not constraint_date:
             return jsonify({'success': False, 'error': 'date is required'}), 400
@@ -15060,8 +15060,8 @@ def get_training_stage():
             stage_info['is_manual_override'] = False
         
         # Separate B and C races - use get() with default to handle missing priority
-        b_races = [g for g in goals_list if g.get('priority', '').strip().upper() == 'B']
-        c_races = [g for g in goals_list if g.get('priority', '').strip().upper() == 'C']
+        b_races = [g for g in goals_list if (g.get('priority') or '').strip().upper() == 'B']
+        c_races = [g for g in goals_list if (g.get('priority') or '').strip().upper() == 'C']
         
         logger.info(f"Timeline generation: A race = {a_race.get('race_name') if a_race else 'None'}, "
                    f"B races count = {len(b_races)}, C races count = {len(c_races)}")
