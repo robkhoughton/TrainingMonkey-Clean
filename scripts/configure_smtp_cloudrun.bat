@@ -13,8 +13,8 @@ echo.
 echo ==========================================
 echo.
 
-REM EDIT THIS: Replace with your actual Gmail app password
-set APP_PASSWORD=gfks tkir hfyz lsbj
+REM EDIT THIS: Replace with your actual Gmail app password (do NOT commit the real value)
+set APP_PASSWORD=<YOUR_APP_PASSWORD>
 
 REM Your service name (update if different)
 set SERVICE_NAME=strava-training-personal

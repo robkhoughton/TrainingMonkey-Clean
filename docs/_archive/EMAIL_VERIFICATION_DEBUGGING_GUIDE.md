@@ -98,7 +98,7 @@ app/email_verification/
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=587
 SMTP_USER=rob@yourtrainingmonkey.com
-SMTP_PASSWORD=wq1ZdNZqenGM
+SMTP_PASSWORD=<YOUR_ZOHO_APP_PASSWORD>
 SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com  # MUST match SMTP_USER for Zoho
 APP_BASE_URL=https://yourtrainingmonkey.com
 ```
@@ -127,7 +127,7 @@ gcloud run services update strava-training-personal \
 
 # Update multiple variables
 gcloud run services update strava-training-personal \
-  --set-env-vars="SMTP_HOST=smtp.zoho.com,SMTP_PORT=587,SMTP_USER=rob@yourtrainingmonkey.com,SMTP_PASSWORD=wq1ZdNZqenGM,SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com,APP_BASE_URL=https://yourtrainingmonkey.com" \
+  --set-env-vars="SMTP_HOST=smtp.zoho.com,SMTP_PORT=587,SMTP_USER=rob@yourtrainingmonkey.com,SMTP_PASSWORD=<YOUR_ZOHO_APP_PASSWORD>,SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com,APP_BASE_URL=https://yourtrainingmonkey.com" \
   --region=us-central1
 ```
 

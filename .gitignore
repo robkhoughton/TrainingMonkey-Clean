@@ -77,3 +77,8 @@ scripts/review_*.js
 # Design review outputs
 frontend/DesignReview/
 review/
+# Secret / credential files (added 2026-07-03 after SMTP leak)
+*SMTP*authorization*code*.txt
+*app*password*.txt
+.env.*
+!.env.example
