@@ -9,14 +9,13 @@ supporting reference, not the source of truth for coding standards.
 ## Architecture
 - [`APPLICATION_ARCHITECTURE.md`](APPLICATION_ARCHITECTURE.md) — system overview
 - [`ARCHITECTURE_QUICK_REFERENCE.md`](ARCHITECTURE_QUICK_REFERENCE.md) — quick lookup
-- [`architecture/`](architecture/) — YTM Roadmap, coaching-pipeline map + QC audit
-- [`methodology/dynamic_aet.md`](methodology/dynamic_aet.md) — dynamic/effective-AeT methodology
+- [`architecture/`](architecture/) — YTM Roadmap, coaching-pipeline map + QC audit, coaching-framework gaps report
 
 ## Coaching model & references
 - [`reference/`](reference/) — the coaching reference library (paired with `app/coaching_context/`):
   Zone 2, aerobic assessment (HR drift + LT1), neuromuscular, muscular endurance, training
-  philosophy, athlete model. Threshold source of truth is `app/Training_Metrics_Reference_Guide.md`.
-- [`features/COACHING_FRAMEWORK_GAPS.md`](features/COACHING_FRAMEWORK_GAPS.md) — coaching framework roadmap / gap plan
+  philosophy, athlete model, dynamic-AeT methodology. Threshold source of truth is
+  `app/Training_Metrics_Reference_Guide.md`.
 - [`MODEL_REVIEW_RUBRIC.md`](MODEL_REVIEW_RUBRIC.md) — LLM output review rubric
 
 ## Branding

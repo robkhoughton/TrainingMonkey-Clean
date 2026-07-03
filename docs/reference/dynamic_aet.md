@@ -2,7 +2,7 @@
 
 *Methodology note for athletes. Plain-language companion to the technical reference
 (`app/Training_Metrics_Reference_Guide.md`) and the design record
-(`docs/design_dynamic_aet_2026-06-27.md`).*
+(`docs/_archive/design_dynamic_aet_2026-06-27.md`).*
 
 ## The short version
 

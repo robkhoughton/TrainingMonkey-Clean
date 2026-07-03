@@ -18,7 +18,7 @@ To restore any file: `git mv docs/_archive/<path> docs/<path>`.
 - **`UserProgression/`** — shipped user-progression PRD, action plan, implementation summary.
 - **`features/`** — historical feature implementation/deployment records (TRIMP enhancement,
   swimming, cycling, Garmin attribution, email templates, etc.). The live coaching roadmap
-  `COACHING_FRAMEWORK_GAPS.md` was kept in `docs/features/`.
+  `COACHING_FRAMEWORK_GAPS.md` was kept and moved to `docs/architecture/`.
 - **`database/`** — optimization plans/reports and cleanup guides (the live access/security/
   migration/schema/SQL guides stayed in `docs/database/`).
 - **`deployment/`** — email-enforcement rollout, `email_verification_future/` (dormant feature
@@ -26,7 +26,7 @@ To restore any file: `git mv docs/_archive/<path> docs/<path>`.
   (the live deployment checklist / dev / environment / API-key / static-files guides stayed).
 - **Shipped design & review docs** — `design_dynamic_aet_*`, `design_lt1_step_test_*`,
   `code_review_2026-06-09`, `refactor_plan_race_context_*` (the features they described are
-  now shipped; methodology lives on in `docs/methodology/dynamic_aet.md`).
+  now shipped; methodology lives on in `docs/reference/dynamic_aet.md`).
 - **`guiding_principles_summary.md`** — stale dev standards that duplicated and contradicted the
   current `.claude/rules/` (SQL-Editor-only migrations, `datetime.now()`); superseded.
 - **`screenshots/`** — old Playwright/test screenshot iterations.
