@@ -1852,15 +1852,20 @@ def save_aerobic_assessment(user_id, activity_id, data):
 def get_aerobic_assessments(user_id):
     """Return all aerobic assessments for a user, newest first.
 
-    Joins to activities for the activity name and distance.
+    Joins to activities for the activity name/distance, and to the journal entry on the
+    test date for its free-text notes (journal_notes) — the fallback source for parsing a
+    test-condition pace on tests that predate the stored distance stream. The athlete logs
+    the test's treadmill pace in the journal, not the assessment's own notes field.
     """
     query = """
         SELECT
             aa.*,
             a.name  AS activity_name,
-            a.distance_miles
+            a.distance_miles,
+            je.notes AS journal_notes
         FROM aerobic_assessments aa
         LEFT JOIN activities a ON a.activity_id = aa.activity_id
+        LEFT JOIN journal_entries je ON je.user_id = aa.user_id AND je.date = aa.test_date
         WHERE aa.user_id = %s
         ORDER BY aa.test_date DESC
     """

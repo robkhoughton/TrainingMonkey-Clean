@@ -214,17 +214,20 @@ def segment_pace_from_distance(distance_data, sample_rate=1.0,
 # Free-text pace patterns, tried in order. Each yields seconds-per-mile.
 # Conservative: every pattern requires an explicit unit/keyword so we never mistake a
 # clock time or arbitrary number for a pace.
-_MI = r'(?:mi\b|mile)'
+_MI = r'(?:mi\b|miles?)'
 _KM = r'km\b'
+# Optional "min" unit word between the clock value and the distance: matches
+# min / mins / minute / minutes, with an optional trailing period ("8:06 minute/mile").
+_MIN = r'(?:min(?:ute)?s?\.?\s*)?'
 _PACE_PATTERNS = (
-    # "8:30/mi", "8:30 min/mile", "8:30 per mile"
-    (re.compile(r'(\d{1,2}):(\d{2})\s*(?:min\s*)?(?:/|per\s+)?\s*' + _MI, re.I),
+    # "8:30/mi", "8:30 min/mile", "8:06 minute/mile", "8:30 per mile"
+    (re.compile(r'(\d{1,2}):(\d{2})\s*' + _MIN + r'(?:/|per\s+)?\s*' + _MI, re.I),
      lambda m: int(m.group(1)) * 60 + int(m.group(2))),
     # "8:30 pace"
     (re.compile(r'(\d{1,2}):(\d{2})\s*pace\b', re.I),
      lambda m: int(m.group(1)) * 60 + int(m.group(2))),
-    # "5:00/km" -> sec/mi
-    (re.compile(r'(\d{1,2}):(\d{2})\s*(?:min\s*)?(?:/|per\s+)?\s*' + _KM, re.I),
+    # "5:00/km", "5:00 minute/km" -> sec/mi
+    (re.compile(r'(\d{1,2}):(\d{2})\s*' + _MIN + r'(?:/|per\s+)?\s*' + _KM, re.I),
      lambda m: (int(m.group(1)) * 60 + int(m.group(2))) * 1.609344),
     # "8.5 mph" -> sec/mi
     (re.compile(r'(\d{1,2}(?:\.\d+)?)\s*mph\b', re.I),

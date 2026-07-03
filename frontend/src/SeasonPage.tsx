@@ -916,8 +916,9 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
     .filter(a => a.avg_pace_sec_per_mi != null)
     .sort((a, b) => a.test_date.localeCompare(b.test_date))
     .map(a => ({ ts: dateToTs(a.test_date), pace: a.avg_pace_sec_per_mi as number, aet: a.aet_bpm, source: a.pace_source }));
-  const showPaceChart = paceData.length >= 2;
-  const anyPaceMissing = assessments.length > 0 && paceData.length < assessments.length;
+  // Show as soon as one test carries pace (a single point; becomes a trend as tests accrue).
+  const showPaceChart = paceData.length >= 1;
+  const anyPaceMissing = assessments.length > 0 && paceData.length === 0;
 
   return (
     <div style={cardStyle}>

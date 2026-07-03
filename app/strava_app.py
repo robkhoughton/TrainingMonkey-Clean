@@ -13828,13 +13828,17 @@ def get_aerobic_assessments_endpoint():
         assessments = []
         for row in rows:
             a = dict(row)
-            # Notes fallback for tests saved before the distance stream / pace feature:
-            # if no pace was recorded, try to extract one from the athlete's notes.
-            if a.get('avg_pace_sec_per_mi') is None and a.get('notes'):
-                parsed = parse_pace_from_notes(a['notes'])
+            # Notes fallback for tests that predate the distance stream: if no pace was
+            # recorded, parse one from the athlete's free text. Prefer the assessment's own
+            # notes, then the journal entry for the test date (where the treadmill pace is
+            # usually logged, e.g. "set treadmill at 8:00 min/mi").
+            if a.get('avg_pace_sec_per_mi') is None:
+                parsed = parse_pace_from_notes(a.get('notes')) or parse_pace_from_notes(a.get('journal_notes'))
                 if parsed:
                     a['avg_pace_sec_per_mi'] = parsed['avg_pace_sec_per_mi']
                     a['pace_source'] = parsed['pace_source']
+            # journal_notes is an internal lookup, not part of the assessment contract
+            a.pop('journal_notes', None)
             for key in ('test_date', 'created_at', 'updated_at'):
                 if key in a and hasattr(a[key], 'strftime'):
                     a[key] = a[key].strftime('%Y-%m-%d') if key == 'test_date' else a[key].isoformat()
