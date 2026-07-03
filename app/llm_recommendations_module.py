@@ -2221,6 +2221,13 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                 _day_intensity = today_full.get('intensity', '').lower()
                 _hard_type = today_full.get('hard_session_type')
                 _strides_today = today_full.get('strides', False)
+                # An Aerobic Test (HR drift / LT1 step) is tagged intensity "Low" for
+                # scheduling, but it is NOT an easy run: the athlete holds a fixed effort
+                # and lets HR drift up across AeT — that drift IS the measurement. It must
+                # not receive the easy-day cue ("cap HR at VT1 / Zone 3 is the black hole"),
+                # which would tell the athlete to slow down and invalidate the test.
+                _workout_type = (today_full.get('workout_type') or '').lower()
+                _is_aerobic_test = 'aerobic test' in _workout_type or 'drift test' in _workout_type
                 try:
                     _hr = get_user_hr_thresholds(user_id)
                     # Dynamic AeT (Path 2): anchor today's easy-day cues to the effective AeT.
@@ -2239,7 +2246,16 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                                 _hr['zones']['zone2']['min'] = _nf
                     # [DOMAIN] HR zone boundaries, VT1/VT2 thresholds, polarized minimums — physiological constants
                     # [DOMAIN] "HR is the authority" / terrain-as-load-proxy prohibition — physiology principle
-                    if _hr and _day_intensity == 'low':
+                    if _hr and _is_aerobic_test:
+                        _vt1 = _hr['vt1_bpm']
+                        weekly_context_block += f"""
+AEROBIC TEST (HR DRIFT TEST) — MEASUREMENT SESSION, NOT AN EASY RUN:
+Today is an aerobic-threshold measurement, not a training-stimulus session. Do NOT apply easy-day polarized rules to it.
+Warm up ~10 min, then lock in a constant, comfortable aerobic effort near your current AeT estimate ({_vt1} bpm) and HOLD that effort for the full test.
+Do NOT slow down or reduce effort if HR drifts above {_vt1} bpm — the upward HR drift across AeT is exactly the signal being measured. Capping HR at VT1 invalidates the test.
+Keep external load constant (fixed treadmill speed/grade, or a flat loop) — any mid-test effort adjustment corrupts the reading. HR drift, not black-hole avoidance, is the point today.
+"""
+                    elif _hr and _day_intensity == 'low':
                         _vt1 = _hr['vt1_bpm']
                         _z2_min = _hr['zones']['zone2']['min']
                         _z3_min = _hr['zones']['zone3']['min']

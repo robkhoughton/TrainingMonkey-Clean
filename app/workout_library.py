@@ -340,7 +340,9 @@ AEROBIC_ASSESSMENT_PROTOCOL = {
     "name": "HR Drift Test",
     "purpose": (
         "Diagnostic test to establish Aerobic Threshold (AeT) bpm — the Zone 2 ceiling. "
-        "Not a training session. Generates no adaptive stimulus. "
+        "Its purpose is measurement, not intensity: a ~60-minute sustained effort at AeT "
+        "is a genuine Zone 2 aerobic session and carries the same load and aerobic stimulus "
+        "as the easy run it replaces — it is simply not a quality/high-intensity session. "
         "Replaces one Zone 2 easy run in the week it is scheduled."
     ),
     "retest_interval_days": 42,       # 6-week target; window opens at 28 days
@@ -386,7 +388,8 @@ LACTATE_STEP_TEST_PROTOCOL = {
         "Diagnostic test to establish Aerobic Threshold (AeT) bpm — the Zone 2 ceiling — "
         "by DIRECT lactate measurement of LT1. Same AeT-assessment slot as the HR Drift "
         "Test (one boundary, one scheduler, one aet_bpm field), just a more direct method. "
-        "Not a training session. Generates no adaptive stimulus. "
+        "Its purpose is measurement, not intensity: a light graded protocol capped at "
+        "~2.5–3 mmol, it carries only a modest aerobic load and is not a quality session. "
         "Replaces one Zone 2 easy run in the week it is scheduled."
     ),
     # Shares the drift test's cadence (28/42-day) and blocked phases — same slot.
