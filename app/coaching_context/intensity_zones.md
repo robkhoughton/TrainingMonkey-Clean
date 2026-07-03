@@ -12,6 +12,14 @@
 - 20% of weekly volume: Zone 4–5 (above VT2)
 - Zone 3 is a trap. If easy days drift into Zone 3, reduce effort — regardless of how it feels.
 
+## Distribution Shifts By Phase
+The 80/20 split is the Build-phase default, not a fixed constant — the easy:hard ratio modulates with training phase. Apply the ratio for the athlete's current phase:
+- **Base:** more pyramidal, ~90:10 to 95:5. The hard fraction is mostly short neuromuscular work (strides, hill sprints), not threshold/VO2max volume.
+- **Build:** classic 80:20 — threshold and VO2max intervals carry the hard 20%.
+- **Specificity / Peak:** stays ~80:20, but the hard work becomes race-terrain-specific (sustained uphill threshold, descent running) rather than flat intervals.
+- **Taper:** volume drops sharply; the ratio of the remaining volume holds steady.
+- **Masters (60s):** run one notch more conservative — a single focused hard session per week, putting the practical weekly ratio nearer 85:15–90:10, because the recovery cost of high intensity is higher.
+
 ## Triangulating Intensity (HR vs. Respiration)
 - HR is the primary intensity signal. If HR climbs into Zone 3 on easy days, slow down immediately.
 - **Respiration override — CNS fatigue suppression:** Heavy strength loading or back-to-back mountain days can suppress HR via autonomic blunting. If HR indicates Zone 2 but the athlete cannot maintain nasal breathing or speak in full sentences, the effective VT1 ceiling has shifted downward. Respiration overrides HR in this case — reduce effort until nasal breathing is fully comfortable.

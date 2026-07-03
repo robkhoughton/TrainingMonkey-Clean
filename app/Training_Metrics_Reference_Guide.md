@@ -319,6 +319,12 @@ recalibrated for the dynamic distribution first (it runs more negative during bu
 | 4   | 10 |
 | 5   | 5 |
 
+**Note (phase modulation):** this distribution is the **Build-phase** steady state, not a
+fixed constant. The easy:hard ratio shifts by phase — Base is more pyramidal (~90:10–95:5,
+hard fraction mostly short neuromuscular work), Build is classic 80:20, and masters (60s) run
+nearer 85:15–90:10 (one focused hard session/week). See `coaching_context/intensity_zones.md`
+§ "Distribution Shifts By Phase".
+
 **Note (dynamic VT1):** the ~70% target is **productive Zone 2** (the slid band below
 today's AeT), and Zone 1 (~5%, walking/recovery) is separate and does NOT substitute for it
 — a slow walk is not mitochondrial stimulus. Because Zone 2 slides with AeT and keeps its
