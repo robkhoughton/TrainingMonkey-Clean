@@ -197,6 +197,9 @@ const fmtPace = (sec: number | null | undefined) => {
 
 const SAGE = '#6B8F7F';
 const NAVY = '#1B2E4B';
+// Pace is the tracked aerobic-efficiency signal — brand Action Orange marks it as THE
+// signal, and stays distinct from the sage effective-AeT line on the shared chart.
+const PACE = '#FF5722';
 
 // Dot for the daily effective-AeT line: filled in the day's readiness colour; a hollow
 // dashed ring on days the offset was held (HRV stale/absent) so the fallback reads distinct.
@@ -209,7 +212,9 @@ const EffectiveDot = (props: any) => {
   return <circle cx={cx} cy={cy} r={3.5} fill={readinessColor(payload.state)} stroke="#fff" strokeWidth={1} />;
 };
 
-const AetTooltip = ({ active, payload }: any) => {
+// One tooltip for the merged Threshold + Pace chart: shows whichever of baseline / effective /
+// readiness / AnT / pace are present on the hovered day.
+const ComboTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const p = payload[0]?.payload || {};
   return (
@@ -232,34 +237,22 @@ const AetTooltip = ({ active, payload }: any) => {
         </div>
       )}
       {p.ant != null && <div style={{ color: '#7D9CB8' }}>AnT: <strong>{p.ant} bpm</strong></div>}
+      {p.pace != null && (
+        <div style={{ color: PACE }}>AeT pace: <strong>{fmtPace(p.pace)}/mi</strong>{p.paceSource === 'notes' ? ' (from notes)' : ''}</div>
+      )}
     </div>
   );
 };
 
-// Pace-progression dot: filled sage when measured from the distance stream, a hollow ring
-// when the pace was parsed from notes (less precise). Identity carried by shape + tooltip,
-// never colour alone.
+// Pace dot: filled orange when measured from the distance stream, a hollow ring when the
+// pace was parsed from notes (less precise). Identity carried by shape + tooltip, not colour alone.
 const PaceDot = (props: any) => {
   const { cx, cy, payload } = props;
   if (cx == null || cy == null || payload?.pace == null) return null;
-  if (payload.source === 'notes') {
-    return <circle cx={cx} cy={cy} r={4} fill="#fff" stroke={SAGE} strokeWidth={1.5} strokeDasharray="2 1.5" />;
+  if (payload.paceSource === 'notes') {
+    return <circle cx={cx} cy={cy} r={4} fill="#fff" stroke={PACE} strokeWidth={1.5} strokeDasharray="2 1.5" />;
   }
-  return <circle cx={cx} cy={cy} r={4} fill={SAGE} stroke="#fff" strokeWidth={1} />;
-};
-
-const PaceTooltip = ({ active, payload }: any) => {
-  if (!active || !payload?.length) return null;
-  const p = payload[0]?.payload || {};
-  return (
-    <div style={{ background: '#fff', border: '1px solid #d1dce8', borderRadius: '6px', padding: '8px 10px', fontSize: '0.75rem', lineHeight: 1.5 }}>
-      <div style={{ fontWeight: 700, color: NAVY, marginBottom: '3px' }}>
-        {new Date(p.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-      </div>
-      <div style={{ color: SAGE }}>AeT pace: <strong>{fmtPace(p.pace)}/mi</strong>{p.source === 'notes' ? ' (from notes)' : ''}</div>
-      {p.aet != null && <div style={{ color: NAVY }}>at AeT <strong>{p.aet} bpm</strong></div>}
-    </div>
-  );
+  return <circle cx={cx} cy={cy} r={4} fill={PACE} stroke="#fff" strokeWidth={1} />;
 };
 
 
@@ -267,13 +260,16 @@ const PaceTooltip = ({ active, payload }: any) => {
 // TACTICAL FORM STYLES
 // ============================================================================
 
+// Carbon-fibre weave for the tactical input panels. Brand spec (design-principles.md)
+// mandates the 4px tile — 8px reads as diamond plate — so visibility is tuned via opacity
+// only. Raised 0.04 → 0.10 so the weave actually reads on the navy ground.
 const CARBON = {
   backgroundColor: '#1B2E4B',
   backgroundImage: [
-    'linear-gradient(135deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
-    'linear-gradient(225deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
-    'linear-gradient(315deg, rgba(255,255,255,0.04) 25%, transparent 25%)',
-    'linear-gradient(45deg,  rgba(255,255,255,0.04) 25%, transparent 25%)',
+    'linear-gradient(135deg, rgba(255,255,255,0.10) 25%, transparent 25%)',
+    'linear-gradient(225deg, rgba(255,255,255,0.10) 25%, transparent 25%)',
+    'linear-gradient(315deg, rgba(255,255,255,0.10) 25%, transparent 25%)',
+    'linear-gradient(45deg,  rgba(255,255,255,0.10) 25%, transparent 25%)',
   ].join(', '),
   backgroundSize: '4px 4px',
 };
@@ -877,8 +873,10 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
     color: '#1B2E4B', textTransform: 'uppercase',
   };
   const inputStyle: React.CSSProperties = {
+    // Solid #162440 (darker than the #1B2E4B carbon container) + crisp Mountain Ridge
+    // border, per the tactical-form spec — makes inputs read as distinct entry wells.
     width: '100%', padding: '7px 10px', borderRadius: '5px',
-    border: '1px solid rgba(125,156,184,0.35)', backgroundColor: '#1B2E4B',
+    border: '1px solid #7D9CB8', backgroundColor: '#162440',
     color: '#E6F0FF', fontSize: '0.82rem', boxSizing: 'border-box',
   };
   const fieldLabelStyle: React.CSSProperties = {
@@ -893,10 +891,14 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
   const put = (ts: number, patch: any) => {
     rowMap.set(ts, { ...(rowMap.get(ts) || { ts }), ...patch });
   };
+  // Test points carry both the measured baseline (HR) and the test-condition pace, keyed by
+  // test date so they land on the same row as any daily effective-AeT point that shares the day.
   assessments.forEach(a => put(dateToTs(a.test_date), {
     baseline: a.aet_bpm,
     ant: a.ant_bpm ?? undefined,
     drift: a.drift_pct,
+    pace: a.avg_pace_sec_per_mi ?? undefined,
+    paceSource: a.pace_source,
   }));
   effectiveAet.forEach(e => put(dateToTs(e.date), {
     effective: e.effective_aet,
@@ -908,17 +910,11 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
 
   const hasAnt = assessments.some(a => a.ant_bpm !== null);
   const hasEffective = effectiveAet.length > 0;
-  const showChart = chartData.length >= 2 || hasEffective;
-
-  // Pace progression — the tracked aerobic-efficiency signal (drift is validity-only and
-  // stays in the history badge). Faster pace at the same AeT HR = a stronger aerobic engine.
-  const paceData = [...assessments]
-    .filter(a => a.avg_pace_sec_per_mi != null)
-    .sort((a, b) => a.test_date.localeCompare(b.test_date))
-    .map(a => ({ ts: dateToTs(a.test_date), pace: a.avg_pace_sec_per_mi as number, aet: a.aet_bpm, source: a.pace_source }));
-  // Show as soon as one test carries pace (a single point; becomes a trend as tests accrue).
-  const showPaceChart = paceData.length >= 1;
-  const anyPaceMissing = assessments.length > 0 && paceData.length === 0;
+  // Pace is the tracked aerobic-efficiency signal (drift is validity-only, kept in the history
+  // badge). Faster pace at the same AeT HR = a stronger aerobic engine — plotted on its own axis.
+  const hasPace = chartData.some(d => d.pace != null);
+  const anyPaceMissing = assessments.length > 0 && !hasPace;
+  const showChart = chartData.length >= 1;
 
   return (
     <div style={cardStyle}>
@@ -943,9 +939,9 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
               onChange={e => onActivitySelect(e.target.value ? Number(e.target.value) : null)}
               style={{ ...inputStyle, cursor: 'pointer' }}
             >
-              <option value=''>— choose a run with HR data —</option>
+              <option value='' style={{ backgroundColor: '#162440', color: '#E6F0FF' }}>— choose a run with HR data —</option>
               {hrActivities.map(a => (
-                <option key={a.activity_id} value={a.activity_id}>
+                <option key={a.activity_id} value={a.activity_id} style={{ backgroundColor: '#162440', color: '#E6F0FF' }}>
                   {formatDate(a.date)} · {a.name}{a.distance_miles ? ` (${a.distance_miles.toFixed(1)} mi)` : ''}{a.already_assessed ? ' ✓' : ''}
                 </option>
               ))}
@@ -1172,18 +1168,20 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
           </div>
         )}
 
-        {/* ── PACE PROGRESSION: the tracked aerobic-efficiency signal ── */}
-        {showPaceChart && (
+        {/* ── AEROBIC THRESHOLD (HR) + AeT PACE — one chart, dual axis ── */}
+        {showChart && (
           <div>
             <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', color: '#4a6285', textTransform: 'uppercase', marginBottom: '2px' }}>
-              AeT Pace Progression
+              Aerobic Threshold &amp; Pace
             </div>
             <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '8px', lineHeight: 1.4 }}>
-              Pace held at your aerobic threshold, test by test (treadmill/flat, so pace is meaningful).
-              Getting faster at the same aerobic HR means a stronger aerobic engine — axis inverted so up = faster.
+              Left axis — HR (bpm): measured <strong style={{ color: NAVY }}>baseline</strong> and the daily{' '}
+              <strong style={{ color: SAGE }}>effective AeT</strong> (a model estimate of baseline adjusted for overnight
+              HRV, not a measurement). Right axis — <strong style={{ color: PACE }}>AeT pace</strong> (min/mi, inverted so
+              up = faster): getting faster at the same aerobic HR means a stronger aerobic engine.
             </div>
-            <ResponsiveContainer width='100%' height={210}>
-              <LineChart data={paceData} margin={{ top: 4, right: 30, left: 6, bottom: 0 }}>
+            <ResponsiveContainer width='100%' height={250}>
+              <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray='3 3' stroke='rgba(0,0,0,0.08)' />
                 <XAxis
                   dataKey='ts' type='number' scale='time' domain={['dataMin', 'dataMax']}
@@ -1191,52 +1189,30 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
                   tickFormatter={(ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 />
                 <YAxis
-                  reversed domain={['auto', 'auto']} tick={{ fontSize: 11, fill: '#7D9CB8' }}
+                  yAxisId='hr' domain={['auto', 'auto']} tick={{ fontSize: 11, fill: '#7D9CB8' }}
+                  label={{ value: 'bpm', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#7D9CB8' }}
+                />
+                <YAxis
+                  yAxisId='pace' orientation='right' reversed domain={['auto', 'auto']}
+                  tick={{ fontSize: 11, fill: PACE }}
                   tickFormatter={(sec: number) => fmtPace(sec) ?? ''}
-                  label={{ value: 'min/mi (faster up)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#7D9CB8' }}
+                  label={{ value: 'min/mi (faster up)', angle: 90, position: 'insideRight', fontSize: 10, fill: PACE }}
                 />
-                <Tooltip content={<PaceTooltip />} />
-                <Line type='monotone' dataKey='pace' name='AeT pace' stroke={SAGE} strokeWidth={2} connectNulls dot={<PaceDot />} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: '0.66rem', color: '#94a3b8', marginTop: '6px' }}>
-              Filled dot = measured from the run's distance stream · hollow dot = parsed from notes.
-            </div>
-          </div>
-        )}
-        {!showPaceChart && anyPaceMissing && (
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.4, padding: '2px 0' }}>
-            <strong style={{ color: '#4a6285' }}>AeT pace progression</strong> appears once two or more tests carry pace —
-            measured automatically from the run's distance stream going forward, or add a pace to a test's notes (e.g. “8:30/mi”).
-          </div>
-        )}
-
-        {/* ── AEROBIC THRESHOLD (bpm): measured baseline vs. daily effective AeT ── */}
-        {showChart && (
-          <div>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', color: '#4a6285', textTransform: 'uppercase', marginBottom: '2px' }}>
-              Aerobic Threshold (HR)
-            </div>
-            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '8px', lineHeight: 1.4 }}>
-              Measured baseline (drift tests) with the daily <strong style={{ color: SAGE }}>effective AeT</strong> —
-              a model estimate of baseline adjusted for overnight HRV, not a measurement.
-            </div>
-            <ResponsiveContainer width='100%' height={210}>
-              <LineChart data={chartData} margin={{ top: 4, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray='3 3' stroke='rgba(0,0,0,0.08)' />
-                <XAxis
-                  dataKey='ts' type='number' scale='time' domain={['dataMin', 'dataMax']}
-                  tick={{ fontSize: 11, fill: '#7D9CB8' }}
-                  tickFormatter={(ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                />
-                <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11, fill: '#7D9CB8' }} label={{ value: 'bpm', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#7D9CB8' }} />
-                <Tooltip content={<AetTooltip />} />
+                <Tooltip content={<ComboTooltip />} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: '0.72rem' }} />
-                <Line type='stepAfter' dataKey='baseline' name='Baseline AeT (measured)' stroke={NAVY} strokeWidth={2} connectNulls dot={{ r: 4, fill: NAVY, stroke: '#fff', strokeWidth: 1 }} activeDot={{ r: 5 }} />
-                {hasEffective && <Line type='monotone' dataKey='effective' name='Effective AeT (model)' stroke={SAGE} strokeWidth={2} connectNulls dot={<EffectiveDot />} activeDot={{ r: 5 }} />}
-                {hasAnt && <Line type='monotone' dataKey='ant' name='AnT bpm' stroke='#7D9CB8' strokeWidth={2} strokeDasharray='5 3' connectNulls dot={{ r: 3 }} />}
+                <Line yAxisId='hr' type='stepAfter' dataKey='baseline' name='Baseline AeT (measured)' stroke={NAVY} strokeWidth={2} connectNulls dot={{ r: 4, fill: NAVY, stroke: '#fff', strokeWidth: 1 }} activeDot={{ r: 5 }} />
+                {hasEffective && <Line yAxisId='hr' type='monotone' dataKey='effective' name='Effective AeT (model)' stroke={SAGE} strokeWidth={2} connectNulls dot={<EffectiveDot />} activeDot={{ r: 5 }} />}
+                {hasAnt && <Line yAxisId='hr' type='monotone' dataKey='ant' name='AnT bpm' stroke='#7D9CB8' strokeWidth={2} strokeDasharray='5 3' connectNulls dot={{ r: 3 }} />}
+                {hasPace && <Line yAxisId='pace' type='monotone' dataKey='pace' name='AeT pace (min/mi)' stroke={PACE} strokeWidth={2.5} connectNulls dot={<PaceDot />} activeDot={{ r: 6 }} />}
               </LineChart>
             </ResponsiveContainer>
+            {hasPace && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 14px', marginTop: '6px', fontSize: '0.66rem', color: '#64748b', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, color: '#4a6285' }}>Pace dot:</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: PACE, display: 'inline-block' }} /> measured from distance stream</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', border: `1.5px dashed ${PACE}`, display: 'inline-block' }} /> parsed from notes</span>
+              </div>
+            )}
             {hasEffective && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 14px', marginTop: '6px', fontSize: '0.68rem', color: '#64748b', alignItems: 'center' }}>
                 <span style={{ fontWeight: 600, color: '#4a6285' }}>Effective-AeT dot:</span>
@@ -1244,6 +1220,12 @@ const AerobicAssessmentPanel: React.FC<AerobicAssessmentPanelProps> = ({
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: READY_AMBER, display: 'inline-block' }} /> Caution / deep hole</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: READY_RED, display: 'inline-block' }} /> Overreaching</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', border: '1.5px dashed #94a3b8', display: 'inline-block' }} /> HRV stale/absent — held near baseline</span>
+              </div>
+            )}
+            {anyPaceMissing && (
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.4, marginTop: '6px' }}>
+                Add a pace to a test — measured automatically from the run's distance stream going forward, or write one in
+                a test's notes (e.g. “8:30/mi”) — to plot the <strong style={{ color: PACE }}>AeT pace</strong> line.
               </div>
             )}
           </div>
@@ -1464,8 +1446,10 @@ const LactateStepTestPanel: React.FC<LactateStepTestPanelProps> = ({
     color: '#1B2E4B', textTransform: 'uppercase',
   };
   const inputStyle: React.CSSProperties = {
+    // Solid #162440 (darker than the #1B2E4B carbon container) + crisp Mountain Ridge
+    // border, per the tactical-form spec — makes inputs read as distinct entry wells.
     width: '100%', padding: '7px 10px', borderRadius: '5px',
-    border: '1px solid rgba(125,156,184,0.35)', backgroundColor: '#1B2E4B',
+    border: '1px solid #7D9CB8', backgroundColor: '#162440',
     color: '#E6F0FF', fontSize: '0.82rem', boxSizing: 'border-box',
   };
   const fieldLabelStyle: React.CSSProperties = {
