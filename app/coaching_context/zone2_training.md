@@ -7,6 +7,14 @@
 Zone 2 ceiling = Aerobic Threshold (AeT) = blood lactate ~2 mMol/L.  
 This is the same as VT1 / the top of the polarized easy band.
 
+## AeT Is Dynamic — Use Today's Effective Value
+
+The Zone 2 ceiling is not a fixed number. A calibrated baseline (from a drift or LT1 test) is modulated each day by autonomic readiness into **today's effective AeT**. When a `TODAY'S EFFECTIVE AeT` value is injected, it — not the static tested baseline — is today's Zone 2 ceiling. Use it directly; do not re-derive it.
+
+- The entire easy band slides with it: when the effective AeT drops, the Zone 1/2 floor drops by the same amount, so Zone 2 keeps its width. A correctly paced easy run on a suppressed day still accumulates full Zone 2 time.
+- A depressed effective AeT is a recovery signal — do not raise effort to reach the old ceiling; the lower HR is genuinely today's productive-aerobic intensity.
+- The aerobic-base target is productive Zone 2 time against the slid band, not Zone 1. A slow walk below the floor is not a mitochondrial stimulus and does not substitute.
+
 ## Intensity — How to Verify
 
 - **Gold standard:** HR Drift Test (anchors to AeT directly) — establishes the *ideal-state* VT1 ceiling, not the daily mandatory target

@@ -133,15 +133,18 @@ def load_training_guide():
 
 
 _COACHING_CONTEXT_FILES = [
+    '_context_index.md',
     'trail_specifics.md',
     'intensity_zones.md',
     'strength_integration.md',
     'neuromuscular.md',
+    'fueling.md',
     'readiness.md',
     'periodization.md',
     'zone2_training.md',
     'aerobic_assessment.md',
     'muscular_endurance.md',
+    'bone_health.md',
 ]
 
 
@@ -177,6 +180,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     - zone2_training.md       — when race > 28 days or no upcoming race (base period)
     - aerobic_assessment.md   — when race > 28 days or no upcoming race (AeT/AnT testing, 10% transition rule)
     - muscular_endurance.md   — when race > 56 days or no upcoming race (ME block needs 8+ weeks)
+    - bone_health.md          — when race > 56 days or no upcoming race (HiRIT/osteogenic loading is a base/build intervention)
 
     Adding a new file: write the .md, add a condition here, verify all active LLM call sites
     receive it (create_enhanced_prompt_with_tone, agentic chat ~line 4321, journal endpoint).
@@ -214,6 +218,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
 
     if days_away is None or days_away > 56:
         files_to_load.append('muscular_endurance.md')
+        files_to_load.append('bone_health.md')  # HiRIT/osteogenic loading is a base/build intervention; contraindicated near races (no heavy strength within 72h of race)
 
     sections = []
     for fname in files_to_load:

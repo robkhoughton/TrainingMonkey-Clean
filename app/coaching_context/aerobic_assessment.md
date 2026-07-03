@@ -63,6 +63,6 @@ The lactate engine returns `valid`, `lt1_bpm`, `baseline_lactate`, `lt1_grade`, 
 
 - Do not prescribe intensity if gap > 10% — the base is not ready to amplify it.
 - Do not use % of HRmax to set zones — individual accuracy is too low.
-- AeT fluctuates with fatigue. If AeT appears to drop unexpectedly, assess recovery status before adjusting prescription.
+- **AeT has two layers — do not confuse them.** The engine result (drift test or LT1) sets the *calibrated baseline* AeT. A separate daily HRV correction modulates that baseline into *today's effective AeT* — the injected `TODAY'S EFFECTIVE AeT`, which is the Zone 2 ceiling to coach against today. A day-to-day drop in the effective value is designed autonomic tracking (a recovery signal), not a failed or stale test — do not trigger a retest for it. Retest the calibrated baseline only when it is >42 days old or the engine flags a result invalid.
 - After 6 months of Zone 2 base work, AeT HR typically rises significantly; AnT HR changes little. This is expected and correct.
 - Never invent an AeT bpm from a failed test. Only valid engine results produce a Zone 2 ceiling.

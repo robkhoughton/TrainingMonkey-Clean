@@ -23,6 +23,7 @@ Gating logic lives in `_load_coaching_context()` in `llm_recommendations_module.
 | `zone2_training.md` | Race > 28 days away, or no race goal |
 | `aerobic_assessment.md` | Race > 28 days away, or no race goal |
 | `muscular_endurance.md` | Race > 56 days away, or no race goal |
+| `bone_health.md` | Race > 56 days away, or no race goal |
 
 ---
 
