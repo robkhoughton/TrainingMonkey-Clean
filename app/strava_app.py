@@ -7044,134 +7044,6 @@ def generate_autopsy_for_date(date_str, user_id):
         raise
 
 
-def create_daily_focused_prompt(metrics, target_date, user_id):
-    """
-    Create a focused prompt for daily recommendations only.
-    Much shorter and more specific than the full analysis prompt.
-    """
-    try:
-        # Get yesterday's journal observations for context
-        yesterday = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-
-        yesterday_obs = db_utils.execute_query(
-            "SELECT energy_level, rpe_score, pain_percentage, notes FROM journal_entries WHERE user_id = %s AND date = %s",
-            (user_id, yesterday),
-            fetch=True
-        )
-
-        yesterday_context = ""
-        if yesterday_obs:
-            obs = dict(yesterday_obs[0])
-            yesterday_context = f"""
-YESTERDAY'S OBSERVATIONS:
-- Energy Level: {obs.get('energy_level', 'Not recorded')}/5
-- RPE Score: {obs.get('rpe_score', 'Not recorded')}/10  
-- Pain Level: {obs.get('pain_percentage', 'Not recorded')}%
-- Notes: {obs.get('notes', 'None')}
-"""
-
-        prompt = f"""You are an expert endurance coach providing today's specific training decision.
-
-TARGET DATE: {target_date}
-
-CURRENT METRICS:
-- External ACWR: {metrics.get('external_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Internal ACWR: {metrics.get('internal_acwr', 0):.2f} (Optimal: 0.8-1.3)
-- Normalized Divergence: {format_divergence_for_prompt(metrics.get('normalized_divergence'))}
-- Days Since Rest: {metrics.get('days_since_rest', 0)}
-- 7-day Avg Load: {metrics.get('seven_day_avg_load', 0):.2f} miles/day
-
-{yesterday_context}
-
-RESPONSE INSTRUCTIONS:
-Provide SPECIFIC TRAINING DECISION for the target date.
-
-Format as: "ASSESSMENT: [Current state analysis] YOUR WORKOUT: [Specific workout recommendation with volume/intensity targets] MONITORING: [What to watch for]"
-
-Keep response concise (150-200 words). Focus on actionable guidance for today's session only.
-"""
-
-        return prompt
-
-    except Exception as e:
-        logger.error(f"Error creating daily prompt: {str(e)}")
-        return "Error creating prompt for daily recommendation."
-
-
-def generate_daily_recommendation_only(user_id, target_date=None):
-    """Generate ONLY the daily recommendation component with proper target_date."""
-    try:
-        # If no target_date provided, generate for tomorrow (next day's workout)
-        if target_date is None:
-            from timezone_utils import get_user_current_date
-            target_date = (get_user_current_date(user_id) + timedelta(days=1)).strftime('%Y-%m-%d')
-
-        # CRITICAL FIX: Check if recommendation already exists for this target_date
-        existing_recommendation = db_utils.execute_query(
-            """
-            SELECT id FROM llm_recommendations 
-            WHERE user_id = %s AND target_date = %s
-            """,
-            (user_id, target_date),
-            fetch=True
-        )
-
-        if existing_recommendation:
-            logger.info(f"Recommendation already exists for target_date {target_date}, skipping daily generation to preserve historical record")
-            return db_utils.get_latest_recommendation(user_id)
-
-        logger.info(f"Generating daily recommendation for user {user_id}, target_date {target_date}")
-
-        # Get current date for generation_date
-        generation_date = datetime.now().strftime('%Y-%m-%d')
-
-        # Get current metrics for daily analysis
-        from unified_metrics_service import UnifiedMetricsService
-        current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
-
-        if not current_metrics:
-            logger.warning(f"No metrics available for daily recommendation for user {user_id}")
-            return None
-
-        # Create focused daily prompt
-        daily_prompt = create_daily_focused_prompt(current_metrics, target_date, user_id)
-
-        # Call LLM for daily recommendation only
-        from llm_recommendations_module import call_anthropic_api
-        daily_response = call_anthropic_api(daily_prompt, temperature=0.7)
-
-        if not daily_response:
-            logger.error(f"Failed to get daily LLM response for user {user_id}")
-            return None
-
-        # FIXED: Proper date logic for target-specific recommendations
-        recommendation = {
-            'generation_date': generation_date,        # When it was created (today)
-            'target_date': target_date,               # What date it's FOR (tomorrow or specified date)
-            'valid_until': None,               # never expires for specific dates
-            'data_start_date': generation_date,       # Data analysis period start
-            'data_end_date': generation_date,         # Data analysis period end
-            'metrics_snapshot': current_metrics,
-            'daily_recommendation': daily_response.strip(),
-            'weekly_recommendation': "See recent comprehensive recommendations",
-            'pattern_insights': f"Generated on {generation_date} for target date {target_date}",
-            'raw_response': daily_response,
-            'user_id': user_id
-        }
-
-        # Save to database
-        from db_utils import save_llm_recommendation
-        recommendation_id = save_llm_recommendation(recommendation)
-        recommendation['id'] = recommendation_id
-
-        logger.info(f"Generated daily recommendation {recommendation_id} for user {user_id}, target_date {target_date}")
-        return recommendation
-
-    except Exception as e:
-        logger.error(f"Error generating daily recommendation: {str(e)}")
-        return None
-
-
 def auto_mark_rest_day_and_generate_recommendation(user_id, rest_date):
     """
     Auto-mark a date as rest day and generate recommendation for the next day.
@@ -7424,8 +7296,14 @@ def daily_recommendations_cron():
                     else:
                         logger.info(f"User {user_id} last synced on {last_sync}, not today - skipping auto rest day check")
 
-                # STEP 2: Generate recommendation for tomorrow (original logic)
-                recommendation = generate_daily_recommendation_only(user_id, tomorrow)
+                # STEP 2: Generate recommendation for tomorrow using the enhanced,
+                # weekly-plan-aware generator (EQUAL WEIGHT RULE + autopsy-informed 10-element
+                # path). Previously this used the legacy generate_daily_recommendation_only,
+                # which never read the weekly program and produced plan-blind recs that could
+                # directly contradict the Coach page (e.g. plan calls for a peak long run,
+                # daily Rx says "4 mi easy"). force=True + explicit target_date force-regens
+                # tomorrow's rec deterministically.
+                recommendation = generate_recommendations(force=True, user_id=user_id, target_date=tomorrow)
 
                 if recommendation:
                     successful_generations += 1
