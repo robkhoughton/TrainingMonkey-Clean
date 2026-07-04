@@ -36,6 +36,17 @@ again.
 
 ## Maintenance
 
-If you intentionally edit the live `getting_started.*` files, re-copy them here
-so the backup stays current. These are the only two non-build assets in
+**Self-maintaining via the `/deploy` skill.** Step 2 ("Protect non-build static
+assets") of `.claude/commands/deploy.md` runs before the clean step on every
+deploy and:
+
+- refreshes these backups from the live files when the live files are healthy
+  (non-empty), so the backup never goes stale; and
+- if a live file is already missing/empty but the backup exists, **restores the
+  live file from the backup** instead of clobbering a good backup with a bad
+  source.
+
+So as long as you deploy through `/deploy`, no manual re-copy is needed. Only if
+you edit `getting_started.*` and want the backup updated *without* deploying
+should you copy them here by hand. These are the only two non-build assets in
 `app/static/js|css/`; everything else there is disposable build output.
