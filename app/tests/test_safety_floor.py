@@ -97,7 +97,7 @@ class TestRecentAlignment(unittest.TestCase):
 
 def _sections(action):
     return {'structured_output': {'decision': {'action': action}},
-            'daily_recommendation': f'rec {action}', 'weekly_recommendation': '', 'pattern_insights': ''}
+            'daily_recommendation': f'rec {action}'}
 
 
 class TestEnforceSafetyFloor(unittest.TestCase):

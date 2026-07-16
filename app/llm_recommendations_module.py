@@ -1387,8 +1387,6 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         if floor_result['status'] == 'fallback':
             _safe = _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
             daily_text = _safe['daily_recommendation']
-            weekly_text = ''
-            pattern_text = ''
             structured_out = _safe['structured_output']
             llm_response = _safe['raw_response']
         else:
@@ -1396,8 +1394,6 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
             if floor_result['response']:
                 llm_response = floor_result['response']
             daily_text = sections.get('daily_recommendation', '')
-            weekly_text = sections.get('weekly_recommendation', '')
-            pattern_text = sections.get('pattern_insights', '')
             structured_out = sections.get('structured_output')
             # Fix any metric value the prose mis-cited against the authoritative metrics.
             daily_text, _reps = repair_metric_citations(daily_text, current_metrics)
@@ -1416,8 +1412,6 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
             'data_end_date': end_date,
             'metrics_snapshot': current_metrics,
             'daily_recommendation': daily_text,
-            'weekly_recommendation': weekly_text,
-            'pattern_insights': pattern_text,
             'raw_response': llm_response,
             'user_id': user_id,
             # NEW: Autopsy tracking fields
@@ -1748,8 +1742,6 @@ def _safe_floor_recommendation(assessment_category, current_metrics, target_date
     }
     return {
         'daily_recommendation': prose,
-        'weekly_recommendation': '',
-        'pattern_insights': '',
         'raw_response': prose,
         'structured_output': structured,
     }
@@ -2744,16 +2736,14 @@ def parse_llm_response(response_text):
 
         <structured_output>{ ... }</structured_output>
 
-    weekly_recommendation and pattern_insights are always returned as empty strings —
-    those concerns are owned by dedicated systems (Coach page weekly program, autopsy)
-    and are no longer generated in the daily call.
+    Weekly planning and pattern insights are owned by dedicated systems (Coach page
+    weekly program, autopsy) and are no longer generated in the daily call, so this
+    parser does not produce weekly_recommendation/pattern_insights keys at all.
     """
     import re
 
     sections = {
         'daily_recommendation': '',
-        'weekly_recommendation': '',
-        'pattern_insights': '',
         'structured_output': None
     }
 
@@ -4346,8 +4336,6 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
     Returns:
         dict with parsed sections: {
             'daily_recommendation': str,
-            'weekly_recommendation': str,
-            'pattern_insights': str,
             'raw_response': str
         }
         or None if generation fails
@@ -4431,8 +4419,6 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
 
             return {
                 'daily_recommendation': daily_rec,
-                'weekly_recommendation': '',
-                'pattern_insights': '',
                 'raw_response': response.strip(),
                 'structured_output': sections.get('structured_output')
             }
@@ -5040,8 +5026,6 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 """
                                 UPDATE llm_recommendations
                                 SET daily_recommendation = %s,
-                                    weekly_recommendation = %s,
-                                    pattern_insights = %s,
                                     raw_response = %s,
                                     generated_at = NOW(),
                                     is_autopsy_informed = TRUE,
@@ -5051,8 +5035,6 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 """,
                                 (
                                     decision['daily_recommendation'],
-                                    decision['weekly_recommendation'] or "Updated with autopsy learning",
-                                    decision['pattern_insights'] or f"Alignment: {autopsy_result['alignment_score']}/10",
                                     decision['raw_response'],
                                     1,  # autopsy_count
                                     autopsy_result['alignment_score'],
@@ -5071,8 +5053,6 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                                 'data_end_date': app_current_date.strftime('%Y-%m-%d'),
                                 'metrics_snapshot': current_metrics,
                                 'daily_recommendation': decision['daily_recommendation'],
-                                'weekly_recommendation': decision['weekly_recommendation'] or 'See previous weekly guidance',
-                                'pattern_insights': decision['pattern_insights'] or f"Alignment: {autopsy_result['alignment_score']}/10",
                                 'raw_response': decision['raw_response'],
                                 'user_id': user_id,
                                 'is_autopsy_informed': True,
@@ -5617,11 +5597,13 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             f"- Normalized Divergence: {divergence:.3f}\n"
             f"- Days Since Rest: {days_rest}\n\n"
             f"Use the available tools to retrieve any additional context you "
-            f"need, then generate the recommendation in the standard three-section "
+            f"need, then generate the recommendation in the standard single-section "
             f"format:\n"
-            f"DAILY RECOMMENDATION: [your recommendation]\n"
-            f"WEEKLY PLANNING: [weekly context]\n"
-            f"PATTERN INSIGHTS: [pattern analysis]\n\n"
+            f"DAILY RECOMMENDATION: [your recommendation]\n\n"
+            f"Do NOT include \"WEEKLY PLANNING\", \"PATTERN INSIGHTS\", or any other "
+            f"section headers — those concerns are owned by the Coach page weekly "
+            f"program and the autopsy system respectively; content in those sections "
+            f"will be truncated by the parser.\n\n"
             f"Request the tools you need now."
         )
 
@@ -5745,8 +5727,6 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             'data_end_date': end_date,
             'metrics_snapshot': current_metrics,
             'daily_recommendation': sections['daily_recommendation'],
-            'weekly_recommendation': sections['weekly_recommendation'],
-            'pattern_insights': sections['pattern_insights'],
             'raw_response': llm_response,
             'user_id': user_id,
             'is_autopsy_informed': False,
@@ -6110,12 +6090,6 @@ if __name__ == "__main__":
 
             print("\n=== DAILY RECOMMENDATION ===")
             print(recommendations['daily_recommendation'])
-
-            print("\n=== WEEKLY PLANNING ===")
-            print(recommendations['weekly_recommendation'])
-
-            print("\n=== PATTERN INSIGHTS ===")
-            print(recommendations['pattern_insights'])
         else:
             print("\nFailed to generate enhanced recommendations.")
 
