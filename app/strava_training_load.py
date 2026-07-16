@@ -1887,6 +1887,24 @@ def save_training_load(load_data, filename=None):
 
         logger.info(f"Saved training load data for activity {activity_id} to database")
 
+        # Reconcile: a real activity just landed for this date. If a synthetic
+        # rest-day placeholder (activity_id < 0, created by ensure_daily_records or
+        # auto_mark_rest_day_and_generate_recommendation before this activity synced
+        # in) also exists for the same date, it now contradicts real training data —
+        # delete it so days_since_rest and rest-day detection don't trust a stale marker.
+        if activity_id > 0:
+            activity_date = load_data.get('date')
+            deleted_placeholder = execute_query(
+                "DELETE FROM activities WHERE user_id = %s AND date = %s AND activity_id < 0 RETURNING activity_id",
+                (user_id, activity_date),
+                fetch=True
+            )
+            if deleted_placeholder:
+                logger.info(
+                    f"Removed stale rest-day placeholder(s) {[r['activity_id'] for r in deleted_placeholder]} "
+                    f"for user {user_id} on {activity_date} — superseded by real activity {activity_id}"
+                )
+
         # Save HR stream data if available (after main activity record is created)
         if hr_stream_data is not None:
             try:

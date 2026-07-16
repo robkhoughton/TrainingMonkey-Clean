@@ -2419,7 +2419,7 @@ Warnings: {', '.join(pattern_flags['warnings']) if pattern_flags['warnings'] els
 
 ### RESPONSE INSTRUCTIONS
 
-Using the Training Reference Framework above and applying the specified coaching tone throughout, provide specific, evidence-based recommendations in exactly three sections:
+Using the Training Reference Framework above and applying the specified coaching tone throughout, provide ONE evidence-based recommendation:
 
 **DAILY RECOMMENDATION:**
 - Apply the Decision Framework assessment order (Safety → Overtraining → ACWR → Recovery → Progression)
@@ -2428,23 +2428,9 @@ Using the Training Reference Framework above and applying the specified coaching
 - Reference the athlete's specific ACWR threshold ({thresholds['acwr_high_risk']}) and divergence limits
 - Include specific volume/intensity targets based on current 7-day averages
 - Use the scenario examples as formatting templates
-
-**WEEKLY PLANNING:**
-- Apply weekly planning priorities from the guide with your coaching style
-- Adjust recommendations to match the athlete's {recommendation_style} risk tolerance
-- Address any red flags or leverage positive patterns identified
-- Include specific ACWR management strategies based on athlete's thresholds
-- Tailor complexity and terminology to athlete's experience level
-
-**PATTERN INSIGHTS:**
-Write 2-3 observations in flowing prose that demonstrate you have been watching this athlete over time — not just reading today's numbers. Each observation must feel personal and longitudinal.
-
-Rules:
-- Open at least one observation with a specific timeframe and cite actual data: "Over your last [N] autopsies..." or "In [N] of your last [M] sessions..." Use the RECENT AUTOPSY LEARNING figures (avg alignment score, trend direction, deviation cause breakdown) as your source. Do not generalize.
-- Each observation must name what the pattern predicts for the next 1-2 weeks — not just describe what happened.
-- If a positive pattern is present (from Positive Patterns data), name it explicitly and state what it has earned: "You've done X consistently, which means we can now Y." This directly reinforces the value of compliance.
-- If a recurring deviation cause dominates (e.g., 3 of 4 autopsies = physical), name the pattern and what it signals about training tolerance.
-- Apply your coaching tone throughout.
+- Apply weekly planning priorities from the guide, adjusted to the athlete's {recommendation_style} risk tolerance, including specific ACWR management strategies based on the athlete's thresholds
+- Address any red flags identified, or leverage positive patterns identified
+- Tailor complexity and terminology to the athlete's experience level
 
 WEEKLY PLAN RULE: The weekly program prescription and the autopsy/readiness data carry EQUAL WEIGHT. Begin your DAILY RECOMMENDATION by stating what the weekly plan prescribes for today. Then either:
 - CONFIRM: "The weekly plan calls for [X]. Your metrics support this — [reason]." Then give execution details.
@@ -2453,14 +2439,14 @@ Never silently ignore the weekly plan. Every recommendation must acknowledge it.
 
 CRITICAL REQUIREMENTS:
 - Use the ATHLETE'S PERSONALIZED THRESHOLDS, not the standard guide thresholds
-- Apply the specified coaching tone consistently throughout all sections
-- Keep each section focused and actionable
+- Apply the specified coaching tone consistently throughout
+- Keep the recommendation focused and actionable
 - Reference specific numbers from the metrics and use established classification terms (e.g., "Optimal Zone," "High Risk," "Efficient") from the training guide
 - Maintain evidence-based analysis while adapting communication style and risk tolerance
-- Do NOT add sub-headers like "**TRAINING DECISION: [date]**" or "**ASSESSMENT:**" within your sections. The three section headers (DAILY RECOMMENDATION, WEEKLY PLANNING, PATTERN INSIGHTS) are the only structural elements. Write each section in prose paragraphs.
+- Do NOT add sub-headers like "**TRAINING DECISION: [date]**", "**ASSESSMENT:**", "**WEEKLY PLANNING:**", or "**PATTERN INSIGHTS:**". DAILY RECOMMENDATION is the only structural element — write in prose paragraphs. weekly_recommendation and pattern_insights are owned by the Coach page weekly program and the autopsy system respectively; do not regenerate them here.
 
 ### STRUCTURED OUTPUT (Phase 1)
-After your three prose sections, append a machine-readable JSON block inside XML tags.
+After your prose recommendation, append a machine-readable JSON block inside XML tags.
 
 DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal. {NORMALIZED_DIVERGENCE_FORMULA}
 
