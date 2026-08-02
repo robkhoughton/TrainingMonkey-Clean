@@ -1496,6 +1496,128 @@ const RevisionProposalCard: React.FC<RevisionProposalCardProps> = ({ data, onApp
 };
 
 // ============================================================================
+// COACH DASHBOARD DATA PARSERS
+// ============================================================================
+// Each backend route has its own response contract (some wrap in
+// {success, ...}, some only emit {error} on failure, some don't wrap at all,
+// some fields are legitimate data rather than error signals — e.g.
+// race-readiness's `readiness: null` means "no race goal set," not a
+// failure). These parsers stay honest about each contract rather than
+// forcing a uniform shape that doesn't exist in the backend. What IS made
+// uniform: every failure path logs a console.warn naming the endpoint, so a
+// failed fetch is never silently invisible.
+
+async function parseTrainingStage(res: Response): Promise<TrainingStage | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] training-stage fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  if (!data.success) {
+    console.warn('[CoachPage] training-stage returned success:false:', data);
+    return null;
+  }
+  const transformedTimeline = (data.timeline || []).map((week: any) => ({
+    ...week,
+    races: Array.isArray(week.races) ? week.races : []
+  }));
+  return {
+    stage: data.current_stage?.stage || null,
+    weeks_to_race: data.current_stage?.weeks_to_race || null,
+    race_name: data.current_stage?.race_name || null,
+    priority: data.current_stage?.priority || null,
+    details: data.current_stage?.stage_description || '',
+    timeline: transformedTimeline
+  };
+}
+
+async function parseWeeklyProgram(res: Response): Promise<WeeklyProgram | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] weekly-program fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  return data.program || null;
+}
+
+async function parseScheduleReviewStatus(
+  res: Response
+): Promise<{ needs_review: boolean; week_start: string; is_sunday: boolean } | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] schedule-review-status fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  if (!data.success) {
+    console.warn('[CoachPage] schedule-review-status returned success:false:', data);
+    return null;
+  }
+  return {
+    needs_review: data.needs_review,
+    week_start: data.week_start,
+    is_sunday: data.is_sunday
+  };
+}
+
+async function parseAthleteModel(res: Response): Promise<AthleteModel | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] athlete-model fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  if (!data.success) {
+    console.warn('[CoachPage] athlete-model returned success:false:', data);
+    return null;
+  }
+  return data.model;
+}
+
+async function parseRaceReadiness(res: Response): Promise<RaceReadiness | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] race-readiness fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  if (!data.success) {
+    console.warn('[CoachPage] race-readiness returned success:false:', data);
+    return null;
+  }
+  // readiness: null is legitimate data (e.g. no race goal set yet), not a failure.
+  return data.readiness ?? null;
+}
+
+async function parseWeeklySynthesis(res: Response): Promise<WeeklySynthesisData | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] weekly-synthesis fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  if (data.error) {
+    console.warn('[CoachPage] weekly-synthesis returned an error:', data.error);
+    return null;
+  }
+  return data;
+}
+
+async function parseTrainingSchedule(res: Response): Promise<TrainingSchedule | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] training-schedule fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  return data.schedule || null;
+}
+
+async function parseRevisionProposal(res: Response): Promise<RevisionProposalData | null> {
+  if (!res.ok) {
+    console.warn('[CoachPage] revision-proposal fetch failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  return data.pending ? (data as RevisionProposalData) : null;
+}
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -1585,91 +1707,30 @@ const CoachPage: React.FC = () => {
       const goalsData = await goalsRes.json();
       setRaceGoals(goalsData.goals || []);
 
-      // Parse training stage (for timeline and countdown banner color)
-      if (stageRes.ok) {
-        const stageData = await stageRes.json();
-        // API returns { current_stage: {...}, timeline: [...] }
-        // Transform to match TrainingStage interface
-        // Ensure races arrays are always arrays (not null)
-        const transformedTimeline = (stageData.timeline || []).map((week: any) => ({
-          ...week,
-          races: Array.isArray(week.races) ? week.races : []
-        }));
-        
-        setTrainingStage({
-          stage: stageData.current_stage?.stage || null,
-          weeks_to_race: stageData.current_stage?.weeks_to_race || null,
-          race_name: stageData.current_stage?.race_name || null,
-          priority: stageData.current_stage?.priority || null,
-          details: stageData.current_stage?.stage_description || '',
-          timeline: transformedTimeline
-        });
-      } else {
-        console.warn('Failed to fetch training stage');
-        setTrainingStage(null);
-      }
+      const trainingStageData = await parseTrainingStage(stageRes);
+      setTrainingStage(trainingStageData);
 
-      // Parse weekly program
-      if (programRes.ok) {
-        const programData = await programRes.json();
-        setWeeklyProgram(programData.program || null);
-      } else {
-        console.warn('Failed to fetch weekly program');
-        setWeeklyProgram(null);
-      }
+      const weeklyProgramData = await parseWeeklyProgram(programRes);
+      setWeeklyProgram(weeklyProgramData);
 
-      // Parse schedule review status
-      if (reviewStatusRes.ok) {
-        const reviewData = await reviewStatusRes.json();
-        if (reviewData.success) {
-          setScheduleReviewStatus({
-            needs_review: reviewData.needs_review,
-            week_start: reviewData.week_start,
-            is_sunday: reviewData.is_sunday
-          });
-          setShowScheduleReviewBanner(reviewData.needs_review);
-        }
-      }
+      const scheduleReviewStatusData = await parseScheduleReviewStatus(reviewStatusRes);
+      setScheduleReviewStatus(scheduleReviewStatusData);
+      setShowScheduleReviewBanner(scheduleReviewStatusData?.needs_review ?? false);
 
-      // Parse athlete model
-      if (athleteModelRes.ok) {
-        const modelData = await athleteModelRes.json();
-        if (modelData.success) {
-          setAthleteModel(modelData.model);
-        }
-      }
+      const athleteModelData = await parseAthleteModel(athleteModelRes);
+      setAthleteModel(athleteModelData);
 
-      // Parse race readiness
-      if (readinessRes.ok) {
-        const readinessData = await readinessRes.json();
-        if (readinessData.success && readinessData.readiness) {
-          setRaceReadiness(readinessData.readiness);
-        }
-      }
+      const raceReadinessData = await parseRaceReadiness(readinessRes);
+      setRaceReadiness(raceReadinessData);
 
-      // Parse weekly synthesis
-      if (synthesisRes.ok) {
-        const synthData = await synthesisRes.json();
-        if (!synthData.error) {
-          setWeeklySynthesis(synthData);
-        }
-      }
+      const weeklySynthesisData = await parseWeeklySynthesis(synthesisRes);
+      setWeeklySynthesis(weeklySynthesisData);
 
-      // Parse training schedule
-      if (scheduleRes.ok) {
-        const scheduleData = await scheduleRes.json();
-        setTrainingSchedule(scheduleData.schedule || null);
-      }
+      const trainingScheduleData = await parseTrainingSchedule(scheduleRes);
+      setTrainingSchedule(trainingScheduleData);
 
-      // Phase E: parse revision proposal
-      if (revisionRes.ok) {
-        const revisionData = await revisionRes.json();
-        if (revisionData.pending) {
-          setRevisionProposal(revisionData as RevisionProposalData);
-        } else {
-          setRevisionProposal(null);
-        }
-      }
+      const revisionProposalData = await parseRevisionProposal(revisionRes);
+      setRevisionProposal(revisionProposalData);
 
       // Check if onboarding needed (no race goals)
       if (!goalsData.goals || goalsData.goals.length === 0) {

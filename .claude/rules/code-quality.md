@@ -49,6 +49,26 @@ with db_utils.get_connection() as conn:
         cursor.execute(query, params)
 ```
 
+## API Response Contract
+
+New Flask routes returning JSON should use one consistent envelope:
+
+```python
+# CORRECT — success and error both carry a consistent shape
+return jsonify({'success': True, 'data': {...}})
+return jsonify({'success': False, 'error': 'message'}), 4xx/5xx
+
+# WRONG — no envelope, or ad hoc fields (error-only, pending-only, etc.)
+return jsonify({'model': ...})
+return jsonify({'error': 'message'})
+```
+
+Existing routes vary (some wrap in `{success, ...}`, some don't wrap at all, some
+only emit `error` on failure) — that's accumulated history, not something to
+retrofit route-by-route without checking every consumer first (many of these
+endpoints are shared across multiple pages). This rule is forward-looking: it
+stops new routes from adding a new, different convention to the pile.
+
 ## TypeScript Standards
 
 ```typescript
