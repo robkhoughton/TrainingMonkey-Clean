@@ -129,6 +129,58 @@ class TestEnforceSafetyFloor(unittest.TestCase):
         self.assertEqual(res['status'], 'fallback')
 
 
+class TestFinalizeRecommendation(unittest.TestCase):
+    """finalize_recommendation() is the single seam all three daily generators
+    (standard, autopsy-informed, agentic) call — enforce_safety_floor followed by
+    repair_metric_citations. These tests exercise the seam directly so a bug here
+    is caught once, for all three callers, rather than requiring an end-to-end test
+    per generator.
+    """
+    METRICS = {'external_acwr': 1.75, 'internal_acwr': 2.13, 'normalized_divergence': -0.20}
+
+    def _sections_with_prose(self, action, prose):
+        return {'structured_output': {'decision': {'action': action}},
+                'daily_recommendation': prose}
+
+    def test_no_violation_applies_citation_repair(self):
+        sections = self._sections_with_prose(
+            'rest', 'Internal ACWR is 1.13, above the high-risk threshold.'
+        )
+        regen = mock.Mock()
+        result = m.finalize_recommendation(
+            sections, self.METRICS, 'overtraining_risk', 'PROMPT', regen, 1, '2026-06-27'
+        )
+        self.assertEqual(result['status'], 'ok')
+        self.assertIn('Internal ACWR is 2.13', result['daily_recommendation'])
+        regen.assert_not_called()
+
+    @mock.patch.object(m, 'parse_llm_response')
+    def test_violation_then_compliant_regeneration_repairs_new_prose(self, mock_parse):
+        mock_parse.return_value = self._sections_with_prose(
+            'rest', 'Internal ACWR is 1.13, well above threshold.'
+        )
+        regen = mock.Mock(return_value='RAW COMPLIANT')
+        result = m.finalize_recommendation(
+            self._sections_with_prose('train', 'irrelevant'), self.METRICS,
+            'overtraining_risk', 'PROMPT', regen, 1, '2026-06-27'
+        )
+        self.assertEqual(result['status'], 'ok')
+        self.assertIn('Internal ACWR is 2.13', result['daily_recommendation'])
+        regen.assert_called_once()
+
+    @mock.patch.object(m, 'parse_llm_response')
+    def test_violation_persists_returns_deterministic_fallback(self, mock_parse):
+        mock_parse.return_value = self._sections_with_prose('train', 'still training')
+        regen = mock.Mock(return_value='RAW STILL BAD')
+        result = m.finalize_recommendation(
+            self._sections_with_prose('train', 'irrelevant'), self.METRICS,
+            'overtraining_risk', 'PROMPT', regen, 1, '2026-06-27'
+        )
+        self.assertEqual(result['status'], 'fallback')
+        self.assertEqual(result['structured_output']['decision']['action'], 'rest')
+        self.assertIn('rest day', result['daily_recommendation'].lower())
+
+
 class TestMetricCitationRepair(unittest.TestCase):
     METRICS = {'external_acwr': 1.75, 'internal_acwr': 2.13, 'normalized_divergence': -0.20}
 

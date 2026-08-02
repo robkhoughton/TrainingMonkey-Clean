@@ -1378,30 +1378,18 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         else:
             logger.info("Recommendation generated without recent autopsy data")
 
-        # SAFETY-FLOOR GUARDRAIL + numeric repair (shared with the autopsy path).
+        # SAFETY-FLOOR GUARDRAIL + numeric repair — shared seam (finalize_recommendation),
+        # used identically by the standard, autopsy-informed, and agentic paths.
         target_date_str = target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date)[:10]
-        floor_result = enforce_safety_floor(
+        _final = finalize_recommendation(
             sections, current_metrics, floor_category, prompt,
-            lambda p: call_claude(p, task='daily'), user_id
+            lambda p: call_claude(p, task='daily'), user_id, target_date_str
         )
-        if floor_result['status'] == 'fallback':
-            _safe = _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
-            daily_text = _safe['daily_recommendation']
-            structured_out = _safe['structured_output']
-            llm_response = _safe['raw_response']
-        else:
-            sections = floor_result['sections']
-            if floor_result['response']:
-                llm_response = floor_result['response']
-            daily_text = sections.get('daily_recommendation', '')
-            structured_out = sections.get('structured_output')
-            # Fix any metric value the prose mis-cited against the authoritative metrics.
-            daily_text, _reps = repair_metric_citations(daily_text, current_metrics)
-            if _reps:
-                logger.warning(
-                    f"Metric-citation repair (enhanced) user {user_id}: "
-                    + "; ".join(f"{lbl} {cited}->{correct}" for lbl, cited, correct in _reps)
-                )
+        sections = _final['sections']
+        daily_text = _final['daily_recommendation']
+        structured_out = _final['structured_output']
+        if _final['raw_response']:
+            llm_response = _final['raw_response']
 
         # FIXED: Create recommendation object with proper target_date
         recommendation = {
@@ -1654,6 +1642,45 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
 
     logger.error(f"Floor guardrail: regeneration still violated floor for user {user_id}; using safe fallback")
     return {'status': 'fallback', 'sections': sections, 'response': None}
+
+
+def finalize_recommendation(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id, target_date_str):
+    """Single seam every recommendation generator must pass through before returning
+    or saving: safety-floor enforcement, then metric-citation repair. All three daily
+    generators (standard, autopsy-informed, agentic) call this — do not duplicate the
+    floor/repair sequence inline in a new caller.
+
+    Returns:
+      {'status': 'ok'|'fallback', 'daily_recommendation': str,
+       'structured_output': dict|None, 'raw_response': str|None, 'sections': dict}
+    """
+    floor_result = enforce_safety_floor(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id)
+
+    if floor_result['status'] == 'fallback':
+        safe = _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
+        return {
+            'status': 'fallback',
+            'daily_recommendation': safe['daily_recommendation'],
+            'structured_output': safe['structured_output'],
+            'raw_response': safe['raw_response'],
+            'sections': sections,
+        }
+
+    sections = floor_result['sections']
+    daily_text = sections.get('daily_recommendation', '')
+    daily_text, _reps = repair_metric_citations(daily_text, current_metrics)
+    if _reps:
+        logger.warning(
+            f"Metric-citation repair user {user_id}: "
+            + "; ".join(f"{lbl} {cited}->{correct}" for lbl, cited, correct in _reps)
+        )
+    return {
+        'status': 'ok',
+        'daily_recommendation': daily_text,
+        'structured_output': sections.get('structured_output'),
+        'raw_response': floor_result['response'],
+        'sections': sections,
+    }
 
 
 def repair_metric_citations(prose, current_metrics):
@@ -4386,18 +4413,21 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
             # parse_llm_response handles process_markdown and structured_output extraction
             sections = parse_llm_response(response.strip())
 
-            # SAFETY-FLOOR GUARDRAIL (shared with the enhanced path): the physiology floor
-            # is non-negotiable. Regenerate once on violation; safe fallback if still violating.
-            floor_result = enforce_safety_floor(
-                sections, current_metrics, floor_category, prompt, call_anthropic_api, user_id
+            # SAFETY-FLOOR GUARDRAIL + numeric repair — shared seam (finalize_recommendation),
+            # used identically by the standard, autopsy-informed, and agentic paths.
+            _final = finalize_recommendation(
+                sections, current_metrics, floor_category, prompt, call_anthropic_api, user_id, target_date_str
             )
-            if floor_result['status'] == 'fallback':
-                return _safe_floor_recommendation(floor_category, current_metrics, target_date_str)
-            sections = floor_result['sections']
-            if floor_result['response']:
-                response = floor_result['response']
-
-            daily_rec = sections.get('daily_recommendation', '')
+            if _final['status'] == 'fallback':
+                return {
+                    'daily_recommendation': _final['daily_recommendation'],
+                    'raw_response': _final['raw_response'],
+                    'structured_output': _final['structured_output'],
+                }
+            sections = _final['sections']
+            if _final['raw_response']:
+                response = _final['raw_response']
+            daily_rec = _final['daily_recommendation']
 
             # Fallback: if parser returned empty, use the raw response stripped of XML block
             if not daily_rec:
@@ -4406,21 +4436,12 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
                 ).strip()
                 logger.warning("Parser returned empty daily_recommendation, using stripped raw response")
 
-            # Numeric repair: fix any metric value the prose mis-cited against the
-            # authoritative metrics (structured data is correct; only the narrative slips).
-            daily_rec, _repairs = repair_metric_citations(daily_rec, current_metrics)
-            if _repairs:
-                logger.warning(
-                    f"Metric-citation repair for user {user_id}: "
-                    + "; ".join(f"{lbl} {cited}->{correct}" for lbl, cited, correct in _repairs)
-                )
-
             logger.info(f"✅ Daily recommendation: {len(daily_rec)} chars")
 
             return {
                 'daily_recommendation': daily_rec,
                 'raw_response': response.strip(),
-                'structured_output': sections.get('structured_output')
+                'structured_output': _final['structured_output']
             }
         else:
             logger.warning("No response from autopsy-informed decision generation")
@@ -5312,6 +5333,15 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             logger.warning(f"[AGENTIC] No current metrics for user {user_id}, aborting")
             return None
 
+        # Deterministic safety floor for the post-generation guardrail (calibrated
+        # thresholds) — computed unconditionally, same as the standard and
+        # autopsy-informed paths, via the single-authority classifier so this path
+        # can't drift from theirs on boundary conditions or category coverage.
+        floor_thresholds = apply_athlete_model_to_thresholds(
+            get_adjusted_thresholds(get_user_recommendation_style(user_id)), user_id
+        )
+        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
+
         ext_acwr = current_metrics.get('external_acwr', 0) or 0
         int_acwr = current_metrics.get('internal_acwr', 0) or 0
         divergence = current_metrics.get('normalized_divergence', 0) or 0
@@ -5336,6 +5366,10 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
 
         # Morning readiness — same query as standard path
         try:
+            # z-score readiness engine (same call the standard path makes) — supersedes
+            # the ratio-based fallback so both paths narrate the same HRV/RHR reading
+            # the same way, and both feed compute_readiness_state the same signal.
+            _ans = get_ans_readiness(user_id)
             readiness_data = execute_query(
                 """SELECT sleep_quality, morning_soreness, hrv_value, resting_hr,
                           sleep_duration_secs, sleep_score, weight, spo2, respiration_rate
@@ -5392,40 +5426,36 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                 if ms is not None:
                     r_parts.append(f"Morning soreness: {ms}/100")
 
+                # HRV/RHR context — z-score relative to personal baseline (same engine,
+                # same wording as the standard path's create_enhanced_prompt_with_tone).
                 if hrv_value is not None:
-                    hrv_baseline = hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None
-                    hrv_count    = hrv_baseline_data[0]['hrv_count']    if hrv_baseline_data and hrv_baseline_data[0] else 0
-                    if hrv_baseline and hrv_count >= 7:
-                        ratio     = float(hrv_value) / float(hrv_baseline)
-                        pct_diff  = (ratio - 1.0) * 100
-                        direction = "suppressed" if ratio < 0.85 else ("elevated" if ratio > 1.15 else "normal range")
-                        r_parts.append(
-                            f"HRV: {hrv_value:.0f}ms "
-                            f"(30-day baseline: {hrv_baseline:.0f}ms, "
-                            f"{abs(pct_diff):.0f}% {'below' if pct_diff < 0 else 'above'} baseline — {direction})"
-                        )
+                    hrv_z = _ans.get('hrv_z') if _ans else None
+                    if hrv_z is not None:
+                        if hrv_z >= 1.5:
+                            hrv_status = "elevated — parasympathetic spike"
+                        elif hrv_z <= -1.0:
+                            hrv_status = "suppressed"
+                        elif hrv_z >= 0.5:
+                            hrv_status = "above baseline"
+                        else:
+                            hrv_status = "normal range"
+                        r_parts.append(f"HRV: {hrv_value:.0f}ms ({hrv_z:+.2f}σ — {hrv_status})")
                     else:
-                        readings_needed = max(0, 7 - (hrv_count or 0))
-                        r_parts.append(f"HRV: {hrv_value:.0f}ms (building baseline — {readings_needed} more readings needed)")
+                        r_parts.append(f"HRV: {hrv_value:.0f}ms (building baseline)")
 
                 if rhr_value is not None:
-                    rhr_baseline = rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None
-                    rhr_count    = rhr_baseline_data[0]['rhr_count']    if rhr_baseline_data and rhr_baseline_data[0] else 0
-                    if rhr_baseline and rhr_count >= 3:
-                        rhr_diff = rhr_value - float(rhr_baseline)
-                        pct_diff = (rhr_diff / float(rhr_baseline)) * 100
-                        if pct_diff >= 10:
-                            status = "significantly elevated"
-                        elif pct_diff >= 5:
+                    rhr_z = _ans.get('rhr_z') if _ans else None
+                    if rhr_z is not None:
+                        if rhr_z >= 1.0:
                             status = "elevated"
-                        elif pct_diff <= -5:
+                        elif rhr_z <= -1.0:
                             status = "below baseline"
+                        elif rhr_z >= 0.5:
+                            status = "slightly above baseline"
                         else:
                             status = "normal range"
                         r_parts.append(
-                            f"Resting HR: {rhr_value}bpm "
-                            f"(7-day baseline: {rhr_baseline:.0f}bpm, "
-                            f"{abs(pct_diff):.0f}% {'above' if rhr_diff > 0 else 'below'} baseline — {status})"
+                            f"Resting HR: {rhr_value}bpm ({rhr_z:+.2f}σ — {status})"
                         )
                     else:
                         r_parts.append(f"Resting HR: {rhr_value}bpm (building baseline)")
@@ -5472,6 +5502,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                         rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
                         rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
                         athlete_model=_athlete_model_raw,
+                        ans_result=_ans,
                     )
                     _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
                     static_context_parts.append(
@@ -5489,6 +5520,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                         rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
                         rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
                         athlete_model=_athlete_model_raw,
+                        ans_result=_ans,
                     )
                     _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
                     static_context_parts.append(
@@ -5531,18 +5563,9 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                 int_acwr_val = current_metrics.get('internal_acwr', 0) or 0
                 div_val = current_metrics.get('normalized_divergence', 0) or 0
                 days_rest_val = current_metrics.get('days_since_rest', 0) or 0
-                # Derive assessment category using same logic as standard path
-                thresholds_agentic = get_adjusted_thresholds(get_user_recommendation_style(user_id))
-                thresholds_agentic = apply_athlete_model_to_thresholds(thresholds_agentic, user_id)
-                if days_rest_val > thresholds_agentic['days_since_rest_max']:
-                    agentic_category = "mandatory_rest"
-                elif div_val < thresholds_agentic['divergence_overtraining']:
-                    agentic_category = "overtraining_risk"
-                elif ext_acwr_val > thresholds_agentic['acwr_high_risk'] and int_acwr_val > thresholds_agentic['acwr_high_risk']:
-                    agentic_category = "high_acwr_risk"
-                else:
-                    agentic_category = "normal_progression"
-                filtered = _select_guide_sections(training_guide, agentic_category)
+                # floor_category (computed above, shared with the safety-floor guardrail)
+                # is the same single-authority classification used to filter the guide.
+                filtered = _select_guide_sections(training_guide, floor_category)
                 static_context_parts.append("### TRAINING REFERENCE FRAMEWORK\n" + filtered)
         except Exception as guide_err:
             logger.warning(f"[AGENTIC] Could not load training guide for user {user_id}: {guide_err}")
@@ -5701,16 +5724,27 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # ------------------------------------------------------------------ #
         sections = parse_llm_response(llm_response)
 
-        # Inject token count into structured_output.meta
-        if sections.get('structured_output') is None:
-            sections['structured_output'] = {}
-        if isinstance(sections['structured_output'], dict):
-            sections['structured_output']['meta'] = {
-                'agentic': True,
-                'tokens_used': total_input_tokens + total_output_tokens,
-                'input_tokens': total_input_tokens,
-                'output_tokens': total_output_tokens,
-            }
+        # SAFETY-FLOOR GUARDRAIL + numeric repair — shared seam (finalize_recommendation),
+        # used identically by the standard and autopsy-informed paths. The correction
+        # regenerate is a single-shot completion (not a second two-turn tool round),
+        # matching how the other two paths regenerate on a floor violation.
+        _agentic_prompt_for_floor = system_turn1 + "\n\n" + user_turn1
+        _final = finalize_recommendation(
+            sections, current_metrics, floor_category, _agentic_prompt_for_floor,
+            lambda p: call_claude(p, task='daily'), user_id, target_date
+        )
+        sections = _final['sections']
+        if _final['raw_response']:
+            llm_response = _final['raw_response']
+        final_structured_output = _final['structured_output']
+        if not isinstance(final_structured_output, dict):
+            final_structured_output = {}
+        final_structured_output['meta'] = {
+            'agentic': True,
+            'tokens_used': total_input_tokens + total_output_tokens,
+            'input_tokens': total_input_tokens,
+            'output_tokens': total_output_tokens,
+        }
 
         # ------------------------------------------------------------------ #
         # Build recommendation dict (same structure as generate_recommendations)
@@ -5726,13 +5760,13 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             'data_start_date': start_date,
             'data_end_date': end_date,
             'metrics_snapshot': current_metrics,
-            'daily_recommendation': sections['daily_recommendation'],
+            'daily_recommendation': _final['daily_recommendation'],
             'raw_response': llm_response,
             'user_id': user_id,
             'is_autopsy_informed': False,
             'autopsy_count': 0,
             'avg_alignment_score': None,
-            'structured_output': sections.get('structured_output'),
+            'structured_output': final_structured_output,
         }
 
         recommendation = fix_dates_for_json(recommendation)
