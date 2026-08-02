@@ -4809,83 +4809,6 @@ def get_journal_streak():
         logger.error(f"Error computing journal streak for user {current_user.id}: {e}")
         return jsonify({'streak': 0})
 
-# CRITICAL FIX for strava_app.py
-# Replace the existing get_unified_recommendation_for_date function with this corrected version
-
-def get_unified_recommendation_for_date(date_obj, user_id):
-    """
-    CRITICAL FIX: Query by target_date to prevent timezone-based date attribution errors.
-    
-    The Journal page must ALWAYS query by target_date, not by "latest" recommendation,
-    to avoid showing Friday's recommendation on Thursday's journal entry when it's
-    Thursday night in the user's timezone but the system has already generated 
-    Friday's recommendation.
-    """
-    try:
-        date_str = date_obj.strftime('%Y-%m-%d')
-        from timezone_utils import get_user_current_date
-        user_current_date = get_user_current_date(user_id)
-
-        logger.info(f"Getting unified recommendation for user {user_id} on date {date_str} (user timezone)")
-
-        # CRITICAL FIX: Always query by target_date for Journal entries
-        # This ensures Thursday's journal entry shows Thursday's recommendation,
-        # even if a Friday recommendation has already been generated
-        logger.info(f"Searching for target_date recommendation: user={user_id}, date={date_str}")
-
-        recommendation = db_utils.execute_query(
-            """
-            SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s AND target_date = %s
-            ORDER BY id DESC 
-            LIMIT 1
-            """,
-            (user_id, date_str),
-            fetch=True
-        )
-
-        if recommendation and recommendation[0]:
-            recommendation_text = dict(recommendation[0])['daily_recommendation']
-            logger.info(
-                f"FOUND recommendation for user {user_id} on {date_str}: {len(recommendation_text)} characters")
-
-            # Frontend adds its own headers - just return clean text
-            return recommendation_text
-        
-        else:
-            # No recommendation found for this target_date
-            logger.warning(f"NO recommendation found for user {user_id} on {date_str}")
-
-            # Check what recommendations exist for debugging
-            available_recommendations = db_utils.execute_query(
-                "SELECT id, target_date, generation_date FROM llm_recommendations WHERE user_id = %s ORDER BY id DESC LIMIT 5",
-                (user_id,),
-                fetch=True
-            )
-
-            if available_recommendations:
-                logger.info(f"Available recommendations for user {user_id}: {[dict(row) for row in available_recommendations]}")
-            else:
-                logger.warning(f"NO recommendations exist for user {user_id}")
-
-            # Determine appropriate label for "no recommendation" message
-            if date_obj == user_current_date:
-                date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
-            elif date_obj < user_current_date:
-                date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
-            else:
-                # FUTURE date: Frontend adds its own header
-                return "No recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
-
-            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
-
-    except Exception as e:
-        logger.error(f"Error in get_unified_recommendation_for_date for user {user_id}, date {date_str}: {str(e)}",
-                     exc_info=True)
-        return f"🤖 AI Training Decision:\nError retrieving recommendation: {str(e)}"
-
-
 def get_recommendation_meta_for_date(date_obj, user_id):
     """Return (structured_output, target_date) for the recommendation that applies to date_obj.
 
@@ -4928,72 +4851,6 @@ def get_recommendation_meta_for_date(date_obj, user_id):
     except Exception as e:
         logger.error(f"Error in get_recommendation_meta_for_date for user {user_id}, date {date_str}: {e}")
         return None, None
-
-
-def get_date_specific_decision_with_label(date_obj, user_id, recommendations_lookup):
-    """
-    Get date-specific recommendation with clear labeling
-    Uses pre-fetched recommendations lookup for performance
-    """
-    try:
-        date_str = date_obj.strftime('%Y-%m-%d')
-        app_current_date = get_app_current_date()
-
-        # Get the stored recommendation for this specific date
-        stored_recommendation = recommendations_lookup.get(date_str)
-
-        # Determine appropriate label
-        if date_obj == app_current_date:
-            date_label = f"TODAY'S WORKOUT ({date_obj.strftime('%A, %B %d')})"
-        elif date_obj < app_current_date:
-            date_label = f"WORKOUT for {date_obj.strftime('%A, %B %d')}"
-        else:
-            date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
-
-        if stored_recommendation and stored_recommendation.strip():
-            return f"🤖 AI Training Decision for {date_label}:\n\n{stored_recommendation}"
-        else:
-            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
-
-    except Exception as e:
-        logger.error(f"Error getting date-specific decision for {date_str}: {str(e)}")
-        return f"Error retrieving recommendation for {date_obj.strftime('%A, %B %d')}"
-
-
-def get_dashboard_training_decision(user_id):
-    """
-    Dashboard training decision - shows NEXT actionable workout with clear labeling
-    This ensures Dashboard and Journal are consistent
-    """
-    try:
-        app_current_date = get_app_current_date()
-        tomorrow = app_current_date + timedelta(days=1)
-
-        # Get tomorrow's recommendation (what user should do next)
-        tomorrow_recommendation = db_utils.execute_query(
-            """
-            SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s 
-            AND target_date = %s
-            ORDER BY generated_at DESC
-            LIMIT 1
-            """,
-            (user_id, tomorrow.strftime('%Y-%m-%d')),
-            fetch=True
-        )
-
-        date_label = f"NEXT WORKOUT - {tomorrow.strftime('%A, %B %d')}"
-
-        if tomorrow_recommendation and tomorrow_recommendation[0]:
-            recommendation_text = dict(tomorrow_recommendation[0])['daily_recommendation']
-            return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
-        else:
-            return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available. Generate fresh recommendations on the Dashboard tab."
-
-    except Exception as e:
-        logger.error(f"Error getting dashboard training decision: {str(e)}")
-        return f"Error retrieving next workout recommendation"
 
 
 def classify_workout_by_hr_zones(activity_list):
@@ -5313,9 +5170,13 @@ def get_last_activity_journal_status(user_id):
 
 
 def get_todays_decision_for_date(date_obj, user_id):
-    """
-    UPDATED: Get training recommendation for specific date with proper date labeling
-    This replaces the existing function to fix the "same decision every day" issue
+    """Get the stored recommendation for a specific date.
+
+    Returns the formatted recommendation text, or None if no recommendation
+    exists for this exact date. Callers must treat None as "nothing found" —
+    do not fall back to a different date's recommendation and label it as
+    this date's prescribed action (that was the exact timezone/date-attribution
+    bug this function used to have).
     """
     try:
         date_str = date_obj.strftime('%Y-%m-%d')
@@ -5324,8 +5185,8 @@ def get_todays_decision_for_date(date_obj, user_id):
         specific_recommendation = db_utils.execute_query(
             """
             SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s 
+            FROM llm_recommendations
+            WHERE user_id = %s
             AND target_date = %s
             ORDER BY generated_at DESC
             LIMIT 1
@@ -5333,6 +5194,9 @@ def get_todays_decision_for_date(date_obj, user_id):
             (user_id, date_str),
             fetch=True
         )
+
+        if not (specific_recommendation and specific_recommendation[0]):
+            return None
 
         from timezone_utils import get_user_current_date
         user_current_date = get_user_current_date(user_id)
@@ -5345,71 +5209,12 @@ def get_todays_decision_for_date(date_obj, user_id):
         else:
             date_label = f"PLANNED WORKOUT ({date_obj.strftime('%A, %B %d')})"
 
-        if specific_recommendation and specific_recommendation[0]:
-            recommendation_text = dict(specific_recommendation[0])['daily_recommendation']
-            return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
-        else:
-            # Fallback to most recent recommendation if no date-specific one exists
-            fallback_recommendation = db_utils.execute_query(
-                """
-                SELECT daily_recommendation
-                FROM llm_recommendations 
-                WHERE user_id = %s
-                ORDER BY generated_at DESC
-                LIMIT 1
-                """,
-                (user_id,),
-                fetch=True
-            )
-
-            if fallback_recommendation and fallback_recommendation[0]:
-                recommendation_text = dict(fallback_recommendation[0])['daily_recommendation']
-                return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
-            else:
-                return f"🤖 AI Training Decision for {date_label}:\nNo recommendation available. Generate fresh recommendations on the Dashboard tab."
+        recommendation_text = dict(specific_recommendation[0])['daily_recommendation']
+        return f"🤖 AI Training Decision for {date_label}:\n\n{recommendation_text}"
 
     except Exception as e:
         logger.error(f"Error getting training decision for {date_str}, user {user_id}: {str(e)}", exc_info=True)
-        return f"Error retrieving AI recommendation for {date_obj.strftime('%A, %B %d')}"
-
-
-def get_training_decision_for_journal_date(date_obj, user_id):
-    """
-    Separate function for Journal page that shows historical decisions
-    This shows what the AI recommended FOR that specific date (not what's next)
-    """
-    try:
-        date_str = date_obj.strftime('%Y-%m-%d')
-        app_current_date = get_app_current_date()
-
-        if date_obj == app_current_date:
-            # TODAY: Show what AI recommended for today's workout
-            date_label = f"TODAY'S RECOMMENDED WORKOUT ({date_obj.strftime('%A, %B %d')})"
-            decision = get_historical_decision_for_date(user_id, date_obj)
-
-        elif date_obj < app_current_date:
-            # PAST: Show what AI recommended for that day's workout
-            date_label = f"RECOMMENDED WORKOUT for {date_obj.strftime('%A, %B %d')}"
-            decision = get_historical_decision_for_date(user_id, date_obj)
-
-        else:
-            # FUTURE: Show planned workout for that future date
-            # Note: Frontend adds its own header, so just return the decision text
-            decision = get_autopsy_informed_decision_for_future(user_id, date_obj)
-
-        if decision and decision.strip():
-            # For future dates (tomorrow), don't add date label - frontend handles this
-            if date_obj > app_current_date:
-                return decision
-            else:
-                # For today/past, include the date label
-                return f"🤖 {date_label}:\n\n{decision}"
-        else:
-            return f"No recommendation available for this date. Generate fresh recommendations by entering observations/notes for today's activity and clicking Save"
-
-    except Exception as e:
-        logger.error(f"Error getting journal decision for {date_str}, user {user_id}: {str(e)}", exc_info=True)
-        return f"Error retrieving recommendation: {str(e)}"
+        return None
 
 
 def trigger_autopsy_and_update_recommendations(user_id, completed_date):
@@ -5464,199 +5269,6 @@ def trigger_autopsy_and_update_recommendations(user_id, completed_date):
         return {'error': str(e)}
 
 
-def get_autopsy_informed_decision_for_today(user_id, target_date):
-    """
-    Get today's decision that incorporates yesterday's autopsy learning.
-    This is for TODAY'S workout, informed by yesterday's autopsy.
-    """
-    try:
-        logger.info(f"Getting autopsy-informed decision for TODAY: {target_date}")
-
-        # Try to get autopsy-informed decision first
-        from llm_recommendations_module import generate_autopsy_informed_daily_decision
-
-        autopsy_informed_decision = generate_autopsy_informed_daily_decision(user_id, target_date)
-
-        if autopsy_informed_decision:
-            logger.info(f"Using autopsy-informed decision for user {user_id}")
-            return autopsy_informed_decision
-        else:
-            # Fallback to standard decision
-            logger.info(f"Using standard decision fallback for user {user_id}")
-            return get_standard_daily_decision(user_id, target_date)
-
-    except Exception as e:
-        logger.error(f"Error getting autopsy-informed decision for today: {str(e)}")
-        return get_standard_daily_decision(user_id, target_date)
-
-
-def get_autopsy_informed_decision_for_future(user_id, target_date):
-    """
-    Get future decision (like tomorrow's workout).
-    This would be for planning ahead.
-    """
-    try:
-        logger.info(f"Getting decision for future date: {target_date}")
-
-        # For future dates, we can use the same autopsy-informed logic
-        from llm_recommendations_module import generate_autopsy_informed_daily_decision
-
-        future_decision = generate_autopsy_informed_daily_decision(user_id, target_date)
-
-        if future_decision:
-            return future_decision
-        else:
-            return get_standard_daily_decision(user_id, target_date)
-
-    except Exception as e:
-        logger.error(f"Error getting future decision: {str(e)}")
-        return get_standard_daily_decision(user_id, target_date)
-
-
-# USER EXPERIENCE FLOW DOCUMENTATION:
-
-"""
-MONDAY EVENING (after completing workout):
-1. User completes Monday's workout
-2. User opens Journal page
-3. User sees "TODAY'S RECOMMENDED WORKOUT (Monday)" - what AI suggested for today
-4. User saves observations (energy, RPE, pain, notes)
-5. Backend triggers:
-   - Generate autopsy for Monday's workout (prescribed vs actual vs felt)
-   - Update Tuesday's recommendation using Monday's autopsy learning
-6. User refreshes Dashboard
-7. User sees "NEXT WORKOUT - Tuesday" with autopsy-informed recommendation
-
-TUESDAY MORNING:
-1. User opens Dashboard
-2. User sees "NEXT WORKOUT - Tuesday" (clear, actionable for today)
-3. User opens Journal page
-4. User sees Monday's row with autopsy analysis
-5. User sees "TODAY'S RECOMMENDED WORKOUT (Tuesday)" for reference
-6. Cycle continues...
-
-KEY FEATURES:
-✅ Clear date labeling removes confusion
-✅ "NEXT WORKOUT" always shows actionable recommendation
-✅ Journal shows historical "RECOMMENDED WORKOUT for [DATE]"
-✅ Autopsy workflow automatically updates future recommendations
-✅ User gets clear feedback on what happened behind the scenes
-"""
-
-
-def get_recommendation_by_target_date(user_id, target_date_str):
-    """Simple lookup by target_date for Journal page."""
-    try:
-        result = db_utils.execute_query(
-            """
-            SELECT daily_recommendation 
-            FROM llm_recommendations 
-            WHERE user_id = %s AND target_date = %s
-            ORDER BY generation_date DESC 
-            LIMIT 1
-            """,
-            (user_id, target_date_str),
-            fetch=True
-        )
-
-        if result and result[0]:
-            return dict(result[0])['daily_recommendation']
-
-        # Fallback: if no target_date match, try valid_until (for transition period)
-        fallback_result = db_utils.execute_query(
-            """
-            SELECT daily_recommendation 
-            FROM llm_recommendations 
-            WHERE user_id = %s AND valid_until = %s
-            ORDER BY generation_date DESC 
-            LIMIT 1
-            """,
-            (user_id, target_date_str),
-            fetch=True
-        )
-
-        if fallback_result and fallback_result[0]:
-            return dict(fallback_result[0])['daily_recommendation']
-
-        return None
-
-    except Exception as e:
-        logger.error(f"Error getting recommendation for target_date {target_date_str}: {str(e)}")
-        return None
-
-def get_standard_daily_decision(user_id, target_date):
-    """Get standard daily decision without autopsy learning (fallback)."""
-    try:
-        target_date_str = target_date.strftime('%Y-%m-%d')
-
-        # Look for recent recommendation
-        recent_recommendation = db_utils.execute_query(
-            """
-            SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s 
-            AND generation_date >= %s
-            ORDER BY generation_date DESC
-            LIMIT 1
-            """,
-            (user_id, (target_date - timedelta(days=2)).strftime('%Y-%m-%d')),
-            fetch=True
-        )
-
-        if recent_recommendation and recent_recommendation[0]:
-            return dict(recent_recommendation[0])['daily_recommendation']
-
-        return "No recent recommendation available. Generate fresh recommendations on the Dashboard tab."
-
-    except Exception as e:
-        logger.error(f"Error getting standard daily decision: {str(e)}")
-        return "Error retrieving standard recommendation."
-
-
-def get_historical_decision_for_date(user_id, date_obj):
-    """Get the training decision that was originally generated for a specific historical date."""
-    try:
-        date_str = date_obj.strftime('%Y-%m-%d')
-
-        # Look for decision generated ON that date (for that day's training)
-        historical_decision = db_utils.execute_query(
-            """
-            SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s AND generation_date = %s
-            ORDER BY generation_date DESC
-            LIMIT 1
-            """,
-            (user_id, date_str),
-            fetch=True
-        )
-
-        if historical_decision and historical_decision[0]:
-            return dict(historical_decision[0])['daily_recommendation']
-
-        # Fallback: Look for most recent decision valid for that date
-        fallback_decision = db_utils.execute_query(
-            """
-            SELECT daily_recommendation
-            FROM llm_recommendations 
-            WHERE user_id = %s 
-            AND generation_date <= %s
-            AND valid_until >= %s
-            ORDER BY generation_date DESC
-            LIMIT 1
-            """,
-            (user_id, date_str, date_str),
-            fetch=True
-        )
-
-        if fallback_decision and fallback_decision[0]:
-            return dict(fallback_decision[0])['daily_recommendation']
-
-        return "No historical recommendation found for this date."
-
-    except Exception as e:
-        logger.error(f"Error getting historical decision: {str(e)}")
-        return "Error retrieving historical recommendation."
 # ── Journal Power scoring ────────────────────────────────────────────────────
 # Mirrors the noteSignal logic in PostWorkoutEntryPage.tsx / JournalPage.tsx
 
@@ -6203,59 +5815,32 @@ def save_journal_entry():
                 )
 
                 if decision:
-                    # Check if recommendation already exists for tomorrow
-                    existing_rec = db_utils.execute_query(
-                        "SELECT id FROM llm_recommendations WHERE user_id = %s AND target_date = %s",
-                        (current_user.id, tomorrow_date_str),
-                        fetch=True
-                    )
+                    # save_llm_recommendation() upserts (DELETE then INSERT keyed on
+                    # user_id + target_date), so no existence check is needed here —
+                    # this also guarantees structured_output is always written,
+                    # whether tomorrow's recommendation already existed or not.
+                    logger.info(f"📝 Saving recommendation for {tomorrow_date_str}")
+                    from unified_metrics_service import UnifiedMetricsService
+                    current_metrics_for_save = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
 
-                    if existing_rec:
-                        # UPDATE existing recommendation with pre-parsed sections
-                        logger.info(f"📝 Updating existing recommendation for {tomorrow_date_str}")
-                        db_utils.execute_query(
-                            """
-                            UPDATE llm_recommendations
-                            SET daily_recommendation = %s,
-                                raw_response = %s,
-                                generated_at = NOW(),
-                                is_autopsy_informed = TRUE,
-                                autopsy_count = 1,
-                                avg_alignment_score = %s
-                            WHERE user_id = %s AND target_date = %s
-                            """,
-                            (
-                                decision['daily_recommendation'],
-                                decision['raw_response'],
-                                alignment_score,
-                                current_user.id,
-                                tomorrow_date_str
-                            )
-                        )
-                    else:
-                        # INSERT new recommendation with pre-parsed sections
-                        logger.info(f"📝 Creating new recommendation for {tomorrow_date_str}")
-                        from unified_metrics_service import UnifiedMetricsService
-                        current_metrics_for_save = UnifiedMetricsService.get_latest_complete_metrics(current_user.id) or {}
-
-                        from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
-                        recommendation_data = {
-                            'generation_date': date_str,
-                            'target_date': tomorrow_date_str,
-                            'valid_until': None,
-                            'data_start_date': date_str,
-                            'data_end_date': date_str,
-                            'metrics_snapshot': current_metrics_for_save,
-                            'daily_recommendation': decision['daily_recommendation'],
-                            'raw_response': decision['raw_response'],
-                            'structured_output': decision.get('structured_output'),
-                            'user_id': current_user.id,
-                            'is_autopsy_informed': True,
-                            'autopsy_count': 1,
-                            'avg_alignment_score': alignment_score
-                        }
-                        recommendation_data = fix_dates_for_json(recommendation_data)
-                        save_llm_recommendation(recommendation_data)
+                    from llm_recommendations_module import save_llm_recommendation, fix_dates_for_json
+                    recommendation_data = {
+                        'generation_date': date_str,
+                        'target_date': tomorrow_date_str,
+                        'valid_until': None,
+                        'data_start_date': date_str,
+                        'data_end_date': date_str,
+                        'metrics_snapshot': current_metrics_for_save,
+                        'daily_recommendation': decision['daily_recommendation'],
+                        'raw_response': decision['raw_response'],
+                        'structured_output': decision.get('structured_output'),
+                        'user_id': current_user.id,
+                        'is_autopsy_informed': True,
+                        'autopsy_count': 1,
+                        'avg_alignment_score': alignment_score
+                    }
+                    recommendation_data = fix_dates_for_json(recommendation_data)
+                    save_llm_recommendation(recommendation_data)
 
                     recommendation_generated = True
                     logger.info(f"✅ Recommendation for {tomorrow_date_str} is autopsy-informed")
@@ -6859,7 +6444,7 @@ def generate_autopsy_for_date(date_str, user_id):
         )
 
         # Validate prescribed action
-        if not prescribed_action or "No AI recommendation available" in prescribed_action:
+        if not prescribed_action:
             logger.warning(f"No valid prescribed action for {date_str}, user {user_id}")
             return
 
