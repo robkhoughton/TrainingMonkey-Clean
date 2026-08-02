@@ -13,8 +13,9 @@ TrainingMonkey is a training analytics platform for endurance athletes. It integ
 ## Deployment Model
 
 **Local Deployment** - This project is deployed from the local machine, not from GitHub/CI/CD.
-- Use the `/deploy` skill when the user invokes it — run all build, copy, and deploy steps via Bash
-- Git is used for version control only, not deployment triggers
+- Once the user authorizes a commit touching deployable code (`app/*.py`, `frontend/**/*`, `app/Dockerfile.strava`), run the full `/deploy` build/copy/deploy sequence via Bash immediately after pushing — commit authorization now carries deploy authorization, no separate `/deploy` request needed
+- Commits that only touch docs, tests, migrations, or other non-runtime files do not trigger a deploy
+- `/deploy` still works standalone for an on-demand deploy with no new commit behind it
 
 ## Git Commit/Push Practices
 
@@ -58,7 +59,7 @@ Key sections:
 2. **Secure Credentials** - Always use `db_credentials_loader.py`, never hardcode DATABASE_URL
 3. **Dockerfile Updates** - New Python files MUST be added to `app/Dockerfile.strava`
 4. **Frontend Deployment** - After React changes, rebuild and copy to `app/static/`
-5. **Deployment via `/deploy`** - When the user invokes `/deploy`, run all build, copy, and deploy steps via Bash. Do not defer to the user for these steps.
+5. **Deployment follows an authorized commit** - Once the user authorizes a commit touching deployable code, run the full build/copy/deploy sequence via Bash right after pushing — do not wait for a separate `/deploy` request. `/deploy` still works standalone for on-demand deploys.
 6. **Root Cause Solutions** - Always address root causes, not symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds or patches that mask the real issue.
 7. **Timezone-Aware Dates** - Never use `datetime.now()` for user-facing date queries. Use `get_app_current_date()` (imported from `timezone_utils`). `datetime.now()` returns UTC and will show the wrong date for US users after ~4pm Pacific.
 

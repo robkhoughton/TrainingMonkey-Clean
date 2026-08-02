@@ -6,10 +6,11 @@ paths: ["app/Dockerfile*", "app/*.py", "frontend/**/*", "scripts/deployment/*"]
 
 ## Deployment Model
 
-**Local deployment only** - User runs all deployment commands manually.
-- Assistant prepares code changes but NEVER runs deployment commands
-- User initiates deployment via `app/deploy_strava_simple.bat`
-- All changes tested locally before deployment
+**Local deployment, assistant-run once a commit is authorized** - deploy is no longer a separate ask.
+- Once the user authorizes a commit that touches deployable code (`app/*.py`, `frontend/**/*`, `app/Dockerfile.strava`), run the full build → copy → deploy sequence via Bash immediately after pushing — no separate `/deploy` request needed
+- Skip auto-deploy for commits that only touch docs, tests, migration scripts, or other non-runtime files — nothing to ship
+- All changes tested locally before deployment (run the relevant test suite; confirm no new regressions)
+- `/deploy` remains available on demand for a deploy with no new commit behind it
 
 ## Dockerfile Requirements (CRITICAL)
 
