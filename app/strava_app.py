@@ -425,7 +425,8 @@ def sync_strava_data():
             current_date += timedelta(days=1)
 
         # Update last_sync_date to track when user last synced
-        sync_date = datetime.now().strftime('%Y-%m-%d')
+        from timezone_utils import get_user_current_date
+        sync_date = get_user_current_date(user_id).strftime('%Y-%m-%d')
         db_utils.execute_query(
             "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
             (sync_date, user_id)
@@ -700,9 +701,10 @@ def oauth_callback():
                     from strava_training_load import process_activities_for_date_range
                     from stravalib.client import Client
                     from datetime import datetime, timedelta
-                    
+                    from timezone_utils import get_user_current_date
+
                     # Calculate date range (28 days back)
-                    end_date = datetime.now().date()
+                    end_date = get_user_current_date(new_user.id)
                     start_date = end_date - timedelta(days=28)
                     
                     # Load tokens from database for this specific user (same as existing users)
@@ -746,7 +748,7 @@ def oauth_callback():
                         end_date=end_date.strftime('%Y-%m-%d'),
                         user_id=new_user.id
                     )
-                    sync_date = datetime.now().strftime('%Y-%m-%d')
+                    sync_date = get_user_current_date(new_user.id).strftime('%Y-%m-%d')
                     db_utils.execute_query(
                         "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
                         (sync_date, new_user.id)
@@ -1356,7 +1358,8 @@ def process_user_sync(user_id, days):
         final_token_status = token_manager.get_simple_token_status()
 
         # Update last_sync_date to track when user last synced
-        sync_date = datetime.now().strftime('%Y-%m-%d')
+        from timezone_utils import get_user_current_date
+        sync_date = get_user_current_date(user_id).strftime('%Y-%m-%d')
         db_utils.execute_query(
             "UPDATE user_settings SET last_sync_date = %s WHERE id = %s",
             (sync_date, user_id)
@@ -3371,7 +3374,8 @@ def first_time_dashboard():
 
     try:
         # Use correct date formatting pattern
-        twenty_eight_days_ago = (datetime.now().date() - timedelta(days=28)).strftime('%Y-%m-%d')
+        from timezone_utils import get_user_current_date
+        twenty_eight_days_ago = (get_user_current_date(current_user.id) - timedelta(days=28)).strftime('%Y-%m-%d')
 
         days_of_data = db_utils.execute_query(
             "SELECT COUNT(DISTINCT date) as days FROM activities WHERE user_id = %s AND date >= %s",
@@ -3850,7 +3854,8 @@ def onboarding_status():
     """API endpoint to check if user has enough data for full analysis"""
     try:
         # Calculate date 28 days ago in the format your app uses
-        twenty_eight_days_ago = (datetime.now().date() - timedelta(days=28)).strftime('%Y-%m-%d')
+        from timezone_utils import get_user_current_date
+        twenty_eight_days_ago = (get_user_current_date(current_user.id) - timedelta(days=28)).strftime('%Y-%m-%d')
         days_of_data = db_utils.execute_query(
             "SELECT COUNT(DISTINCT date) as days FROM activities WHERE user_id = %s AND date >= %s",
             (current_user.id, twenty_eight_days_ago),
@@ -3923,9 +3928,10 @@ def sync_strava_data_for_user():
                 from strava_training_load import process_activities_for_date_range
                 from stravalib.client import Client
                 from datetime import datetime, timedelta
-                
+                from timezone_utils import get_user_current_date
+
                 # Calculate date range (28 days back)
-                end_date = datetime.now().date()
+                end_date = get_user_current_date(user_id)
                 start_date = end_date - timedelta(days=28)
                 
                 # Load tokens from database for this specific user
@@ -3996,7 +4002,8 @@ def get_activities_for_management():
         per_page = 50
 
         # Calculate date range
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(current_user.id)
         start_date = end_date - timedelta(days=days)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
@@ -6344,7 +6351,8 @@ def _sync_recent_strava_activities(user_id):
             logger.warning(f"Lightweight sync skipped for user {user_id}: no valid Strava client")
             return
 
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(user_id)
         start_date = end_date - timedelta(days=2)
         start_str = start_date.strftime('%Y-%m-%d')
         end_str = end_date.strftime('%Y-%m-%d')
@@ -6373,7 +6381,8 @@ def get_app_state():
     """
     try:
         user_id = current_user.id
-        today_str = datetime.now().strftime('%Y-%m-%d')
+        from timezone_utils import get_user_current_date
+        today_str = get_user_current_date(user_id).strftime('%Y-%m-%d')
 
         # Sync last 48h from Strava before evaluating routing so new activities
         # are in the DB even if the user opens the app before a scheduled sync.
@@ -10963,7 +10972,8 @@ def compare_trimp_calculation_methods():
             logger.warning(f"TRIMP_COMPARISON: User HR config not found, using defaults - resting_hr={resting_hr}, max_hr={max_hr}, gender={gender}")
         
         # Get activities for comparison
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(current_user.id)
         start_date = end_date - timedelta(days=days_back)
         
         activities_query = """
@@ -13852,7 +13862,8 @@ def save_training_schedule():
 
         # Mark schedule as reviewed for upcoming week if this is a Sunday update
         from datetime import datetime, timedelta
-        today = datetime.now().date()
+        from timezone_utils import get_user_current_date
+        today = get_user_current_date(user_id)
         if today.weekday() == 6:  # Sunday
             # Calculate next Monday
             days_until_monday = 1
@@ -14046,10 +14057,11 @@ def get_schedule_review_status():
     try:
         user_id = current_user.id
         from datetime import datetime, timedelta
-        
-        today = datetime.now().date()
+        from timezone_utils import get_user_current_date
+
+        today = get_user_current_date(user_id)
         day_of_week = today.weekday()
-        
+
         # Calculate next Monday
         days_until_monday = (7 - day_of_week) % 7
         if days_until_monday == 0:
@@ -14104,8 +14116,9 @@ def accept_current_schedule():
     try:
         user_id = current_user.id
         from datetime import datetime, timedelta
-        
-        today = datetime.now().date()
+        from timezone_utils import get_user_current_date
+
+        today = get_user_current_date(user_id)
         days_until_monday = (7 - today.weekday()) % 7
         if days_until_monday == 0:
             days_until_monday = 7
