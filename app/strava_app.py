@@ -7674,8 +7674,40 @@ def get_weekly_synthesis():
                 fetch=True
             )
 
+        # The athlete's reflection lives on whichever row was most recently plan-bearing
+        # BEFORE today — the exact row save_week_reflection() writes to and
+        # build_weekly_program_prompt() reads as "prior week." This is intentionally
+        # decoupled from `row` above (the last row with a generated weekly_synthesis
+        # narrative): synthesis only regenerates on the Saturday cron or a full manual
+        # "Generate a new weekly program," so gating the reflection readback on it being
+        # non-null shows stale reflections for weeks after a reflection-only rebuild.
+        reflection_row = None
+        if not week_start:
+            from timezone_utils import get_current_week_start
+            current_week_start = get_current_week_start()
+            reflection_rows = db_utils.execute_query(
+                """
+                SELECT week_start_date, week_reflection, reflection_submitted_at
+                FROM weekly_programs
+                WHERE user_id = %s AND week_start_date < %s AND strategic_summary IS NOT NULL
+                ORDER BY week_start_date DESC
+                LIMIT 1
+                """,
+                (user_id, str(current_week_start)),
+                fetch=True
+            )
+            reflection_row = reflection_rows[0] if reflection_rows else None
+
+        if not row and not reflection_row:
+            return jsonify({'synthesis': None, 'week_start': None, 'reflection': None})
+
         if not row:
-            return jsonify({'synthesis': None, 'week_start': None})
+            return jsonify({
+                'synthesis': None,
+                'week_start': None,
+                'reflection': reflection_row.get('week_reflection'),
+                'reflection_week_start': reflection_row['week_start_date'].isoformat() if reflection_row.get('week_start_date') else None,
+            })
 
         r = row[0]
         # Prefer the explicitly-stored synthesis window start. Fall back to the legacy
@@ -7690,6 +7722,18 @@ def get_weekly_synthesis():
         else:
             synthesis_week_start = r['week_start_date'].isoformat() if r['week_start_date'] else None
         composite = r.get('weekly_composite_score')
+        # For an explicit ?week_start= lookup the row IS the reflection's row, so use it
+        # directly. Otherwise use the independently-selected current reflection_row —
+        # it may be a different (more recent) row than the one carrying weekly_synthesis.
+        if week_start:
+            reflection_text = r.get('week_reflection')
+            reflection_week_start_out = r['week_start_date'].isoformat() if r.get('week_start_date') else None
+        else:
+            reflection_text = reflection_row.get('week_reflection') if reflection_row else None
+            reflection_week_start_out = (
+                reflection_row['week_start_date'].isoformat()
+                if reflection_row and reflection_row.get('week_start_date') else None
+            )
         return jsonify({
             'synthesis': r['weekly_synthesis'],
             'week_start': synthesis_week_start,
@@ -7698,7 +7742,8 @@ def get_weekly_synthesis():
             'alignment_score': r.get('weekly_alignment_score'),
             'quality_score': r.get('weekly_quality_score'),
             'composite_score': float(composite) if composite is not None else None,
-            'reflection': r.get('week_reflection'),
+            'reflection': reflection_text,
+            'reflection_week_start': reflection_week_start_out,
         })
 
     except Exception as e:

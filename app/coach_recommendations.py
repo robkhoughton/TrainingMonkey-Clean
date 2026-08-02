@@ -1543,30 +1543,31 @@ def save_weekly_program(
         ID of saved program
     """
     query = """
-        INSERT INTO weekly_programs 
-        (user_id, week_start_date, program_json, predicted_acwr, predicted_divergence, 
-         generated_at)
-        VALUES (%s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (user_id, week_start_date) 
-        DO UPDATE SET 
+        INSERT INTO weekly_programs
+        (user_id, week_start_date, program_json, predicted_acwr, predicted_divergence,
+         generated_at, generation_type)
+        VALUES (%s, %s, %s, %s, %s, NOW(), %s)
+        ON CONFLICT (user_id, week_start_date)
+        DO UPDATE SET
             program_json = EXCLUDED.program_json,
             predicted_acwr = EXCLUDED.predicted_acwr,
             predicted_divergence = EXCLUDED.predicted_divergence,
-            generated_at = NOW()
+            generated_at = NOW(),
+            generation_type = EXCLUDED.generation_type
         RETURNING id
     """
-    
+
     # Extract predictions
     predicted_metrics = program_data.get('predicted_metrics', {})
     predicted_acwr = predicted_metrics.get('acwr_estimate')
     predicted_divergence = predicted_metrics.get('divergence_estimate')
-    
+
     # Convert program to JSON string
     program_json = json.dumps(program_data)
-    
+
     result = execute_query(
         query,
-        (user_id, week_start, program_json, predicted_acwr, predicted_divergence),
+        (user_id, week_start, program_json, predicted_acwr, predicted_divergence, generation_type),
         fetch=True
     )
     

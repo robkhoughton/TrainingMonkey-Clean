@@ -34,6 +34,7 @@ interface WeeklySynthesisData {
   quality_score?: number | null;
   composite_score?: number | null;
   reflection?: string | null;
+  reflection_week_start?: string | null;
 }
 
 interface WeeklyProgram {
@@ -462,10 +463,10 @@ const WeeklyProgramDisplay: React.FC<WeeklyProgramDisplayProps> = ({ program, on
                 {program.week_summary}
               </p>
 
-              {/* Your reflection — the athlete's reply, only when there's a review to react to */}
-              {weeklySynthesis?.synthesis && (() => {
-                const ws = weeklySynthesis!;
-                const existing = (ws.reflection || '').trim();
+              {/* Your reflection — independent of whether last week's dual-track review has
+                  generated yet (that's a separate Saturday-cron/manual-regenerate process) */}
+              {(() => {
+                const existing = (weeklySynthesis?.reflection || '').trim();
                 const showReadback = existing && !reflectionEditing;
                 return (
                   <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e1e8ed' }}>
