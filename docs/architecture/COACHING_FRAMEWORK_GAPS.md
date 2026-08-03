@@ -64,7 +64,7 @@
 | 9 | Journal adoption / friction reduction | 3 | Post-sync modal: 3 fields, 10 seconds. Addresses 89% non-adoption. Highest practical impact in the project. |
 | 10 | Injury history intake | 1 | New form: body part, injury type, recurrence, last occurrence. New columns on user profile. Inject as standing context block in all prompts. |
 | 11 | Activity gap detection | 2 | SQL logic for gaps >5 days. Inject as pattern flag with return-to-load guidance. |
-| 12 | End-of-week synthesis | 4 | Retrospective weekly narrative. New Saturday cron + prompt + UI card on Coach page. |
+| ~~12~~ | ~~End-of-week synthesis~~ | 4 | **Already shipped** (confirmed 2026-08-03) — `generate_weekly_synthesis()`, Saturday Cloud Scheduler cron, Coach page card. See Layer 4 What Exists. |
 
 ### Tier 4 — Dependent on Earlier Work
 
@@ -193,16 +193,16 @@ New item: **#10b — Race readiness score** (add `distance_miles` to race goals 
 | Athlete Model | ✓ | Persistent ACWR sweet spot, divergence threshold, alignment trend — confidence-gated |
 | Pattern Flags | ✓ | `analyze_pattern_flags()` injected into daily and weekly prompts |
 | Weekly Cron | ✓ | Regenerates recommendations for all active users weekly |
+| Weekly Synthesis | ✓ | `generate_weekly_synthesis()` — dual-track (alignment + productive-work) retrospective narrative, composite score, athlete reflection field. Runs via `/cron/weekly-synthesis` (Saturday evening Cloud Scheduler); manually regenerable via `/api/coach/weekly-synthesis/generate`. Surfaced on the Coach page (`WeeklySynthesisCard` / `WeeklyProgramDisplay.tsx`), fetched from `/api/coach/weekly-synthesis`. Confirmed 2026-08-03 — this entire row was previously listed below as a HIGH-priority gap; it's fully shipped, not missing. |
 
 ### Gaps
 
 | Gap | Priority | Detail |
 |---|---|---|
-| End-of-week synthesis | HIGH | No user-facing retrospective weekly summary. Strategic context in weekly program is a forecast, not a review. Nothing tells the athlete "here's what happened this week, what patterns emerged, what we learned." |
-| Athlete model is data-starved | HIGH | Tracks ACWR sweet spot and alignment metrics but holds no injury history, training background, or intensity balance. Layer 1 and Layer 2 gaps flow directly into this layer. Numerically sophisticated but contextually thin. |
+| Athlete model is data-starved | HIGH | Tracks divergence and alignment metrics but holds no injury history, training background, or intensity balance. Layer 1 and Layer 2 gaps flow directly into this layer. Numerically sophisticated but contextually thin. |
 | No multi-week pattern detection | MEDIUM | 28-day load window exists but no systematic detection of multi-week behavioral patterns (boom-bust cycles, chronic over-intensification, progressive fatigue accumulation across blocks). |
 
-**Key finding:** Strongest layer in the app architecturally. Gap is not structural — the engine is operating with less context than it could. Layer 1 and Layer 2 gaps cascade here. One true structural gap: missing retrospective weekly synthesis.
+**Key finding:** Strongest layer in the app architecturally. Gap is not structural — the engine is operating with less context than it could. Layer 1 and Layer 2 gaps cascade here. (Previously this section named missing retrospective weekly synthesis as the one true structural gap — confirmed 2026-08-03 that it already exists and ships end-to-end; see Weekly Synthesis row above. No remaining structural gap in this layer beyond athlete-model data-starvation.)
 
 ---
 
@@ -303,9 +303,9 @@ This plan assumes all 17 gap items and the race readiness feature (#10b) are bui
 |---|---|---|---|
 | 9 | Journal adoption / friction reduction | Post-sync modal | 3 fields (energy, RPE, pain), 10 seconds. Trigger after Strava sync. Hardest problem in the app — 89% non-adoption rate. Highest practical impact per hour invested. |
 | 10 | Injury history intake | New form + DB schema + prompt injection | Body part, injury type (strain/tendon/stress fracture/etc.), recurrence (yes/no), last occurrence date. New columns on user profile. Inject as standing context block in all prompts: "Injury history: left achilles tendinopathy, recurrent." |
-| 10b | Race readiness score | `coach_recommendations.py` + Coach page | Add distance_miles to race_goals schema (only missing field). Projection: chain ACWR_ceiling × chronic forward weekly until target load miles reached or weeks run out. Use personal ACWR sweet spot if confidence >15%, else 1.3. Display as Coach page card: "On track / Not achievable safely / Already there." |
+| 10b | Race readiness score | `coach_recommendations.py` + Coach page | Shipped as `/api/coach/race-readiness`. Note (2026-08-03): the "personal ACWR sweet spot if confidence >15%" gate described here was never actually true in the implementation and has since been removed as dead/misleading — `acwr_high_risk` is always the style-based default; see CONTEXT.md's ACWR Sweet Spot entry. Display: "On track / Not achievable safely / Already there." |
 | 11 | Activity gap detection | `analyze_pattern_flags()` + SQL | Detect gaps >5 days in activity record. Inject as pattern flag with return-to-load guidance (ACWR ceiling 1.1 for re-entry week). |
-| 12 | End-of-week synthesis | New Saturday cron + new prompt + Coach page card | Retrospective weekly narrative: what happened, patterns that emerged, what the system learned. Distinct from forward-looking weekly program. Coach page card showing current week's synthesis. |
+| ~~12~~ | ~~End-of-week synthesis~~ | Already shipped | **Already shipped** (confirmed 2026-08-03) — this row described a feature that already existed under a different name (`generate_weekly_synthesis()`) at the time this plan was written; it was never actually built as "new," it already ran on the exact Saturday-cron schedule proposed here. |
 
 **Outcome:** Athletes enter injury history once; AI applies it permanently. Journal friction addressed at the highest-leverage point. Race readiness answers the athlete's most important question. Gaps and load returns handled with appropriate caution.
 
@@ -349,7 +349,7 @@ When all 17 items + #10b are built, YTM provides:
 - What the system has learned (ACWR sweet spot, confidence %, alignment trend)
 - Weekly intensity balance chart
 - Race readiness status
-- End-of-week synthesis narrative
+- End-of-week synthesis narrative ✓ (shipped)
 - Transparency metadata from dashboard (not just journal)
 
 **The one remaining behavioral gap — journal adoption (#9) — is addressed structurally, not by adding fields.**

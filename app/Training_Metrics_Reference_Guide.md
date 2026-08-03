@@ -124,10 +124,10 @@ Where:
 This metric converts elevation gain into an equivalent distance load to account for the increased energy cost of uphill running/training:
 
 ```
-Elevation Load Miles = Elevation Gain (feet) / 1000
+Elevation Load Miles = Elevation Gain (feet) / 750
 ```
 
-This conversion factor (1000 ft = 1 mile equivalent) is based on research showing that approximately 100 feet of climbing requires similar energy expenditure to running 0.1 miles on flat ground.
+This is the conversion factor actually used in production (`strava_training_load.py`, the race-readiness route, and the `trail_specifics.md` coaching-context file all divide by 750 — corrected here 2026-08-03; this doc previously stated `/1000`, which no live code path has used since at least September 2025). The origin of the 750 figure itself isn't documented elsewhere in the repo — flagged for Rob to confirm or replace with a cited source.
 
 ### Total Load Miles
 

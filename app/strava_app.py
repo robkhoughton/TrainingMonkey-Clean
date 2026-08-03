@@ -4899,8 +4899,8 @@ def classify_workout_by_hr_zones(activity_list):
     # Classification based on zone distribution
     if zone_percentages[0] > 50:  # Zone 1 dominant
         return 'Easy/Recovery'
-    elif zone_percentages[1] > 50:  # Zone 2 dominant
-        return 'Moderate'
+    elif zone_percentages[1] > 50:  # Zone 2 (Aerobic Base) dominant — easy, not moderate
+        return 'Easy/Recovery'
     elif zone_percentages[2] > 50:  # Zone 3 dominant
         return 'Moderate'
     elif zone_percentages[3] > 30:  # Zone 4 significant
@@ -12243,9 +12243,9 @@ def get_race_readiness():
             status = 'not_achievable'
             message = f"Not achievable safely. Needs {weeks_needed} weeks at ACWR {acwr_ceiling} — only {weeks_available} available. Race target may exceed safe build capacity."
 
-        model = get_athlete_model(user_id)
-        confidence = float(model.get('acwr_sweet_spot_confidence') or 0) if model else 0.0
-
+        # Note: acwr_ceiling_used is always the style-based default — the divergence-only
+        # calibration framework (see apply_athlete_model_to_thresholds) never personalizes
+        # acwr_high_risk, so there is no "calibrated" state for this value to report.
         return jsonify({
             'success': True,
             'readiness': {
@@ -12261,7 +12261,6 @@ def get_race_readiness():
                 'weeks_needed': weeks_needed,
                 'weeks_available': weeks_available,
                 'acwr_ceiling_used': round(acwr_ceiling, 2),
-                'model_calibrated': confidence >= 0.15,
             }
         })
 

@@ -189,7 +189,6 @@ export interface RaceReadiness {
   weeks_needed: number;
   weeks_available: number;
   acwr_ceiling_used: number;
-  model_calibrated: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -546,7 +545,7 @@ export const RaceReadinessCard: React.FC<{ readiness: RaceReadiness | null; dark
               {[
                 { label: 'WEEKS AVAILABLE', value: String(readiness.weeks_available) },
                 { label: 'WEEKS TO PEAK', value: readiness.status === 'already_ready' ? '—' : String(readiness.weeks_needed) },
-                { label: 'EXT ACWR CEILING', value: String(readiness.acwr_ceiling_used), sub: readiness.model_calibrated ? 'calibrated' : 'default' },
+                { label: 'EXT ACWR CEILING', value: String(readiness.acwr_ceiling_used) },
               ].map(m => (
                 <div key={m.label} style={{ backgroundColor: tileBg, padding: '0.4rem 0.75rem', borderTop: `2px solid ${cfg!.accent}` }}>
                   <div style={{ fontSize: '11px', letterSpacing: '0.12em', fontWeight: '700', color: bodyMuted, textTransform: 'uppercase', marginBottom: '0.2rem', textAlign: 'left' }}>

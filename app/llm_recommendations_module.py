@@ -2265,9 +2265,8 @@ Safety constraints (ACWR thresholds, injury flags) still take precedence over bo
                         weekly_context_block += f"""
 AEROBIC TEST (HR DRIFT TEST) — MEASUREMENT SESSION, NOT AN EASY RUN:
 Today is an aerobic-threshold measurement, not a training-stimulus session. Do NOT apply easy-day polarized rules to it.
-Warm up ~10 min, then lock in a constant, comfortable aerobic effort near your current AeT estimate ({_vt1} bpm) and HOLD that effort for the full test.
-Do NOT slow down or reduce effort if HR drifts above {_vt1} bpm — the upward HR drift across AeT is exactly the signal being measured. Capping HR at VT1 invalidates the test.
-Keep external load constant (fixed treadmill speed/grade, or a flat loop) — any mid-test effort adjustment corrupts the reading. HR drift, not black-hole avoidance, is the point today.
+Warm up ~10 min, then build to your current AeT estimate (~{_vt1} bpm). Once you reach it, hold PACE constant (fixed treadmill speed/grade, or a flat loop, or steady output) for the rest of the test.
+From that point, do NOT regulate around a target heart rate and do NOT slow down as HR climbs — let it drift upward on its own. The upward HR drift at constant pace across AeT is exactly the signal being measured; capping or chasing a heart-rate number invalidates the test.
 """
                     elif _hr and _day_intensity == 'low':
                         _vt1 = _hr['vt1_bpm']
@@ -3927,8 +3926,7 @@ def update_athlete_model(user_id, autopsy_data):
     """Update the athlete's persistent model after a successful autopsy.
 
     Uses a weighted moving average (30% new, 70% historical) for alignment.
-    Increments total_autopsies, updates last_autopsy_date, computes recent trend,
-    and increments acwr_sweet_spot_confidence (capped at 1.0).
+    Increments total_autopsies, updates last_autopsy_date, computes recent trend.
 
     Also checks the last 10 autopsies to update divergence_injury_threshold:
     if alignment drops below 5 on days where normalised divergence exceeded a
@@ -3956,19 +3954,14 @@ def update_athlete_model(user_id, autopsy_data):
             existing = {
                 'total_autopsies': 0,
                 'avg_lifetime_alignment': 5.0,
-                'acwr_sweet_spot_confidence': 0.0,
             }
 
         prev_total = existing.get('total_autopsies', 0) or 0
         prev_avg = existing.get('avg_lifetime_alignment', 5.0) or 5.0
-        prev_confidence = existing.get('acwr_sweet_spot_confidence', 0.0) or 0.0
 
         # Weighted moving average: 30% new, 70% historical
         new_avg = (0.7 * prev_avg) + (0.3 * alignment_score)
         new_total = prev_total + 1
-
-        # Confidence increases 0.05 per autopsy, capped at 1.0
-        new_confidence = min(1.0, prev_confidence + 0.05)
 
         # Compute recent_alignment_trend from last 5 autopsies (most recent first)
         recent_scores_rows = execute_query(
@@ -4172,7 +4165,6 @@ def update_athlete_model(user_id, autopsy_data):
         updates = {
             'total_autopsies': new_total,
             'avg_lifetime_alignment': round(new_avg, 3),
-            'acwr_sweet_spot_confidence': round(new_confidence, 4),
             'recent_alignment_trend': trend,
             'early_warning_active': early_warning_active,
             'early_warning_message': early_warning_message,
@@ -4229,7 +4221,7 @@ def update_athlete_model(user_id, autopsy_data):
         upsert_athlete_model(user_id, updates)
         logger.info(
             f"Updated athlete model for user {user_id}: total_autopsies={new_total}, "
-            f"avg_alignment={new_avg:.2f}, confidence={new_confidence:.2f}, trend={trend}"
+            f"avg_alignment={new_avg:.2f}, trend={trend}"
         )
 
     except Exception as e:
