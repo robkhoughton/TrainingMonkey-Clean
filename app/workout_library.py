@@ -356,8 +356,10 @@ AEROBIC_ASSESSMENT_PROTOCOL = {
     "protocol": {
         "warmup": "10 minutes at easy conversational pace (nose breathing). Do not skip.",
         "steady_state": (
-            "60 minutes at constant effort. Lock in a starting HR and hold it. "
-            "Do not adjust effort during the test — HR drift is the signal."
+            "60 minutes total. Once you reach your target starting HR, hold that PACE "
+            "constant for the rest of the test — do not adjust pace to regulate HR. The "
+            "upward HR drift at a held pace is the signal being measured; slowing down to "
+            "keep HR near a number invalidates the test."
         ),
         "terrain_indoor": (
             "Treadmill or StairMaster. Set speed and grade, then do not touch either. "
