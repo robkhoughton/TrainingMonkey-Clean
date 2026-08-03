@@ -17,6 +17,25 @@ tags:
   - type/note
 links:
 ---
+## Protocol
+
+**Landing** happens at `/wrap`, not mid-conversation: at session close, Claude scans for candidate new YTM feature/direction ideas (not bugs, not tasks) and asks a yes/no per candidate before adding anything — nothing lands without an explicit answer. Confirmed items get a one-line bullet in **Landing Strip**, untriaged.
+
+**Triage** happens periodically (ad hoc, or during `/weekly-review`): sweep the Landing Strip, move each item into its matching category below (or create a new category), and tag it with a status:
+
+- `[idea]` — captured, not yet scoped
+- `[planned]` — scoped, not started
+- `[in progress]` — actively being built
+- `[shipped]` — done and deployed
+- `[deferred]` — considered, explicitly not now (note why if non-obvious)
+
+Untagged bullets below the Landing Strip are legacy backlog from before this protocol existed — tag them opportunistically when touched, no need for a retroactive sweep.
+
+## Landing Strip
+
+*(new ideas land here — untriaged)*
+
+---
 - **Loading Page**
 - Create new landing page that separates current status from history - move away from spreadsheet model
 - provide macro/meso/micro context for current status landing page
