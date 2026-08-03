@@ -38,6 +38,9 @@ links:
 - allow user define period, 7-day vs 10-day vs 12-day
 - allow user to define Goal other than A race, such as fitness, weight loss, etc.
 - is confidence scoring simply an average of autopsies and journal entries
+- self-reported HR sensor type (chest strap > armband > wrist optical) as a model confidence input — Strava and intervals.icu only expose the recording device (watch), not the paired HR sensor, so this can't be inferred per-activity; would need a one-time profile field feeding the HR Calibration confidence component; could also surface as a rubric item ("pair a chest strap") for users to improve their own confidence score
+- **Dynamic AeT**
+- use pace/drift to measure progress
 - **intervals.icu marketing**
 - highlight the fact that everyone is relying exclusively on HR metrics, while ignoring the most important data from your watch
 - **Nutrition**

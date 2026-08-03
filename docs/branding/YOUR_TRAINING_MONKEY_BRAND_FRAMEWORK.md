@@ -95,8 +95,9 @@ This philosophy distinguishes YTM from every other training platform. Others opt
 **Category:** Training Load Intelligence Platform
 
 **We Are:**
-- The only platform with normalized divergence analysis
-- Trail-specific (elevation-aware calculations)
+- The only platform with macro-aerobic decoupling analysis (normalized divergence) — reading external work against internal cost at the load level, not just eyeballing one run's pace-to-HR drift
+- Trail-specific (elevation-aware, vert-accounted load calculations)
+- Built on a dynamic aerobic threshold — your easy ceiling shifts daily with HRV-driven readiness instead of sitting fixed all season, and the same drift-test protocol that calibrates it doubles as a season-long fitness progress read
 - Patent-pending technology
 - Injury prevention focused
 
@@ -172,7 +173,7 @@ Dark: #15803D (rgb 21, 128, 61)
 Light: #DCFCE7 (rgb 220, 252, 231)
 Background: #F0FDF4 (rgb 240, 253, 244)
 ```
-**Usage:** Success messages, positive metrics, "Sweet Spot" indicators, completion states
+**Usage:** Success messages, positive metrics, completion states
 
 **Interactive Purple Gradient**
 ```
@@ -458,12 +459,17 @@ Respectful ←————5——→ Irreverent
    - "Vert counts. Our algorithms know it."
    - "Elevation-aware load calculations for mountain athletes"
 
-3. **Actionable Daily Guidance**
+3. **A Threshold That Moves With You**
+   - "Your easy ceiling isn't a number set once and forgotten — it shifts daily with how recovered you actually are"
+   - "Hold pace, watch the drift: the same test that calibrates your zones tracks your fitness over the season"
+   - "HRV-driven aerobic threshold, recalibrated every morning"
+
+4. **Actionable Daily Guidance**
    - "AI coaching recommendations, every single day"
    - "Train with confidence or rest with purpose"
    - "Know exactly what to do today"
 
-4. **Patent-Pending Technology**
+5. **Patent-Pending Technology**
    - "Normalized divergence analysis - found nowhere else"
    - "The training status your Garmin can't calculate"
    - "Proprietary algorithm backed by sports science"
@@ -594,7 +600,6 @@ Maintain clear space equal to the height of the "YTM" cap on all sides
 **Success Green:**
 - Form completion
 - Successful data sync
-- "Sweet Spot" training zone
 - Positive trend indicators
 - Welcome messages
 
@@ -1212,10 +1217,9 @@ Built by runners, for runners
 2. "The Problem with Traditional ACWR for Trail Runners"
 3. "How to Prevent Overtraining: A Data-Driven Approach"
 4. "Why Vertical Gain Belongs in Your Training Load Calculations"
-5. "Understanding the Sweet Spot vs. Overtraining Zone"
-6. "Case Study: How Divergence Analysis Prevented [Athlete]'s Injury"
-7. "The Science Behind Our Patent-Pending Algorithm"
-8. "Garmin Training Status vs. Divergence Analysis: What's the Difference?"
+5. "Case Study: How Divergence Analysis Prevented [Athlete]'s Injury"
+6. "The Science Behind Our Patent-Pending Algorithm"
+7. "Garmin Training Status vs. Divergence Analysis: What's the Difference?"
 
 ---
 

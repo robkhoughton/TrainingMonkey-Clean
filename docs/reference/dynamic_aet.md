@@ -64,6 +64,21 @@ strain it truly is. This runs quietly alongside the existing load metric for now
 take over your fatigue/overtraining signal only after it has proven itself against your own
 history. Nothing about your current numbers changes until that switch is made deliberately.
 
+## The test itself is also your progress tracker
+
+Establishing your baseline AeT (the HR drift test) has a simple protocol: warm up, build to
+your current AeT estimate, then hold **pace** — not effort pegged to a heart-rate number —
+constant for the rest of the test and let your heart rate drift upward on its own. The drift
+at a held pace *is* the measurement; slowing down to keep HR near a target invalidates it.
+
+That same drift is also the cleanest read you have on whether your aerobic engine is actually
+improving. Repeat the test periodically at the same pace and course: less drift for the same
+sustained pace — or a higher pace producing the same drift — means your aerobic base has
+gotten stronger. More drift at the same pace is a real signal too, whether that's detraining,
+accumulated fatigue, or just time to retest and recalibrate your baseline. The Monkey uses the
+result to reset your baseline AeT either way; you can read the trend the same way a coach
+reads a repeated field test.
+
 ## A note on novelty
 
 Treating AeT as a daily, HRV-driven value that feeds *both* your zone feedback *and* your
