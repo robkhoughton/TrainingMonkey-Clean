@@ -1603,7 +1603,8 @@ def apply_revision(user_id, week_start):
     as acknowledgement; actual plan regeneration is a future enhancement.
     """
     try:
-        today = str(datetime.now().date())
+        from timezone_utils import get_user_current_date
+        today = str(get_user_current_date(user_id))
         approval_entry = json.dumps({
             "date": today,
             "note": "athlete approved revision proposal"
@@ -1633,7 +1634,8 @@ def apply_revision(user_id, week_start):
 def dismiss_revision(user_id, week_start):
     """Clear revision_pending and proposal without applying. Appends a note to deviation_log."""
     try:
-        today = str(datetime.now().date())
+        from timezone_utils import get_user_current_date
+        today = str(get_user_current_date(user_id))
         dismissal_entry = json.dumps({
             "date": today,
             "note": "athlete elected to keep original plan"

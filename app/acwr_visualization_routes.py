@@ -301,10 +301,11 @@ def get_activities_data():
 
         # Fetch real activities data from database
         from datetime import datetime, timedelta
-        
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+
+        end_date = get_user_current_date(user_id)
         start_date = end_date - timedelta(days=days_back)
-        
+
         # OPTIMIZATION: Single query to get ALL needed activities data
         # Include total_load_miles for complete ACWR calculations
         # Extend date range to include chronic period data
@@ -517,10 +518,11 @@ def get_multi_config_data():
         
         import db_utils
         from datetime import datetime, timedelta
-        
-        end_date = datetime.now().date()
+        from timezone_utils import get_user_current_date
+
+        end_date = get_user_current_date(user_id)
         start_date = end_date - timedelta(days=days_back)
-        
+
         # OPTIMIZATION: Single query to get ALL needed activities data
         # Use the largest chronic period (56 days) to ensure we have all data needed
         max_chronic_period = max(config['chronic_period_days'] for config in preset_configs)
@@ -706,12 +708,13 @@ def generate_sensitivity():
         
         # Use provided date or default to today
         if analysis_date is None:
-            analysis_date = datetime.now().date().strftime('%Y-%m-%d')
-        
+            from timezone_utils import get_user_current_date
+            analysis_date = get_user_current_date(user_id).strftime('%Y-%m-%d')
+
         # OPTIMIZATION: Single query approach like other fast charts
         import db_utils
         from datetime import datetime, timedelta
-        
+
         analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
         
         # Get enough data for the largest chronic period (84 days)
