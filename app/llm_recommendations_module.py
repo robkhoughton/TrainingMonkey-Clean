@@ -1994,20 +1994,15 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
         if parts:
             readiness_context = "\n### MORNING READINESS\n" + "\n".join(f"- {p}" for p in parts) + "\n"
 
-        # Readiness state synthesis — ANS engine drives HRV/RHR signals
-        _rs = compute_readiness_state(
-            readiness_row=row,
-            hrv_baseline=None,
-            hrv_baseline_count=0,
-            rhr_baseline=None,
-            rhr_baseline_count=0,
-            athlete_model=_cached_athlete_model,
-            ans_result=_ans,
-        )
+        # Readiness state — sourced from the ANS engine (readiness_engine.get_ans_readiness),
+        # the same classifier readiness.md's YELLOW_SYMPATHETIC/YELLOW_PARASYMPATHETIC/RED
+        # vocabulary is written against. Do not substitute compute_readiness_state() here —
+        # it's a separate, coarser GREEN/AMBER/RED classifier kept only for the
+        # confidence/component_flags fields the readiness API endpoint still uses.
         if readiness_context:
-            readiness_context += f"**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
+            readiness_context += f"**READINESS STATE: {_ans['state']}** — {_ans['narrative']}\n"
         else:
-            readiness_context = f"\n### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}\n"
+            readiness_context = f"\n### MORNING READINESS\n**READINESS STATE: {_ans['state']}** — {_ans['narrative']}\n"
 
     # Yesterday's RPE + session type — contextualises today's readiness signals (low HRV from
     # hard session vs low HRV from non-training stress are different coaching responses)
@@ -5494,37 +5489,20 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                         )
 
                 if r_parts:
-                    _athlete_model_raw = get_athlete_model(user_id)
-                    _rs = compute_readiness_state(
-                        readiness_row=row,
-                        hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
-                        hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
-                        rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
-                        rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
-                        athlete_model=_athlete_model_raw,
-                        ans_result=_ans,
-                    )
-                    _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
+                    # Readiness state — from the ANS engine (get_ans_readiness), the same
+                    # classifier readiness.md's state vocabulary is written against. Not
+                    # compute_readiness_state(), which is a separate, coarser classifier.
+                    _agentic_readiness_state = _ans.get('state', 'UNKNOWN')
                     static_context_parts.append(
                         "### MORNING READINESS\n" +
                         "\n".join(f"- {p}" for p in r_parts) +
-                        f"\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}"
+                        f"\n**READINESS STATE: {_ans['state']}** — {_ans['narrative']}"
                     )
                 elif hrv_baseline_data or rhr_baseline_data:
-                    # No wellness fields today but baselines exist — compute low-confidence state
-                    _athlete_model_raw = get_athlete_model(user_id)
-                    _rs = compute_readiness_state(
-                        readiness_row={},
-                        hrv_baseline=hrv_baseline_data[0]['hrv_baseline'] if hrv_baseline_data and hrv_baseline_data[0] else None,
-                        hrv_baseline_count=hrv_baseline_data[0]['hrv_count'] if hrv_baseline_data and hrv_baseline_data[0] else 0,
-                        rhr_baseline=rhr_baseline_data[0]['rhr_baseline'] if rhr_baseline_data and rhr_baseline_data[0] else None,
-                        rhr_baseline_count=rhr_baseline_data[0]['rhr_count'] if rhr_baseline_data and rhr_baseline_data[0] else 0,
-                        athlete_model=_athlete_model_raw,
-                        ans_result=_ans,
-                    )
-                    _agentic_readiness_state = _rs.get('state', 'UNKNOWN')
+                    # No wellness fields today but baselines exist — state still comes from _ans
+                    _agentic_readiness_state = _ans.get('state', 'UNKNOWN')
                     static_context_parts.append(
-                        f"### MORNING READINESS\n**READINESS STATE: {_rs['state']}** — {_rs['narrative']}"
+                        f"### MORNING READINESS\n**READINESS STATE: {_ans['state']}** — {_ans['narrative']}"
                     )
         except Exception as readiness_err:
             logger.warning(f"[AGENTIC] Could not fetch morning readiness for user {user_id}: {readiness_err}")
