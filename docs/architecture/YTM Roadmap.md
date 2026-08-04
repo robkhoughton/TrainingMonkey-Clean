@@ -19,7 +19,12 @@ links:
 ---
 ## Protocol
 
-**Landing** happens at `/wrap`, not mid-conversation: at session close, Claude scans for candidate new YTM feature/direction ideas (not bugs, not tasks) and asks a yes/no per candidate before adding anything — nothing lands without an explicit answer. Confirmed items get a one-line bullet in **Landing Strip**, untriaged.
+This roadmap follows the vault-wide Idea Capture Protocol (`C:\Users\robho\Documents\VAULT\CLAUDE.md`) — two triggers land into the Landing Strip:
+
+1. **Rob-triggered**: Rob says "capture this" (or similar) about a YTM idea, at any time, in any session — append immediately, no confirmation needed.
+2. **LLM-reviewed**: at `/wrap` (session close), Claude scans for candidate new YTM feature/direction ideas (not bugs, not tasks), checks them against the full roadmap file, and asks a yes/no per candidate before adding anything — nothing lands without an explicit answer.
+
+Either route lands a one-line bullet in **Landing Strip**, untriaged.
 
 **Triage** happens periodically (ad hoc, or during `/weekly-review`): sweep the Landing Strip, move each item into its matching category below (or create a new category), and tag it with a status:
 
@@ -34,6 +39,9 @@ Untagged bullets below the Landing Strip are legacy backlog from before this pro
 ## Landing Strip
 
 *(new ideas land here — untriaged)*
+
+- Update FAQ & Guide pages to explain model confidence and coaching philosophy, using Training Metrics, Athlete Model, and Model Confidence
+- Add hill sprints and LIFTMOR-M as workout types
 
 ---
 - **Loading Page**
