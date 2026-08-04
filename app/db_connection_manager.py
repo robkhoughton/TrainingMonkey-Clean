@@ -41,30 +41,50 @@ class DatabaseConnectionManager:
         """Initialize connection pool with PostgreSQL-specific settings"""
         if self.pool is None:
             try:
-                # Parse connection string to avoid URL parsing issues
                 from urllib.parse import urlparse
+                import re
                 parsed = urlparse(dsn)
-                
-                # Extract connection parameters
-                host = parsed.hostname
-                port = parsed.port or 5432
-                database = parsed.path.lstrip('/')  # Remove leading slash
-                user = parsed.username
-                password = parsed.password
-                
+
+                # Cloud SQL socket path — same parsing as db_utils.get_db_connection()
+                # Format: postgresql://user:pass@host/db?host=/cloudsql/project:region:instance
+                # urlparse() doesn't understand the ?host= socket-dir param, so it returns no
+                # hostname for this format; that made psycopg2 fall back to its compiled-in
+                # local socket default (/var/run/postgresql/) instead of the Cloud SQL socket.
+                if '/cloudsql/' in dsn:
+                    pattern = r'postgresql://([^:]+):([^@]+)@[^/]*/([^?]+)\?host=([^&]+)'
+                    match = re.match(pattern, dsn)
+                    if match:
+                        user, password, database, host = match.groups()
+                        port = None
+                    else:
+                        host = parsed.hostname
+                        port = parsed.port or 5432
+                        database = parsed.path.lstrip('/')
+                        user = parsed.username
+                        password = parsed.password
+                else:
+                    host = parsed.hostname
+                    port = parsed.port or 5432
+                    database = parsed.path.lstrip('/')  # Remove leading slash
+                    user = parsed.username
+                    password = parsed.password
+
                 # Use individual parameters instead of DSN string
                 # This avoids issues with special characters in database names
-                self.pool = psycopg2.pool.ThreadedConnectionPool(
+                pool_kwargs = dict(
                     minconn=minconn,
                     maxconn=maxconn,
                     host=host,
-                    port=port,
                     database=database,
                     user=user,
                     password=password
                 )
+                if port:
+                    pool_kwargs['port'] = port
+
+                self.pool = psycopg2.pool.ThreadedConnectionPool(**pool_kwargs)
                 self.logger.info(f"Connection pool initialized: {minconn}-{maxconn} connections")
-                self.logger.info(f"Database: {database} on {host}:{port}")
+                self.logger.info(f"Database: {database} on {host}" + (f":{port}" if port else ""))
                 return True
             except Exception as e:
                 self.logger.error(f"Failed to initialize connection pool: {str(e)}")
