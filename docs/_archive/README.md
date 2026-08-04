@@ -10,10 +10,10 @@ To restore any file: `git mv docs/_archive/<path> docs/<path>`.
 ## What was archived and why
 
 - **Root fix/status docs (frozen 2025-12-12)** — one-off records for work long since shipped:
-  timezone fix, ESLint cleanup, email-verification debugging, compliance audit, chatbot plan,
-  chat-context map, connection-pool note, project status review, quick reference, Strava OAuth
-  technical guide, test organization, UX testing prompt, user-flow diagram, wireframe, app_README,
-  local mock development, testing/QA guide.
+  timezone fix, ESLint cleanup, compliance audit, chatbot plan, chat-context map, connection-pool
+  note, project status review, quick reference, Strava OAuth technical guide, test organization,
+  UX testing prompt, user-flow diagram, wireframe, app_README, local mock development, testing/QA
+  guide.
 - **`JournalLLM/`** — Nov–Dec 2025 autopsy/journal LLM fix summaries and deployment checklists.
 - **`UserProgression/`** — shipped user-progression PRD, action plan, implementation summary.
 - **`features/`** — historical feature implementation/deployment records (TRIMP enhancement,
@@ -22,7 +22,7 @@ To restore any file: `git mv docs/_archive/<path> docs/<path>`.
 - **`database/`** — optimization plans/reports and cleanup guides (the live access/security/
   migration/schema/SQL guides stayed in `docs/database/`).
 - **`deployment/`** — email-enforcement rollout, `email_verification_future/` (dormant feature
-  incl. `.py` scripts), Google Analytics, SEO, Lighthouse, performance analysis, SMTP setup
+  incl. `.py` scripts), Google Analytics, SEO, Lighthouse, performance analysis
   (the live deployment checklist / dev / environment / API-key / static-files guides stayed).
 - **Shipped design & review docs** — `design_dynamic_aet_*`, `design_lt1_step_test_*`,
   `code_review_2026-06-09`, `refactor_plan_race_context_*` (the features they described are
@@ -35,3 +35,14 @@ To restore any file: `git mv docs/_archive/<path> docs/<path>`.
 ## Hard-deleted (not archived)
 - `docs/README.md` (old) — upstream "AI Dev Tasks" boilerplate, unrelated to YTM; replaced with a real index.
 - `docs/Review and compare @New_User_Accoun.txt` — a pasted working prompt, not documentation.
+- `deployment/SMTP_SETUP_ZOHO.md`, `deployment/SMTP_SETUP_INSTRUCTIONS.md` (2026-08-03) — fully
+  superseded setup guides for dead SMTP providers (Zoho, and an obsolete Gmail variant that used
+  the wrong service name and a plaintext `--set-env-vars` pattern for the secret). Zero unique
+  value once the SMTP provider moved on; the current setup lives in the restored guide below.
+
+## Restored to the live tree
+- `EMAIL_VERIFICATION_DEBUGGING_GUIDE.md` → `docs/deployment/` (2026-08-03) — archived 2025-12-12
+  as a frozen one-off record, but its architecture/routes/DB-query/troubleshooting content is
+  still accurate and still the only reference for a live production system. Corrected throughout
+  for the SMTP provider history (Zoho → SendGrid → Gmail, current) and re-promoted to live docs
+  rather than left stale in `_archive`.

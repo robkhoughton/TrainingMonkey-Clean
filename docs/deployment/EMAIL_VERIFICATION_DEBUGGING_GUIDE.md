@@ -1,7 +1,13 @@
 # Email Verification System - Debugging Guide
 
-**Last Updated:** December 10, 2025
+**Last Updated:** August 3, 2026
 **System Status:** ✅ Working (Production)
+
+**SMTP provider history:** Zoho (original, this guide's original version) → blocked outbound
+relay from Cloud Run's IP ranges (Zoho only trusts known office/residential IPs, not shared
+datacenter IPs) → SendGrid (April 2026 trial) → **Gmail SMTP (current, since July 2026)**.
+Env vars and troubleshooting below are updated for the current Gmail setup; the module
+architecture, routes, and DB queries are provider-agnostic and unchanged.
 
 ---
 
@@ -22,7 +28,7 @@
 The email verification system requires new users to verify their email addresses before accessing the dashboard. It integrates with:
 - **Strava OAuth** - Captures real email addresses during signup
 - **Email Verification Module** - Sends verification emails with secure tokens
-- **SMTP (Zoho)** - Sends emails via rob@yourtrainingmonkey.com
+- **SMTP (Gmail)** - Sends emails via rob.houghton.ca@gmail.com
 - **PostgreSQL** - Stores verification tokens and status
 
 **Key Files:**
@@ -95,11 +101,11 @@ app/email_verification/
 **Cloud Run Environment Variables:**
 
 ```bash
-SMTP_HOST=smtp.zoho.com
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=rob@yourtrainingmonkey.com
-SMTP_PASSWORD=<YOUR_ZOHO_APP_PASSWORD>
-SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com  # MUST match SMTP_USER for Zoho
+SMTP_USER=rob.houghton.ca@gmail.com
+SMTP_PASSWORD=<GMAIL_APP_PASSWORD>  # stored in Secret Manager as `smtp-password`, never plaintext
+SMTP_FROM_EMAIL=rob.houghton.ca@gmail.com  # MUST match SMTP_USER for Gmail
 APP_BASE_URL=https://yourtrainingmonkey.com
 ```
 
@@ -119,15 +125,22 @@ gcloud run services describe strava-training-personal \
 
 ### How to Update Settings
 
+**Always use `--update-env-vars` / `--update-secrets` (merge), never `--set-env-vars` /
+`--set-secrets` (replace-all).** The `--set-*` flags wipe every binding not explicitly
+listed — this exact mistake caused the July 3, 2026 production outage (an ad-hoc
+`--set-secrets smtp-password` silently dropped `DATABASE_URL` and four other secrets,
+crash-looping the service). `SMTP_PASSWORD` is a Secret Manager reference
+(`smtp-password:latest`), not a plaintext env var.
+
 ```bash
-# Update single variable
+# Update a plain env var
 gcloud run services update strava-training-personal \
-  --update-env-vars="SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com" \
+  --update-env-vars="SMTP_FROM_EMAIL=rob.houghton.ca@gmail.com" \
   --region=us-central1
 
-# Update multiple variables
+# Update the SMTP secret (merge — preserves every other secret binding)
 gcloud run services update strava-training-personal \
-  --set-env-vars="SMTP_HOST=smtp.zoho.com,SMTP_PORT=587,SMTP_USER=rob@yourtrainingmonkey.com,SMTP_PASSWORD=<YOUR_ZOHO_APP_PASSWORD>,SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com,APP_BASE_URL=https://yourtrainingmonkey.com" \
+  --update-secrets="SMTP_PASSWORD=smtp-password:latest" \
   --region=us-central1
 ```
 
@@ -156,13 +169,18 @@ gcloud run services update strava-training-personal \
 
 ---
 
-### Issue 2: "Sender is not allowed to relay emails"
+### Issue 2: "Sender is not allowed to relay emails" (historical — Zoho only)
 
 **Symptom:** Error in logs: `SMTP error sending to ...: (553, b'Sender is not allowed to relay emails')`
 
-**Cause:** Zoho requires SMTP_FROM_EMAIL to match SMTP_USER for authentication.
+**Cause:** This was a Zoho-specific failure (SMTP_FROM_EMAIL must match SMTP_USER for
+Zoho auth) — kept here for history since old logs may still show it. Not applicable to
+the current Gmail setup, which failed differently: Zoho's real production blocker was
+that it refuses outbound relay from shared datacenter IP ranges (e.g. Cloud Run), which
+doesn't surface as this error — it worked in local testing and failed silently in prod.
+That's the actual reason the provider moved off Zoho, not this relay error.
 
-**Solution:**
+**Solution (if ever back on Zoho):**
 ```bash
 gcloud run services update strava-training-personal \
   --update-env-vars="SMTP_FROM_EMAIL=rob@yourtrainingmonkey.com" \
@@ -357,7 +375,7 @@ gcloud run services describe strava-training-personal \
 - SMTP_PORT
 - SMTP_USER
 - SMTP_PASSWORD
-- SMTP_FROM_EMAIL (must equal SMTP_USER for Zoho)
+- SMTP_FROM_EMAIL (must equal SMTP_USER for Gmail)
 - APP_BASE_URL
 
 ---
@@ -571,8 +589,8 @@ WHERE id = 105;
 **URL:** https://strava-training-personal-382535371225.us-central1.run.app
 **Domain:** https://yourtrainingmonkey.com
 **Database:** train-d (PostgreSQL)
-**SMTP Provider:** Zoho Mail
-**SMTP User:** rob@yourtrainingmonkey.com
+**SMTP Provider:** Gmail
+**SMTP User:** rob.houghton.ca@gmail.com
 
 ### Key Commands
 
@@ -616,14 +634,24 @@ print(result)
 - ✅ Added transparency to welcome page (shows athlete ID and email)
 - ✅ System tested and working in production
 
+**April 2026:**
+- ⚠️ Root-caused Zoho's real production failure: outbound SMTP relay blocked from Cloud Run's
+  IP ranges (Zoho only trusts known office/residential IPs) — worked locally, failed in prod
+- Migrated to SendGrid (trial); domain authenticated via DNS records
+
+**July 2026:**
+- SendGrid trial expired; migrated to **Gmail SMTP** (current)
+- App password moved to Secret Manager (`smtp-password`), wired via `--update-secrets`
+- Live send test passed in production; verified end-to-end (send → click → verify → login)
+
 ---
 
 ## Support Contacts
 
 **Developer:** Rob Houghton
-**Email:** rob@yourtrainingmonkey.com
+**Email:** rob.houghton.ca@gmail.com
 **Strava Test Account:** Athlete ID 196816006
-**SMTP Provider:** Zoho Mail (rob@yourtrainingmonkey.com)
+**SMTP Provider:** Gmail (rob.houghton.ca@gmail.com)
 
 ---
 
