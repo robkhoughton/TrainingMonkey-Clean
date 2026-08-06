@@ -173,6 +173,20 @@ For long easy sessions: duration accumulates load. A 3-hour Zone 2 run that felt
 | 80    | Unacceptable | Get off your feet and closely monitor conditions tomorrow — consider a rest day.                     |
 | 100   | Dangerous    | Halt your workouts and revisit the plan. Something is wrong.                                         |
 
+### Body Weight Trend (RED-S / Underfueling Screen)
+
+**Source:** `journal_entries.weight` (kg, synced daily from intervals.icu's wellness endpoint — see `intervals_icu_sync.py`), converted to lbs for display. Computed as a rolling 7-day average now vs. a 7-day average ending 28 days ago (`weight_change_pct_28d` in `unified_metrics_service.py`). Requires at least 3 readings in each window; otherwise the signal is `None` and no flag fires — a single noisy reading (hydration, GI content, scale variance) must never trigger a safety action.
+
+**Threshold: -3.0% over 28 days** (`UNDERFUELING_WEIGHT_DROP_PCT` in `llm_recommendations_module.py`). Chosen more sensitive than the commonly-cited clinical RED-S screening line (~5% body-mass loss in a month), because it only acts in combination with elevated ACWR below — that combination suppresses false positives from ordinary fluctuation that a bare weight-drop threshold would catch. Confirmed with Rob 2026-08-05; do not change without re-confirming — this is a deterministic safety input, not a value to re-derive or tune casually.
+
+Two distinct cases, because a weight drop's meaning depends on whether training load explains it:
+
+| Case | Condition | Category | Action |
+|---|---|---|---|
+| **RED-S / underfueling** | Weight drop ≤ -3.0% over 28d **and** external or internal ACWR > high-risk threshold | `underfueling_risk` | REDUCE floor — training load is a plausible driver (low energy availability), so today's session is genuinely cut. Fracture/injury-risk relevant, not just a fueling note. |
+| **Unexplained weight loss** | Weight drop ≤ -3.0% over 28d **without** elevated ACWR | *(no category change — floor unaffected)* | The drop isn't training-load-driven, so the training action is NOT gated on it. Stated plainly in the daily recommendation with a plain suggestion to mention it to a doctor. This case is arguably more concerning medically than the load-linked one — training-load apps aren't positioned to diagnose it, so the response is visibility, not a training decision. |
+
+`underfueling_risk` is checked after `mandatory_rest`/`overtraining_risk` (the most acute safety cases) and before the generic `high_acwr_risk`, since it's a more specific finding when both conditions hold — see `derive_assessment_category()`.
 
 ## Optimal Ranges for Health and Performance
 
@@ -182,6 +196,7 @@ For long easy sessions: duration accumulates load. A 3-hour Zone 2 run that felt
 | ACWR (Internal) | 0.6-0.8 | 0.8-1.3        | 1.3-1.5        | >1.5    |
 | Normalized Divergence | +0.05 to +0.15 | -0.05 to +0.05 | -0.15 to -0.05 | <-0.15 |
 | Days Since Rest |   | 4-5 | 6-7 | >7 |
+| Weight Change (28d) | any (if unloaded) | -2% to +2% | -3% to -2% | ≤-3% (see RED-S screen above) |
 
 ## Pattern Recognition
 

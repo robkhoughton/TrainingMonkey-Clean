@@ -38,9 +38,19 @@ interface TrainingDataRow {
   name: string;
   type: string;
   weight_lbs?: number;
+  avg_temp_f?: number | null;
   perceived_effort?: number;
   feeling_score?: number;
   notes?: string;
+}
+
+interface WeightHistoryRow {
+  date: string;
+  weight_lbs: number;
+}
+
+interface ProcessedWeightRow extends WeightHistoryRow {
+  weight_7d_avg: number | null;
 }
 
 interface ProcessedDataRow extends TrainingDataRow {
@@ -126,6 +136,8 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [hasRowingData, setHasRowingData] = useState(false);
   const [hasBackcountrySkiingData, setHasBackcountrySkiingData] = useState(false);
   const [hasStrengthData, setHasStrengthData] = useState(false);
+  const [weightHistory, setWeightHistory] = useState<WeightHistoryRow[]>([]);
+  const [weightChangePct28d, setWeightChangePct28d] = useState<number | null>(null);
 
   // FIXED: Proper frozen tooltip state management
   const [frozenTooltipData, setFrozenTooltipData] = useState<{
@@ -469,6 +481,35 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     });
   };
 
+  // Rolling 7-day average computed over the full fetched history first (so points near
+  // the start of the visible window still average over real prior readings), then
+  // sliced to the active dateRange — same anchor/cutoff logic as filteredData().
+  const filteredWeightData = (): ProcessedWeightRow[] => {
+    if (weightHistory.length === 0) return [];
+
+    const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
+    const withAvg: ProcessedWeightRow[] = sorted.map((row, i) => {
+      const windowStart = new Date(`${row.date}T12:00:00Z`);
+      windowStart.setDate(windowStart.getDate() - 6);
+      const windowStartStr = windowStart.toISOString().split('T')[0];
+      const windowRows = sorted.slice(0, i + 1).filter(r => r.date >= windowStartStr);
+      const avg = windowRows.reduce((sum, r) => sum + r.weight_lbs, 0) / windowRows.length;
+      return { ...row, weight_7d_avg: avg };
+    });
+
+    const days = parseInt(dateRange, 10);
+    const allDates = data.map(item => item.date).sort();
+    const anchorDate = userToday ?? allDates[allDates.length - 1] ?? sorted[sorted.length - 1]?.date;
+    if (!anchorDate) return withAvg;
+
+    const anchorDateObj = new Date(`${anchorDate}T12:00:00Z`);
+    const cutoffDateObj = new Date(anchorDateObj);
+    cutoffDateObj.setDate(cutoffDateObj.getDate() - days + 1);
+    const cutoffDate = cutoffDateObj.toISOString().split('T')[0];
+
+    return withAvg.filter(row => row.date >= cutoffDate && row.date <= anchorDate);
+  };
+
   // COMMENTED OUT: Dead code - LLM recommendations are fetched via /api/journal instead
   // These functions were never wired to UI. Delete after verifying Journal page works.
   /*
@@ -666,6 +707,27 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+  // Body weight trend — same 90-day window as training-data; filteredWeightData()
+  // slices to the active dateRange, matching the filteredData() pattern above.
+  useEffect(() => {
+    const loadWeightHistory = async () => {
+      try {
+        const response = await fetch(`/api/weight-history?range=90&t=${new Date().getTime()}`);
+        if (!response.ok) return; // Gracefully handle if endpoint unavailable
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          setWeightHistory(result.data);
+          setWeightChangePct28d(
+            typeof result.weight_change_pct_28d === 'number' ? result.weight_change_pct_28d : null
+          );
+        }
+      } catch (e) {
+        console.error('Failed to fetch weight history:', e);
+      }
+    };
+    loadWeightHistory();
+  }, []);
+
   // Fetch dashboard configuration separately for display purposes only
   // This shows users what calculation method is being used (custom vs default)
   // Note: ACWR values come from database (pre-calculated), this is just for explanatory text
@@ -743,6 +805,8 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
   // Prepare data for charts
   const filtered = filteredData();
+  const filteredWeight = filteredWeightData();
+  const hasTempData = filtered.some(row => row.avg_temp_f !== null && row.avg_temp_f !== undefined);
 
   // No data state
   if (filtered.length === 0) {
@@ -1209,8 +1273,16 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 padding={{ left: 10, right: 10 }}
               />
               <YAxis
+                yAxisId="trimp"
                 label={{ value: 'TRIMP', angle: -90, position: 'insideLeft' }}
               />
+              {hasTempData && (
+                <YAxis
+                  yAxisId="temp"
+                  orientation="right"
+                  label={{ value: 'Avg Temp (°F)', angle: 90, position: 'insideRight' }}
+                />
+              )}
               <Tooltip
                 content={<CustomTooltip />}
                 cursor={{ strokeDasharray: '3 3' }}
@@ -1220,6 +1292,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
               {/* Daily TRIMP - Bars */}
               <Bar
+                yAxisId="trimp"
                 dataKey="trimp"
                 name="Daily TRIMP"
                 fill={colors.trimp}
@@ -1230,6 +1303,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
 
               {/* FIXED: 7-Day Average TRIMP - Line with proper data handling */}
               <Line
+                yAxisId="trimp"
                 type="monotone"
                 dataKey="seven_day_avg_trimp"
                 stroke={colors.warning}
@@ -1240,11 +1314,28 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                 isAnimationActive={false}
                 connectNulls={false}
               />
+
+              {/* Ambient temp markers — flags hot-day sessions where TRIMP may be
+                  heat-inflated (heat raises HR/TRIMP for the same external work).
+                  No connecting line: each activity's temp reading stands alone. */}
+              {hasTempData && (
+                <Line
+                  yAxisId="temp"
+                  dataKey="avg_temp_f"
+                  name="Avg Temp (°F)"
+                  stroke="none"
+                  dot={{ fill: colors.danger, r: 4 }}
+                  activeDot={{ r: 6 }}
+                  isAnimationActive={false}
+                  connectNulls={false}
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
         <p className={styles.chartNote}>
           Internal training stress (TRIMP) with 7-day moving average trend line.
+          {hasTempData && ' Red markers show device-reported ambient temperature on days a sensor was available — elevated TRIMP on a hot day may reflect heat strain rather than added training load.'}
         </p>
       </div>
 
@@ -1476,6 +1567,68 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           External Work: stacked bar shows total daily load from all sports (running-mile equivalents), with 7-day moving average. Each color represents a different sport.
         </p>
       </div>
+
+      {/* Body Weight Chart — daily reading + rolling 7-day average */}
+      {filteredWeight.length > 0 && (
+        <div className={styles.chartContainer}>
+          <h2 className={styles.chartTitle}>Body Weight</h2>
+          <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
+            <ResponsiveContainer width="100%" height="100%" key={`weight-${renderKey}`}>
+              <ComposedChart
+                data={filteredWeight}
+                margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  interval={chartDimensions.majorTickInterval}
+                  tickFormatter={formatXAxis}
+                  padding={{ left: 10, right: 10 }}
+                />
+                <YAxis
+                  domain={['dataMin - 2', 'dataMax + 2']}
+                  label={{ value: 'Weight (lbs)', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip
+                  labelFormatter={(label: string) => formatTooltipDate(label)}
+                  formatter={(value: number, name: string) => [`${value.toFixed(1)} lbs`, name]}
+                />
+                <Legend />
+
+                <Line
+                  type="monotone"
+                  dataKey="weight_lbs"
+                  name="Daily Weight"
+                  stroke={colors.accent}
+                  strokeWidth={2}
+                  dot={{ fill: colors.accent, r: 3 }}
+                  isAnimationActive={false}
+                  connectNulls={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="weight_7d_avg"
+                  name="7-Day Avg"
+                  stroke={colors.warning}
+                  strokeWidth={4}
+                  dot={false}
+                  strokeDasharray="8 4"
+                  isAnimationActive={false}
+                  connectNulls={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <p className={styles.chartNote}>
+            {weightChangePct28d !== null
+              ? `Weight trend: ${weightChangePct28d > 0 ? '+' : ''}${weightChangePct28d.toFixed(1)}% over the trailing 28 days.`
+              : 'Not enough weight readings yet for a 28-day trend (needs at least 3 readings in the recent and baseline windows).'}
+            {weightChangePct28d !== null && weightChangePct28d <= -3.0 && (
+              ' A drop this size is factored into the daily coaching recommendation.'
+            )}
+          </p>
+        </div>
+      )}
 
     </div>
   );

@@ -61,6 +61,36 @@ class TestDeriveAssessmentCategory(unittest.TestCase):
         cat = m.derive_assessment_category(metrics(), THRESHOLDS)
         self.assertEqual(cat, 'normal_progression')
 
+    def test_weight_drop_with_elevated_acwr_is_underfueling_risk(self):
+        cat = m.derive_assessment_category(
+            metrics(external_acwr=1.6, internal_acwr=1.0, normalized_divergence=0.0,
+                    weight_change_pct_28d=-3.5),
+            THRESHOLDS)
+        self.assertEqual(cat, 'underfueling_risk')
+
+    def test_weight_drop_without_elevated_acwr_is_not_underfueling_risk(self):
+        # This is the more concerning, load-independent case medically — but it must
+        # NOT gate today's training action, since the drop isn't training-load-driven.
+        cat = m.derive_assessment_category(
+            metrics(external_acwr=1.0, internal_acwr=1.0, normalized_divergence=0.0,
+                    weight_change_pct_28d=-3.5),
+            THRESHOLDS)
+        self.assertEqual(cat, 'normal_progression')
+
+    def test_small_weight_drop_below_threshold_does_not_trigger(self):
+        cat = m.derive_assessment_category(
+            metrics(external_acwr=1.6, internal_acwr=1.6, normalized_divergence=0.0,
+                    weight_change_pct_28d=-1.2),
+            THRESHOLDS)
+        self.assertEqual(cat, 'high_acwr_risk')
+
+    def test_overtraining_takes_priority_over_underfueling(self):
+        cat = m.derive_assessment_category(
+            metrics(external_acwr=1.75, internal_acwr=2.13, normalized_divergence=-0.20,
+                    weight_change_pct_28d=-5.0),
+            THRESHOLDS)
+        self.assertEqual(cat, 'overtraining_risk')
+
 
 class TestVerdictBlock(unittest.TestCase):
     def test_states_real_thresholds_and_mandate(self):
@@ -79,6 +109,21 @@ class TestVerdictBlock(unittest.TestCase):
         block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
         # The fabricated value from the bug must never appear.
         self.assertNotIn('0.11', block)
+
+    def test_underfueling_verdict_states_redS_pattern(self):
+        cm = metrics(external_acwr=1.6, internal_acwr=1.0, normalized_divergence=0.0,
+                     weight_change_pct_28d=-3.5)
+        block = m.format_metric_verdict_block(cm, 'underfueling_risk', THRESHOLDS)
+        self.assertIn('RED-S', block)
+        self.assertIn('-3.5%', block)
+        self.assertIn('REDUCE', block)
+
+    def test_load_independent_weight_drop_suggests_medical_followup_without_gating_action(self):
+        cm = metrics(external_acwr=1.0, internal_acwr=1.0, normalized_divergence=0.0,
+                     weight_change_pct_28d=-4.0)
+        block = m.format_metric_verdict_block(cm, 'normal_progression', THRESHOLDS)
+        self.assertIn('doctor', block)
+        self.assertIn('PROCEED', block)  # normal_progression mandate — action not gated
 
 
 if __name__ == '__main__':

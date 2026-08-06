@@ -5916,6 +5916,40 @@ def save_journal_entry():
 
 
 @login_required
+@app.route('/api/weight-history', methods=['GET'])
+def get_weight_history():
+    """Daily body-weight series for the dashboard chart, plus the same 28-day trend
+    signal used by the daily safety floor (see unified_metrics_service.get_weight_change_pct_28d)
+    so the UI badge and the coaching mandate never disagree."""
+    try:
+        date_range = request.args.get('range', '90')
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(current_user.id)
+        start_date = end_date - timedelta(days=int(date_range))
+
+        rows = db_utils.execute_query(
+            """SELECT date, weight FROM journal_entries
+               WHERE user_id = %s AND date >= %s AND date <= %s AND weight IS NOT NULL
+               ORDER BY date ASC""",
+            (current_user.id, start_date.isoformat(), end_date.isoformat()), fetch=True
+        )
+        data = [
+            {'date': str(r['date']), 'weight_lbs': round(float(r['weight']) * 2.20462, 1)}
+            for r in rows
+        ]
+
+        from unified_metrics_service import get_weight_change_pct_28d
+        return jsonify({
+            'success': True,
+            'data': data,
+            'weight_change_pct_28d': get_weight_change_pct_28d(current_user.id),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching weight history: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to fetch weight history'}), 500
+
+
+@login_required
 @app.route('/api/readiness', methods=['GET'])
 def get_readiness():
     """Return today's readiness + wellness data including intervals.icu synced fields."""

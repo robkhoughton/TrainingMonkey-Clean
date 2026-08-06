@@ -529,6 +529,19 @@ def _handle_select(query: str, params: tuple) -> List[Dict]:
     if 'journal_entries' in query:
         entries = _mock_store.journal_entries.copy()
 
+        # Weight-history date-range query (dashboard chart) — distinct from the
+        # single-day lookup below, which only matches an exact date.
+        if 'select date, weight from journal_entries' in query:
+            start_d = str(params[1]) if len(params) >= 2 else None
+            end_d = str(params[2]) if len(params) >= 3 else None
+            weighted = [e for e in entries if e.get('weight') is not None]
+            if start_d:
+                weighted = [e for e in weighted if e['date'] >= start_d]
+            if end_d:
+                weighted = [e for e in weighted if e['date'] <= end_d]
+            weighted.sort(key=lambda e: e['date'])
+            return [{'date': e['date'], 'weight': e['weight']} for e in weighted]
+
         # Aggregate queries (AVG / MIN / MAX / COUNT on wellness columns)
         is_aggregate = any(kw in query for kw in ('avg(', 'min(hrv', 'min(resting', 'min(sleep', 'max(hrv', 'max(resting', 'max(sleep', 'count(hrv', 'count(resting'))
         if is_aggregate:

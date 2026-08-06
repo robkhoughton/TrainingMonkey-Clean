@@ -525,6 +525,8 @@ class UnifiedMetricsService:
             metrics['divergence_moderate_threshold'] = div_moderate
             metrics['days_since_rest_max'] = days_max
 
+            metrics['weight_change_pct_28d'] = get_weight_change_pct_28d(user_id)
+
             # Log the values for debugging
             logger.info(f"Unified metrics for user {user_id}:")
             logger.info(f"  External ACWR: {metrics['external_acwr']}")
@@ -770,6 +772,37 @@ def get_current_metrics(user_id=None):
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
     return UnifiedMetricsService.get_latest_complete_metrics(user_id)
+
+
+def get_weight_change_pct_28d(user_id):
+    """RED-S / underfueling screen: 7-day average body weight now vs. a 7-day average
+    ending 28 days ago. Requires >=3 readings in each window — guards against a single
+    noisy reading (hydration, GI content, scale variance) driving a false trigger.
+    Returns None (no signal) when data is too sparse. Shared by get_latest_complete_metrics()
+    (feeds the daily safety floor) and the weight-history API (feeds the dashboard chart) —
+    single source of truth for the computation, see Training_Metrics_Reference_Guide.md.
+    """
+    from timezone_utils import get_user_current_date
+    today_str = get_user_current_date(user_id).isoformat()
+    rows = execute_query(
+        """SELECT
+               AVG(weight) FILTER (WHERE date >= %s::date - INTERVAL '6 days') AS recent_avg,
+               COUNT(weight) FILTER (WHERE date >= %s::date - INTERVAL '6 days') AS recent_n,
+               AVG(weight) FILTER (WHERE date >= %s::date - INTERVAL '34 days'
+                                      AND date <= %s::date - INTERVAL '28 days') AS baseline_avg,
+               COUNT(weight) FILTER (WHERE date >= %s::date - INTERVAL '34 days'
+                                       AND date <= %s::date - INTERVAL '28 days') AS baseline_n
+           FROM journal_entries
+           WHERE user_id = %s AND weight IS NOT NULL""",
+        (today_str, today_str, today_str, today_str, today_str, today_str, user_id),
+        fetch=True
+    )
+    if not rows:
+        return None
+    w = rows[0]
+    if (w.get('recent_n') or 0) >= 3 and (w.get('baseline_n') or 0) >= 3 and w.get('baseline_avg'):
+        return round((float(w['recent_avg']) - float(w['baseline_avg'])) / float(w['baseline_avg']) * 100, 1)
+    return None
 
 
 def get_days_since_rest(user_id=None):

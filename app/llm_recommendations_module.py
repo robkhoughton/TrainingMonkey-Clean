@@ -1435,6 +1435,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
 _CATEGORY_ACTION_MANDATE = {
     'mandatory_rest': "REST — full rest day. Override any planned session.",
     'overtraining_risk': "REST or very-light recovery only (Zone 1). The planned session is deferred, not executed at reduced volume.",
+    'underfueling_risk': "REDUCE load — body weight is dropping while training load is elevated (RED-S / low energy availability pattern). Genuinely lower volume/intensity; this is a fueling and injury-risk signal, not just an ACWR number.",
     'high_acwr_risk': "REDUCE load — genuinely lower volume/intensity below what the plan prescribes. A real reduction, not a relabeled full session.",
     'recovery_needed': "ACTIVE RECOVERY only (Zone 1). Defer quality/test sessions.",
     'undertraining_opportunity': "Room to ADD load — the plan may understate what is supportable today.",
@@ -1454,11 +1455,15 @@ def derive_assessment_category(current_metrics, thresholds):
     external_acwr = current_metrics.get('external_acwr', 0) or 0
     internal_acwr = current_metrics.get('internal_acwr', 0) or 0
     divergence = current_metrics.get('normalized_divergence', 0) or 0
+    weight_change_pct_28d = current_metrics.get('weight_change_pct_28d')
 
     if days_since_rest > thresholds['days_since_rest_max']:
         return 'mandatory_rest'
     if divergence <= thresholds['divergence_overtraining']:
         return 'overtraining_risk'
+    if (weight_change_pct_28d is not None and weight_change_pct_28d <= UNDERFUELING_WEIGHT_DROP_PCT
+            and (external_acwr > thresholds['acwr_high_risk'] or internal_acwr > thresholds['acwr_high_risk'])):
+        return 'underfueling_risk'
     if external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
         return 'high_acwr_risk'
     if divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
@@ -1500,13 +1505,33 @@ def format_metric_verdict_block(current_metrics, assessment_category, thresholds
     intl_s = f"{intl:.2f}" if isinstance(intl, (int, float)) else "N/A"
     div_s = f"{div:.3f}" if isinstance(div, (int, float)) else "N/A"
     risk_s = f"{risk_label}" + (f" ({risk_score}/100)" if risk_score is not None else "")
+
+    weight_change_pct_28d = current_metrics.get('weight_change_pct_28d')
+    weight_line = ""
+    if weight_change_pct_28d is not None:
+        acwr_elevated = ((isinstance(ext, (int, float)) and acwr_high is not None and ext > acwr_high)
+                          or (isinstance(intl, (int, float)) and acwr_high is not None and intl > acwr_high))
+        if weight_change_pct_28d <= UNDERFUELING_WEIGHT_DROP_PCT and acwr_elevated:
+            weight_line = (
+                f"\nBody weight: {weight_change_pct_28d:+.1f}% over the trailing 28 days WITH elevated training "
+                f"load — RED-S/underfueling pattern (threshold {UNDERFUELING_WEIGHT_DROP_PCT:+.1f}%). This is what "
+                f"drove today's REDUCE mandate; mention fueling/energy availability explicitly, not just load."
+            )
+        elif weight_change_pct_28d <= UNDERFUELING_WEIGHT_DROP_PCT:
+            weight_line = (
+                f"\nBody weight: {weight_change_pct_28d:+.1f}% over the trailing 28 days WITHOUT a corresponding "
+                f"rise in training load (threshold {UNDERFUELING_WEIGHT_DROP_PCT:+.1f}%) — not training-load-driven, "
+                f"so training action is NOT gated on this. State the trend plainly in the daily recommendation and "
+                f"suggest mentioning it to a doctor if it's unexplained. Do not speculate on a cause."
+            )
+
     return f"""### TODAY'S METRIC VERDICT (authoritative — computed server-side; use these values, do NOT re-derive or restate different thresholds)
 Assessment category: {assessment_category.upper()}
 Injury risk: {risk_s}
 External ACWR {ext_s} vs high-risk threshold {acwr_high} — {_cmp(ext, acwr_high, worse_when_below=False)}.
 Internal ACWR {intl_s} vs high-risk threshold {acwr_high} — {_cmp(intl, acwr_high, worse_when_below=False)}.
 Normalized divergence {div_s} vs overtraining threshold {div_warn} (moderate-risk line {div_mod}); more negative is worse — {_cmp(div, div_warn)}.
-Days since rest: {dsr} (mandatory-rest at >{dsr_max}).
+Days since rest: {dsr} (mandatory-rest at >{dsr_max}).{weight_line}
 ACTION MANDATE: {mandate}
 The weekly plan is CONDITIONAL on this verdict. If the mandate is rest/reduce, the planned session — including any scheduled test — is deferred or genuinely reduced, never executed in full and relabeled.
 """
@@ -1566,11 +1591,21 @@ def format_recent_execution_block(alignment):
 _FLOOR_BY_CATEGORY = {
     'mandatory_rest': 'rest',
     'overtraining_risk': 'rest',
+    'underfueling_risk': 'reduce',
     'high_acwr_risk': 'reduce',
     'recovery_needed': 'reduce',
     'normal_progression': 'train_allowed',
     'undertraining_opportunity': 'train_allowed',
 }
+
+# RED-S / underfueling screening threshold — a body-weight drop this large over a
+# rolling 28 days, co-occurring with elevated training load, is treated as a
+# deterministic safety signal (not left to the model to notice or invent a number
+# for). Chosen more sensitive than the commonly-cited clinical RED-S screening line
+# (~5%/month) because it only fires in combination with already-elevated ACWR, which
+# suppresses false positives from ordinary day-to-day weight fluctuation. Confirmed
+# with Rob 2026-08-05 — do not change without re-confirming.
+UNDERFUELING_WEIGHT_DROP_PCT = -3.0
 _FLOOR_ALLOWED_ACTIONS = {
     'rest': {'rest'},
     'reduce': {'rest', 'reduce'},
