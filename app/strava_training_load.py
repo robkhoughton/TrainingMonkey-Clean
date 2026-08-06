@@ -1038,6 +1038,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     hr_zone_times = [0, 0, 0, 0, 0]
     hr_stream_data = None
     distance_stream_data = None
+    avg_temp_f = None
     try:
         streams = get_activity_streams(client, activity_id)
         if streams and 'heartrate' in streams and streams['heartrate']:
@@ -1060,6 +1061,16 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
                 f"No HR stream data for activity {activity_id} — time in zone recorded as zeros. "
                 f"Zone estimation from average HR is not performed."
             )
+        # Ambient temperature (device-reported, Celsius) — only present when the source
+        # device has a temp sensor. Independent of the heartrate stream, so checked
+        # separately. Forward-only; NULL for activities synced before this field existed.
+        if streams and 'temp' in streams and streams['temp'] and streams['temp'].data:
+            temp_samples_c = [t for t in streams['temp'].data if t is not None]
+            if temp_samples_c:
+                avg_temp_c = sum(temp_samples_c) / len(temp_samples_c)
+                avg_temp_f = avg_temp_c * 9 / 5 + 32
+                logger.info(f"Retrieved temp stream for activity {activity_id}: avg {avg_temp_f:.1f}F "
+                            f"from {len(temp_samples_c)} samples")
     except Exception as e:
         logger.warning(f"Could not get HR data for activity {activity_id}: {str(e)}")
 
@@ -1152,6 +1163,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'elevation_load_miles': float(round(elevation_load_miles, 2)),
         'total_load_miles': float(round(total_load_miles, 2)),
         'average_speed_mph': float(round(average_speed_mph, 2)) if average_speed_mph else None,
+        'avg_temp_f': float(round(avg_temp_f, 1)) if avg_temp_f is not None else None,
         'cycling_equivalent_miles': float(round(cycling_equivalent_miles, 2)) if cycling_equivalent_miles else None,
         'swimming_equivalent_miles': float(round(swimming_equivalent_miles, 2)) if swimming_equivalent_miles else None,
         'rowing_equivalent_miles': float(round(rowing_equivalent_miles, 2)) if rowing_equivalent_miles else None,

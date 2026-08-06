@@ -42,6 +42,15 @@ Untagged bullets below the Landing Strip are legacy backlog from before this pro
 
 - Update FAQ & Guide pages to explain model confidence and coaching philosophy, using Training Metrics, Athlete Model, and Model Confidence
 - Add hill sprints and LIFTMOR-M as workout types
+- Rx should regen the weekly work plan (not just adjust the recommendation) on gross, repeated non-compliance — make this explicit in the autopsy
+- Need a symbol/notation for normalized divergence
+- Does ML applied to the training database need to know the "right answer"? e.g. ACWR 71.5 with Δ positive but HRV normal — what's the correct read?
+- Weekly plan currently generates daily-Rx-level detail per weekday — wrong altitude. Weekly plan should map out intensity/duration/frequency by current training phase; day-level specificity belongs to the daily Rx, generated separately. (via `/process-inbox`; likely related to the 2026-08-03 bug note that the coach isn't ingesting weekly-plan input — worth checking together)
+- How could successive weekly synthesis be used to improve the athlete model? Shouldn't the LLM know this and "calibrate" its response accordingly — if I explain why a workout did not align with Rx, how is this info ingested and used? (via `/process-inbox`)
+- How does YTM process responses to poor alignment? Are they captured in weekly synthesis? AWR seems relevant to TRIMP — daily weight seems like a broad indicator of user status. (via `/process-inbox`)
+- Ingest journal for 100-mile race guidance. (via `/process-inbox`)
+- Is weekly synthesis used anywhere besides next week's plan? (via `/process-inbox`; likely related to the 2026-08-03 bug note above about the coach not ingesting weekly-plan input — worth checking together)
+- Use `avg_temp_f` (activities.avg_temp_f, added 2026-08-05) to flag/adjust for heat-affected sessions — TRIMP conflates heat-driven HR elevation with training load; wrist-optical temp readings need validation before trusting them for this
 
 ---
 - **Loading Page**
