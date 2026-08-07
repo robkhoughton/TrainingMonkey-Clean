@@ -51,6 +51,7 @@ Untagged bullets below the Landing Strip are legacy backlog from before this pro
 - Ingest journal for 100-mile race guidance. (via `/process-inbox`)
 - Is weekly synthesis used anywhere besides next week's plan? (via `/process-inbox`; likely related to the 2026-08-03 bug note above about the coach not ingesting weekly-plan input — worth checking together)
 - Use `avg_temp_f` (activities.avg_temp_f, added 2026-08-05) to flag/adjust for heat-affected sessions — TRIMP conflates heat-driven HR elevation with training load; wrist-optical temp readings need validation before trusting them for this
+- Model a minimum-effective-stimulus floor (anabolic resistance) — the generic `ACWR < 0.8` flag isn't age-calibrated, so an athlete holding constant volume can drop below their own rising effective-dose threshold and lose ground undetected; see `project_coaching_framework_gaps` Layer 5 and `VAULT/Research/TSB_ACWR_vs_YTM_Adaptive_Envelope_Memo.md`
 
 ---
 - **Loading Page**
