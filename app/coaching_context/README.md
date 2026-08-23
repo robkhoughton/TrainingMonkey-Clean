@@ -27,14 +27,26 @@ Gating logic lives in `_load_coaching_context()` in `llm_recommendations_module.
 
 ---
 
-## Adding a New File — 3 Required Steps
+## Adding a New File — 2 Required Steps
 
 1. **Write** `app/coaching_context/<topic>.md` — directive assertions, model-facing tone
 2. **Add a gating condition** to `_load_coaching_context()` in `llm_recommendations_module.py` with a rationale comment
-3. **Verify injection reaches all active LLM call sites:**
-   - Daily recommendation: `create_enhanced_prompt_with_tone()`
-   - Agentic chat: `llm_recommendations_module.py` ~line 4321
-   - Journal endpoint: `strava_app.py` ~line 6108
+
+There is no longer a third "verify every call site" step for the daily recommendation.
+`_load_coaching_context()` is called once, inside `assemble_daily_context()` — the shared
+context seam every daily prompt builder assembles through — so a newly gated file reaches
+those paths by construction. `app/tests/test_daily_context.py` fails the build if a builder
+stops consuming a shared signal.
+
+This step used to read "verify injection reaches all active LLM call sites" and then list
+three, silently omitting `create_autopsy_informed_decision_prompt()` — which is exactly how
+the journal-triggered path (the most frequently hit one) ended up receiving none of these
+files. A manual checklist of call sites is the failure mode, not the fix.
+
+**Still outside the seam:** `generate_recommendations_agentic()` (feature-flag gated) and
+`generate_activity_autopsy_enhanced()` (the post-workout autopsy, a different prompt) each
+call `_load_coaching_context()` themselves. Check those two directly until they are
+migrated.
 
 ---
 

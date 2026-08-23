@@ -1719,6 +1719,40 @@ def finalize_recommendation(sections, current_metrics, floor_category, prompt, r
     }
 
 
+# Autopsy adaptation framing. Both daily paths reason over the same autopsy DATA
+# (DailyContext.autopsy) but instruct the model differently, so the facts are shared
+# and only the framing is per-path. Appended by each builder when data is present.
+# [DOMAIN] alignment thresholds (>7 / 4-7 / <4) are coaching judgment calls
+# [COMP]   "IMPORTANT: Use this autopsy learning..." forces the model to act on the data
+AUTOPSY_ADAPTATION_STANDARD = """
+**COACHING ADAPTATION STRATEGY:**
+- If alignment >7: Athlete follows guidance well - build on successful patterns
+- If alignment 4-7: Address recurring deviations - simplify recommendations
+- If alignment <4: Major strategy adjustment needed - focus on compliance over optimization
+
+**IMPORTANT:** Use this autopsy learning to adapt today's recommendation. If recent alignment is low, recommend more conservative/achievable targets. If alignment is high, maintain current approach.
+"""
+
+AUTOPSY_ADAPTATION_AUTOPSY_INFORMED = """
+AUTOPSY-INFORMED ADAPTATION (CRITICAL):
+- The autopsy analysis above identifies the ROOT CAUSE of alignment mismatches
+- If alignment <4: The autopsy contains SPECIFIC STRATEGY CHANGES needed - READ IT CAREFULLY
+- Common root causes and correct coaching responses:
+  * INJURY/PAIN mentioned in autopsy or notes → OVERRIDE ACWR logic, prescribe rehabilitation protocol
+  * User notes indicate medical constraints → HONOR those constraints, do not push volume
+  * Non-compliance pattern → Simplify guidance for better adherence
+  * External constraints (time, access) → Adjust for athlete's reality
+- DO NOT assume low alignment = simplification needed
+- APPLY THE AUTOPSY'S SPECIFIC RECOMMENDATIONS, not generic defaults
+- When injury/medical issues present: Current metrics (ACWR, divergence) are SECONDARY to safe recovery
+"""
+
+AUTOPSY_NONE_AUTOPSY_INFORMED = """
+RECENT AUTOPSY LEARNING: No recent autopsy data available
+COACHING STRATEGY: Standard evidence-based recommendation without learning context
+"""
+
+
 @dataclass(frozen=True)
 class DailyContext:
     """Every context block available to a daily-recommendation prompt.
@@ -1756,6 +1790,10 @@ class DailyContext:
     pattern_flags: dict
     recent_activities: str
     filtered_guide: str
+    journal_notes: str
+    preference_feedback: str
+    recent_execution: str
+    training_stage: str
 
 
 def assemble_daily_context(user_id, current_metrics, *, activities=None,
@@ -1782,7 +1820,10 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
-    activities = activities if activities is not None else []
+    # Self-sufficient: a caller that doesn't already hold an activity list still gets the
+    # activity-derived blocks, so no path silently loses pattern analysis by omission.
+    if activities is None:
+        activities = get_recent_activities(days=ACTIVITY_ANALYSIS_DAYS, user_id=user_id) or []
 
     # Get athlete experience level and age from user profile
     athlete_experience = execute_query(
@@ -2018,8 +2059,10 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
         if _yrpe_row and _yrpe_row[0] and _yrpe_row[0].get('rpe_score') is not None:
             _yrpe = _yrpe_row[0]['rpe_score']
             _yenergy = _yrpe_row[0].get('energy_level')
+            # `activities` has no workout_type column — selecting it raised every time and
+            # the except below swallowed it, so this whole block silently never rendered.
             _yact_row = execute_query(
-                """SELECT workout_type, type FROM activities
+                """SELECT type, sport_type FROM activities
                    WHERE user_id = %s AND date = %s
                    ORDER BY trimp DESC NULLS LAST LIMIT 1""",
                 (user_id, _yesterday),
@@ -2027,7 +2070,7 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
             )
             _ytype = None
             if _yact_row and _yact_row[0]:
-                _ytype = _yact_row[0].get('workout_type') or _yact_row[0].get('type')
+                _ytype = _yact_row[0].get('type') or _yact_row[0].get('sport_type')
             _session_str = f" ({_ytype})" if _ytype else ""
             _energy_str = f", energy {_yenergy}/5" if _yenergy else ""
             _yrpe_line = f"- Yesterday's session{_session_str}: RPE {_yrpe}/10{_energy_str}\n"
@@ -2041,14 +2084,17 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
     # State-gated coaching context library injection
     coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), current_date)
 
-    # Build autopsy context section if insights available
-    # [DOMAIN] alignment thresholds (>7 / 4-7 / <4) are coaching judgment calls
-    # [COMP] "IMPORTANT: Use this autopsy learning..." forces model to act on data rather than ignore it
+    # Autopsy learning — DATA ONLY. Each builder appends its own adaptation framing
+    # (see AUTOPSY_ADAPTATION_STANDARD / AUTOPSY_ADAPTATION_AUTOPSY_INFORMED), because the
+    # two paths coach off this data differently while the facts themselves are identical.
+    # Latest Insights is deliberately NOT truncated: the April 2026 fix removed truncation
+    # at the source (get_recent_autopsy_insights) because clipping silently dropped the
+    # scheduling guidance that lives late in the text. Do not re-introduce a char limit.
     autopsy_context = ""
     if autopsy_insights and autopsy_insights.get('count', 0) > 0:
         alignment_trend = autopsy_insights.get('alignment_trend', [])
         trend_description = "improving" if len(alignment_trend) >= 2 and alignment_trend[-1] > alignment_trend[0] else "mixed"
-        
+
         reason_breakdown = autopsy_insights.get('reason_breakdown', {})
         reason_parts = [f"{v} {k}" for k, v in reason_breakdown.items() if v > 0]
         reason_str = ", ".join(reason_parts) if reason_parts else "none classified"
@@ -2058,14 +2104,7 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
 - Average Alignment Score: {autopsy_insights['avg_alignment']:.1f}/10
 - Alignment Trend: {trend_description} ({alignment_trend})
 - Deviation Causes: {reason_str}
-- Latest Insights: {autopsy_insights.get('latest_insights', 'No specific insights')[:200]}
-
-**COACHING ADAPTATION STRATEGY:**
-- If alignment >7: Athlete follows guidance well - build on successful patterns
-- If alignment 4-7: Address recurring deviations - simplify recommendations
-- If alignment <4: Major strategy adjustment needed - focus on compliance over optimization
-
-**IMPORTANT:** Use this autopsy learning to adapt today's recommendation. If recent alignment is low, recommend more conservative/achievable targets. If alignment is high, maintain current approach.
+- Latest Insights: {autopsy_insights.get('latest_insights') or 'No specific insights'}
 """
     else:
         autopsy_context = ""
@@ -2391,6 +2430,74 @@ Apply this adjustment when prescribing today's {_hard_type} session.
     race_day_block = build_race_day_block(user_id, target_date if target_date else current_date)
     race_goals_block = build_upcoming_races_block(user_id)
 
+    # Free-text journal notes — where injury, pain and deviation reasons are described in
+    # prose. Previously built only by the autopsy-informed builder, so the nightly
+    # all-user path could not see an athlete writing "abandoned run, right QL pain".
+    recent_notes = get_recent_journal_notes(user_id, days=3)
+    notes_context = ""
+    if recent_notes:
+        notes_context = f"""
+RECENT JOURNAL NOTES (Last 3 Days):
+{recent_notes}
+
+CRITICAL: If notes mention injury, pain, rehabilitation, medical issues, or reasons for
+deviating from prescription, these override normal training progression logic.
+"""
+
+    # Athlete preference feedback from alignment query responses (last 30 days)
+    preference_context = ""
+    try:
+        answered_queries = get_answered_alignment_queries(user_id, days=30)
+        if answered_queries:
+            external_lines = []
+            mismatch_lines = []
+            for q in answered_queries:
+                date_val = q.get('activity_date', '')
+                q_date_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val)
+                line = f"  {q_date_str} (alignment {q.get('alignment_score', '?')}/10): {q['response']}"
+                if q.get('deviation_reason') == 'prescription_mismatch':
+                    mismatch_lines.append(line)
+                else:
+                    external_lines.append(line)
+
+            pref_sections = []
+            if external_lines:
+                pref_sections.append(
+                    "EXTERNAL CONSTRAINTS (life/schedule caused deviation):\n"
+                    + "\n".join(external_lines)
+                    + "\nTreat repeated themes (terrain, environment, schedule) as HARD CONSTRAINTS — "
+                    "adjust future prescriptions to work within them, not against them."
+                )
+            if mismatch_lines:
+                pref_sections.append(
+                    "PLAN QUALITY FEEDBACK (athlete confirmed prescription didn't fit):\n"
+                    + "\n".join(mismatch_lines)
+                    + "\nCRITICAL: These are plan calibration signals — the prescribed session "
+                    "type, intensity, or volume was wrong for the athlete's state. "
+                    "Adjust what you prescribe, not just when."
+                )
+            if pref_sections:
+                preference_context = "\n\n".join(pref_sections) + "\n"
+    except Exception as pref_err:
+        logger.warning(f"Could not load preference feedback for user {user_id}: {pref_err}")
+
+    # Training stage from existing Coach page logic (DB call, not recomputed)
+    training_stage_context = ""
+    try:
+        from coach_recommendations import get_current_training_stage
+        stage_info = get_current_training_stage(user_id)
+        training_stage_context = (
+            f"TRAINING STAGE: {stage_info.get('stage', 'Unknown')}"
+            + (f" | Weeks to {stage_info.get('race_name', 'race')}: {round(stage_info['weeks_until_race']) if stage_info.get('weeks_until_race') is not None else 'N/A'}" if stage_info.get('race_name') else "")
+            + (f" | {stage_info.get('details', '')}" if stage_info.get('details') else "")
+        )
+    except Exception as _stage_err:
+        logger.warning(f"Could not fetch training stage: {_stage_err}")
+
+    # Recent execution — count-based (last 5 autopsies), raw number + trend. Replaces the
+    # fragile 3-day K-of-N window; the LLM judges plan trust directly from the number.
+    alignment_kn_context = format_recent_execution_block(get_recent_alignment(user_id, n=5))
+
     return DailyContext(
         current_date=current_date,
         target_date=target_date,
@@ -2415,6 +2522,10 @@ Apply this adjustment when prescribing today's {_hard_type} session.
         pattern_flags=pattern_flags,
         recent_activities=recent_activities_summary,
         filtered_guide=filtered_guide,
+        journal_notes=notes_context,
+        preference_feedback=preference_context,
+        recent_execution=alignment_kn_context,
+        training_stage=training_stage_context,
     )
 
 def repair_metric_citations(prose, current_metrics):
@@ -2543,13 +2654,20 @@ def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analys
     athlete_model_context = ctx.athlete_model
     readiness_context = ctx.readiness
     coaching_context_block = ctx.coaching_library
-    autopsy_context = ctx.autopsy
+    # Shared autopsy facts + this path's own adaptation framing.
+    autopsy_context = (ctx.autopsy + AUTOPSY_ADAPTATION_STANDARD) if ctx.autopsy else ""
     weekly_context_block = ctx.weekly
     race_day_block = ctx.race_day
     race_goals_block = ctx.race_goals
     pattern_flags = ctx.pattern_flags
     recent_activities_summary = ctx.recent_activities
     filtered_guide = ctx.filtered_guide
+    # Previously built only by the autopsy-informed builder, so this nightly all-user
+    # path could not see prose injury notes, athlete constraint feedback, or plan trust.
+    notes_context = ctx.journal_notes
+    preference_context = ctx.preference_feedback
+    alignment_kn_context = ctx.recent_execution
+    training_stage_context = ctx.training_stage
 
     # Build the enhanced prompt with tone integration and risk tolerance context
     # [DOMAIN] Decision Framework assessment order (Safety→Overtraining→ACWR→Recovery→Progression)
@@ -2584,9 +2702,14 @@ Assessment Category: {assessment_category}
 - 7-day Average TRIMP: {formatted_metrics['seven_day_avg_trimp']}/day
 - Days Since Rest: {formatted_metrics['days_since_rest']}
 {athlete_model_context}
+{training_stage_context}
+
+{alignment_kn_context}
 {readiness_context}
 {coaching_context_block}
 {autopsy_context}
+{notes_context}
+{preference_context}
 {weekly_context_block}
 ### PATTERN ANALYSIS
 Training Trends:
@@ -4693,175 +4816,43 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     [COMP]   REST DAY FRAMING RULE — fights model framing rest as absence rather than active adaptation
     """
 
-    # Get user's risk tolerance and personalized thresholds
-    recommendation_style = get_user_recommendation_style(user_id)
-    thresholds = get_adjusted_thresholds(recommendation_style)
-    # Use the athlete's CALIBRATED thresholds (personal breakdown threshold, productive
-    # window edge) — not the style baseline. This builder previously skipped calibration,
-    # so the verdict stated -0.20 instead of the athlete's real -0.11. Every other prompt
-    # builder already applies this.
-    thresholds = apply_athlete_model_to_thresholds(thresholds, user_id)
+    # Every context block comes from the shared seam. This path used to build its own,
+    # which is how it ended up with no readiness/HRV, no dynamic AeT, no coaching-context
+    # library, and only a single-day slice of the weekly plan.
+    ctx = assemble_daily_context(
+        user_id,
+        current_metrics,
+        autopsy_insights=autopsy_insights,
+        target_date=target_date_str,
+    )
 
-    # Authoritative server-side verdict — same classifier the dashboard/non-autopsy
-    # builder use. Injected as fact so the model never re-derives the threshold.
-    assessment_category = derive_assessment_category(current_metrics, thresholds)
-    metric_verdict_block = format_metric_verdict_block(current_metrics, assessment_category, thresholds)
+    recommendation_style = ctx.recommendation_style
+    thresholds = ctx.thresholds
+    metric_verdict_block = ctx.metric_verdict
+    effective_aet_block = ctx.effective_aet
+    readiness_context = ctx.readiness
+    coaching_context_block = ctx.coaching_library
+    training_guide = ctx.filtered_guide
+    weekly_program_context = ctx.weekly
+    race_day_context = ctx.race_day
+    race_goals_block = ctx.race_goals
+    notes_context = ctx.journal_notes
+    preference_context = ctx.preference_feedback
+    athlete_model_context = ctx.athlete_model
+    training_stage_context = ctx.training_stage
+    alignment_kn_context = ctx.recent_execution
+    pattern_flags = ctx.pattern_flags
+    recent_activities_summary = ctx.recent_activities
 
-    # Load training guide for evidence-based recommendations
-    training_guide = load_training_guide()
-    if not training_guide:
-        logger.warning("Training guide not available for autopsy-informed prompt")
-        training_guide = "Apply evidence-based training principles focusing on ACWR management and recovery."
+    # Shared autopsy facts + this path's own adaptation framing.
+    autopsy_context = (
+        (ctx.autopsy + AUTOPSY_ADAPTATION_AUTOPSY_INFORMED)
+        if ctx.autopsy else AUTOPSY_NONE_AUTOPSY_INFORMED
+    )
 
-    # Get weekly program context from Coach page
-    weekly_program_context = ""
-    try:
-        from llm_context_tools import (
-            get_weekly_program_day,
-            get_plan_execution_corrections,
-            format_plan_execution_corrections_block,
-        )
-        from datetime import datetime
-
-        daily_plan = get_weekly_program_day(user_id, target_date_str)
-
-        if daily_plan:
-            target_date_obj = datetime.strptime(target_date_str, '%Y-%m-%d').date()
-            day_name = target_date_obj.strftime('%A')
-            weekly_program_context = f"""
-YOUR MONKEY'S WEEK PLAN FOR {target_date_str} ({day_name}):
-- Planned Workout: {daily_plan.get('workout_type', 'N/A')}
-- Description: {daily_plan.get('description', 'N/A')}
-- Duration: {daily_plan.get('duration_estimate', 'N/A')}
-- Intensity: {daily_plan.get('intensity', 'N/A')}
-- Key Focus: {daily_plan.get('key_focus', 'N/A')}
-
-CRITICAL: Your Daily Recommendation must be CONSISTENT with the week plan above — except where the VERIFIED EXECUTION section below corrects it.
-When referencing the plan, choose naturally from: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", or "your weekly training plan calls for".
-If current metrics suggest adjusting the plan (e.g., rest day due to high ACWR), explain the deviation clearly.
-Otherwise, provide tactical execution guidance for the planned workout."""
-
-            # The plan description above was written in advance and can assert what a
-            # prior day's session accomplished. Correct any such assumption with what
-            # actually happened, per the completed day's own autopsy — deterministic,
-            # DB-derived fact, never left for the LLM to reconcile on its own.
-            corrections = get_plan_execution_corrections(user_id, target_date_str)
-            weekly_program_context += format_plan_execution_corrections_block(corrections)
-        else:
-            weekly_program_context = "\nNOTE: No weekly program available from Coach page. Provide standalone recommendation."
-
-    except Exception as e:
-        logger.warning(f"Could not fetch weekly program context: {str(e)}")
-        weekly_program_context = "\nNOTE: Weekly program not accessible. Provide standalone recommendation."
-
-    # Race context — canonical builders (single source of truth). race_day_context
-    # is the "today IS race day" override; race_goals_block is the upcoming-race
-    # calendar that keeps the model from falsely claiming no race is scheduled.
-    from coach_recommendations import build_race_day_block, build_upcoming_races_block
-    race_day_context = build_race_day_block(user_id, target_date_str)
-    race_goals_block = build_upcoming_races_block(user_id)
-
-    # Get recent journal notes for additional context (may contain injury/medical info)
-    recent_notes = get_recent_journal_notes(user_id, days=3)
-    notes_context = ""
-    if recent_notes:
-        notes_context = f"""
-RECENT JOURNAL NOTES (Last 3 Days):
-{recent_notes}
-
-CRITICAL: If notes mention injury, pain, rehabilitation, medical issues, or reasons for
-deviating from prescription, these override normal training progression logic.
-"""
-
-    # Athlete preference feedback from alignment query responses (last 30 days)
-    preference_context = ""
-    try:
-        answered_queries = get_answered_alignment_queries(user_id, days=30)
-        if answered_queries:
-            external_lines = []
-            mismatch_lines = []
-            for q in answered_queries:
-                date_val = q.get('activity_date', '')
-                date_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val)
-                line = f"  {date_str} (alignment {q.get('alignment_score', '?')}/10): {q['response']}"
-                if q.get('deviation_reason') == 'prescription_mismatch':
-                    mismatch_lines.append(line)
-                else:
-                    external_lines.append(line)
-
-            sections = []
-            if external_lines:
-                sections.append(
-                    "EXTERNAL CONSTRAINTS (life/schedule caused deviation):\n"
-                    + "\n".join(external_lines)
-                    + "\nTreat repeated themes (terrain, environment, schedule) as HARD CONSTRAINTS — "
-                    "adjust future prescriptions to work within them, not against them."
-                )
-            if mismatch_lines:
-                sections.append(
-                    "PLAN QUALITY FEEDBACK (athlete confirmed prescription didn't fit):\n"
-                    + "\n".join(mismatch_lines)
-                    + "\nCRITICAL: These are plan calibration signals — the prescribed session "
-                    "type, intensity, or volume was wrong for the athlete's state. "
-                    "Adjust what you prescribe, not just when."
-                )
-            if sections:
-                preference_context = "\n\n".join(sections) + "\n"
-    except Exception as pref_err:
-        logger.warning(f"Could not load preference feedback for user {user_id}: {pref_err}")
-
-    autopsy_context = ""
-    if autopsy_insights:
-        alignment_trend = autopsy_insights.get('alignment_trend', [])
-        trend_description = "improving" if len(alignment_trend) >= 2 and alignment_trend[-1] > alignment_trend[
-            0] else "mixed"
-
-        autopsy_context = f"""
-RECENT AUTOPSY LEARNING ({autopsy_insights['count']} analyses):
-- Average Alignment Score: {autopsy_insights['avg_alignment']}/10
-- Alignment Trend: {trend_description} ({alignment_trend})
-- Key Learning: {autopsy_insights['latest_insights'] if autopsy_insights['latest_insights'] else 'No specific insights'}
-
-AUTOPSY-INFORMED ADAPTATION (CRITICAL):
-- The autopsy analysis above identifies the ROOT CAUSE of alignment mismatches
-- If alignment <4: The autopsy contains SPECIFIC STRATEGY CHANGES needed - READ IT CAREFULLY
-- Common root causes and correct coaching responses:
-  * INJURY/PAIN mentioned in autopsy or notes → OVERRIDE ACWR logic, prescribe rehabilitation protocol
-  * User notes indicate medical constraints → HONOR those constraints, do not push volume
-  * Non-compliance pattern → Simplify guidance for better adherence
-  * External constraints (time, access) → Adjust for athlete's reality
-- DO NOT assume low alignment = simplification needed
-- APPLY THE AUTOPSY'S SPECIFIC RECOMMENDATIONS, not generic defaults
-- When injury/medical issues present: Current metrics (ACWR, divergence) are SECONDARY to safe recovery
-"""
-    else:
-        autopsy_context = """
-RECENT AUTOPSY LEARNING: No recent autopsy data available
-COACHING STRATEGY: Standard evidence-based recommendation without learning context
-"""
     # Extract day name safely before f-string
     target_date_obj = safe_datetime_parse(target_date_str)
     day_name = target_date_obj.strftime('%A')
-
-    # Athlete model context (personalized thresholds + confidence)
-    athlete_model_context = get_athlete_model_context(user_id)
-
-    # Training stage from existing Coach page logic (DB call, not recomputed)
-    training_stage_context = ""
-    try:
-        from coach_recommendations import get_current_training_stage
-        stage_info = get_current_training_stage(user_id)
-        training_stage_context = (
-            f"TRAINING STAGE: {stage_info.get('stage', 'Unknown')}"
-            + (f" | Weeks to {stage_info.get('race_name', 'race')}: {round(stage_info['weeks_until_race']) if stage_info.get('weeks_until_race') is not None else 'N/A'}" if stage_info.get('race_name') else "")
-            + (f" | {stage_info.get('details', '')}" if stage_info.get('details') else "")
-        )
-    except Exception as _e:
-        logger.warning(f"Could not fetch training stage: {_e}")
-
-    # Recent execution — count-based (last 5 autopsies), raw number + trend. Replaces the
-    # fragile 3-day K-of-N window; the LLM judges plan trust directly from the number.
-    alignment_kn_context = format_recent_execution_block(get_recent_alignment(user_id, n=5))
 
     prompt = f"""You are an expert endurance coach providing tomorrow's training decision with learning from recent autopsy analyses.
 
@@ -4875,6 +4866,7 @@ ATHLETE RISK TOLERANCE: {recommendation_style.upper()} ({thresholds['description
 DIVERGENCE SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 
 {metric_verdict_block}
+{effective_aet_block}
 CURRENT METRICS:
 - External ACWR: {current_metrics.get('external_acwr') or 0:.2f} (Optimal: 0.8-1.3)
 - Internal ACWR: {current_metrics.get('internal_acwr') or 0:.2f} (Optimal: 0.8-1.3)
@@ -4887,10 +4879,20 @@ CURRENT METRICS:
 {alignment_kn_context}
 
 {athlete_model_context}
+{readiness_context}
+{coaching_context_block}
 
 {race_day_context}
 {race_goals_block}
 {weekly_program_context}
+
+### PATTERN ANALYSIS
+Red Flags: {pattern_flags['red_flags']}
+Positive Patterns: {pattern_flags['positive_patterns']}
+Warnings: {pattern_flags['warnings']}
+
+### RECENT ACTIVITY SUMMARY
+{recent_activities_summary}
 
 {notes_context}
 

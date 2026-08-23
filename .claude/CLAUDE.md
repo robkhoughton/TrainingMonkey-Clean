@@ -57,7 +57,7 @@ Key sections:
 
 1. **PostgreSQL ONLY** - Use `%s` placeholders, `SERIAL PRIMARY KEY`, `NOW()` - never SQLite syntax
 2. **Secure Credentials** - Always use `db_credentials_loader.py`, never hardcode DATABASE_URL
-3. **Dockerfile Updates** - New Python files MUST be added to `app/Dockerfile.strava`
+3. **Dockerfile Updates** - No longer required for new Python files: `app/Dockerfile.strava` copies `*.py` by wildcard (verified 2026-08-23), with `.dockerignore` handling exclusions. Still update it when adding a new *directory* or non-`.py` asset, which are copied explicitly.
 4. **Frontend Deployment** - After React changes, rebuild and copy to `app/static/`
 5. **Deployment follows an authorized commit** - Once the user authorizes a commit touching deployable code, run the full build/copy/deploy sequence via Bash right after pushing — do not wait for a separate `/deploy` request. `/deploy` still works standalone for on-demand deploys.
 6. **Root Cause Solutions** - Always address root causes, not symptoms. Investigate underlying problems before implementing fixes. Avoid workarounds or patches that mask the real issue.
@@ -98,10 +98,11 @@ Detailed standards are organized in `.claude/rules/`:
 
 Topic files in `app/coaching_context/` are injected state-gated into LLM prompts. No Dockerfile change needed — the directory is copied wholesale. See `app/coaching_context/README.md` for the file inventory and gating conditions.
 
-**Adding a new context file — 3 required steps:**
+**Adding a new context file — 2 required steps:**
 1. Write `app/coaching_context/<topic>.md` — compact, imperative, model-facing
 2. Add a gating condition to `_load_coaching_context()` in `llm_recommendations_module.py` with a rationale comment
-3. Verify injection reaches **all 3 LLM call sites**: daily recommendation (`create_enhanced_prompt_with_tone`), agentic chat (~line 4321 in `llm_recommendations_module.py`), journal endpoint (`strava_app.py` ~line 6108)
+
+No per-call-site verification step is needed for the daily recommendation: `_load_coaching_context()` is called once inside `assemble_daily_context()` — the shared context seam both daily prompt builders assemble through — so a newly gated file reaches them by construction, and `app/tests/test_daily_context.py` fails the build if a builder stops consuming a shared signal. Still outside the seam and needing a direct check: `generate_recommendations_agentic()` and `generate_activity_autopsy_enhanced()`.
 
 ## Key Files
 
