@@ -162,6 +162,33 @@ class TestAutopsyBlockContract(unittest.TestCase):
         self.assertNotIn('AUTOPSY-INFORMED ADAPTATION', src)
 
 
+class TestSeamIsSelfSufficient(unittest.TestCase):
+    """A caller that omits an optional input must still get the dependent blocks.
+
+    Regression: create_autopsy_informed_decision_prompt calls the seam without
+    training_guide, which defaulted to None and fell straight through to
+    filtered_guide=None. The template then rendered the literal string "None" as the
+    entire TRAINING REFERENCE FRAMEWORK section -- the guide silently vanished from
+    that path rather than failing.
+    """
+
+    def test_seam_sources_its_own_inputs(self):
+        src = inspect.getsource(M.assemble_daily_context)
+        self.assertIn('if training_guide is None:', src,
+                      'seam must load the training guide when a caller omits it')
+        self.assertIn('if activities is None:', src,
+                      'seam must load activities when a caller omits it')
+
+    def test_guide_block_never_none(self):
+        """filtered_guide must be a string even when the guide is unavailable, so it can
+        never render as the word "None" inside a prompt."""
+        src = inspect.getsource(M.assemble_daily_context)
+        self.assertNotIn(
+            'if training_guide else training_guide', src,
+            'filtered_guide must fall back to "", not to a possibly-None guide'
+        )
+
+
 class TestYesterdaySessionQuery(unittest.TestCase):
     """Regression: the yesterday-RPE lookup selected a column that does not exist
     (`activities.workout_type`), so it raised on every call and the surrounding

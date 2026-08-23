@@ -1820,10 +1820,13 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
-    # Self-sufficient: a caller that doesn't already hold an activity list still gets the
-    # activity-derived blocks, so no path silently loses pattern analysis by omission.
+    # Self-sufficient: a caller that doesn't already hold these still gets the blocks that
+    # depend on them. Defaulting to empty instead would silently drop a whole section for
+    # that path -- which is the exact failure mode this seam exists to prevent.
     if activities is None:
         activities = get_recent_activities(days=ACTIVITY_ANALYSIS_DAYS, user_id=user_id) or []
+    if training_guide is None:
+        training_guide = load_training_guide()
 
     # Get athlete experience level and age from user profile
     athlete_experience = execute_query(
@@ -1879,7 +1882,14 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
     metric_verdict_block = format_metric_verdict_block(current_metrics, assessment_category, thresholds)
 
     # Filter the training guide to sections relevant to this assessment category
-    filtered_guide = _select_guide_sections(training_guide, assessment_category) if training_guide else training_guide
+    # An f-string renders None as the literal "None", so a None block prints "None" into
+    # the prompt instead of failing — which is how the guide silently vanished from a path.
+    # Normalize to empty and say so, rather than shipping the word "None" to the model.
+    if training_guide:
+        filtered_guide = _select_guide_sections(training_guide, assessment_category)
+    else:
+        logger.warning(f"Training guide unavailable for user {user_id} — guide block empty")
+        filtered_guide = ""
 
     # Fetch athlete model once; reused by both the prompt context block and readiness state.
     _cached_athlete_model = get_athlete_model(user_id)
