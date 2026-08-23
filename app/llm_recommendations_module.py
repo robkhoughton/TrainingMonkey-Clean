@@ -12,6 +12,7 @@ import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date, timedelta
+from dataclasses import dataclass
 import time
 from timezone_utils import get_app_current_date
 from unified_metrics_service import UnifiedMetricsService
@@ -1718,105 +1719,70 @@ def finalize_recommendation(sections, current_metrics, floor_category, prompt, r
     }
 
 
-def repair_metric_citations(prose, current_metrics):
-    """Repair LLM prose that mis-cites an authoritative metric value (e.g. writes
-    "Internal ACWR is 1.13" when it is 2.13). The structured data is always correct;
-    this only fixes the narrative. Anchored on the metric LABEL so threshold numbers
-    (e.g. "high-risk threshold of 1.5") are never touched.
+@dataclass(frozen=True)
+class DailyContext:
+    """Every context block available to a daily-recommendation prompt.
 
-    Returns (repaired_prose, repairs) where repairs is a list of (label, cited, correct).
+    Adding a field here makes that signal available to all three daily
+    generators at once. Adding it to one builder's f-string instead is how the
+    paths silently drift apart — don't.
     """
-    import re as _re
-    if not prose:
-        return prose, []
-    repairs = []
-    ext = current_metrics.get('external_acwr')
-    intl = current_metrics.get('internal_acwr')
-    div = current_metrics.get('normalized_divergence')
-    out = prose
-
-    connective = r'(?:sits at|sitting at|is|of|at|reaches|=|:)?\s*'
-
-    def _fix_acwr(text, label, value):
-        if not isinstance(value, (int, float)):
-            return text
-        pat = _re.compile(rf'({label}\s*{connective})(-?\d+\.\d+)')
-        def repl(mobj):
-            cited = mobj.group(2)
-            try:
-                if round(float(cited), 2) != round(float(value), 2):
-                    repairs.append((label, cited, f"{value:.2f}"))
-                    return mobj.group(1) + f"{value:.2f}"
-            except ValueError:
-                pass
-            return mobj.group(0)
-        return pat.sub(repl, text)
-
-    out = _fix_acwr(out, 'External ACWR', ext)
-    out = _fix_acwr(out, 'Internal ACWR', intl)
-
-    if isinstance(div, (int, float)):
-        pat = _re.compile(rf'((?:[Nn]ormalized\s+)?divergence\s*{connective})(-?\d+\.\d+)')
-        target = f"{div:.3f}"
-        def repl_div(mobj):
-            cited = mobj.group(2)
-            try:
-                if round(float(cited), 3) != round(float(div), 3):
-                    repairs.append(('divergence', cited, target))
-                    return mobj.group(1) + target
-            except ValueError:
-                pass
-            return mobj.group(0)
-        out = pat.sub(repl_div, out)
-
-    return out, repairs
+    # Period / identity
+    current_date: str
+    target_date: object
+    start_date: object
+    end_date: object
+    days_analyzed: int
+    # Athlete
+    athlete_profile: str
+    athlete_age: object
+    athlete_model: str
+    recommendation_style: str
+    thresholds: dict
+    # Metrics and the authoritative verdict
+    assessment_category: str
+    metric_verdict: str
+    formatted_metrics: dict
+    effective_aet: str
+    # Daily state
+    readiness: str
+    coaching_library: str
+    # Plan and races
+    weekly: str
+    race_day: str
+    race_goals: str
+    # History / learning
+    autopsy: str
+    pattern_flags: dict
+    recent_activities: str
+    filtered_guide: str
 
 
-def _safe_floor_recommendation(assessment_category, current_metrics, target_date_str):
-    """Deterministic safe fallback used only when the LLM repeatedly violates the safety
-    floor. Emits a plain rest/reduce recommendation grounded in the verdict — never a
-    training day when the floor mandates rest. Last line of defense, not the normal path.
-    """
-    floor = mandated_floor(assessment_category)
-    ext = current_metrics.get('external_acwr')
-    intl = current_metrics.get('internal_acwr')
-    div = current_metrics.get('normalized_divergence')
-    cat_words = assessment_category.replace('_', ' ')
-    if floor == 'rest':
-        action = 'rest'
-        prose = (f"DAILY RECOMMENDATION\n\nToday is a rest day. Your metrics ({cat_words}) place you beyond your "
-                 f"safe training threshold — external ACWR {ext}, internal ACWR {intl}, divergence {div}. Any planned "
-                 f"session, including a scheduled test, is deferred — a test run in this state produces invalid data and "
-                 f"adds load you cannot absorb. Recovery is where this week's training becomes fitness: prioritize sleep, "
-                 f"refuel, and keep movement to easy walking. Note your leg freshness and energy by mid-afternoon and log "
-                 f"it — it shapes tomorrow's prescription.")
-    else:  # reduce
-        action = 'reduce'
-        prose = (f"DAILY RECOMMENDATION\n\nReduce today. Your metrics ({cat_words}) — external ACWR {ext}, internal ACWR "
-                 f"{intl}, divergence {div} — call for genuinely less than the plan: cut volume and hold easy Zone 1. Defer "
-                 f"any quality work or scheduled test to a fresher day. Log how you feel afterward — it shapes tomorrow's "
-                 f"prescription.")
-    structured = {
-        'target_date': target_date_str,
-        'assessment': {'category': assessment_category, 'primary_signal': 'divergence'},
-        'decision': {'action': action},
-        'meta': {'source': 'floor_guardrail_fallback'},
-    }
-    return {
-        'daily_recommendation': prose,
-        'raw_response': prose,
-        'structured_output': structured,
-    }
+def assemble_daily_context(user_id, current_metrics, *, activities=None,
+                           training_guide=None, autopsy_insights=None,
+                           target_date=None, recommendation_style=None):
+    """Single seam every daily-recommendation prompt builder assembles its
+    context through — the input-side mirror of finalize_recommendation().
 
+    All three daily generators (standard, autopsy-informed, agentic) build their
+    prompts from this — do not re-query or re-format any of these blocks inline
+    in a new caller. A signal added here reaches every path by construction; a
+    signal added to a single builder's f-string reaches only that path and
+    silently drifts (which is exactly how readiness, the coaching-context
+    library, and free-text journal notes each ended up on some paths but not
+    others).
 
-def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
-    """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
+    Note: this performs one write as a side effect — upsert_effective_aet_daily()
+    persists the day's applied effective AeT. That is pre-existing behavior moved
+    here intact; it means the first call of a given day can change what a second
+    call of the same day returns.
 
-    Prompt taxonomy: [COMP] = compensates for current LLM weakness (sycophancy, anchoring, vagueness) — remove
-    as model capability improves. [DOMAIN] = encodes non-negotiable physiology — keep indefinitely.
+    Returns: DailyContext
     """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
+
+    activities = activities if activities is not None else []
 
     # Get athlete experience level and age from user profile
     athlete_experience = execute_query(
@@ -2424,6 +2390,166 @@ Apply this adjustment when prescribing today's {_hard_type} session.
     from coach_recommendations import build_race_day_block, build_upcoming_races_block
     race_day_block = build_race_day_block(user_id, target_date if target_date else current_date)
     race_goals_block = build_upcoming_races_block(user_id)
+
+    return DailyContext(
+        current_date=current_date,
+        target_date=target_date,
+        start_date=start_date,
+        end_date=end_date,
+        days_analyzed=days_analyzed,
+        athlete_profile=athlete_profile,
+        athlete_age=athlete_age,
+        athlete_model=athlete_model_context,
+        recommendation_style=recommendation_style,
+        thresholds=thresholds,
+        assessment_category=assessment_category,
+        metric_verdict=metric_verdict_block,
+        formatted_metrics=formatted_metrics,
+        effective_aet=effective_aet_block,
+        readiness=readiness_context,
+        coaching_library=coaching_context_block,
+        weekly=weekly_context_block,
+        race_day=race_day_block,
+        race_goals=race_goals_block,
+        autopsy=autopsy_context,
+        pattern_flags=pattern_flags,
+        recent_activities=recent_activities_summary,
+        filtered_guide=filtered_guide,
+    )
+
+def repair_metric_citations(prose, current_metrics):
+    """Repair LLM prose that mis-cites an authoritative metric value (e.g. writes
+    "Internal ACWR is 1.13" when it is 2.13). The structured data is always correct;
+    this only fixes the narrative. Anchored on the metric LABEL so threshold numbers
+    (e.g. "high-risk threshold of 1.5") are never touched.
+
+    Returns (repaired_prose, repairs) where repairs is a list of (label, cited, correct).
+    """
+    import re as _re
+    if not prose:
+        return prose, []
+    repairs = []
+    ext = current_metrics.get('external_acwr')
+    intl = current_metrics.get('internal_acwr')
+    div = current_metrics.get('normalized_divergence')
+    out = prose
+
+    connective = r'(?:sits at|sitting at|is|of|at|reaches|=|:)?\s*'
+
+    def _fix_acwr(text, label, value):
+        if not isinstance(value, (int, float)):
+            return text
+        pat = _re.compile(rf'({label}\s*{connective})(-?\d+\.\d+)')
+        def repl(mobj):
+            cited = mobj.group(2)
+            try:
+                if round(float(cited), 2) != round(float(value), 2):
+                    repairs.append((label, cited, f"{value:.2f}"))
+                    return mobj.group(1) + f"{value:.2f}"
+            except ValueError:
+                pass
+            return mobj.group(0)
+        return pat.sub(repl, text)
+
+    out = _fix_acwr(out, 'External ACWR', ext)
+    out = _fix_acwr(out, 'Internal ACWR', intl)
+
+    if isinstance(div, (int, float)):
+        pat = _re.compile(rf'((?:[Nn]ormalized\s+)?divergence\s*{connective})(-?\d+\.\d+)')
+        target = f"{div:.3f}"
+        def repl_div(mobj):
+            cited = mobj.group(2)
+            try:
+                if round(float(cited), 3) != round(float(div), 3):
+                    repairs.append(('divergence', cited, target))
+                    return mobj.group(1) + target
+            except ValueError:
+                pass
+            return mobj.group(0)
+        out = pat.sub(repl_div, out)
+
+    return out, repairs
+
+
+def _safe_floor_recommendation(assessment_category, current_metrics, target_date_str):
+    """Deterministic safe fallback used only when the LLM repeatedly violates the safety
+    floor. Emits a plain rest/reduce recommendation grounded in the verdict — never a
+    training day when the floor mandates rest. Last line of defense, not the normal path.
+    """
+    floor = mandated_floor(assessment_category)
+    ext = current_metrics.get('external_acwr')
+    intl = current_metrics.get('internal_acwr')
+    div = current_metrics.get('normalized_divergence')
+    cat_words = assessment_category.replace('_', ' ')
+    if floor == 'rest':
+        action = 'rest'
+        prose = (f"DAILY RECOMMENDATION\n\nToday is a rest day. Your metrics ({cat_words}) place you beyond your "
+                 f"safe training threshold — external ACWR {ext}, internal ACWR {intl}, divergence {div}. Any planned "
+                 f"session, including a scheduled test, is deferred — a test run in this state produces invalid data and "
+                 f"adds load you cannot absorb. Recovery is where this week's training becomes fitness: prioritize sleep, "
+                 f"refuel, and keep movement to easy walking. Note your leg freshness and energy by mid-afternoon and log "
+                 f"it — it shapes tomorrow's prescription.")
+    else:  # reduce
+        action = 'reduce'
+        prose = (f"DAILY RECOMMENDATION\n\nReduce today. Your metrics ({cat_words}) — external ACWR {ext}, internal ACWR "
+                 f"{intl}, divergence {div} — call for genuinely less than the plan: cut volume and hold easy Zone 1. Defer "
+                 f"any quality work or scheduled test to a fresher day. Log how you feel afterward — it shapes tomorrow's "
+                 f"prescription.")
+    structured = {
+        'target_date': target_date_str,
+        'assessment': {'category': assessment_category, 'primary_signal': 'divergence'},
+        'decision': {'action': action},
+        'meta': {'source': 'floor_guardrail_fallback'},
+    }
+    return {
+        'daily_recommendation': prose,
+        'raw_response': prose,
+        'structured_output': structured,
+    }
+
+
+def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
+    """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
+
+    Prompt taxonomy: [COMP] = compensates for current LLM weakness (sycophancy, anchoring, vagueness) — remove
+    as model capability improves. [DOMAIN] = encodes non-negotiable physiology — keep indefinitely.
+    """
+    if user_id is None:
+        raise ValueError("user_id is required for multi-user support")
+
+    ctx = assemble_daily_context(
+        user_id,
+        current_metrics,
+        activities=activities,
+        training_guide=training_guide,
+        autopsy_insights=autopsy_insights,
+        target_date=target_date,
+        recommendation_style=recommendation_style,
+    )
+
+    # Unpacked into locals so the prompt template below reads unchanged.
+    current_date = ctx.current_date
+    start_date = ctx.start_date
+    end_date = ctx.end_date
+    days_analyzed = ctx.days_analyzed
+    athlete_profile = ctx.athlete_profile
+    athlete_age = ctx.athlete_age
+    recommendation_style = ctx.recommendation_style
+    thresholds = ctx.thresholds
+    assessment_category = ctx.assessment_category
+    metric_verdict_block = ctx.metric_verdict
+    formatted_metrics = ctx.formatted_metrics
+    effective_aet_block = ctx.effective_aet
+    athlete_model_context = ctx.athlete_model
+    readiness_context = ctx.readiness
+    coaching_context_block = ctx.coaching_library
+    autopsy_context = ctx.autopsy
+    weekly_context_block = ctx.weekly
+    race_day_block = ctx.race_day
+    race_goals_block = ctx.race_goals
+    pattern_flags = ctx.pattern_flags
+    recent_activities_summary = ctx.recent_activities
+    filtered_guide = ctx.filtered_guide
 
     # Build the enhanced prompt with tone integration and risk tolerance context
     # [DOMAIN] Decision Framework assessment order (Safety→Overtraining→ACWR→Recovery→Progression)
