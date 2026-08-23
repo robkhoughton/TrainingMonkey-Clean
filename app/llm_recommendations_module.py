@@ -237,6 +237,21 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     return "\n\n### COACHING CONTEXT\n" + "\n\n---\n\n".join(sections) + "\n"
 
 
+# [COMP] Response Scenarios are worked examples in the training guide. Each demonstrates a
+# "METRIC ASSESSMENT: / TODAY: / WEEKLY: / MONITOR:" labelled structure — a format BOTH daily
+# prompts explicitly forbid ("Do NOT add sub-headers... DAILY RECOMMENDATION is the only
+# structural element"; "Plain text only — no markdown, no bold, no headers"). Few-shot
+# examples are a stronger format signal than instructions, which makes them the likely root
+# cause of the March 2026 section-drift bug (the model emitting WEEKLY PLANNING / PATTERN
+# INSIGHTS headers), a bug that was patched with a prohibition while the contradicting
+# examples stayed in the prompt. Their metric values also contradict the athlete's
+# calibrated thresholds, which are injected authoritatively in the metric verdict block.
+#
+# Set True to restore them (e.g. to A/B whether they add reasoning value the format rules
+# don't capture). If they stay off, the paired prohibition text is a candidate for pruning.
+INJECT_RESPONSE_SCENARIOS = False
+
+
 def _select_guide_sections(guide_text, assessment_category):
     """Return a filtered subset of the Training Guide relevant to assessment_category.
 
@@ -295,7 +310,7 @@ def _select_guide_sections(guide_text, assessment_category):
             parts.append(sections[name])
 
     # Parse and inject only the matching Response Scenarios
-    scenarios_section = sections.get('Claude Response Scenarios', '')
+    scenarios_section = sections.get('Claude Response Scenarios', '') if INJECT_RESPONSE_SCENARIOS else ''
     selected_count = 0
     if scenarios_section:
         scenario_parts = {}
@@ -4820,6 +4835,17 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     [DOMAIN] ACWR/divergence thresholds and positive-divergence-means-more-capacity — real physiology
     [DOMAIN] terrain-as-load-proxy prohibition in Element 7 — HR is the authority on internal load
     [COMP]   10-element format requirements, word-count ranges, "plain text only" — format enforcement
+
+    DO NOT "fix" the 240-280 word range to match observed output length. Measured
+    2026-08-23 (Sonnet 4.6, n=3 per arm): the stated range acts as an ANCHOR the model
+    scales by a stable ~1.45x, not a ceiling it obeys.
+        stated 240-280 (mid 260) -> produced 357-412 words (~1.47x)
+        stated 340-400 (mid 370) -> produced 490-607 words (~1.46x)
+    Raising the number to "match reality" made prescriptions ~40% longer, not compliant.
+    240-280 is therefore already calibrated to yield the ~380-word output that reads well;
+    the apparent 6/6 "violation" is the calibration working, not the model misbehaving.
+    To change real output length, divide the target you want by ~1.45. Re-measure the
+    multiplier after any model upgrade — it is a model-specific property.
     [COMP]   Element 6 "Never write Proceed as planned" — fights metric-less deference to plan
     [COMP]   Element 1 metric-driven verdict framing — fights anchoring on plan without metric justification
     [COMP]   Element 3 K-of-N citation requirement — fights vague compliance generalizations
