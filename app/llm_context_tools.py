@@ -212,6 +212,101 @@ def get_weekly_program_day(user_id: int, target_date: str) -> dict:
     return {}
 
 
+def get_plan_execution_corrections(user_id: int, target_date: str, lookback_days: int = 3) -> list:
+    """Return verified prescribed-vs-actual facts for recently completed days that
+    have an autopsy on file.
+
+    A weekly plan's per-day description is written in advance and can assert what a
+    PRIOR day's session accomplished (e.g. "after Saturday's long effort..."). That
+    text is never revised once the plan is written, so once a later day's autopsy
+    exists, the plan's assumption about that prior day may be false — and must not
+    be echoed as fact when generating a recommendation for a subsequent date.
+
+    Deliberately NOT filtered by alignment_score: gating a correctness fact on the
+    autopsy's own LLM-assigned score just re-introduces the bug this exists to fix
+    (a large volume miss can still score alignment=7 if the LLM judged the *choice*
+    sound). Whether a day is worth correcting is a volume/plan-vs-actual question,
+    not a judgment-quality question — so every day with an autopsy in the window is
+    included, deterministic, DB-derived ground truth, never re-derived by the LLM.
+
+    target_date format: YYYY-MM-DD
+    """
+    try:
+        target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
+    except ValueError:
+        logger.warning(f"get_plan_execution_corrections: invalid date {target_date!r}")
+        return []
+
+    cutoff = (target_dt - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+    rows = execute_query(
+        """
+        SELECT date, actual_activities, alignment_score
+        FROM ai_autopsies
+        WHERE user_id = %s AND date >= %s AND date < %s
+              AND autopsy_analysis IS NOT NULL
+        ORDER BY date
+        """,
+        (user_id, cutoff, target_date),
+        fetch=True
+    )
+
+    corrections = []
+    for row in rows or []:
+        r = dict(row)
+        d = r.get('date')
+        d_str = d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)
+        day_name = d.strftime('%A') if hasattr(d, 'strftime') else ''
+
+        # ai_autopsies.prescribed_action stores that day's FULL narrative
+        # recommendation text, not a short prescription — use the structured
+        # weekly-plan entry instead for a concise "what was planned" fact.
+        planned_entry = get_weekly_program_day(user_id, d_str)
+        if planned_entry:
+            wtype = planned_entry.get('workout_type', 'N/A')
+            dist = planned_entry.get('distance_miles')
+            planned_str = f"{wtype}" + (f", {dist:.1f} mi" if dist else "")
+        else:
+            planned_str = 'N/A'
+
+        corrections.append({
+            'date': d_str,
+            'day_name': day_name,
+            'planned': planned_str,
+            'actual': r.get('actual_activities') or '',
+            'alignment_score': r.get('alignment_score'),
+        })
+    return corrections
+
+
+def format_plan_execution_corrections_block(corrections: list) -> str:
+    """Render get_plan_execution_corrections() output as a prompt block that
+    overrides stale plan-narrative assumptions about recently completed days.
+    Returns "" when there is nothing to correct (the common case).
+    """
+    if not corrections:
+        return ""
+
+    lines = [
+        f"- {c['day_name']} {c['date']} — PLANNED: {c['planned']} "
+        f"| ACTUAL: {c['actual']} (alignment {c['alignment_score']}/10)"
+        for c in corrections
+    ]
+
+    return (
+        "\n### VERIFIED EXECUTION — OVERRIDES PLAN NARRATIVE\n"
+        "The week plan text above was written in advance and may describe these dates as if "
+        "the planned session happened. It did not. These are the VERIFIED actual outcomes for "
+        "recently completed days that diverged from plan — treat them as ground truth and do "
+        "not restate or assume the planned outcome for these dates:\n"
+        + "\n".join(lines) + "\n"
+        "If the plan's description for today references one of these prior days (e.g. \"after "
+        "Saturday's long effort,\" \"depleted from Saturday\"), that reference describes the "
+        "PLANNED session, not what happened — correct it using the verified data above before "
+        "reasoning about today's fatigue state.\n"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tool 4 — journal entries
 # ---------------------------------------------------------------------------

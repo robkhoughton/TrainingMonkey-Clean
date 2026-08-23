@@ -2239,6 +2239,20 @@ EQUAL WEIGHT RULE: The weekly program prescription and autopsy/readiness data ca
   Never bury the change in prose, imply it, or reference a session the plan does not actually prescribe today. The Journal daily recommendation and the Coach weekly plan must never silently disagree: either confirm the planned session or name the adjustment on its own line.
 Safety constraints (ACWR thresholds, injury flags) still take precedence over both.
 """
+            # The full week schedule and today's description above were written in
+            # advance and can assert what a prior day's session accomplished. Correct
+            # any such stale assumption with the completed day's own autopsy —
+            # deterministic, DB-derived fact, never left for the LLM to reconcile.
+            try:
+                from llm_context_tools import (
+                    get_plan_execution_corrections,
+                    format_plan_execution_corrections_block,
+                )
+                _corrections = get_plan_execution_corrections(user_id, ref_date_str)
+                weekly_context_block += format_plan_execution_corrections_block(_corrections)
+            except Exception as _corr_err:
+                logger.warning(f"Could not build plan execution corrections: {_corr_err}")
+
             # Append deviation log / revision pending summary when present
             deviation_log = week_ctx.get('deviation_log') or []
             revision_pending = week_ctx.get('revision_pending') or False
@@ -4576,7 +4590,11 @@ def create_autopsy_informed_decision_prompt(user_id, target_date_str, current_me
     # Get weekly program context from Coach page
     weekly_program_context = ""
     try:
-        from llm_context_tools import get_weekly_program_day
+        from llm_context_tools import (
+            get_weekly_program_day,
+            get_plan_execution_corrections,
+            format_plan_execution_corrections_block,
+        )
         from datetime import datetime
 
         daily_plan = get_weekly_program_day(user_id, target_date_str)
@@ -4592,10 +4610,17 @@ YOUR MONKEY'S WEEK PLAN FOR {target_date_str} ({day_name}):
 - Intensity: {daily_plan.get('intensity', 'N/A')}
 - Key Focus: {daily_plan.get('key_focus', 'N/A')}
 
-CRITICAL: Your Daily Recommendation must be CONSISTENT with the week plan above.
+CRITICAL: Your Daily Recommendation must be CONSISTENT with the week plan above — except where the VERIFIED EXECUTION section below corrects it.
 When referencing the plan, choose naturally from: "your coach recommends", "your workplan for the week calls for", "your coach has mapped out", or "your weekly training plan calls for".
 If current metrics suggest adjusting the plan (e.g., rest day due to high ACWR), explain the deviation clearly.
 Otherwise, provide tactical execution guidance for the planned workout."""
+
+            # The plan description above was written in advance and can assert what a
+            # prior day's session accomplished. Correct any such assumption with what
+            # actually happened, per the completed day's own autopsy — deterministic,
+            # DB-derived fact, never left for the LLM to reconcile on its own.
+            corrections = get_plan_execution_corrections(user_id, target_date_str)
+            weekly_program_context += format_plan_execution_corrections_block(corrections)
         else:
             weekly_program_context = "\nNOTE: No weekly program available from Coach page. Provide standalone recommendation."
 
