@@ -3450,13 +3450,48 @@ def get_adjusted_thresholds(recommendation_style):
     return selected_thresholds
 
 
+# Sample-count bars a stored athlete-model value must clear before it is treated as
+# calibrated. These are the SAME bars get_athlete_model_context() uses for its
+# "calibrated from N ..." vs "population default — calibrating" label, and
+# MIN_THRESHOLD_N matches update_athlete_model()'s own N>=3 requirement for computing
+# the breakdown threshold. Keep all three in agreement — when the gate and the label
+# disagreed, the verdict block asserted a personalized number as authoritative while the
+# ATHLETE MODEL block in the same prompt disclaimed it as uncalibrated.
+MIN_DIV_LOW_N = 5
+MIN_THRESHOLD_N = 3
+
+
+def _conservative_floor(style_baseline, stored_value):
+    """Pick the more protective of two divergence thresholds for the UNCALIBRATED case.
+
+    Both are negative; the one closer to zero trips earlier and is therefore the more
+    conservative. Missing calibration data must never buy the athlete more permission
+    than the system already grants — a safety floor is category 2 (enforced, conservative),
+    so an aggressive risk-tolerance setting is not allowed to loosen it just because the
+    evidence to personalize it is absent.
+
+    Returns the style baseline when there is no stored value to compare against.
+    """
+    if stored_value is None:
+        return style_baseline
+    if style_baseline is None:
+        return stored_value
+    return max(float(style_baseline), float(stored_value))
+
+
 def apply_athlete_model_to_thresholds(thresholds, user_id):
-    """Override style-based divergence thresholds with the athlete's personal values when
-    the model has been calibrated from real autopsy data.
+    """Override style-based divergence thresholds with the athlete's personal values, but
+    ONLY where those values are actually calibrated from enough real autopsy data.
 
     Returns a new dict — never mutates the input.
     The injury signal framework is divergence-based; ACWR thresholds are not overridden
     here (the acwr_sweet_spot_low/high fields are retired — see Phase 3-A of QC plan).
+
+    Uncalibrated values fall back to the athlete's own STYLE baseline (already present in
+    `thresholds`). They previously fell back to hardcoded 0.15 / -0.05, which are the
+    *balanced* baselines — so an aggressive athlete with an uncalibrated model silently
+    got -0.15 instead of their -0.20, and a conservative athlete got -0.15 instead of
+    -0.10. The old "no-op until calibrated" comment was only true for balanced athletes.
     """
     try:
         model = get_athlete_model(user_id)
@@ -3465,25 +3500,45 @@ def apply_athlete_model_to_thresholds(thresholds, user_id):
 
         calibrated = dict(thresholds)
         changes = []
+        held = []
 
-        # Override divergence_overtraining from personalized breakdown threshold.
-        # Stored as positive absolute value; applied as negative.
-        # Defaults (0.15 → -0.15) match the balanced style baseline — no-op until calibrated.
-        div_threshold = model.get('divergence_injury_threshold') or 0.15
-        calibrated['divergence_overtraining'] = -float(div_threshold)
-        changes.append(f"divergence_overtraining→{-div_threshold:.3f}")
+        # Breakdown threshold — stored as a positive absolute value, applied as negative.
+        div_threshold = model.get('divergence_injury_threshold')
+        threshold_n = model.get('threshold_n') or 0
+        if div_threshold is not None and threshold_n >= MIN_THRESHOLD_N:
+            calibrated['divergence_overtraining'] = -float(div_threshold)
+            changes.append(f"divergence_overtraining→{-float(div_threshold):.3f} (n={threshold_n})")
+        else:
+            stored = -float(div_threshold) if div_threshold is not None else None
+            calibrated['divergence_overtraining'] = _conservative_floor(
+                thresholds.get('divergence_overtraining'), stored
+            )
+            held.append(
+                f"divergence_overtraining uncalibrated (n={threshold_n}), "
+                f"conservative floor {calibrated['divergence_overtraining']:.3f}"
+            )
 
-        # Override divergence_moderate_risk from personalized productive window edge.
-        # Marks the boundary between productive training and elevated stress for this athlete.
-        # Default (-0.05) matches the balanced style baseline — no-op until calibrated.
-        div_low = model.get('typical_divergence_low') or -0.05
-        calibrated['divergence_moderate_risk'] = float(div_low)
-        changes.append(f"divergence_moderate_risk→{div_low:.3f}")
+        # Productive window edge — the boundary between productive training and elevated
+        # stress for this athlete.
+        div_low = model.get('typical_divergence_low')
+        div_low_n = model.get('div_low_n') or 0
+        if div_low is not None and div_low_n >= MIN_DIV_LOW_N:
+            calibrated['divergence_moderate_risk'] = float(div_low)
+            changes.append(f"divergence_moderate_risk→{float(div_low):.3f} (n={div_low_n})")
+        else:
+            stored_low = float(div_low) if div_low is not None else None
+            calibrated['divergence_moderate_risk'] = _conservative_floor(
+                thresholds.get('divergence_moderate_risk'), stored_low
+            )
+            held.append(
+                f"divergence_moderate_risk uncalibrated (n={div_low_n}), "
+                f"conservative floor {calibrated['divergence_moderate_risk']:.3f}"
+            )
 
         if changes:
-            logger.info(
-                f"Thresholds calibrated for user {user_id}: {', '.join(changes)}"
-            )
+            logger.info(f"Thresholds calibrated for user {user_id}: {', '.join(changes)}")
+        if held:
+            logger.info(f"Thresholds uncalibrated for user {user_id}: {', '.join(held)}")
         return calibrated
 
     except Exception as e:
@@ -4212,13 +4267,15 @@ def get_athlete_model_context(user_id, athlete_model=None):
         div_low_n = model.get('div_low_n', 0) or 0
         threshold_n = model.get('threshold_n', 0) or 0
 
+        # Same bars apply_athlete_model_to_thresholds() gates on, so this label always
+        # describes the value actually in force.
         div_low_calibration = (
-            f"calibrated from {div_low_n} healthy days" if div_low_n >= 5
-            else "population default — calibrating"
+            f"calibrated from {div_low_n} healthy days" if div_low_n >= MIN_DIV_LOW_N
+            else "style baseline — calibrating"
         )
         threshold_calibration = (
-            f"calibrated from {threshold_n} distress events" if threshold_n >= 3
-            else "population default — calibrating"
+            f"calibrated from {threshold_n} distress events" if threshold_n >= MIN_THRESHOLD_N
+            else "style baseline — calibrating"
         )
 
         confidence_pct = model.get('model_confidence_pct')

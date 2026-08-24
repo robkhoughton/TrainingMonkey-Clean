@@ -128,3 +128,46 @@ class TestVerdictBlock(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestUncalibratedThresholdFloor(unittest.TestCase):
+    """A safety floor must never be loosened by MISSING data.
+
+    Root cause these guard: divergence_injury_threshold was applied unconditionally with
+    no sample gate, so a stored 0.11 backed by threshold_n=0 was injected into the verdict
+    block as an authoritative personalized value while the ATHLETE MODEL block in the same
+    prompt described it as uncalibrated. The first fix (fall back to the athlete's style
+    baseline) turned out to LOOSEN the line from -0.11 to -0.20 for an aggressive athlete,
+    removing the rest mandate on 11 of 105 recent days. Absence of evidence must not buy
+    more permission, so the uncalibrated path takes the more protective of the two.
+    """
+
+    def test_uncalibrated_never_loosens_below_stored_value(self):
+        for baseline, stored, expected in [
+            (-0.20, -0.11, -0.11),   # aggressive: stored is tighter, wins
+            (-0.15, -0.11, -0.11),   # balanced/adaptive: stored is tighter, wins
+            (-0.10, -0.11, -0.10),   # conservative: own baseline is tighter, wins
+        ]:
+            self.assertEqual(expected, m._conservative_floor(baseline, stored),
+                             f"baseline={baseline} stored={stored}")
+
+    def test_falls_back_to_baseline_when_nothing_stored(self):
+        self.assertEqual(-0.20, m._conservative_floor(-0.20, None))
+
+    def test_conservative_athlete_keeps_own_baseline(self):
+        """Regression: the old code fell back to a hardcoded 0.15/-0.05 (the BALANCED
+        values), so a conservative athlete was silently loosened -0.10 -> -0.15 and an
+        aggressive one tightened -0.20 -> -0.15. Only balanced was ever a no-op."""
+        conservative = m.get_adjusted_thresholds('conservative')
+        self.assertEqual(-0.10, conservative['divergence_overtraining'])
+        self.assertEqual(-0.10, m._conservative_floor(
+            conservative['divergence_overtraining'], -0.15))
+
+    def test_gate_bars_match_the_llm_facing_labels(self):
+        """The gate and the 'calibrated from N ...' label must use the same bars, or the
+        verdict block can assert a value the ATHLETE MODEL block disclaims."""
+        self.assertEqual(3, m.MIN_THRESHOLD_N)
+        self.assertEqual(5, m.MIN_DIV_LOW_N)
+        src = __import__('inspect').getsource(m.get_athlete_model_context)
+        self.assertIn('MIN_DIV_LOW_N', src)
+        self.assertIn('MIN_THRESHOLD_N', src)
