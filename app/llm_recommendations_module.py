@@ -5439,7 +5439,8 @@ def process_markdown(text):
 # generate_recommendations().  The existing function is UNCHANGED.
 # =============================================================================
 
-def call_claude_with_tools(messages, tools, model=None, temperature=None, max_tokens=3000):
+def call_claude_with_tools(messages, tools, model=None, temperature=None, max_tokens=3000,
+                           system=None):
     """Call Claude using the Anthropic SDK with tool support.
 
     Args:
@@ -5449,6 +5450,12 @@ def call_claude_with_tools(messages, tools, model=None, temperature=None, max_to
         model: Claude model override (defaults to MODEL_SONNET for agentic path).
         temperature: Sampling temperature (defaults to RECOMMENDATION_TEMPERATURE).
         max_tokens: Maximum tokens to generate.
+        system: System prompt. This parameter did not exist until 2026-08-24, which meant
+                the agentic path assembled a full system prompt (weekly plan rule,
+                deviation rules, tone, readiness, weekly strategic context, training guide,
+                coaching-context library) and then never sent it — only the user turn
+                reached the model. Every parity fix previously made to that path was dead
+                code. Always pass this.
 
     Returns:
         The Anthropic Message object (not just the text) so callers can inspect
@@ -5468,13 +5475,22 @@ def call_claude_with_tools(messages, tools, model=None, temperature=None, max_to
         f"temperature={temperature}, messages={len(messages)}, tools={len(tools)}"
     )
 
-    message = client.messages.create(
+    _create_kwargs = dict(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
         tools=tools,
         messages=messages,
     )
+    if system:
+        _create_kwargs['system'] = system
+    else:
+        logger.warning(
+            "call_claude_with_tools: no system prompt supplied — the caller's static "
+            "context will not reach the model"
+        )
+
+    message = client.messages.create(**_create_kwargs)
 
     logger.info(
         f"call_claude_with_tools: stop_reason={message.stop_reason}, "
@@ -5630,155 +5646,45 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # morning readiness, training guide, weekly strategic context         #
         # ------------------------------------------------------------------ #
         static_context_parts = []
-        _agentic_readiness_state = 'UNKNOWN'  # extracted for coaching context gating below
 
-        # Morning readiness — same query as standard path
+        # Context comes from the shared seam — see assemble_daily_context(). This path used
+        # to hand-copy the standard builder's morning-readiness block verbatim (its own
+        # comment read "same wording as the standard path's"), which is exactly how the
+        # paths drifted apart.
+        #
+        # Only blocks NO tool can supply are pre-injected. Anything TOOL_DEFINITIONS covers
+        # -- get_activities, get_race_goals, get_weekly_program_day, get_journal_entries,
+        # get_athlete_model -- stays delegated, so the two-turn agentic pattern still gets
+        # to decide what it needs instead of being handed everything up front.
         try:
-            # z-score readiness engine (same call the standard path makes) — supersedes
-            # the ratio-based fallback so both paths narrate the same HRV/RHR reading
-            # the same way, and both feed compute_readiness_state the same signal.
-            _ans = get_ans_readiness(user_id)
-            readiness_data = execute_query(
-                """SELECT sleep_quality, morning_soreness, hrv_value, resting_hr,
-                          sleep_duration_secs, sleep_score, weight, spo2, respiration_rate
-                   FROM journal_entries WHERE user_id = %s AND date = %s""",
-                (user_id, target_date),
-                fetch=True
+            ctx = assemble_daily_context(
+                user_id,
+                current_metrics,
+                autopsy_insights=get_recent_autopsy_insights(user_id, days=3),
+                target_date=target_date,
             )
-            hrv_baseline_data = execute_query(
-                """SELECT AVG(hrv_value) AS hrv_baseline, COUNT(hrv_value) AS hrv_count
-                   FROM journal_entries
-                   WHERE user_id = %s
-                     AND date >= %s::date - INTERVAL '30 days'
-                     AND date < %s::date
-                     AND hrv_value IS NOT NULL""",
-                (user_id, target_date, target_date),
-                fetch=True
-            )
-            rhr_baseline_data = execute_query(
-                """SELECT AVG(resting_hr) AS rhr_baseline, COUNT(resting_hr) AS rhr_count
-                   FROM journal_entries
-                   WHERE user_id = %s
-                     AND date >= %s::date - INTERVAL '7 days'
-                     AND date < %s::date
-                     AND resting_hr IS NOT NULL""",
-                (user_id, target_date, target_date),
-                fetch=True
-            )
-            if readiness_data and readiness_data[0]:
-                row = dict(readiness_data[0])
-                sq               = row.get('sleep_quality')
-                ms               = row.get('morning_soreness')
-                hrv_value        = row.get('hrv_value')
-                rhr_value        = row.get('resting_hr')
-                sleep_secs       = row.get('sleep_duration_secs')
-                sleep_score      = row.get('sleep_score')
-                weight           = row.get('weight')
-                spo2             = row.get('spo2')
-                respiration_rate = row.get('respiration_rate')
-                r_parts          = []
+        except Exception as _ctx_err:
+            logger.warning(f"[AGENTIC] Could not assemble daily context for user {user_id}: {_ctx_err}")
+            ctx = None
 
-                if sleep_secs is not None:
-                    hours = float(sleep_secs) / 3600
-                    if hours < 6:
-                        sleep_status = "significant deficit"
-                    elif hours < 7:
-                        sleep_status = "suboptimal"
-                    else:
-                        sleep_status = "adequate"
-                    score_str = f", score: {sleep_score}/100" if sleep_score is not None else ""
-                    r_parts.append(f"Sleep: {hours:.1f}hrs ({sleep_status}{score_str})")
-                elif sq is not None:
-                    sleep_labels = {1: "very poor", 2: "poor", 3: "fair", 4: "good", 5: "excellent"}
-                    r_parts.append(f"Sleep quality: {sq}/5 ({sleep_labels.get(sq, 'unknown')})")
-                if ms is not None:
-                    r_parts.append(f"Morning soreness: {ms}/100")
-
-                # HRV/RHR context — z-score relative to personal baseline (same engine,
-                # same wording as the standard path's create_enhanced_prompt_with_tone).
-                if hrv_value is not None:
-                    hrv_z = _ans.get('hrv_z') if _ans else None
-                    if hrv_z is not None:
-                        if hrv_z >= 1.5:
-                            hrv_status = "elevated — parasympathetic spike"
-                        elif hrv_z <= -1.0:
-                            hrv_status = "suppressed"
-                        elif hrv_z >= 0.5:
-                            hrv_status = "above baseline"
-                        else:
-                            hrv_status = "normal range"
-                        r_parts.append(f"HRV: {hrv_value:.0f}ms ({hrv_z:+.2f}σ — {hrv_status})")
-                    else:
-                        r_parts.append(f"HRV: {hrv_value:.0f}ms (building baseline)")
-
-                if rhr_value is not None:
-                    rhr_z = _ans.get('rhr_z') if _ans else None
-                    if rhr_z is not None:
-                        if rhr_z >= 1.0:
-                            status = "elevated"
-                        elif rhr_z <= -1.0:
-                            status = "below baseline"
-                        elif rhr_z >= 0.5:
-                            status = "slightly above baseline"
-                        else:
-                            status = "normal range"
-                        r_parts.append(
-                            f"Resting HR: {rhr_value}bpm ({rhr_z:+.2f}σ — {status})"
-                        )
-                    else:
-                        r_parts.append(f"Resting HR: {rhr_value}bpm (building baseline)")
-
-                if weight is not None:
-                    weight_baseline_data = execute_query(
-                        """SELECT AVG(weight) AS weight_avg FROM journal_entries
-                           WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
-                             AND date < %s::date AND weight IS NOT NULL""",
-                        (user_id, target_date, target_date), fetch=True
-                    )
-                    weight_avg = weight_baseline_data[0]['weight_avg'] if weight_baseline_data and weight_baseline_data[0] else None
-                    if weight_avg:
-                        delta = float(weight) - float(weight_avg)
-                        pct   = (delta / float(weight_avg)) * 100
-                        note  = " — possible dehydration, monitor" if pct <= -2 else (" — above 7-day avg" if pct >= 2 else "")
-                        r_parts.append(f"Weight: {weight:.1f}kg (7-day avg: {float(weight_avg):.1f}kg, {delta:+.1f}kg{note})")
-                    else:
-                        r_parts.append(f"Weight: {weight:.1f}kg")
-
-                if spo2 is not None and float(spo2) < 95:
-                    r_parts.append(f"SpO2: {spo2:.0f}% — low, possible altitude effect or illness")
-
-                if respiration_rate is not None:
-                    resp_baseline_data = execute_query(
-                        """SELECT AVG(respiration_rate) AS resp_avg FROM journal_entries
-                           WHERE user_id = %s AND date >= %s::date - INTERVAL '7 days'
-                             AND date < %s::date AND respiration_rate IS NOT NULL""",
-                        (user_id, target_date, target_date), fetch=True
-                    )
-                    resp_avg = resp_baseline_data[0]['resp_avg'] if resp_baseline_data and resp_baseline_data[0] else None
-                    if resp_avg and float(respiration_rate) > float(resp_avg) * 1.15:
-                        r_parts.append(
-                            f"Respiration: {respiration_rate:.0f} breaths/min "
-                            f"(7-day avg: {float(resp_avg):.0f} — elevated, possible illness or stress)"
-                        )
-
-                if r_parts:
-                    # Readiness state — from the ANS engine (get_ans_readiness), the same
-                    # classifier readiness.md's state vocabulary is written against. Not
-                    # compute_readiness_state(), which is a separate, coarser classifier.
-                    _agentic_readiness_state = _ans.get('state', 'UNKNOWN')
-                    static_context_parts.append(
-                        "### MORNING READINESS\n" +
-                        "\n".join(f"- {p}" for p in r_parts) +
-                        f"\n**READINESS STATE: {_ans['state']}** — {_ans['narrative']}"
-                    )
-                elif hrv_baseline_data or rhr_baseline_data:
-                    # No wellness fields today but baselines exist — state still comes from _ans
-                    _agentic_readiness_state = _ans.get('state', 'UNKNOWN')
-                    static_context_parts.append(
-                        f"### MORNING READINESS\n**READINESS STATE: {_ans['state']}** — {_ans['narrative']}"
-                    )
-        except Exception as readiness_err:
-            logger.warning(f"[AGENTIC] Could not fetch morning readiness for user {user_id}: {readiness_err}")
+        if ctx:
+            # Authoritative server-computed facts. metric_verdict is the significant
+            # addition: this path previously handed the model raw ACWR/divergence numbers
+            # with no server-side classification and left it to derive the verdict itself
+            # -- the precise failure the June 2026 fix removed from the other daily paths.
+            _agentic_blocks = [
+                ctx.metric_verdict,
+                ctx.effective_aet,
+                ctx.readiness,
+                ctx.training_stage,
+                ctx.recent_execution,
+                ctx.preference_feedback,
+            ]
+            if ctx.autopsy:
+                _agentic_blocks.append(ctx.autopsy + AUTOPSY_ADAPTATION_STANDARD)
+            for _block in _agentic_blocks:
+                if _block and _block.strip():
+                    static_context_parts.append(_block.strip())
 
         # Weekly strategic context — not available via get_weekly_program_day tool
         try:
@@ -5806,29 +5712,16 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         except Exception as wk_err:
             logger.warning(f"[AGENTIC] Could not fetch weekly context for user {user_id}: {wk_err}")
 
-        # Filtered training guide — critical for framework-grounded recommendations
-        try:
-            training_guide = load_training_guide()
-            if training_guide:
-                ext_acwr_val = current_metrics.get('external_acwr', 0) or 0
-                int_acwr_val = current_metrics.get('internal_acwr', 0) or 0
-                div_val = current_metrics.get('normalized_divergence', 0) or 0
-                days_rest_val = current_metrics.get('days_since_rest', 0) or 0
-                # floor_category (computed above, shared with the safety-floor guardrail)
-                # is the same single-authority classification used to filter the guide.
-                filtered = _select_guide_sections(training_guide, floor_category)
-                static_context_parts.append("### TRAINING REFERENCE FRAMEWORK\n" + filtered)
-        except Exception as guide_err:
-            logger.warning(f"[AGENTIC] Could not load training guide for user {user_id}: {guide_err}")
+        # Filtered training guide — from the shared seam, category-filtered by the same
+        # single-authority assessment the safety-floor guardrail uses.
+        if ctx and ctx.filtered_guide:
+            static_context_parts.append("### TRAINING REFERENCE FRAMEWORK\n" + ctx.filtered_guide)
 
         static_context_block = "\n\n".join(static_context_parts)
 
-        # Coaching context library — state-gated topic files (parity with standard path)
-        try:
-            _agentic_coaching_context = _load_coaching_context(user_id, _agentic_readiness_state, target_date)
-        except Exception as _cc_err:
-            logger.warning(f"[AGENTIC] Could not load coaching context for user {user_id}: {_cc_err}")
-            _agentic_coaching_context = ""
+        # Coaching context library — from the shared seam, already state-gated there on the
+        # canonical readiness state.
+        _agentic_coaching_context = ctx.coaching_library if ctx else ""
 
         # ------------------------------------------------------------------ #
         # Turn 1 — minimal prompt with metrics + tool list                    #
@@ -5890,6 +5783,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             messages=messages,
             tools=TOOL_DEFINITIONS,
             max_tokens=3000,
+            system=system_turn1,
         )
 
         total_input_tokens = turn1_response.usage.input_tokens
@@ -5939,6 +5833,7 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                 messages=messages,
                 tools=TOOL_DEFINITIONS,
                 max_tokens=3000,
+                system=system_turn1,
             )
 
             total_input_tokens += turn2_response.usage.input_tokens

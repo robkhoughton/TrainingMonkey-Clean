@@ -49,19 +49,27 @@ REQUIRED_SIGNALS = frozenset({
     'filtered_guide',
 })
 
-# Builders already routed through the seam.
-BUILDERS_ON_SEAM = (
-    'create_enhanced_prompt_with_tone',
-    'create_autopsy_informed_decision_prompt',
-)
+# Signals the agentic generator deliberately does NOT pre-inject. Its design is two-turn:
+# turn 1 sends context plus a tool list and the model REQUESTS what it needs. Pre-injecting
+# a block that TOOL_DEFINITIONS already exposes would short-circuit that, so these stay
+# delegated. This is an exemption from parity, not an oversight -- see
+# test_agentic_exemptions_have_backing_tools, which fails if the backing tool disappears.
+AGENTIC_TOOL_DELEGATED = frozenset({
+    'weekly',             # get_weekly_program_day
+    'race_day',           # get_race_goals
+    'race_goals',         # get_race_goals
+    'journal_notes',      # get_journal_entries
+    'athlete_model',      # get_athlete_model
+    'pattern_flags',      # get_activities
+    'recent_activities',  # get_activities
+})
 
-# Known gap: the agentic generator still assembles its prompt inline, including a
-# hand-copied duplicate of the readiness block. When it is moved onto the seam, add
-# it to BUILDERS_ON_SEAM above and delete this list -- test_known_gap_is_still_real
-# will fail if it is migrated but left listed here, so the two cannot drift apart.
-BUILDERS_NOT_YET_ON_SEAM = (
-    'generate_recommendations_agentic',
-)
+# Builders routed through the seam, mapped to the signals they are exempt from consuming.
+BUILDERS_ON_SEAM = {
+    'create_enhanced_prompt_with_tone': frozenset(),
+    'create_autopsy_informed_decision_prompt': frozenset(),
+    'generate_recommendations_agentic': AGENTIC_TOOL_DELEGATED,
+}
 
 
 class TestDailyContextShape(unittest.TestCase):
@@ -106,9 +114,9 @@ class TestBuilderParity(unittest.TestCase):
 
     def test_every_builder_consumes_every_required_signal(self):
         failures = []
-        for builder_name in BUILDERS_ON_SEAM:
+        for builder_name, exempt in BUILDERS_ON_SEAM.items():
             src = inspect.getsource(getattr(M, builder_name))
-            for signal in sorted(REQUIRED_SIGNALS):
+            for signal in sorted(REQUIRED_SIGNALS - exempt):
                 if f'ctx.{signal}' not in src:
                     failures.append(f'{builder_name} does not consume ctx.{signal}')
         self.assertEqual([], failures, '\n'.join(failures))
@@ -121,15 +129,34 @@ class TestBuilderParity(unittest.TestCase):
                 f'{builder_name} must build its context through the shared seam'
             )
 
-    def test_known_gap_is_still_real(self):
-        """Guards the migration TODO itself: once the agentic path moves onto the seam,
-        this fails, forcing BUILDERS_NOT_YET_ON_SEAM to be updated rather than left stale."""
-        for builder_name in BUILDERS_NOT_YET_ON_SEAM:
+    def test_agentic_exemptions_have_backing_tools(self):
+        """The agentic path's parity exemptions are only legitimate while the tools that
+        supply those blocks actually exist. If a tool is removed, the exemption silently
+        becomes a hole -- that block would then reach no path at all."""
+        from llm_context_tools import TOOL_DEFINITIONS
+        tool_names = {t['name'] for t in TOOL_DEFINITIONS}
+        for required in ('get_activities', 'get_race_goals', 'get_weekly_program_day',
+                         'get_journal_entries', 'get_athlete_model'):
+            self.assertIn(
+                required, tool_names,
+                f'{required} no longer exists, so the agentic exemption for the signals it '
+                'supplied is invalid -- restore the tool or pre-inject those blocks'
+            )
+
+    def test_no_builder_hand_copies_a_shared_block(self):
+        """Regression: the agentic path carried a verbatim hand-copy of the standard
+        builder's readiness block, its own comment noting it was "same wording as the
+        standard path's". That duplication is what the seam exists to eliminate."""
+        for builder_name in BUILDERS_ON_SEAM:
             src = inspect.getsource(getattr(M, builder_name))
             self.assertNotIn(
-                'assemble_daily_context(', src,
-                f'{builder_name} now uses the seam -- move it into BUILDERS_ON_SEAM '
-                'and remove it from BUILDERS_NOT_YET_ON_SEAM'
+                'get_ans_readiness(', src,
+                f'{builder_name} builds readiness itself instead of using ctx.readiness'
+            )
+            self.assertNotIn(
+                '_load_coaching_context(', src,
+                f'{builder_name} loads coaching context itself instead of using '
+                'ctx.coaching_library'
             )
 
 
