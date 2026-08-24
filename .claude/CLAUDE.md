@@ -47,6 +47,8 @@ TrainingMonkey/
 
 `app/Training_Metrics_Reference_Guide.md` is the authoritative source for all coaching thresholds, metric definitions, and decision logic. **Before writing any code that involves coaching signals, pain scoring, ACWR thresholds, divergence windows, RPE, or training load decisions — read the relevant section of this guide.** Do not invent thresholds.
 
+**Normalized Divergence — read before reasoning about it.** It is `(External ACWR − Internal ACWR) / avg(...)`, and both inputs are **7d/28d rolling ratios**. It is NOT a per-day quantity: a single session, even an abandoned one with near-zero TRIMP, barely moves it, and a low-load day does not push it positive. Never infer a day's divergence from that day's distance or TRIMP. The `−0.15 / −0.05` bands quoted in the guide are `balanced` **population defaults**, not any given athlete's thresholds — `apply_athlete_model_to_thresholds()` overrides them per athlete, so the guide is authoritative for *you writing code*, while the athlete model is authoritative *at runtime*. Full semantics and known misreadings: `CONTEXT.md` § Normalized Divergence.
+
 Key sections:
 - Pain score scale and safety rules (§ Pain Score)
 - ACWR ranges and injury risk (§ Load Ratios)

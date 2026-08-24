@@ -621,11 +621,22 @@ class UnifiedMetricsService:
     @staticmethod
     def _calculate_normalized_divergence(external_acwr, internal_acwr):
         """
-        Standardized calculation for normalized divergence.
+        Standardized calculation for normalized divergence — YTM's flagship metric.
+
+        (External ACWR − Internal ACWR) / avg(External ACWR, Internal ACWR)
+
+        NOT a per-day quantity. Both inputs are 7d/28d rolling ratios, so a single
+        session — even an abandoned one with near-zero TRIMP — barely moves the result,
+        and a low-load day does NOT push divergence positive. Never infer a day's
+        divergence from that day's distance or TRIMP.
+
+        See CONTEXT.md "Normalized Divergence" for the full semantics, including why the
+        −0.15/−0.05 bands are population defaults rather than any athlete's real
+        thresholds (those are overridden by apply_athlete_model_to_thresholds()).
 
         Args:
-            external_acwr (float): External ACWR value
-            internal_acwr (float): Internal ACWR value
+            external_acwr (float): External ACWR value (a 7d/28d ratio, not a daily load)
+            internal_acwr (float): Internal ACWR value (a 7d/28d TRIMP ratio)
 
         Returns:
             float: Normalized divergence value

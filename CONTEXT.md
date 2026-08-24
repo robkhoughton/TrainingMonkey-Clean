@@ -13,6 +13,11 @@ AI coaching app for trail/endurance runners. Flask (Python) backend + React/Type
 YTM's flagship metric: `(External ACWR − Internal ACWR) / avg(External ACWR, Internal ACWR)`. Measures whether external effort and internal (cardiac) cost are moving together. `< −0.15` high overtraining risk, `+0.05` to `+0.15` efficient, `> +0.15` potential undertraining.
 _Avoid_: "Divergence Analysis" (marketing name for the same metric), `norm_divergence` (diagram-only abbreviation, not a real field).
 
+_Avoid_ (semantics — these are real misreadings that have happened, not hypotheticals):
+- **Reading it as a per-day quantity.** Both inputs are 7d/28d rolling ratios, so one session — even an abandoned one with near-zero TRIMP — barely moves it, and a low-load day does **not** push divergence positive. Never infer a day's divergence from that day's distance or TRIMP.
+- **Treating the −0.15/−0.05 bands above as any given athlete's thresholds.** Those are the `balanced` population defaults; `apply_athlete_model_to_thresholds()` overrides the two divergence lines per athlete, so the athlete's real breakdown line is usually a different number.
+- **Splitting injuries into "metabolic" vs "mechanical."** The breakdown state this metric tracks is what precedes spasm, tendinopathy and bone stress alike — a struggling body is what produces all of them. There is no class of injury this metric is definitionally blind to.
+
 **TRIMP (Training Impulse)**:
 Banister-formula internal load: `duration × HRR × 0.64e^(k×HRR)`. The primary, system-of-record internal-load metric.
 _Avoid_: **Dynamic TRIMP** (`trimp_dynamic`) is a *different*, Edwards-formula, zone-summated metric computed in parallel. It only becomes system-of-record after a feature-flag cutover — until then, "TRIMP" means Banister TRIMP.
