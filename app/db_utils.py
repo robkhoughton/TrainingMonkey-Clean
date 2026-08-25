@@ -1392,8 +1392,7 @@ def save_schedule_constraint(user_id, week_start, entry):
             """
             UPDATE weekly_programs
             SET schedule_constraints = COALESCE(schedule_constraints, '[]'::jsonb)
-                                       || to_jsonb(%s::jsonb),
-                updated_at = NOW()
+                                       || to_jsonb(%s::jsonb)
             WHERE user_id = %s
               AND week_start_date = %s
             """,
@@ -1428,8 +1427,7 @@ def delete_schedule_constraint(user_id, week_start, constraint_date):
                 SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
                 FROM jsonb_array_elements(COALESCE(schedule_constraints, '[]'::jsonb)) AS elem
                 WHERE elem->>'date' != %s
-            ),
-            updated_at = NOW()
+            )
             WHERE user_id = %s
               AND week_start_date = %s
             """,
@@ -1466,8 +1464,7 @@ def append_deviation_log(user_id, week_start, entry):
             """
             UPDATE weekly_programs
             SET deviation_log = COALESCE(deviation_log, '[]'::jsonb)
-                                || to_jsonb(%s::jsonb),
-                updated_at = NOW()
+                                || to_jsonb(%s::jsonb)
             WHERE user_id = %s
               AND week_start_date = %s
             """,

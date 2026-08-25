@@ -2539,20 +2539,33 @@ def respond_alignment_query(query_id):
                     # User took the time to respond but it's not physical or external —
                     # treat as prescription mismatch (plan didn't fit their reality).
                     new_reason = 'prescription_mismatch'
-                db_utils.execute_query(
+                # Overwrite only an unclassified row. The predicate previously read
+                # `= 'unknown'` alone, which never matched: classify_deviation was
+                # crashing before it could write, so the column was NULL, not 'unknown'.
+                # Every retroactive update silently matched zero rows while the log below
+                # reported success — hence the rowcount gate.
+                rowcount = db_utils.execute_query(
                     """
                     UPDATE ai_autopsies
                     SET deviation_reason = %s
-                    WHERE user_id = %s AND date = %s AND deviation_reason = 'unknown'
+                    WHERE user_id = %s AND date = %s
+                      AND (deviation_reason IS NULL OR deviation_reason = 'unknown')
                     """,
                     (new_reason, current_user.id, activity_date_str),
                     fetch=False
                 )
-                logger.info(
-                    f"respond_alignment_query: retroactively set deviation_reason="
-                    f"'{new_reason}' for user {current_user.id}, date={activity_date_str}"
-                )
-                if new_reason == 'prescription_mismatch':
+                if rowcount:
+                    logger.info(
+                        f"respond_alignment_query: retroactively set deviation_reason="
+                        f"'{new_reason}' for user {current_user.id}, date={activity_date_str}"
+                    )
+                else:
+                    logger.warning(
+                        f"respond_alignment_query: no autopsy row updated for user "
+                        f"{current_user.id}, date={activity_date_str} — row missing or "
+                        f"already classified; deviation_reason left unchanged"
+                    )
+                if rowcount and new_reason == 'prescription_mismatch':
                     try:
                         from llm_recommendations_module import handle_prescription_mismatch_response
                         handle_prescription_mismatch_response(current_user.id, activity_date_str)

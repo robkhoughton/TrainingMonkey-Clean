@@ -4373,20 +4373,25 @@ def update_athlete_model(user_id, autopsy_data):
         # Collect all physical-cause distress events where divergence is beyond the
         # athlete's productive training window edge (typical_divergence_low).
         # Requires N>=3 qualifying events; uses median for robustness.
+        # GROUP BY date is required, not cosmetic: normalized_divergence is a per-DAY
+        # rolling 7d/28d quantity, so joining activities un-grouped emitted one identical
+        # row per activity. On a two-a-day that double-counted a single distress event —
+        # inflating threshold_n toward the N>=3 gate and skewing the median. Count days.
         new_div_threshold = None
         new_threshold_n = None
         try:
             current_div_low = (existing or {}).get('typical_divergence_low') or -0.05
             distress_rows = execute_query(
                 """
-                SELECT act.normalized_divergence
+                SELECT act.date, MAX(act.normalized_divergence) AS normalized_divergence
                 FROM ai_autopsies a
                 JOIN activities act ON act.user_id = a.user_id AND act.date = a.date
                 WHERE a.user_id = %s
                   AND a.deviation_reason = 'physical'
                   AND act.normalized_divergence IS NOT NULL
                   AND act.normalized_divergence < %s
-                ORDER BY a.date DESC
+                GROUP BY act.date
+                ORDER BY act.date DESC
                 """,
                 (user_id, current_div_low),
                 fetch=True
@@ -4415,7 +4420,7 @@ def update_athlete_model(user_id, autopsy_data):
         try:
             healthy_rows = execute_query(
                 """
-                SELECT act.normalized_divergence
+                SELECT act.date, MAX(act.normalized_divergence) AS normalized_divergence
                 FROM activities act
                 JOIN ai_autopsies a ON a.user_id = act.user_id AND a.date = act.date
                 LEFT JOIN journal_entries j ON j.user_id = act.user_id AND j.date = act.date
@@ -4426,6 +4431,7 @@ def update_athlete_model(user_id, autopsy_data):
                   AND a.alignment_score >= 7
                   AND (j.pain_percentage IS NULL OR j.pain_percentage = 0)
                   AND (j.energy_level IS NULL OR j.energy_level >= 3)
+                GROUP BY act.date
                 ORDER BY act.date DESC
                 LIMIT 60
                 """,
@@ -6135,15 +6141,14 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
             "actual": actual_str,
         }
 
-        # --- 10. Append to deviation_log -----------------------------------------
-        append_deviation_log(user_id, week_start, deviation_entry)
-        logger.info(
-            f"classify_deviation: Tier {tier} deviation logged for user {user_id}, "
-            f"date={activity_date_str}, alignment={alignment_score}, reason='{reason}'"
-        )
-
-        # --- 10a. Write deviation_reason to ai_autopsies -------------------------
+        # --- 10. Write deviation_reason to ai_autopsies --------------------------
         # Makes the category queryable for athlete model threshold calibration.
+        # ORDERING IS LOAD-BEARING: this runs BEFORE append_deviation_log(), which
+        # writes to a different table. When it ran after, an unrelated schema error in
+        # that call (weekly_programs.updated_at, a column that never existed) aborted
+        # the whole function via the outer handler and left deviation_reason NULL on
+        # every autopsy row for five months — starving divergence_injury_threshold
+        # calibration. Never make this write depend on an unrelated write succeeding.
         if has_injury_flag or has_fatigue_flag:
             deviation_reason = 'physical'
         elif external_cause:
@@ -6165,6 +6170,13 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
                 f"classify_deviation: could not write deviation_reason for user {user_id}, "
                 f"date={activity_date_str}: {dr_err}"
             )
+
+        # --- 10a. Append to deviation_log ----------------------------------------
+        append_deviation_log(user_id, week_start, deviation_entry)
+        logger.info(
+            f"classify_deviation: Tier {tier} deviation logged for user {user_id}, "
+            f"date={activity_date_str}, alignment={alignment_score}, reason='{reason}'"
+        )
 
         # --- 11. Tier 2: set revision_pending ------------------------------------
         if tier == 2:
