@@ -16,7 +16,16 @@ pandas>=2.0.0
 # API integrations
 stravalib>=1.5.0
 requests>=2.31.0
-anthropic>=0.21.0
+# PINNED — do not loosen without testing. anthropic 1.0.0 (released before 2026-08-24)
+# changed Messages.create() so `temperature` is no longer an accepted keyword, which
+# breaks every call_claude()/call_claude_with_tools() call in this codebase. The old
+# `anthropic>=0.21.0` meant each Docker rebuild silently pulled whatever was newest, so
+# an unrelated deploy on 2026-08-24 shipped 1.0.0 and took down both the daily
+# recommendation and the autopsy paths in production (TypeError, caught by the outer
+# handlers, surfacing as fallback autopsies rather than as an error).
+# 0.55.0 is the version verified working. Moving to 1.x is a deliberate migration:
+# audit every messages.create() call site first.
+anthropic==0.55.0
 
 # Database
 psycopg2-binary>=2.9.0
