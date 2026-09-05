@@ -12668,6 +12668,193 @@ def delete_race_goal(goal_id):
         }), 500
 
 
+SEASON_GOAL_TYPES = ['fitness', 'weight_loss', 'base_building', 'general']
+
+
+@app.route('/api/coach/season-goals', methods=['GET'])
+@login_required
+def get_season_goals_route():
+    """Get all non-race season goals for current user."""
+    try:
+        user_id = current_user.id
+        from coach_recommendations import get_season_goals as _get_season_goals
+        goals_list = _get_season_goals(user_id)
+        return jsonify({'success': True, 'goals': goals_list})
+
+    except Exception as e:
+        logger.error(f"Error fetching season goals for user {current_user.id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/season-goals', methods=['POST'])
+@login_required
+def create_season_goal():
+    """Create a new non-race season goal (fitness, weight loss, base-building)."""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+
+        goal_type = data.get('goal_type')
+        name = data.get('name')
+
+        if not goal_type or goal_type not in SEASON_GOAL_TYPES:
+            return jsonify({'success': False, 'error': f'goal_type must be one of {SEASON_GOAL_TYPES}'}), 400
+        if not name:
+            return jsonify({'success': False, 'error': 'name is required'}), 400
+
+        target_date = data.get('target_date')
+        if target_date:
+            try:
+                datetime.strptime(target_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'target_date must be in format YYYY-MM-DD'}), 400
+
+        notes = data.get('notes')
+
+        logger.info(f"Creating season goal for user {user_id}: {name} ({goal_type})")
+
+        result = db_utils.execute_query(
+            """
+            INSERT INTO season_goals
+                (user_id, goal_type, name, target_date, notes, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, goal_type, name, target_date, notes, created_at, updated_at
+            """,
+            (user_id, goal_type, name, target_date, notes),
+            fetch=True
+        )
+
+        if result and len(result) > 0:
+            goal = result[0]
+            goal_dict = dict(goal)
+
+            if isinstance(goal_dict.get('target_date'), date):
+                goal_dict['target_date'] = goal_dict['target_date'].strftime('%Y-%m-%d')
+            if isinstance(goal_dict.get('created_at'), datetime):
+                goal_dict['created_at'] = goal_dict['created_at'].isoformat()
+            if isinstance(goal_dict.get('updated_at'), datetime):
+                goal_dict['updated_at'] = goal_dict['updated_at'].isoformat()
+
+            logger.info(f"Successfully created season goal {goal_dict['id']} for user {user_id}")
+
+            return jsonify({'success': True, 'season_goal': goal_dict}), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create season goal'}), 500
+
+    except Exception as e:
+        logger.error(f"Error creating season goal for user {current_user.id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/season-goals/<int:goal_id>', methods=['PUT'])
+@login_required
+def update_season_goal(goal_id):
+    """Update an existing non-race season goal."""
+    try:
+        user_id = current_user.id
+        data = request.get_json()
+
+        existing_goal = db_utils.execute_query(
+            "SELECT id FROM season_goals WHERE id = %s AND user_id = %s",
+            (goal_id, user_id),
+            fetch=True
+        )
+
+        if not existing_goal:
+            return jsonify({'success': False, 'error': 'Season goal not found'}), 404
+
+        if 'goal_type' in data and data['goal_type'] not in SEASON_GOAL_TYPES:
+            return jsonify({'success': False, 'error': f'goal_type must be one of {SEASON_GOAL_TYPES}'}), 400
+
+        if 'target_date' in data and data['target_date']:
+            try:
+                datetime.strptime(data['target_date'], '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'target_date must be in format YYYY-MM-DD'}), 400
+
+        update_fields = []
+        update_values = []
+
+        if 'goal_type' in data:
+            update_fields.append('goal_type = %s')
+            update_values.append(data['goal_type'])
+        if 'name' in data:
+            if not data['name']:
+                return jsonify({'success': False, 'error': 'name cannot be empty'}), 400
+            update_fields.append('name = %s')
+            update_values.append(data['name'])
+        if 'target_date' in data:
+            update_fields.append('target_date = %s')
+            update_values.append(data['target_date'])
+        if 'notes' in data:
+            update_fields.append('notes = %s')
+            update_values.append(data['notes'])
+
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+
+        update_fields.append('updated_at = NOW()')
+        update_values.extend([goal_id, user_id])
+
+        logger.info(f"Updating season goal {goal_id} for user {user_id}")
+
+        query = f"""
+            UPDATE season_goals
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND user_id = %s
+            RETURNING id, goal_type, name, target_date, notes, created_at, updated_at
+        """
+
+        result = db_utils.execute_query(query, tuple(update_values), fetch=True)
+
+        if result and len(result) > 0:
+            goal = result[0]
+            goal_dict = dict(goal)
+
+            if isinstance(goal_dict.get('target_date'), date):
+                goal_dict['target_date'] = goal_dict['target_date'].strftime('%Y-%m-%d')
+            if isinstance(goal_dict.get('created_at'), datetime):
+                goal_dict['created_at'] = goal_dict['created_at'].isoformat()
+            if isinstance(goal_dict.get('updated_at'), datetime):
+                goal_dict['updated_at'] = goal_dict['updated_at'].isoformat()
+
+            logger.info(f"Successfully updated season goal {goal_id} for user {user_id}")
+
+            return jsonify({'success': True, 'season_goal': goal_dict})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update season goal'}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating season goal {goal_id} for user {current_user.id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/coach/season-goals/<int:goal_id>', methods=['DELETE'])
+@login_required
+def delete_season_goal(goal_id):
+    """Delete a non-race season goal."""
+    try:
+        user_id = current_user.id
+
+        logger.info(f"Deleting season goal {goal_id} for user {user_id}")
+
+        result = db_utils.execute_query(
+            "DELETE FROM season_goals WHERE id = %s AND user_id = %s RETURNING id",
+            (goal_id, user_id),
+            fetch=True
+        )
+
+        if result and len(result) > 0:
+            logger.info(f"Successfully deleted season goal {goal_id} for user {user_id}")
+            return jsonify({'success': True, 'message': 'Season goal deleted successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Season goal not found'}), 404
+
+    except Exception as e:
+        logger.error(f"Error deleting season goal {goal_id} for user {current_user.id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/coach/race-history', methods=['GET'])
 @login_required
 def get_race_history():

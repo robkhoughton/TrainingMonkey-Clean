@@ -91,6 +91,51 @@ def get_race_goals(user_id: int) -> List[Dict]:
     return goals
 
 
+def get_season_goals(user_id: int) -> List[Dict]:
+    """Fetch user's non-race season goals (fitness, weight loss, base-building).
+
+    Kept in a separate table from race_goals rather than as a new race_type:
+    race_name/race_date are NOT NULL on race_goals and ~10 files read that
+    table assuming a race exists. A non-race goal never enters those code
+    paths. See has_season_goal() for the presence check that unifies both.
+    """
+    query = """
+        SELECT id, goal_type, name, target_date, notes, created_at, updated_at
+        FROM season_goals
+        WHERE user_id = %s
+        ORDER BY created_at DESC
+    """
+    results = execute_query(query, (user_id,), fetch=True)
+
+    if not results:
+        return []
+
+    goals = []
+    for row in results:
+        goals.append({
+            'id': row['id'],
+            'goal_type': row['goal_type'],
+            'name': row['name'],
+            'target_date': row['target_date'].isoformat() if row['target_date'] else None,
+            'notes': row['notes'],
+        })
+    return goals
+
+
+def has_season_goal(user_id: int) -> bool:
+    """Does this athlete have a season goal at all — race or non-race?
+
+    The unifying presence check for Specification Clarity and the
+    season-goal hard gate: "does this athlete have a season goal" is not
+    the same question as "does this athlete have a race," and callers that
+    mean the former should call this rather than checking get_race_goals()
+    alone.
+    """
+    if get_race_goals(user_id):
+        return True
+    return bool(get_season_goals(user_id))
+
+
 def get_race_on_date(user_id: int, target_date) -> Optional[Dict]:
     """Return the race goal scheduled on target_date, or None.
 

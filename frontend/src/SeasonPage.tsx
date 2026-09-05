@@ -23,6 +23,28 @@ interface RaceGoal {
   distance_miles: number | null;
 }
 
+interface SeasonGoal {
+  id: number;
+  goal_type: string;
+  name: string;
+  target_date: string | null;
+  notes: string | null;
+}
+
+interface SeasonGoalFormData {
+  goal_type: string;
+  name: string;
+  target_date: string;
+  notes: string;
+}
+
+const SEASON_GOAL_TYPE_LABELS: Record<string, string> = {
+  fitness: 'General Fitness',
+  weight_loss: 'Weight Loss',
+  base_building: 'Base Building',
+  general: 'General',
+};
+
 interface GoalFormData {
   race_name: string;
   race_date: string;
@@ -599,6 +621,213 @@ const GoalModal: React.FC<GoalModalProps> = ({ mode, initialData, onSave, onClos
       </div>
     </div>
   </>
+  );
+};
+
+// ============================================================================
+// SEASON GOAL MODAL (non-race goals: fitness, weight loss, base-building)
+// ============================================================================
+
+interface SeasonGoalModalProps {
+  mode: 'add' | 'edit';
+  initialData?: SeasonGoal;
+  onSave: () => void;
+  onClose: () => void;
+}
+
+const EMPTY_SEASON_GOAL_FORM: SeasonGoalFormData = {
+  goal_type: 'base_building',
+  name: '',
+  target_date: '',
+  notes: '',
+};
+
+const SeasonGoalModal: React.FC<SeasonGoalModalProps> = ({ mode, initialData, onSave, onClose }) => {
+  const [form, setForm] = useState<SeasonGoalFormData>(() => {
+    if (mode === 'edit' && initialData) {
+      return {
+        goal_type: initialData.goal_type,
+        name: initialData.name,
+        target_date: initialData.target_date || '',
+        notes: initialData.notes || '',
+      };
+    }
+    return EMPTY_SEASON_GOAL_FORM;
+  });
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (field: keyof SeasonGoalFormData, value: string) =>
+    setForm(f => ({ ...f, [field]: value }));
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) { setError('Goal name is required'); return; }
+
+    setIsSaving(true);
+    setError(null);
+
+    const payload = {
+      goal_type: form.goal_type,
+      name: form.name.trim(),
+      target_date: form.target_date || null,
+      notes: form.notes.trim() || null,
+    };
+
+    try {
+      const url = mode === 'edit' ? `/api/coach/season-goals/${initialData!.id}` : '/api/coach/season-goals';
+      const method = mode === 'edit' ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to save');
+      }
+      onSave();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save season goal');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <style>{PANEL_EXPAND_STYLE}</style>
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px',
+          animation: 'backdropFadeIn 0.2s ease-out',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
+        <div style={{
+          ...CARBON,
+          border: '1px solid rgba(255,87,34,0.7)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: '560px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          animation: 'panelExpand 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transformOrigin: 'right top',
+        }}>
+          <div style={{
+            background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+            padding: '12px 24px',
+          }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+              {mode === 'add' ? 'Add Season Goal' : 'Modify Season Goal'}
+            </span>
+          </div>
+
+          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+            {error && (
+              <div style={{ padding: '10px 14px', backgroundColor: 'rgba(220,38,38,0.08)', borderLeft: '3px solid #dc2626', borderRadius: '4px', fontSize: '0.8rem', color: '#dc2626' }}>
+                {error}
+              </div>
+            )}
+
+            {/* Goal Type */}
+            <div>
+              <label style={tacticalLabel}>Goal Type <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span></label>
+              <select
+                value={form.goal_type}
+                onChange={e => set('goal_type', e.target.value)}
+                style={{
+                  ...tacticalInput,
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237D9CB8'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 10px center',
+                  paddingRight: '28px',
+                } as React.CSSProperties}
+              >
+                <option value="base_building">Base Building</option>
+                <option value="fitness">General Fitness</option>
+                <option value="weight_loss">Weight Loss</option>
+                <option value="general">General</option>
+              </select>
+            </div>
+
+            {/* Name */}
+            <div>
+              <label style={tacticalLabel}>Goal Name <span style={{ color: 'rgba(255,87,34,0.8)' }}>*</span></label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+                style={tacticalInput}
+                placeholder="Winter base phase"
+              />
+            </div>
+
+            {/* Target Date */}
+            <div>
+              <label style={tacticalLabel}>Target Date <span style={{ color: 'rgba(125,156,184,0.5)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span></label>
+              <input type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} style={tacticalInput} />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label style={tacticalLabel}>Notes <span style={{ color: 'rgba(125,156,184,0.5)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span></label>
+              <textarea
+                value={form.notes}
+                onChange={e => set('notes', e.target.value)}
+                style={{ ...tacticalInput, minHeight: '70px', resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="What does progress look like for this goal?"
+              />
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={onClose}
+                disabled={isSaving}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: 'rgba(230,240,255,0.07)',
+                  color: '#E6F0FF',
+                  border: '1px solid rgba(125,156,184,0.4)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSaving}
+                style={{
+                  padding: '8px 28px',
+                  backgroundColor: '#FF5722',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  opacity: isSaving ? 0.6 : 1,
+                }}
+              >
+                {isSaving ? 'Saving...' : mode === 'add' ? 'Set Goal' : 'Commit Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -1755,6 +1984,9 @@ const SeasonPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
   const [editingGoal, setEditingGoal] = useState<RaceGoal | null>(null);
+  const [seasonGoals, setSeasonGoals] = useState<SeasonGoal[]>([]);
+  const [seasonGoalModalMode, setSeasonGoalModalMode] = useState<'add' | 'edit' | null>(null);
+  const [editingSeasonGoal, setEditingSeasonGoal] = useState<SeasonGoal | null>(null);
 
   const [raceReadiness, setRaceReadiness] = useState<RaceReadiness | null>(null);
   const [athleteModel, setAthleteModel] = useState<AthleteModel | null>(null);
@@ -1811,7 +2043,7 @@ const SeasonPage: React.FC = () => {
 
   const fetchAll = async () => {
     try {
-      const [goalsRes, readinessRes, modelRes, settingsRes, assessmentsRes, hrActivitiesRes, lactateRes, effAetRes] = await Promise.all([
+      const [goalsRes, readinessRes, modelRes, settingsRes, assessmentsRes, hrActivitiesRes, lactateRes, effAetRes, seasonGoalsRes] = await Promise.all([
         fetch('/api/coach/race-goals'),
         fetch('/api/coach/race-readiness'),
         fetch('/api/athlete-model'),
@@ -1820,6 +2052,7 @@ const SeasonPage: React.FC = () => {
         fetch('/api/coach/activities-with-hr'),
         fetch('/api/coach/lactate-step-tests'),
         fetch('/api/coach/effective-aet-history'),
+        fetch('/api/coach/season-goals'),
       ]);
 
       if (goalsRes.ok) {
@@ -1877,6 +2110,11 @@ const SeasonPage: React.FC = () => {
         const d = await effAetRes.json();
         if (d.success) setEffectiveAet(d.history || []);
       }
+
+      if (seasonGoalsRes.ok) {
+        const d = await seasonGoalsRes.json();
+        if (d.success) setSeasonGoals(d.goals || []);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1925,6 +2163,12 @@ const SeasonPage: React.FC = () => {
   const handleEdit = () => {
     const goal = goals.find(g => g.id === [...checkedIds][0]);
     if (goal) { setEditingGoal(goal); setModalMode('edit'); }
+  };
+
+  const handleDeleteSeasonGoal = async (id: number) => {
+    if (!window.confirm('Delete this season goal?')) return;
+    await fetch(`/api/coach/season-goals/${id}`, { method: 'DELETE' });
+    fetchAll();
   };
 
   // ──────────────────────────────────────────
@@ -2256,6 +2500,16 @@ const SeasonPage: React.FC = () => {
         />
       )}
 
+      {/* Season Goal Modal (non-race) */}
+      {seasonGoalModalMode && (
+        <SeasonGoalModal
+          mode={seasonGoalModalMode}
+          initialData={editingSeasonGoal ?? undefined}
+          onSave={() => { setSeasonGoalModalMode(null); setEditingSeasonGoal(null); fetchAll(); }}
+          onClose={() => { setSeasonGoalModalMode(null); setEditingSeasonGoal(null); }}
+        />
+      )}
+
       {/* Athlete Profile Modal */}
       {editingProfile && (
         <AthleteProfileModal
@@ -2450,6 +2704,95 @@ const SeasonPage: React.FC = () => {
             </button>
           </div>
         </div>{/* end Race Season card */}
+
+        {/* Other Season Goals card (non-race: fitness, weight loss, base-building) */}
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          border: '1px solid #d1dce8',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            background: 'linear-gradient(90deg, #E6F0FF 0%, #7D9CB8 50%, #1B2E4B 100%)',
+            padding: '10px 16px',
+          }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', color: '#1B2E4B', textTransform: 'uppercase' }}>
+              Other Season Goals
+            </span>
+          </div>
+
+          <div>
+            {seasonGoals.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
+                No non-race goals set
+              </div>
+            ) : (
+              seasonGoals.map(goal => (
+                <div
+                  key={goal.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 16px',
+                    borderBottom: '1px solid #f3f4f6',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      color: '#1F2937',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {goal.name}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>
+                      {SEASON_GOAL_TYPE_LABELS[goal.goal_type] || goal.goal_type}
+                      {goal.target_date ? ` · by ${formatDate(goal.target_date)}` : ''}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setEditingSeasonGoal(goal); setSeasonGoalModalMode('edit'); }}
+                    style={{ padding: '3px 10px', backgroundColor: 'white', border: '1px solid #dee2e6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600, color: '#6b7280', flexShrink: 0 }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSeasonGoal(goal.id)}
+                    style={{ padding: '3px 10px', backgroundColor: 'white', border: '1px solid #dee2e6', borderRadius: '4px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600, color: '#dc2626', flexShrink: 0 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add Season Goal button */}
+          <div style={{ padding: '12px 16px', borderTop: '1px solid #f3f4f6' }}>
+            <button
+              onClick={() => { setEditingSeasonGoal(null); setSeasonGoalModalMode('add'); }}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: 'rgba(255,87,34,0.1)',
+                color: '#FF5722',
+                border: '1px solid rgba(255,87,34,0.4)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+              }}
+            >
+              + Add Other Goal
+            </button>
+          </div>
+        </div>{/* end Other Season Goals card */}
 
         {/* Coaching Preferences card */}
         <div style={{

@@ -647,6 +647,12 @@ def execute_batch_queries(queries_with_params: List[Tuple[str, tuple]]) -> bool:
     return True
 
 
+def upsert_week_strategic_summary(user_id, week_start, strategic_summary) -> None:
+    """No-op in mock mode. Exists so `from db_utils import ... upsert_week_strategic_summary`
+    (coach_recommendations.py) doesn't ImportError when mock_db_utils is patched in as db_utils."""
+    logger.info(f"Mock DB: upsert_week_strategic_summary called for user {user_id}, week {week_start} (no-op)")
+
+
 # LLM Recommendation functions
 def save_llm_recommendation(recommendation: Dict) -> bool:
     """Mock save LLM recommendation."""
