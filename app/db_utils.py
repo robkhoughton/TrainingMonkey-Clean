@@ -669,14 +669,15 @@ def mark_conversation_extraction_done(user_id, recommendation_date, extraction_r
         raise
 
 
-def cleanup_old_recommendations(user_id, keep_days=14):
+def cleanup_old_recommendations(user_id, keep_days=28):
     """
     Remove old recommendations, keeping only those from the last N days.
-    This prevents database bloat while maintaining enough history for the Journal page.
-    
+    This prevents database bloat while maintaining enough history for the Journal page
+    and for forward-looking Rx/autopsy reliability calibration.
+
     Args:
         user_id: The user ID to clean up recommendations for
-        keep_days: Number of days of history to retain (default 14)
+        keep_days: Number of days of history to retain (default 28)
     """
     try:
         from datetime import timedelta

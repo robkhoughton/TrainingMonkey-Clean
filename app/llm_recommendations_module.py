@@ -1432,9 +1432,9 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         logger.info(
             f"Saved enhanced recommendation with ID {recommendation_id} for user {user_id} with target_date {target_date}")
 
-        # Clean up old recommendations (keep last 14 days)
+        # Clean up old recommendations (keep last 28 days)
         from db_utils import cleanup_old_recommendations
-        cleanup_old_recommendations(user_id, keep_days=14)
+        cleanup_old_recommendations(user_id, keep_days=28)
 
         # Add the ID to the recommendation
         recommendation['id'] = recommendation_id
