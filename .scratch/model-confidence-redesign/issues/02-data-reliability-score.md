@@ -9,7 +9,9 @@
 - Aerobic-assessment staleness — decays with time since the last test rather than a hard cutoff
 - Autopsy count/recency — folded in here rather than kept as a separate gate
 
-Expose the score with a per-component breakdown (what's specifically thin) so later tickets (04, 06, 07) and manual validation can use it. Validate against a handful of real accounts spanning the maturity spectrum (brand-new, established, lapsed) before anything downstream gates on it.
+Expose the score with a per-component breakdown (what's specifically thin) so later tickets (06, 07) and manual validation can use it. Validate against a handful of real accounts spanning the maturity spectrum (brand-new, established, lapsed) before ticket 06 displays it or ticket 07 narrates it.
+
+**Update (2026-09-05): this score no longer gates Rx generation.** Ticket 04 (Adequate Context Gate, merged with the original ticket 05) uses three direct floor checks instead — chronic training-load depth, a recent-journaling count, and season-goal presence — none of which need this composite. This score's role is now purely informational: ticket 06's panel display and ticket 07's Rx-prompt narration ("your data is X% reliable"). The journal-decay rationale below is still the reason `journal_recency` gets its own hard floor in ticket 04, even though the composite itself isn't gating anything.
 
 **Why gate on this at all, rather than reuse the old composite (load-bearing context, don't lose this):**
 the old blended composite's fatal flaw wasn't just that it mixed presence and decay — it double-weighted journal_power but capped it at roughly a fifth of the total score. A user could clear "good enough to prescribe" purely on HR calibration + activity history, with **zero** recent journaling, and still get a full Rx. That's the actual justification for gating on a score where journal recency decays fast and can't be diluted by unrelated components — not a stylistic preference for decay math.
@@ -75,7 +77,7 @@ component won't discriminate at all until `has_heartrate` ingestion lands.
 - [x] Score computed per user from the components above, each expressed as a decay/coverage function rather than binary presence
 - [x] Component breakdown available (which specific input is dragging the score down)
 - [x] Reuses the existing HRV/RHR baseline-reliability logic rather than duplicating it
-- [ ] Numbers above still need Rob's sign-off before ticket 04 sets a gating threshold on this score
+- [ ] Numbers above still need Rob's sign-off before ticket 06 displays this score or ticket 07 narrates it (no longer blocking ticket 04, which uses independent floor checks — see update above)
 
 **Resolved (was open, now decided — see Decisions made above):**
 - ~~Exact decay function/half-life per component~~

@@ -4,9 +4,12 @@ Data Reliability score — model-confidence redesign, ticket 02.
 Answers "is today's signal trustworthy enough to generate a Rx from" — as
 distinct from Specification Clarity (ticket 03), which answers "do we know
 who this athlete is and what they're training for." This module computes
-and exposes the score only; it does not gate anything yet (ticket 04) and
-is not yet wired into the athlete-model panel (ticket 06) or the Rx prompt
-(ticket 07).
+and exposes the score only; it does NOT gate Rx generation. Ticket 04 (the
+Adequate Context Gate) uses three independent, direct floor checks instead
+(chronic training-load depth, a recent-journaling count, season-goal
+presence) — none of which need this composite. This score's role is purely
+informational: the athlete-model panel (ticket 06) and Rx-prompt narration
+(ticket 07), neither wired in yet.
 
 Replaces the "is this field present" binary checks in the old 8-component
 model_confidence_pct composite (see get_athlete_model_api() in strava_app.py)
