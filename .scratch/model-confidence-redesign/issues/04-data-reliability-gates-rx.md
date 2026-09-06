@@ -18,14 +18,31 @@ this repo has been burned by this exact pattern twice before (a legacy generator
 
 Before implementing: confirm which of these actually need their own gate check vs. which already route through `assemble_daily_context()` by construction, then add an explicit test asserting no generator can bypass the gate — mirroring how `test_daily_context.py` already guards the coaching-context seam.
 
-**Double-gate precedence with ticket 05 — decide before building either (2026-09-05 review finding):**
-tickets 04 and 05 are independent hard blocks on Rx generation, but neither originally said what the user sees when **both** fail simultaneously — and that's not an edge case, it's the default state for a brand-new user (no activity history, no journal, no HRV baseline, AND no season goal, all on day one). Decide and document an explicit precedence rule here and in ticket 05 before implementing either — e.g. does the season-goal gate (05) take priority since it's a one-time setup action, with the Data Reliability message (04) only shown once a goal exists but data is still thin? Whatever the rule, a brand-new user must see ONE coherent blocking message, not two contradictory or stacked ones.
+**Double-gate precedence with ticket 05 — DECIDED (2026-09-05, with Rob):**
+tickets 04 and 05 are independent hard blocks on Rx generation, and neither originally said what the user sees when **both** fail simultaneously — the default state for a brand-new user (no activity history, no journal, no HRV baseline, AND no season goal, all on day one), not an edge case.
+
+**Rule: Data Reliability (04) leads when both fail.** Rationale from discussion: sequencing the easy gate first (season goal — a 30-second form) only to reveal the hard, protracted one behind it (weeks of training/journaling history) is a bait-and-switch — the user clears what feels like the whole task, then discovers the real work was still ahead. Leading with the harder requirement sets expectations correctly from the start.
+- When Data Reliability fails (regardless of season-goal status): show the Data Reliability blocking message (component breakdown below) as primary. If a season goal is *also* missing, add one secondary, non-blocking line ("You'll also need a season goal before your first Rx" → links to the season-goal input screen) so it's never hidden or a later surprise — but it is not the headline and does not gate anything on its own here.
+- Once Data Reliability clears: if a season goal is still missing, ticket 05's gate becomes the sole active blocker.
+- If Data Reliability already passes and only the season goal is missing (e.g. a returning user who cleared their goal): ticket 05's gate fires alone, per that ticket.
+
+**Blocking message copy — component labels, action, and deep link (confirmed with Rob 2026-09-05):**
+internal component names are not user-facing. Use this mapping for every place the score breakdown is shown (this ticket's blocking message, and ticket 06's panel):
+
+| Component | Label | Message | Link |
+|---|---|---|---|
+| `load_coverage` | Training history | If Strava sync looks stale/disconnected: "Check your Strava connection." Otherwise: "Get back into regular training — this rebuilds as you log more sessions." (no link in the second case — nothing to click) | `/strava-setup` (conditional) |
+| `hr_calibration` | Heart rate setup | "Add your max and resting heart rate." | `/settings/hrzones` |
+| `hrv_rhr_baseline` | Morning readiness | "Connect intervals.icu to sync HRV and resting heart rate automatically." | `/settings/integrations` |
+| `journal_recency` | Journaling | "Log a few recent entries to catch up." | `/dashboard?tab=journal` |
+| `aerobic_staleness` | Aerobic fitness test | "Take a new aerobic assessment." | `/dashboard?tab=coach&subtab=season#aerobic-assessment` — **note: this anchor does not exist yet** (unlike `#athlete-model`, which SeasonPage.tsx already supports via its scroll-to-hash effect); add an `id="aerobic-assessment"` to that panel as part of this ticket. |
 
 - [ ] Below-threshold users are blocked from Rx generation entirely — verified no LLM call occurs, across every entry point listed above (not just the daily seam)
-- [ ] Blocking message names the specific weak component(s) from the score breakdown, not a generic "insufficient data" message
+- [ ] Blocking message uses the label/message/link mapping above, not raw component names or a generic "insufficient data" message
 - [ ] Above-threshold users see no change in behavior
 - [ ] Setting/improving the weak input (e.g. journaling again, syncing recent activity) and re-requesting a Rx unblocks it once the score crosses the threshold
-- [ ] A user failing both this gate and ticket 05's season-goal gate simultaneously sees the single, precedence-resolved message decided above — not both, not neither
+- [ ] A user failing both this gate and ticket 05's season-goal gate sees Data Reliability as the primary message with the season-goal note as a secondary, non-blocking line — not both as equal blockers, not neither
+- [ ] `#aerobic-assessment` anchor added to SeasonPage.tsx's aerobic assessment panel
 
 **Open question — do not decide silently, confirm with the user:**
 - The actual threshold value. Should be set from ticket 02's real-account validation data, not chosen blind. An earlier session draft worked out threshold candidates against the *old* 8-component composite (~20–22%, at the point where HR calibration + activity history both became real) — that arithmetic doesn't carry over directly to the new decay-weighted component set and needs to be redone.
