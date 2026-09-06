@@ -64,9 +64,22 @@ def _check_chronic_depth(user_id: int, as_of: date) -> bool:
 
 
 def _check_recent_journaling(user_id: int, as_of: date) -> bool:
+    """A journal_entries row is not proof of engagement on its own:
+    intervals_icu_sync.py upserts a row daily for every connected user with
+    wellness fields (hrv_value, resting_hr, sleep_score, ...) regardless of
+    whether the athlete ever opens YTM — confirmed live against real
+    accounts (users connected to intervals.icu with energy_level/rpe_score/
+    pain_percentage/notes all NULL for a full week). Require at least one
+    athlete-provided subjective field to count a day, not just row
+    existence, or this floor is trivially satisfied by a passive wearable
+    sync with zero real signal.
+    """
     cutoff = as_of - timedelta(days=JOURNAL_RECENCY_WINDOW_DAYS - 1)
     row = execute_query(
-        "SELECT COUNT(*) AS c FROM journal_entries WHERE user_id = %s AND date >= %s AND date <= %s",
+        """SELECT COUNT(*) AS c FROM journal_entries
+           WHERE user_id = %s AND date >= %s AND date <= %s
+             AND (energy_level IS NOT NULL OR rpe_score IS NOT NULL
+                  OR pain_percentage IS NOT NULL OR NULLIF(notes, '') IS NOT NULL)""",
         (user_id, cutoff, as_of), fetch=True,
     )
     return int(dict(row[0]).get('c') or 0) >= JOURNAL_RECENCY_MIN_COUNT if row else False

@@ -183,10 +183,21 @@ def _hrv_rhr_baseline_component(user_id: int, as_of) -> Dict:
 def _journal_recency_component(user_id: int, as_of) -> Dict:
     """Decay-weighted density over the last few days — a lapsed journaling
     habit shows up immediately rather than being smoothed away like
-    journal_power's flat 30-day average."""
+    journal_power's flat 30-day average.
+
+    Filtered to rows with a real athlete-provided subjective field: a plain
+    row-existence check would be satisfied by intervals_icu_sync.py's daily
+    wellness upsert (hrv_value/resting_hr/sleep_score) alone, which happens
+    for every connected user regardless of whether they ever open YTM —
+    confirmed live against real accounts with weeks of NULL energy/RPE/pain/
+    notes. That's passive wearable sync, not journaling engagement.
+    """
     window_start = as_of - timedelta(days=JOURNAL_RECENCY_WINDOW_DAYS - 1)
     rows = execute_query(
-        "SELECT date FROM journal_entries WHERE user_id = %s AND date >= %s AND date <= %s",
+        """SELECT date FROM journal_entries
+           WHERE user_id = %s AND date >= %s AND date <= %s
+             AND (energy_level IS NOT NULL OR rpe_score IS NOT NULL
+                  OR pain_percentage IS NOT NULL OR NULLIF(notes, '') IS NOT NULL)""",
         (user_id, window_start, as_of), fetch=True,
     )
     entry_dates = {dict(r)['date'] for r in rows} if rows else set()
