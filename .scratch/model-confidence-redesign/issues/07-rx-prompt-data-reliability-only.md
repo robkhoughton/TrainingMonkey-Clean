@@ -9,9 +9,11 @@ the literal string `"- Model Confidence: {pct}%"` occurs exactly once in the cod
 
 **Blocked by:** 02, 04 (Data Reliability must exist to be cited; the Adequate Context Gate's season-goal floor must exist before it's safe to drop Specification Clarity from daily narration — otherwise a user with an unclear target loses the only place that was ever mentioned to them) — both done as of 2026-09-06, so this ticket is now fully unblocked.
 
-**Status:** ready-for-agent
+**Status:** done (2026-09-06)
 
-- [ ] Generated Rx text cites Data Reliability alone, not the old blended model-confidence/autopsy-count phrasing
-- [ ] The weekly program prompt (coach_recommendations.py:932, via the same `get_athlete_model_context()` call) also cites Data Reliability alone — not left showing the old/placeholder text after ticket 06 retires the composite
-- [ ] Specification Clarity is not mentioned anywhere in daily Rx prose
-- [ ] Spot-checked against real generations at both ends of the Data Reliability spectrum (high and low) to confirm the language reads correctly at each end, not just at a mid-range value
+**Implementation:** `_data_reliability_confidence_line(user_id)` in llm_recommendations_module.py, called from `get_athlete_model_context()` in place of the old `confidence_pct = model.get('model_confidence_pct')` line. Component labels (`_DATA_RELIABILITY_LABELS`) match ticket 04's canonical mapping — one consistent vocabulary across the blocking message, the athlete-model panel (06), and the Rx prompt, rather than a third independently-drafted phrasing. Names up to 3 strong components (score >=80) when the composite is >=70 ("trust this fully"), or the single weakest component (score <50) when it's lower ("treat today's call as an estimate" / "treat this as a rough estimate only" below 40) — falls back to a plain confidence statement with no name when there's nothing to single out (all-mid-range or all-high-but-not-quite-80 cases), verified with synthetic component data since no real account currently falls in the untested mid-range.
+
+- [x] Generated Rx text cites Data Reliability alone, not the old blended model-confidence/autopsy-count phrasing
+- [x] The weekly program prompt (coach_recommendations.py:932) also cites Data Reliability alone — confirmed it's a plain, unmodified call to the same `get_athlete_model_context()`, so it inherits the fix automatically, not a separate hardcoded copy
+- [x] Specification Clarity is not mentioned anywhere in daily Rx prose
+- [x] Spot-checked against real generations at both ends of the Data Reliability spectrum (score 71 -> "your HR setup and morning readiness are solid, trust this fully"; scores 20/35 -> "thin on training history/morning readiness — treat this as a rough estimate only") plus synthetic mid-range and no-standout-component cases

@@ -4273,6 +4273,67 @@ def compute_readiness_state(readiness_row, hrv_baseline, hrv_baseline_count,
     }
 
 
+# Ticket 07: plain-language labels for Data Reliability components, matching
+# ticket 04's canonical mapping so the vocabulary is consistent with the
+# blocking message and the athlete-model panel (ticket 06) rather than a
+# third independently-drafted phrasing of the same components.
+_DATA_RELIABILITY_LABELS = {
+    'load_coverage': 'training history',
+    'hr_calibration': 'HR setup',
+    'hrv_rhr_baseline': 'morning readiness',
+    'journal_recency': 'journaling',
+    'aerobic_staleness': 'aerobic testing',
+}
+
+
+def _join_labels(names):
+    if len(names) == 1:
+        return names[0]
+    return ', '.join(names[:-1]) + f' and {names[-1]}'
+
+
+def _data_reliability_confidence_line(user_id):
+    """Ticket 07: replaces the old blended 'Model Confidence %' + autopsy-
+    count clause with Data Reliability alone, in plain language tied to
+    what it actually measures — not just a bare number. Autopsy count is
+    not cited separately; it was folded into Data Reliability in ticket 02.
+    """
+    try:
+        from data_reliability import compute_data_reliability
+        dr = compute_data_reliability(user_id)
+    except Exception as e:
+        logger.error(f"Error computing Data Reliability for confidence line, user {user_id}: {e}")
+        return "- Data Reliability: unavailable"
+
+    score = dr['score']
+    components = dr['components']
+    weak = sorted(
+        ((name, c['score']) for name, c in components.items() if c['score'] < 50),
+        key=lambda item: item[1],
+    )
+    strong = [name for name, c in components.items() if c['score'] >= 80]
+
+    if score >= 70:
+        if strong:
+            names = [_DATA_RELIABILITY_LABELS[n] for n in strong[:3]]
+            verb = 'is' if len(names) == 1 else 'are'
+            detail = f"your {_join_labels(names)} {verb} solid, trust this fully"
+        else:
+            detail = "trust this fully"
+    elif score >= 40:
+        if weak:
+            detail = f"light on {_DATA_RELIABILITY_LABELS[weak[0][0]]}, treat today's call as an estimate"
+        else:
+            detail = "treat today's call as a solid estimate"
+    else:
+        if weak:
+            detail = f"thin on {_DATA_RELIABILITY_LABELS[weak[0][0]]} — treat this as a rough estimate only"
+        else:
+            detail = "treat this as a rough estimate only"
+
+    return f"- Data Reliability: {score}% — {detail}"
+
+
 def get_athlete_model_context(user_id, athlete_model=None):
     """Return a formatted string for prompt injection based on the athlete's persistent model.
 
@@ -4319,12 +4380,7 @@ def get_athlete_model_context(user_id, athlete_model=None):
             else "style baseline — calibrating"
         )
 
-        confidence_pct = model.get('model_confidence_pct')
-        confidence_line = (
-            f"- Model Confidence: {confidence_pct}%"
-            if confidence_pct is not None
-            else "- Model Confidence: building (not yet computed)"
-        )
+        confidence_line = _data_reliability_confidence_line(user_id)
 
         context = f"""### ATHLETE MODEL (learned from {total_autopsies} autopsies)
 {confidence_line}
