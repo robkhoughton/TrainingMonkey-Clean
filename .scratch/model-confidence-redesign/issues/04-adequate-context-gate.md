@@ -12,6 +12,8 @@
 | 2 | Recent journaling | At least 2 journal entries in the past 7 days | A Rx generated with no recent subjective signal (energy, RPE, pain, sleep) is blind to how the athlete is actually responding — the concrete failure mode that justified this whole redesign (see ticket 02's "why gate on this" note). One entry three weeks ago tells you nothing about today. |
 | 3 | Season goal present | `coach_recommendations.has_season_goal(user_id)` returns true (race or non-race, ticket 01) | Cannot prescribe a session without knowing what it's for. Equally hard a requirement as the other two — not a secondary or softer gate. |
 
+**Rollout impact, checked against real data (2026-09-05) — accepted cost, not a reason to soften the floors:** of 149 current users, 96% already pass chronic depth, but only 3% (5 users) have journaled ≥2 times in the past 7 days, and only 10% (15 users) have ever set any season goal — combined, only 2 of 149 would pass all three floors today. Rob's call: *"that is the cost of a reliable Rx... we just need to be sure that the messaging and pointing are spot on."* This ticket ships as designed; the floors are not adjusted to raise the current pass rate. Given how many users will see this message, the label/message/link accuracy below matters more than usual — verify each link live before shipping, not just by inspection (two links in this ticket were wrong until live-checked in the mock server: `/strava-setup` was first-time OAuth setup, not a resync page, and the original `/dashboard?tab=...` URLs should have been the app's actual `/?tab=X&subtab=Y` / `onNavigateToTab()` conventions instead).
+
 **Data Reliability's composite score (ticket 02) is no longer part of the gate.** It doesn't need to be — floors 1 and 2 above are direct, simple checks, not derived from the composite. The composite remains valuable as **informational/narrative content**: ticket 06's panel shows it (plus its full component breakdown, including `hr_calibration`/`hrv_rhr_baseline`/`aerobic_staleness`, which are NOT gate floors — they inform confidence, not eligibility), and ticket 07's Rx prompt narrates it ("your data is X% reliable, trust this Y amount"). This resolves the original open question about picking a composite gating threshold — there isn't one to pick anymore.
 
 **Blocked by:** 01 (non-race season goals — done, deployed 2026-09-05). **No longer blocked by 02** — the composite score isn't needed to implement the three floors; 02 remains a dependency for tickets 06/07 only.
@@ -22,18 +24,24 @@
 
 Every failing floor is listed — none are hidden or demoted to a "by the way" footnote, since all three genuinely block. But they're **ordered hardest-to-fix first**: sequencing the 30-second season-goal form ahead of "you need weeks of training history" would let a user clear the easy item, feel like they're done, then discover the real work was still ahead. Order: (1) chronic depth, (2) recent journaling, (3) season goal.
 
-## Blocking message copy — labels, action, and deep link (confirmed with Rob 2026-09-05)
+## Reuse the existing "no Rx yet" card — don't build a new blocking screen (found 2026-09-05, live-verified in the mock server)
 
-Internal names are not user-facing. Use this exact mapping everywhere the gate or its status is shown (this ticket's blocking screen, and ticket 06's panel for the non-floor components too):
+`TodayPage.tsx` already has a placeholder in the Training Prescription card for "no Rx yet," shown today only for the journal-only reason: *"Your daily prescription will appear here once you've logged a few journal entries... Go to Journal"* (a `Go to Journal` button calling `onNavigateToTab('journal')` — the same `setActiveTab` prop `App.tsx` passes down for in-app tab switches, no full page reload). This ticket should **extend that existing conditional** to branch on all three floors and list whichever are failing, rather than introducing a separate blocking modal/screen. It's the natural existing home for this message and already matches the card's tone.
+
+The page also already has a live example of the other link style needed here: `TodayPage.tsx`'s "Improve model confidence →" link is a plain `<a href="/?tab=coach&subtab=season#athlete-model">` — confirming the canonical deep-link format for this app is `/?tab=X&subtab=Y#anchor` (bare root, not `/dashboard`), used for anything needing a subtab or anchor that `onNavigateToTab()` can't reach (it only sets the top-level tab).
+
+## Blocking message copy — labels, action, and deep link (confirmed with Rob 2026-09-05; link mechanism corrected after live-checking the actual UI, same date)
+
+Internal names are not user-facing. Use this exact mapping everywhere the gate or its status is shown (the extended Training Prescription card above, and ticket 06's panel for the non-floor components too):
 
 | Floor / Component | Label | Message | Link |
 |---|---|---|---|
-| Chronic depth | Training history | If Strava sync looks stale/disconnected: "Check your Strava connection." Otherwise: "Get back into regular training — this rebuilds as you log more sessions." (no link in the second case — nothing to click) | `/strava-setup` (conditional) |
-| Recent journaling | Journaling | "Log a few recent entries to catch up — you need at least 2 in the past week." | `/dashboard?tab=journal` |
-| Season goal | Season goal | "Set a season goal — race or general fitness/weight-loss/base-building." | `/dashboard?tab=coach&subtab=season` |
+| Chronic depth | Training history | If Strava sync looks stale/disconnected: "Check your Strava connection." Otherwise: "Get back into regular training — this rebuilds as you log more sessions." (no link in the second case — nothing to click) | `onNavigateToTab('today')` — the "Sync with Strava" button already lives on the Today page header (confirmed live: shows "Synced today" / an orange Sync button there). **Not** `/strava-setup`, which is first-time OAuth credential entry, not a status/resync page — wrong destination for an already-connected user. |
+| Recent journaling | Journaling | "Log a few recent entries to catch up — you need at least 2 in the past week." | `onNavigateToTab('journal')` — same call the existing placeholder already uses |
+| Season goal | Season goal | "Set a season goal — race or general fitness/weight-loss/base-building." | `/?tab=coach&subtab=season` (plain href — `onNavigateToTab` can't reach a subtab) |
 | *(informational, ticket 06 only)* `hr_calibration` | Heart rate setup | "Add your max and resting heart rate." | `/settings/hrzones` |
 | *(informational, ticket 06 only)* `hrv_rhr_baseline` | Morning readiness | "Connect intervals.icu to sync HRV and resting heart rate automatically." | `/settings/integrations` |
-| *(informational, ticket 06 only)* `aerobic_staleness` | Aerobic fitness test | "Take a new aerobic assessment." | `/dashboard?tab=coach&subtab=season#aerobic-assessment` — **this anchor does not exist yet** (unlike `#athlete-model`, which SeasonPage.tsx already supports via its scroll-to-hash effect); add `id="aerobic-assessment"` to that panel as part of this ticket. |
+| *(informational, ticket 06 only)* `aerobic_staleness` | Aerobic fitness test | "Take a new aerobic assessment." | `/?tab=coach&subtab=season#aerobic-assessment` — **this anchor does not exist yet** (unlike `#athlete-model`, which SeasonPage.tsx already supports via its scroll-to-hash effect, confirmed live); add `id="aerobic-assessment"` to that panel as part of this ticket. |
 
 ## Enforcement seam — named explicitly after a review pass (2026-09-05), do not assume one call site is enough
 
@@ -53,3 +61,6 @@ Before implementing: confirm which of these actually need their own gate check v
 - [ ] A user passing all three floors sees no change in behavior
 - [ ] Fixing a failing floor (journaling again, syncing recent activity, setting a goal) and re-requesting a Rx unblocks it once that specific floor passes — partial progress on one floor is reflected immediately, not held hostage by the others
 - [ ] `#aerobic-assessment` anchor added to SeasonPage.tsx's aerobic assessment panel (needed for ticket 06's informational link, not this ticket's own floors)
+- [ ] Extends `TodayPage.tsx`'s existing "no Rx yet" placeholder in the Training Prescription card, rather than introducing a new modal/screen
+- [ ] Uses `onNavigateToTab()` for same-tab-set navigation and the `/?tab=X&subtab=Y#anchor` href convention where a subtab/anchor is needed — matching the app's existing patterns, not an invented URL format
+- [ ] Every link in the final implementation is click-tested live (mock server or real), not just inspected — this ticket's own draft had two wrong link targets caught only by live-checking
