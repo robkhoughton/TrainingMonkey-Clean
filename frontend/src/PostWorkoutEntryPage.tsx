@@ -169,7 +169,7 @@ const PostWorkoutEntryPage: React.FC<Props> = ({ activityName, activityDate, onD
         setSavingMsg(SAVING_MESSAGES[next]);
         return next;
       });
-    }, 1800);
+    }, 6000);
     return () => clearInterval(id);
   }, [phase]);
 

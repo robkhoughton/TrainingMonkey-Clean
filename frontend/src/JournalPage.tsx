@@ -1272,15 +1272,13 @@ const JournalPage: React.FC = () => {
                 // Phase D: re-check for alignment queries after autopsy may have been generated
                 fetchPendingAlignmentQuery();
                 
-                // Find the saved entry and open modal if autopsy is available
+                // Find the saved entry and open modal if autopsy is available.
+                // Note: tomorrow's recommendation is already generated and saved by the
+                // /api/journal POST itself (Step 2 in save_journal_entry) — no separate
+                // regen call needed here.
                 const savedEntry = result.data.find(e => e.date === date);
                 if (savedEntry?.ai_autopsy?.autopsy_analysis) {
                   openAutopsyModal(savedEntry);
-                  // Auto-regen recommendation for next day (silently, in background)
-                  const nextDay = new Date(date + 'T12:00:00');
-                  nextDay.setDate(nextDay.getDate() + 1);
-                  const nextDateStr = nextDay.toISOString().split('T')[0];
-                  regenRecommendationSilent(nextDateStr);
                 }
               }
             }
@@ -1441,12 +1439,10 @@ const JournalPage: React.FC = () => {
       // Mark as saved
       setSavedEntries(prev => new Set(prev).add(date));
 
-      // Refresh journal data then auto-regen tomorrow's recommendation
+      // Refresh journal data — tomorrow's recommendation was already generated and
+      // saved by the /api/journal POST above (rest-day path in save_journal_entry).
       try {
         await fetchJournalData(centerDate);
-        const nextDay = new Date(date + 'T12:00:00');
-        nextDay.setDate(nextDay.getDate() + 1);
-        regenRecommendationSilent(nextDay.toISOString().split('T')[0]);
       } catch (refreshErr) {
         console.error('Failed to refresh data after rest day:', refreshErr);
       }

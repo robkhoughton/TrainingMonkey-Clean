@@ -54,6 +54,7 @@ RECOMMENDATION_TEMPERATURE = 0.7
 
 # Model constants (Phase 2) — overridden from config.json after load
 MODEL_SONNET = "claude-sonnet-4-6"
+MODEL_SONNET_5 = "claude-sonnet-5"
 MODEL_HAIKU = "claude-haiku-4-5-20251001"
 MODEL_OPUS = "claude-opus-4-6"
 
@@ -367,6 +368,7 @@ try:
 
         # Override model constants from config
         MODEL_SONNET = LLM_SETTINGS.get('model_sonnet', MODEL_SONNET)
+        MODEL_SONNET_5 = LLM_SETTINGS.get('model_sonnet_5', MODEL_SONNET_5)
         MODEL_HAIKU = LLM_SETTINGS.get('model_haiku', MODEL_HAIKU)
         MODEL_OPUS = LLM_SETTINGS.get('model_opus', MODEL_OPUS)
 
@@ -375,6 +377,16 @@ try:
 except Exception as e:
     logger.warning(f"Error loading config file: {str(e)}")
     logger.warning("Using default settings")
+
+# Models that run adaptive thinking ON by default and reject `temperature`. Measured
+# 2026-09-06 (n=2 trials, real daily-decision prompt): left at defaults, claude-sonnet-5
+# burned its entire max_tokens budget on invisible thinking and returned ZERO text twice
+# in a row. Disabling thinking fixes that and is ~41% faster than claude-sonnet-4-6 on
+# this prompt shape (13.5s vs 23.0s avg) — call_claude() below applies this whenever the
+# model is in this set. Extend this set only after measuring the same failure mode.
+# Built after the config-override block above so a config.json model_sonnet_5 override
+# is reflected here too.
+ADAPTIVE_THINKING_MODELS = {MODEL_SONNET_5}
 
 
 def get_api_key():
@@ -968,7 +980,9 @@ def create_recent_activities_summary(activities):
 def get_model_for_task(task):
     """Route to the appropriate Claude model based on task type."""
     task_routing = {
-        'daily': MODEL_SONNET,
+        # Migrated 2026-09-06 — see ADAPTIVE_THINKING_MODELS comment for the measurement.
+        # autopsy/weekly stay on MODEL_SONNET: not evaluated against sonnet-5 yet.
+        'daily': MODEL_SONNET_5,
         'autopsy': MODEL_SONNET,  # upgraded — zone compliance analysis requires real reasoning
         'weekly': MODEL_SONNET,
         'weekly_comprehensive': MODEL_OPUS,
@@ -1037,16 +1051,29 @@ def call_claude(prompt, model=None, temperature=None, max_tokens=None, timeout=6
         api_key = get_api_key()
         client = anthropic_sdk.Anthropic(api_key=api_key)
 
-        logger.info(f"Calling Claude (SDK) model={model}, max_tokens={max_tokens}, temperature={temperature}, task={task}")
-
-        message = client.messages.create(
+        request_kwargs = dict(
             model=model,
             max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
+        if model in ADAPTIVE_THINKING_MODELS:
+            # Adaptive thinking runs ON by default on these models and they reject
+            # `temperature` outright (400). Disabled here — see ADAPTIVE_THINKING_MODELS
+            # comment for why: left at defaults this silently returns empty text.
+            request_kwargs["thinking"] = {"type": "disabled"}
+            logger.info(f"Calling Claude (SDK) model={model}, max_tokens={max_tokens}, thinking=disabled, task={task}")
+        else:
+            request_kwargs["temperature"] = temperature
+            logger.info(f"Calling Claude (SDK) model={model}, max_tokens={max_tokens}, temperature={temperature}, task={task}")
 
-        response_text = message.content[0].text
+        message = client.messages.create(**request_kwargs)
+
+        # Don't assume content[0] is text — a model running thinking puts a
+        # ThinkingBlock first; find the actual text block instead.
+        response_text = next(
+            (block.text for block in message.content if getattr(block, "type", None) == "text"),
+            ""
+        )
         logger.info(
             f"SDK call successful: {message.usage.input_tokens} input, "
             f"{message.usage.output_tokens} output tokens"
@@ -2798,7 +2825,7 @@ DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Interna
 
 Set assessment.primary_signal to "divergence" unless another signal clearly dominates.
 
-Fill in ALL fields with actual computed values. Use only the allowed enum values for string fields. Set meta.tokens_used to {{"input": 0, "output": 0}} (post-processed).
+Fill in ALL fields with actual computed values. Use only the allowed enum values for string fields.
 
 <structured_output>
 {{
@@ -2843,11 +2870,8 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
     "weekly_plan_deviation_reason": null
   }},
   "meta": {{
-    "model_used": "claude-sonnet-4-6",
-    "generation_timestamp": "ISO8601",
     "coaching_spectrum": 50,
     "risk_tolerance": "{recommendation_style}",
-    "tokens_used": {{"input": 0, "output": 0}},
     "athlete_model_injected": false,
     "div_low_n": 0,
     "threshold_n": 0,
@@ -4802,7 +4826,10 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
         )
 
         # Call LLM API
-        response = call_anthropic_api(prompt)
+        # Route through call_claude(task='daily') directly, not the call_anthropic_api
+        # legacy wrapper — that wrapper defaults model=DEFAULT_MODEL, which bypasses
+        # get_model_for_task() entirely and silently ignored the sonnet-5 migration below.
+        response = call_claude(prompt, task='daily')
 
         if response and response.strip():
             logger.info(f"Generated autopsy-informed decision for user {user_id}")
@@ -4813,7 +4840,8 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
             # SAFETY-FLOOR GUARDRAIL + numeric repair — shared seam (finalize_recommendation),
             # used identically by the standard, autopsy-informed, and agentic paths.
             _final = finalize_recommendation(
-                sections, current_metrics, floor_category, prompt, call_anthropic_api, user_id, target_date_str
+                sections, current_metrics, floor_category, prompt,
+                lambda p: call_claude(p, task='daily'), user_id, target_date_str
             )
             if _final['status'] == 'fallback':
                 return {
@@ -5142,11 +5170,8 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
     "weeks_to_a_race": null
   }},
   "meta": {{
-    "model_used": "claude-haiku-4-5-20251001",
-    "generation_timestamp": "ISO8601",
     "coaching_spectrum": 50,
-    "risk_tolerance": "{recommendation_style}",
-    "tokens_used": {{"input": 0, "output": 0}}
+    "risk_tolerance": "{recommendation_style}"
   }}
 }}
 </structured_output>
