@@ -227,17 +227,25 @@ export interface AthleteModel {
   journal_count: number;
   activity_count: number;
   journal_coverage_pct: number;
-  model_confidence?: {
-    composite: number;
+  // Ticket 06: replaces the old single model_confidence composite with two
+  // separately-scored, separately-purposed signals.
+  data_reliability?: {
+    score: number;
     components: {
-      athlete_profile:    { score: number; missing: string[] };
-      hr_calibration:     { score: number; max_hr: boolean; resting_hr: boolean };
-      coaching_prefs:     { score: number };
-      season_plan:        { score: number; has_name_date: boolean; has_distance: boolean };
-      weekly_schedule:    { score: number };
-      activity_history:   { score: number; recent_count: number };
-      journal_power:      { score: number; avg_power: number; coverage_pct: number; journal_count: number; activity_count: number; field_coverage?: Record<string, number> };
-      aerobic_assessment: { score: number; count: number };
+      load_coverage:     { score: number; days_logged: number; window_days: number };
+      hr_calibration:    { score: number; max_hr: boolean; resting_hr: boolean; interim_definition: boolean };
+      hrv_rhr_baseline:  { score: number; baseline_established: boolean; hrv_reading_count: number; rhr_reading_count: number; days_since_last_reading: number | null };
+      journal_recency:   { score: number; entries_in_window: number; window_days: number; half_life_days: number };
+      aerobic_staleness: { score: number; days_since_last_test: number | null; half_life_days: number };
+    };
+  };
+  specification_clarity?: {
+    score: number;
+    components: {
+      athlete_profile:      { score: number; missing: string[] };
+      season_goal:          { score: number; goal_type: 'race' | 'non_race' | null; has_distance: boolean | null };
+      weekly_schedule:      { score: number; has_schedule: boolean };
+      recommendation_style: { score: number; is_set: boolean };
     };
   };
 }
@@ -754,9 +762,9 @@ export const AthleteModelPanel: React.FC<{
   onOpenGoalModal?: () => void;
   onOpenProfileModal?: () => void;
   onOpenPrefsModal?: () => void;
-}> = ({ model, onOpenGoalModal, onOpenProfileModal, onOpenPrefsModal }) => {
+  onOpenRiskModal?: () => void;
+}> = ({ model, onOpenGoalModal, onOpenProfileModal, onOpenPrefsModal, onOpenRiskModal }) => {
   const autopsyCount = model?.total_autopsies ?? 0;
-  const [jpExpanded, setJpExpanded] = useState(false);
 
   // Calibration state
   const divLow = model?.typical_divergence_low ?? null;
@@ -774,12 +782,17 @@ export const AthleteModelPanel: React.FC<{
   else if (trend === 'declining') { trendLabel = 'Declining ↓'; trendColor = '#dc2626'; }
   else if (trend === 'stable') { trendLabel = 'Stable'; trendColor = '#7D9CB8'; }
 
-  const mc = model?.model_confidence;
-  const composite = mc?.composite ?? 0;
-  const c = mc?.components;
+  const dr = model?.data_reliability;
+  const drScore = dr?.score ?? 0;
+  const drComponents = dr?.components;
+  const drLabel = drScore >= 70 ? 'High' : drScore >= 40 ? 'Building' : 'Low';
+  const drColor = drScore >= 70 ? '#16a34a' : drScore >= 40 ? '#d97706' : '#9ca3af';
 
-  const confLabel = composite >= 70 ? 'High' : composite >= 40 ? 'Building' : 'Low';
-  const confColor = composite >= 70 ? '#16a34a' : composite >= 40 ? '#d97706' : '#9ca3af';
+  const sc = model?.specification_clarity;
+  const scScore = sc?.score ?? 0;
+  const scComponents = sc?.components;
+  const scLabel = scScore >= 70 ? 'Clear' : scScore >= 40 ? 'Partial' : 'Unclear';
+  const scColor = scScore >= 70 ? '#16a34a' : scScore >= 40 ? '#d97706' : '#9ca3af';
 
   const badgeStyle = {
     display: 'flex', alignItems: 'center', gap: '6px',
@@ -899,81 +912,127 @@ export const AthleteModelPanel: React.FC<{
     );
   };
 
-  // Sub-row for Journal Power field breakdown
-  const SubRow: React.FC<{
+  // Score hero — shared by the Data Reliability and Specification Clarity
+  // sections. Simplified from the old single-composite hero (no per-field
+  // "quick wins" narrative): each section's own component rows below already
+  // give a concrete next action, so the hero just states the number.
+  const ScoreHero: React.FC<{
+    title: string;
+    subtitle: string;
+    score: number;
     label: string;
-    pct: number;
-    badge4x?: boolean;
-    separator?: boolean;
-  }> = ({ label, pct, badge4x, separator }) => {
-    const subColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#9ca3af';
-    return (
-      <div style={{
-        padding: separator ? '5px 0 3px' : '3px 0',
-        borderTop: separator ? '1px dashed #e5e7eb' : 'none',
-        marginTop: separator ? '4px' : 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '11px', color: '#4b5563', fontWeight: '500' }}>{label}</span>
-            {badge4x && (
-              <span style={{
-                fontSize: '8px', fontWeight: '800', color: '#FF5722',
-                border: '1px solid #FF572244', borderRadius: '3px',
-                padding: '0 3px', letterSpacing: '0.06em',
-              }}>4×</span>
-            )}
-          </div>
-          <span style={{
-            fontSize: '11px', fontWeight: '700', color: subColor,
-            fontVariantNumeric: 'tabular-nums',
-          }}>{pct}%</span>
-        </div>
-        {/* Bar — notes is 4× as wide as a 1-pt field bar; tick marks at each 1-pt interval */}
+    color: string;
+  }> = ({ title, subtitle, score, label, color }) => (
+    <div style={{
+      borderRadius: '10px', backgroundColor: '#1B2E4B',
+      padding: '16px 20px 14px', marginBottom: '16px',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {score >= 70 && (
         <div style={{
-          height: '5px', borderRadius: '3px',
-          width: badge4x ? '100%' : '25%',
-          background: '#edf0f4', overflow: 'hidden',
-          position: 'relative',
+          position: 'absolute', inset: 0, borderRadius: '10px',
+          background: `radial-gradient(ellipse at 50% 0%, ${color}22 0%, transparent 70%)`,
+          pointerEvents: 'none',
+        }} />
+      )}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ fontSize: '9px', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontWeight: '700' }}>
+          {title}
+        </div>
+        <div style={{
+          fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em',
+          color, textTransform: 'uppercase',
+          background: `${color}22`, borderRadius: '4px', padding: '1px 7px',
         }}>
-          <div style={{
-            height: '100%', width: `${Math.min(100, pct)}%`,
-            background: pct >= 80
-              ? `linear-gradient(90deg, ${subColor}99 0%, ${subColor} 100%)`
-              : `linear-gradient(90deg, ${subColor}66 0%, ${subColor}aa 100%)`,
-            borderRadius: '3px',
-            transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)',
-          }} />
-          {badge4x && [25, 50, 75].map(tick => (
-            <div key={tick} style={{
-              position: 'absolute', top: 0, bottom: 0,
-              left: `${tick}%`, width: '1px',
-              backgroundColor: 'rgba(0,0,0,0.18)', zIndex: 1,
-            }} />
-          ))}
+          {label}
         </div>
       </div>
-    );
-  };
-
-  // Journal Power detail string
-  const jpDetail = c?.journal_power
-    ? `${c.journal_power.journal_count}/${c.journal_power.activity_count} activities · avg quality ${c.journal_power.avg_power}%`
-    : '—';
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginBottom: '10px' }}>
+        <div style={{
+          fontSize: '56px', fontWeight: '900', lineHeight: 1,
+          color, fontVariantNumeric: 'tabular-nums',
+          textShadow: score >= 70 ? `0 0 24px ${color}66` : 'none',
+          transition: 'color 0.4s ease',
+          flexShrink: 0,
+        }}>
+          {score}
+        </div>
+        <div style={{ fontSize: '22px', fontWeight: '700', color, paddingBottom: '8px', opacity: 0.8, flexShrink: 0 }}>%</div>
+        <div style={{ flex: 1, fontSize: '11px', lineHeight: 1.5, color: 'rgba(255,255,255,0.55)', paddingBottom: '6px' }}>
+          {subtitle}
+        </div>
+      </div>
+      <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', width: `${score}%`,
+          background: `linear-gradient(90deg, ${color}99 0%, ${color} 100%)`,
+          borderRadius: '3px',
+          boxShadow: score >= 70 ? `0 0 8px ${color}88` : 'none',
+          transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+        }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+        {[0, 40, 70, 100].map(tick => (
+          <div key={tick} style={{
+            fontSize: '9px', fontWeight: '600',
+            color: score >= tick ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)',
+          }}>
+            {tick === 0 ? '' : `${tick}%`}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   // Profile missing fields → readable labels
   const profileFieldLabels: Record<string, string> = {
     age: 'age', gender: 'gender', primary_sport: 'sport', training_experience: 'experience',
   };
-  const profileDetail = c?.athlete_profile
-    ? c.athlete_profile.missing.length === 0
-      ? 'Complete'
-      : `Missing: ${c.athlete_profile.missing.map(f => profileFieldLabels[f] ?? f).join(', ')}`
+
+  // ── Data Reliability detail strings — copy matches ticket 04's label/message mapping ──
+  const loadCoverageDetail = drComponents?.load_coverage
+    ? `${drComponents.load_coverage.days_logged} of ${drComponents.load_coverage.window_days} days logged`
+    : '—';
+  const hrCalibrationDetail = drComponents?.hr_calibration
+    ? [!drComponents.hr_calibration.max_hr && 'max HR', !drComponents.hr_calibration.resting_hr && 'resting HR']
+        .filter(Boolean).join(', ') || 'Complete'
+    : '—';
+  const hrvRhrDetail = drComponents?.hrv_rhr_baseline
+    ? drComponents.hrv_rhr_baseline.baseline_established
+      ? (drComponents.hrv_rhr_baseline.days_since_last_reading != null
+          ? `Baseline established · last reading ${drComponents.hrv_rhr_baseline.days_since_last_reading}d ago`
+          : 'Baseline established')
+      : `${drComponents.hrv_rhr_baseline.hrv_reading_count} HRV / ${drComponents.hrv_rhr_baseline.rhr_reading_count} RHR readings so far`
+    : '—';
+  const journalRecencyDetail = drComponents?.journal_recency
+    ? `${drComponents.journal_recency.entries_in_window} real entries in the last ${drComponents.journal_recency.window_days} days`
+    : '—';
+  const aerobicStalenessDetail = drComponents?.aerobic_staleness
+    ? drComponents.aerobic_staleness.days_since_last_test != null
+      ? `Last test ${drComponents.aerobic_staleness.days_since_last_test}d ago`
+      : 'No assessment on file'
     : '—';
 
-  const hrDetail = c?.hr_calibration
-    ? [!c.hr_calibration.max_hr && 'max HR', !c.hr_calibration.resting_hr && 'resting HR']
-        .filter(Boolean).join(', ') || 'Complete'
+  // ── Specification Clarity detail strings ──
+  const scProfileDetail = scComponents?.athlete_profile
+    ? scComponents.athlete_profile.missing.length === 0
+      ? 'Complete'
+      : `Missing: ${scComponents.athlete_profile.missing.map(f => profileFieldLabels[f] ?? f).join(', ')}`
+    : '—';
+  const scSeasonGoalDetail = scComponents?.season_goal
+    ? scComponents.season_goal.goal_type === null
+      ? 'No goal set'
+      : scComponents.season_goal.goal_type === 'non_race'
+        ? 'Goal set'
+        : scComponents.season_goal.has_distance
+          ? 'Race goal complete'
+          : 'Race set — missing distance'
+    : '—';
+  const scScheduleDetail = scComponents?.weekly_schedule
+    ? scComponents.weekly_schedule.has_schedule ? 'Availability set' : 'Days not configured'
+    : '—';
+  const scRiskStyleDetail = scComponents?.recommendation_style
+    ? scComponents.recommendation_style.is_set ? 'Set' : 'Not set — defaults to balanced'
     : '—';
 
   return (
@@ -1003,183 +1062,90 @@ export const AthleteModelPanel: React.FC<{
 
       <div style={{ backgroundColor: 'white' }}>
 
-        {/* ── Section 1: Model Confidence ── */}
+        {/* ── Section 1a: Data Reliability ── */}
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6' }}>
 
-          {/* Composite score hero */}
-          <div style={{
-            borderRadius: '10px', backgroundColor: '#1B2E4B',
-            padding: '16px 20px 14px', marginBottom: '16px',
-            position: 'relative', overflow: 'hidden',
-          }}>
-            {/* Background glow when high */}
-            {composite >= 70 && (
-              <div style={{
-                position: 'absolute', inset: 0, borderRadius: '10px',
-                background: `radial-gradient(ellipse at 50% 0%, ${confColor}22 0%, transparent 70%)`,
-                pointerEvents: 'none',
-              }} />
-            )}
-            {/* Label row */}
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div style={{ fontSize: '9px', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontWeight: '700' }}>
-                Model Confidence
-              </div>
-              <div style={{
-                fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em',
-                color: confColor, textTransform: 'uppercase',
-                background: `${confColor}22`, borderRadius: '4px', padding: '1px 7px',
-              }}>
-                {confLabel}
-              </div>
-            </div>
-            {/* Big number + game instructions on same row */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginBottom: '10px' }}>
-              <div style={{
-                fontSize: '56px', fontWeight: '900', lineHeight: 1,
-                color: confColor, fontVariantNumeric: 'tabular-nums',
-                textShadow: composite >= 70 ? `0 0 24px ${confColor}66` : 'none',
-                transition: 'color 0.4s ease',
-                flexShrink: 0,
-              }}>
-                {composite}
-              </div>
-              <div style={{ fontSize: '22px', fontWeight: '700', color: confColor, paddingBottom: '8px', opacity: 0.8, flexShrink: 0 }}>%</div>
-              <div style={{
-                flex: 1, fontSize: '11px', lineHeight: 1.5,
-                color: 'rgba(255,255,255,0.55)', paddingBottom: '6px',
-              }}>
-                {(() => {
-                  if (!c) return null;
-                  const notesCoverage = c.journal_power?.field_coverage?.notes ?? 100;
-                  const journalCoverage = c.journal_power?.coverage_pct ?? 100;
-                  const jpScore = c.journal_power?.score ?? 100;
-                  const profileScore = c.athlete_profile?.score ?? 100;
-                  const prefsScore = c.coaching_prefs?.score ?? 100;
-                  const seasonScore = c.season_plan?.score ?? 100;
-                  const scheduleScore = c.weekly_schedule?.score ?? 100;
-                  const hrScore = c.hr_calibration?.score ?? 100;
-                  const aerobicScore = c.aerobic_assessment?.score ?? 100;
-                  const hi = (text: string) => (
-                    <span style={{ color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>{text}</span>
-                  );
-                  if (notesCoverage < 50 && jpScore < 80)
-                    return <>{hi('Highest ROI: add notes.')} You're logging {notesCoverage}% with notes — they're worth 4× any other field.</>;
-                  if (journalCoverage < 50 && jpScore < 60)
-                    return <>{hi('Log more, gain more.')} Journal coverage is {journalCoverage}% — each entry with notes moves the needle most.</>;
-                  const zeroWins: string[] = [];
-                  if (profileScore === 0) zeroWins.push('athlete profile');
-                  if (prefsScore === 0) zeroWins.push('coaching preferences');
-                  if (hrScore === 0) zeroWins.push('HR zones');
-                  if (seasonScore === 0) zeroWins.push('race goal');
-                  if (scheduleScore === 0) zeroWins.push('weekly schedule');
-                  if (zeroWins.length >= 2)
-                    return <>{hi('Quick wins available.')} {zeroWins.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' and ')} {zeroWins.length > 2 ? `(+${zeroWins.length - 2} more) are` : 'are'} unset — each lifts a slider for free.</>;
-                  if (zeroWins.length === 1)
-                    return <>{hi('One free win left.')} Your {zeroWins[0]} is unset. Fill it and recommendations sharpen immediately.</>;
-                  if (aerobicScore === 0)
-                    return <>{hi('Unlock aerobic assessment.')} Log a steady run with HR data. Your coach needs HR drift to calibrate your aerobic baseline.</>;
-                  if (notesCoverage < 70)
-                    return <>{hi('Notes gap.')} {notesCoverage}% coverage. Notes are 4× any structured field — closing this raises signal fastest.</>;
-                  if (journalCoverage < 70)
-                    return <>{hi('Getting sharper.')} Journal at {journalCoverage}% — keep logging after each run, notes especially.</>;
-                  return <>{hi('Strong signal, low noise.')} Your coach knows your patterns. Keep logging notes after each run.</>;
-                })()}
-              </div>
-            </div>
-            {/* Progress track */}
-            <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', width: `${composite}%`,
-                background: `linear-gradient(90deg, ${confColor}99 0%, ${confColor} 100%)`,
-                borderRadius: '3px',
-                boxShadow: composite >= 70 ? `0 0 8px ${confColor}88` : 'none',
-                transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
-              }} />
-            </div>
-            {/* Milestone ticks */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-              {[0, 40, 70, 100].map(tick => (
-                <div key={tick} style={{
-                  fontSize: '9px', fontWeight: '600',
-                  color: composite >= tick ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)',
-                }}>
-                  {tick === 0 ? '' : `${tick}%`}
-                </div>
-              ))}
-            </div>
-          </div>
+          <ScoreHero
+            title="Data Reliability"
+            subtitle="Is today's signal trustworthy enough to prescribe from"
+            score={drScore}
+            label={drLabel}
+            color={drColor}
+          />
 
-          {/* 8 component rows — ordered by significance */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <ConfRow
-              label="Activity History"
-              sublabel="last 60 days"
-              score={c?.activity_history.score ?? 0}
-              detail={c?.activity_history.score === 100
-                ? `${c?.activity_history.recent_count} activities · ACWR window established`
-                : `${c?.activity_history.recent_count ?? 0} activities · need data from 28+ days ago`}
+              label="Training History"
+              sublabel="last 28 days"
+              score={drComponents?.load_coverage.score ?? 0}
+              detail={loadCoverageDetail}
             />
             <ConfRow
-              label="Journal Power"
-              sublabel="last 30 days"
-              score={c?.journal_power.score ?? 0}
-              detail={jpDetail}
-              weight2x
-              toggle={{ expanded: jpExpanded, onToggle: () => setJpExpanded(v => !v) }}
-            >
-              {c?.journal_power.field_coverage && (
-                <div style={{ marginTop: '6px', paddingLeft: '20px', borderLeft: '2px solid #f0f2f5' }}>
-                  <SubRow label="Energy level (1 pt)"    pct={c.journal_power.field_coverage['energy_level']     ?? 0} />
-                  <SubRow label="RPE score (1 pt)"       pct={c.journal_power.field_coverage['rpe_score']        ?? 0} />
-                  <SubRow label="Pain score (1 pt)"      pct={c.journal_power.field_coverage['pain_percentage']  ?? 0} />
-                  <SubRow label="Sleep quality (1 pt)"   pct={c.journal_power.field_coverage['sleep_quality']    ?? 0} />
-                  <SubRow label="Morning soreness (1 pt)"pct={c.journal_power.field_coverage['morning_soreness'] ?? 0} />
-                  <SubRow label="HRV value (1 pt)"       pct={c.journal_power.field_coverage['hrv_value']        ?? 0} />
-                  <SubRow label="Resting HR (1 pt)"      pct={c.journal_power.field_coverage['resting_hr']       ?? 0} />
-                  <SubRow label="Notes signal (up to 4 pts)" pct={c.journal_power.field_coverage['notes'] ?? 0} badge4x separator />
-                </div>
-              )}
-            </ConfRow>
+              label="Journaling"
+              sublabel="last 25 days, decay-weighted"
+              score={drComponents?.journal_recency.score ?? 0}
+              detail={journalRecencyDetail}
+              action={{ href: '/?tab=journal', label: 'Journal' }}
+            />
+            <ConfRow
+              label="Heart Rate Setup"
+              score={drComponents?.hr_calibration.score ?? 0}
+              detail={hrCalibrationDetail}
+              action={{ href: '/settings/hrzones', label: 'Settings' }}
+            />
+            <ConfRow
+              label="Morning Readiness"
+              score={drComponents?.hrv_rhr_baseline.score ?? 0}
+              detail={hrvRhrDetail}
+              action={{ href: '/settings/integrations', label: 'Integrations' }}
+            />
+            <ConfRow
+              label="Aerobic Fitness Test"
+              score={drComponents?.aerobic_staleness.score ?? 0}
+              detail={aerobicStalenessDetail}
+              action={{ href: '/?tab=coach&subtab=season#aerobic-assessment', label: 'Season' }}
+            />
+          </div>
+        </div>
+
+        {/* ── Section 1b: Specification Clarity ── */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6' }}>
+
+          <ScoreHero
+            title="Specification Clarity"
+            subtitle="Do we know who you are and what you're training for"
+            score={scScore}
+            label={scLabel}
+            color={scColor}
+          />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <ConfRow
               label="Athlete Profile"
-              score={c?.athlete_profile.score ?? 0}
-              detail={profileDetail}
+              score={scComponents?.athlete_profile.score ?? 0}
+              detail={scProfileDetail}
               onAction={onOpenProfileModal}
               action={onOpenProfileModal ? undefined : { href: '/settings/hrzones', label: 'Settings' }}
             />
             <ConfRow
-              label="HR Calibration"
-              score={c?.hr_calibration.score ?? 0}
-              detail={hrDetail}
-              action={{ href: '/settings/hrzones', label: 'Settings' }}
-            />
-            <ConfRow
-              label="Season Plan"
-              score={c?.season_plan.score ?? 0}
-              detail={c?.season_plan.score === 100 ? 'A-goal complete' : c?.season_plan.has_name_date ? 'Missing distance' : 'No A-goal set'}
+              label="Season Goal"
+              score={scComponents?.season_goal.score ?? 0}
+              detail={scSeasonGoalDetail}
               onAction={onOpenGoalModal}
               action={onOpenGoalModal ? undefined : { href: '/?tab=coach&subtab=season', label: 'Season' }}
             />
             <ConfRow
               label="Weekly Schedule"
-              score={c?.weekly_schedule.score ?? 0}
-              detail={c?.weekly_schedule.score === 100 ? 'Availability set' : 'Days not configured'}
+              score={scComponents?.weekly_schedule.score ?? 0}
+              detail={scScheduleDetail}
               action={{ href: '/?tab=coach&subtab=week', label: 'Week' }}
             />
             <ConfRow
-              label="Coaching Preferences"
-              score={c?.coaching_prefs.score ?? 0}
-              detail={c?.coaching_prefs.score === 100 ? 'Complete' : 'Not yet configured'}
-              onAction={onOpenPrefsModal}
-              action={onOpenPrefsModal ? undefined : { href: '/?tab=coach&subtab=season', label: 'Season' }}
-            />
-            <ConfRow
-              label="Aerobic Assessment"
-              sublabel="last 28 days"
-              score={c?.aerobic_assessment.score ?? 0}
-              detail={c?.aerobic_assessment.score === 100 ? 'Assessment on file' : 'No recent assessment'}
-              action={{ href: '/?tab=coach&subtab=season', label: 'Season' }}
+              label="Coaching Risk Style"
+              score={scComponents?.recommendation_style.score ?? 0}
+              detail={scRiskStyleDetail}
+              onAction={onOpenRiskModal}
+              action={onOpenRiskModal ? undefined : { href: '/?tab=coach&subtab=season', label: 'Season' }}
             />
           </div>
         </div>

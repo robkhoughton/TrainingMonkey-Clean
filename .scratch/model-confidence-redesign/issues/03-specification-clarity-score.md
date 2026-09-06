@@ -9,10 +9,12 @@ the original redesign decision grouped `recommendation_style` with `coaching_ton
 
 **Blocked by:** 01 (non-race season goals must exist so this score doesn't penalize non-racing users)
 
-**Status:** ready-for-agent
+**Status:** done (2026-09-06)
 
-- [ ] Score computed per user from profile completeness, season-goal completeness (any type), weekly-schedule presence, and `recommendation_style` presence
-- [ ] A non-race season goal scores identically to an equivalently-complete race goal — no penalty for lacking race-specific fields
-- [ ] `recommendation_style` unset (silently defaulting to 'balanced' at the threshold layer) counts as missing here, not as complete
-- [ ] Component breakdown available (what's specifically missing)
-- [ ] Score does not decay over time the way Data Reliability does
+**Implementation:** `app/specification_clarity.py`, `compute_specification_clarity(user_id)`. A race goal with a known distance scores 100 on the season_goal component; a race goal without distance scores 50; a non-race goal scores 100 flat (no equivalent field to penalize it for lacking, per the non-negotiable requirement below). `recommendation_style` is read as a raw column check, not via `get_user_recommendation_style()` (which masks NULL with `'balanced'` for threshold purposes — that masking must not leak into this score). Verified live: a fresh test user with only a non-race season_goals row scored 100 on that component, 0 elsewhere (empty profile/schedule/style) — confirmed no penalty for lacking race-specific fields.
+
+- [x] Score computed per user from profile completeness, season-goal completeness (any type), weekly-schedule presence, and `recommendation_style` presence
+- [x] A non-race season goal scores identically to an equivalently-complete race goal — no penalty for lacking race-specific fields (live-verified)
+- [x] `recommendation_style` unset (silently defaulting to 'balanced' at the threshold layer) counts as missing here, not as complete
+- [x] Component breakdown available (what's specifically missing)
+- [x] Score does not decay over time the way Data Reliability does (pure presence checks, no half-life math)

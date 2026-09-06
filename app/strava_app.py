@@ -12158,6 +12158,18 @@ def get_athlete_model_api():
         div_low         = safe_float(model.get('typical_divergence_low'), 3)
         div_threshold   = safe_float(model.get('divergence_injury_threshold'), 3)
 
+        # Ticket 06: the old blended model_confidence composite is fully
+        # replaced on this panel by two separately-scored, separately-
+        # purposed signals. Composite computation and the DB persist below
+        # are UNCHANGED and kept running — ticket 07 (Rx prompt) still reads
+        # model_confidence_pct from the athlete_models table directly (not
+        # from this endpoint's response) until it's migrated to cite
+        # Data Reliability instead. Only this endpoint's payload drops it.
+        from data_reliability import compute_data_reliability
+        from specification_clarity import compute_specification_clarity
+        data_reliability = compute_data_reliability(user_id)
+        specification_clarity = compute_specification_clarity(user_id)
+
         payload = {
             # Existing fields (used elsewhere in the app)
             'avg_lifetime_alignment':    safe_float(model.get('avg_lifetime_alignment'), 1),
@@ -12170,23 +12182,12 @@ def get_athlete_model_api():
             'journal_count':             j_journal_count,
             'activity_count':            j_activity_count,
             'journal_coverage_pct':      round(coverage_rate * 100),
-            # Model confidence
-            'model_confidence': {
-                'composite':             composite,
-                'components': {
-                    'athlete_profile':   {'score': profile_score,         'missing': profile_missing},
-                    'hr_calibration':    {'score': hr_score,              'max_hr': bool(hr.get('max_hr')), 'resting_hr': bool(hr.get('resting_hr'))},
-                    'coaching_prefs':    {'score': prefs_score},
-                    'season_plan':       {'score': season_score,          'has_name_date': has_name_date, 'has_distance': has_distance},
-                    'weekly_schedule':   {'score': schedule_score},
-                    'activity_history':  {'score': activity_history_score, 'recent_count': recent_activity_count},
-                    'journal_power':     {'score': journal_power_score,   'avg_power': round(j_avg_power), 'coverage_pct': round(coverage_rate * 100), 'journal_count': j_journal_count, 'activity_count': j_activity_count, 'field_coverage': field_coverage},
-                    'aerobic_assessment':{'score': aerobic_score,         'count': aerobic_count},
-                },
-            },
+            'data_reliability':          data_reliability,
+            'specification_clarity':     specification_clarity,
         }
 
-        # Persist composite so LLM context can cite the actual value
+        # Persist composite so ticket 07's Rx-prompt read keeps working until
+        # that ticket migrates it to cite Data Reliability instead.
         db_utils.execute_query(
             "UPDATE athlete_models SET model_confidence_pct = %s, updated_at = NOW() WHERE user_id = %s",
             (composite, user_id)

@@ -2902,6 +2902,7 @@ const SeasonPage: React.FC = () => {
             onOpenGoalModal={() => { setEditingGoal(null); setModalMode('add'); }}
             onOpenProfileModal={() => setEditingProfile(true)}
             onOpenPrefsModal={() => setEditingPref('communication')}
+            onOpenRiskModal={() => setEditingPref('risk')}
           />
           <div id="aerobic-assessment">
           {aetMethod === 'lactate_step' ? (
