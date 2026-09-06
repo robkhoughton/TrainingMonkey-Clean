@@ -1324,6 +1324,16 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         elif existing_recommendation and force and target_date:
             logger.info(f"Force-regenerating recommendation for target_date {target_date} (Refresh Rec)")
 
+        # Gate: only blocks an actual new generation attempt, past every
+        # "just return what's already there" short-circuit above. See
+        # adequate_context_gate.py.
+        from adequate_context_gate import check_adequate_context
+        gate = check_adequate_context(user_id)
+        if not gate['passes']:
+            logger.info(f"[ADEQUATE-CONTEXT-GATE] Blocking recommendation for user {user_id}: "
+                        f"failing floors {gate['failing_floors_ordered']}")
+            return None
+
         # For historical record keeping - no expiration for date-specific recommendations
         valid_until = None
 
@@ -3160,6 +3170,13 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
     try:
         logger.info(f"Generating dual-track autopsy for user {user_id}, date {date_str}")
 
+        from adequate_context_gate import check_adequate_context
+        gate = check_adequate_context(user_id)
+        if not gate['passes']:
+            logger.info(f"[ADEQUATE-CONTEXT-GATE][AUTOPSY] Blocking autopsy for user {user_id}: "
+                        f"failing floors {gate['failing_floors_ordered']}")
+            return None
+
         spectrum_value = get_user_coaching_spectrum(user_id)
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
         w_align, w_quality = get_user_autopsy_weights(user_id)
@@ -4759,6 +4776,13 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
             logger.warning(f"No current metrics for autopsy-informed decision user {user_id}")
             return None
 
+        from adequate_context_gate import check_adequate_context
+        gate = check_adequate_context(user_id)
+        if not gate['passes']:
+            logger.info(f"[ADEQUATE-CONTEXT-GATE][AUTOPSY-INFORMED] Blocking decision for user {user_id}: "
+                        f"failing floors {gate['failing_floors_ordered']}")
+            return None
+
         # Use provided autopsy insights or fetch recent ones
         if autopsy_insights is None:
             autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
@@ -5614,6 +5638,15 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             return dict(result[0]) if result and result[0] else get_latest_recommendation(user_id)
         elif existing_rec and force:
             logger.info(f"[AGENTIC] Force-regenerating recommendation for target_date {target_date}")
+
+        # Gate: only blocks an actual new generation attempt, past the
+        # "return existing" short-circuit above. See adequate_context_gate.py.
+        from adequate_context_gate import check_adequate_context
+        gate = check_adequate_context(user_id)
+        if not gate['passes']:
+            logger.info(f"[ADEQUATE-CONTEXT-GATE][AGENTIC] Blocking recommendation for user {user_id}: "
+                        f"failing floors {gate['failing_floors_ordered']}")
+            return None
 
         # ------------------------------------------------------------------ #
         # Get current metrics (minimal context for Turn 1)                    #

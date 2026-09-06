@@ -6617,6 +6617,13 @@ def generate_autopsy_for_date(date_str, user_id):
             race_goal=race_goal
         )
 
+        if autopsy_result is None:
+            # Adequate Context Gate blocked generation (see adequate_context_gate.py) —
+            # do not fall through to the "old format" branch below, which would treat
+            # None as an empty string and still write a garbage row to ai_autopsies.
+            logger.info(f"No autopsy generated for {date_str}, user {user_id} (adequate context gate or generation failure)")
+            return
+
         # Extract analysis, alignment score, and next-session adjustment from enhanced result
         is_fallback = False
         next_session_type = None
@@ -12666,6 +12673,44 @@ def delete_race_goal(goal_id):
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/coach/adequate-context-status', methods=['GET'])
+@login_required
+def get_adequate_context_status():
+    """Status for the Adequate Context Gate (ticket 04) — whether the current
+    user's data clears the three hard floors, plus enough detail for the
+    frontend to render the right ordered blocking message. Does not itself
+    gate anything; the actual gate lives in adequate_context_gate.py and is
+    checked inside Rx/autopsy generation directly."""
+    try:
+        from adequate_context_gate import check_adequate_context
+        user_id = current_user.id
+        gate = check_adequate_context(user_id)
+
+        strava_sync_stale = True
+        if gate['floors']['chronic_depth'] is False:
+            row = db_utils.execute_query(
+                "SELECT last_sync_date FROM user_settings WHERE id = %s",
+                (user_id,), fetch=True
+            )
+            last_sync = dict(row[0]).get('last_sync_date') if row else None
+            if last_sync:
+                # last_sync_date is TEXT (YYYY-MM-DD string), not a DATE column
+                last_sync_obj = datetime.strptime(last_sync, '%Y-%m-%d').date()
+                days_since_sync = (get_app_current_date() - last_sync_obj).days
+                strava_sync_stale = days_since_sync > 3
+
+        return jsonify({
+            'success': True,
+            'passes': gate['passes'],
+            'floors': gate['floors'],
+            'failing_floors_ordered': gate['failing_floors_ordered'],
+            'chronic_depth_strava_sync_stale': strava_sync_stale,
+        })
+    except Exception as e:
+        logger.error(f"Error fetching adequate context status for user {current_user.id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 SEASON_GOAL_TYPES = ['fitness', 'weight_loss', 'base_building', 'general']

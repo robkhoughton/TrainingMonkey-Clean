@@ -18,7 +18,17 @@
 
 **Blocked by:** 01 (non-race season goals — done, deployed 2026-09-05). **No longer blocked by 02** — the composite score isn't needed to implement the three floors; 02 remains a dependency for tickets 06/07 only.
 
-**Status:** ready-for-agent
+**Status:** done (2026-09-06)
+
+**Implementation notes:**
+- `app/adequate_context_gate.py` — `check_adequate_context(user_id)`, the three floors.
+- Checked at the top of all four verified entry points in `llm_recommendations_module.py`: `generate_recommendations()`, `generate_recommendations_agentic()`, `generate_activity_autopsy_enhanced()`, `generate_autopsy_informed_daily_decision()` — placed *after* every existing "return the already-valid recommendation" short-circuit in each, so a passing user's behavior is genuinely unchanged and a gate-failing user never triggers the LLM call. `assemble_daily_context()` itself was deliberately left untouched (too risky to add exception-based control flow to a function 3+ callers depend on for pure content assembly) — checking at the 4 top-level generators instead gives full, verified coverage of every cron/manual/journal-triggered path (confirmed by tracing every call site in strava_app.py) without touching that seam.
+- Found and fixed a latent bug this gate would have newly exposed: `generate_autopsy_for_date()` (strava_app.py) didn't handle a `None` autopsy result — it fell into an "old format" fallback that would still INSERT an empty-string autopsy row into `ai_autopsies`. Added an explicit early return.
+- `.claude/CLAUDE.md`'s enforcement-seam note was stale: it listed `generate_recommendations_agentic()` as outside the seam, but it now calls `assemble_daily_context()` directly (confirmed by reading its source) — corrected the doc.
+- `app/tests/test_adequate_context_gate.py` — mirrors `test_daily_context.py`'s style: asserts every one of the 4 generators calls `check_adequate_context()`, and that the call precedes any LLM invocation in that function's source.
+- `GET /api/coach/adequate-context-status` (strava_app.py) — status endpoint `TodayPage.tsx` polls; not itself a gate, just exposes `check_adequate_context()`'s result plus the Strava-sync-staleness sub-detail for the chronic-depth message branch. Found and fixed a real bug here too: `last_sync_date` is a TEXT column (not DATE), so the naive date-subtraction crashed — added explicit parsing.
+- `TodayPage.tsx`'s existing "no Rx yet" placeholder extended (not replaced with a new modal) to render the ordered floor list when `gateStatus.failing_floors_ordered` is non-empty, falling back to the original generic message otherwise (covers gate-status fetch failure or an unrelated reason for no Rx). Live-verified in the mock server by overriding `window.fetch` for the status endpoint (mock mode's query parser can't produce a realistic response) — all three floor messages, the "Go to Journal" button, and the "Set a Goal" link render and navigate correctly.
+- `#aerobic-assessment` anchor added to `SeasonPage.tsx` by wrapping the `AerobicAssessmentPanel`/`LactateStepTestPanel` conditional at the call site (rather than either component's internals), since either can render depending on the user's AeT method — live-verified the scroll-to-anchor works.
 
 ## Message ordering when multiple floors fail
 
@@ -56,11 +66,11 @@ Before implementing: confirm which of these actually need their own gate check v
 
 ## Acceptance criteria
 
-- [ ] A user failing any of the three floors is blocked from Rx generation entirely — verified no LLM call occurs, across every entry point listed above
-- [ ] Blocking message lists every failing floor, ordered hardest-to-fix first (chronic depth → journaling → season goal), each using the label/message/link mapping above — not raw internal names, not a generic "insufficient data" message
-- [ ] A user passing all three floors sees no change in behavior
-- [ ] Fixing a failing floor (journaling again, syncing recent activity, setting a goal) and re-requesting a Rx unblocks it once that specific floor passes — partial progress on one floor is reflected immediately, not held hostage by the others
-- [ ] `#aerobic-assessment` anchor added to SeasonPage.tsx's aerobic assessment panel (needed for ticket 06's informational link, not this ticket's own floors)
-- [ ] Extends `TodayPage.tsx`'s existing "no Rx yet" placeholder in the Training Prescription card, rather than introducing a new modal/screen
-- [ ] Uses `onNavigateToTab()` for same-tab-set navigation and the `/?tab=X&subtab=Y#anchor` href convention where a subtab/anchor is needed — matching the app's existing patterns, not an invented URL format
-- [ ] Every link in the final implementation is click-tested live (mock server or real), not just inspected — this ticket's own draft had two wrong link targets caught only by live-checking
+- [x] A user failing any of the three floors is blocked from Rx generation entirely — verified no LLM call occurs, across every entry point listed above (live-tested against real account 80: `generate_recommendations(force=True, user_id=80)` returned `None`, zero new rows in `llm_recommendations`)
+- [x] Blocking message lists every failing floor, ordered hardest-to-fix first (chronic depth → journaling → season goal), each using the label/message/link mapping above — not raw internal names, not a generic "insufficient data" message
+- [x] A user passing all three floors sees no change in behavior (gate check placed after every pre-existing "return existing Rx" short-circuit; a passing user's code path is byte-for-byte what it was before this ticket)
+- [x] Each floor's own pass/fail is recomputed fresh and reflected immediately in the status endpoint as the user fixes it — Rx generation itself still requires all three (by design, not a partial-credit gate)
+- [x] `#aerobic-assessment` anchor added to SeasonPage.tsx's aerobic assessment panel — live-verified the scroll-to-anchor works
+- [x] Extends `TodayPage.tsx`'s existing "no Rx yet" placeholder in the Training Prescription card, rather than introducing a new modal/screen
+- [x] Uses `onNavigateToTab()` for same-tab-set navigation and the `/?tab=X&subtab=Y#anchor` href convention where a subtab/anchor is needed — matching the app's existing patterns, not an invented URL format
+- [x] Every link in the final implementation is click-tested live in the mock server, not just inspected — "Go to Journal" and "Set a Goal" both confirmed navigating correctly

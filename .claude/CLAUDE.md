@@ -104,7 +104,7 @@ Topic files in `app/coaching_context/` are injected state-gated into LLM prompts
 1. Write `app/coaching_context/<topic>.md` — compact, imperative, model-facing
 2. Add a gating condition to `_load_coaching_context()` in `llm_recommendations_module.py` with a rationale comment
 
-No per-call-site verification step is needed for the daily recommendation: `_load_coaching_context()` is called once inside `assemble_daily_context()` — the shared context seam both daily prompt builders assemble through — so a newly gated file reaches them by construction, and `app/tests/test_daily_context.py` fails the build if a builder stops consuming a shared signal. Still outside the seam and needing a direct check: `generate_recommendations_agentic()` and `generate_activity_autopsy_enhanced()`.
+No per-call-site verification step is needed for the daily recommendation: `_load_coaching_context()` is called once inside `assemble_daily_context()` — the shared context seam all three daily prompt builders (including `generate_recommendations_agentic()`, confirmed on the seam 2026-09-06 — an earlier version of this note had it listed as an exception, which was stale) assemble through — so a newly gated file reaches them by construction, and `app/tests/test_daily_context.py` fails the build if a builder stops consuming a shared signal. Still outside the seam and needing a direct check: `generate_activity_autopsy_enhanced()` (verified 2026-09-06: no call to `assemble_daily_context()` or either seam-builder anywhere in its body).
 
 ## Key Files
 

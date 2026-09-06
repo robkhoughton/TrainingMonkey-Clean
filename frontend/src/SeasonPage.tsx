@@ -2903,6 +2903,7 @@ const SeasonPage: React.FC = () => {
             onOpenProfileModal={() => setEditingProfile(true)}
             onOpenPrefsModal={() => setEditingPref('communication')}
           />
+          <div id="aerobic-assessment">
           {aetMethod === 'lactate_step' ? (
             <LactateStepTestPanel
               method={aetMethod}
@@ -2957,6 +2958,7 @@ const SeasonPage: React.FC = () => {
               isBackfilling={isBackfilling}
             />
           )}
+          </div>{/* end #aerobic-assessment */}
         </div>
 
       </div>

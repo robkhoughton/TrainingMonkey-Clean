@@ -76,6 +76,15 @@ interface JournalEntry {
   };
 }
 
+// ─── Adequate Context Gate (ticket 04) ─────────────────────────────────────────
+interface AdequateContextStatus {
+  success: boolean;
+  passes: boolean;
+  floors: { chronic_depth: boolean; journal_recency: boolean; season_goal: boolean };
+  failing_floors_ordered: string[];
+  chronic_depth_strava_sync_stale: boolean;
+}
+
 // ─── Why Panel ────────────────────────────────────────────────────────────────
 interface ConversationMessage { role: 'user' | 'assistant'; content: string; }
 interface WhyPanelState {
@@ -911,6 +920,7 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
   const [lastSyncDate,     setLastSyncDate]     = useState<string | null>(null);
   const [isSyncing,        setIsSyncing]        = useState(false);
   const [syncMsg,          setSyncMsg]          = useState<string | null>(null);
+  const [gateStatus,       setGateStatus]       = useState<AdequateContextStatus | null>(null);
 
   useEffect(() => {
     // Fast endpoints — page renders as soon as these complete
@@ -958,6 +968,13 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
     fetch('/api/journal/streak', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.streak != null) setStreak(d.streak); })
+      .catch(() => {});
+
+    // Adequate Context Gate status — fast, independent. Drives the "why no
+    // Rx yet" placeholder below when the gate is failing.
+    fetch('/api/coach/adequate-context-status', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.success) setGateStatus(d); })
       .catch(() => {});
 
     // Weekly program fetches independently — slow LLM call, ~60–90s
@@ -1261,18 +1278,82 @@ const TodayPage: React.FC<Props> = ({ onNavigateToTab }) => {
               </>
             ) : (
               <div style={{ fontFamily: FONT }}>
-                <p style={{ margin: '0 0 8px 0', color: TEXT, fontSize: '0.9rem', lineHeight: '1.6' }}>
-                  Your daily prescription will appear here once you've logged a few journal entries.
-                </p>
-                <p style={{ margin: '0 0 14px 0', color: MUTED, fontSize: '0.85rem', lineHeight: '1.6' }}>
-                  Open the Journal tab, find today's activity, and fill in your RPE, how you felt, and any notes. After a few entries the coach will start generating personalized recommendations.
-                </p>
-                <button
-                  onClick={() => onNavigateToTab('journal')}
-                  style={{ background: BLUE, color: 'white', border: 'none', borderRadius: '4px', padding: '8px 18px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}
-                >
-                  Go to Journal
-                </button>
+                {gateStatus && gateStatus.failing_floors_ordered.length > 0 ? (
+                  <>
+                    <p style={{ margin: '0 0 12px 0', color: TEXT, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                      Your daily prescription needs a bit more to go on first — ordered by what takes longest to fix:
+                    </p>
+                    {gateStatus.failing_floors_ordered.map((floor, i) => {
+                      if (floor === 'chronic_depth') {
+                        const staleSync = gateStatus.chronic_depth_strava_sync_stale;
+                        return (
+                          <div key={floor} style={{ marginBottom: '12px', paddingLeft: '10px', borderLeft: `3px solid ${MUTED}55` }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: SAGE, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {i + 1}. Training history
+                            </div>
+                            <p style={{ margin: '2px 0 0', color: MUTED, fontSize: '0.85rem', lineHeight: '1.5' }}>
+                              {staleSync
+                                ? 'Check your Strava connection — see the sync status at the top of this page.'
+                                : 'Get back into regular training — this rebuilds as you log more sessions.'}
+                            </p>
+                          </div>
+                        );
+                      }
+                      if (floor === 'journal_recency') {
+                        return (
+                          <div key={floor} style={{ marginBottom: '12px', paddingLeft: '10px', borderLeft: `3px solid ${MUTED}55` }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: SAGE, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {i + 1}. Journaling
+                            </div>
+                            <p style={{ margin: '2px 0 8px', color: MUTED, fontSize: '0.85rem', lineHeight: '1.5' }}>
+                              Log a few recent entries to catch up — you need at least 2 in the past week.
+                            </p>
+                            <button
+                              onClick={() => onNavigateToTab('journal')}
+                              style={{ background: BLUE, color: 'white', border: 'none', borderRadius: '4px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}
+                            >
+                              Go to Journal
+                            </button>
+                          </div>
+                        );
+                      }
+                      if (floor === 'season_goal') {
+                        return (
+                          <div key={floor} style={{ marginBottom: '12px', paddingLeft: '10px', borderLeft: `3px solid ${MUTED}55` }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: SAGE, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {i + 1}. Season goal
+                            </div>
+                            <p style={{ margin: '2px 0 8px', color: MUTED, fontSize: '0.85rem', lineHeight: '1.5' }}>
+                              Set a season goal — race or general fitness/weight-loss/base-building.
+                            </p>
+                            <a
+                              href="/?tab=coach&subtab=season"
+                              style={{ display: 'inline-block', background: BLUE, color: 'white', textDecoration: 'none', borderRadius: '4px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600, fontFamily: FONT }}
+                            >
+                              Set a Goal
+                            </a>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: '0 0 8px 0', color: TEXT, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                      Your daily prescription will appear here once you've logged a few journal entries.
+                    </p>
+                    <p style={{ margin: '0 0 14px 0', color: MUTED, fontSize: '0.85rem', lineHeight: '1.6' }}>
+                      Open the Journal tab, find today's activity, and fill in your RPE, how you felt, and any notes. After a few entries the coach will start generating personalized recommendations.
+                    </p>
+                    <button
+                      onClick={() => onNavigateToTab('journal')}
+                      style={{ background: BLUE, color: 'white', border: 'none', borderRadius: '4px', padding: '8px 18px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}
+                    >
+                      Go to Journal
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
