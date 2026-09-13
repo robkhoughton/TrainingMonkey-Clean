@@ -521,6 +521,25 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
     return withAvg.filter(row => row.date >= cutoffDate && row.date <= anchorDate);
   };
 
+  // Gait mechanics trend — same anchor/cutoff logic as filteredData()/filteredWeightData(),
+  // so this chart's x-axis tracks the shared Time Period selector like every other chart
+  // on this page, instead of always showing its own fixed 365-day fetch window.
+  const filteredGaitTrend = (): GaitTrendRow[] => {
+    if (gaitTrend.length === 0) return [];
+
+    const days = parseInt(dateRange, 10);
+    const allDates = data.map(item => item.date).sort();
+    const anchorDate = userToday ?? allDates[allDates.length - 1] ?? gaitTrend[gaitTrend.length - 1]?.date;
+    if (!anchorDate) return gaitTrend;
+
+    const anchorDateObj = new Date(`${anchorDate}T12:00:00Z`);
+    const cutoffDateObj = new Date(anchorDateObj);
+    cutoffDateObj.setDate(cutoffDateObj.getDate() - days + 1);
+    const cutoffDate = cutoffDateObj.toISOString().split('T')[0];
+
+    return gaitTrend.filter(row => row.date >= cutoffDate && row.date <= anchorDate);
+  };
+
   // COMMENTED OUT: Dead code - LLM recommendations are fetched via /api/journal instead
   // These functions were never wired to UI. Delete after verifying Journal page works.
   /*
@@ -836,6 +855,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   // Prepare data for charts
   const filtered = filteredData();
   const filteredWeight = filteredWeightData();
+  const filteredGait = filteredGaitTrend();
   const hasTempData = filtered.some(row => row.avg_temp_f !== null && row.avg_temp_f !== undefined);
 
   // No data state
@@ -1665,13 +1685,13 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
           a unit), since the two are reciprocal at matched speed: near-mirror
           movement suggests a real form change, while unequal movement suggests
           a speed-driven change instead. */}
-      {gaitTrend.length > 0 && (
+      {filteredGait.length > 0 && (
         <div className={styles.chartContainer}>
           <h2 className={styles.chartTitle}>Gait Mechanics Trend</h2>
           <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
             <ResponsiveContainer width="100%" height="100%" key={`gait-${renderKey}`}>
               <ComposedChart
-                data={gaitTrend}
+                data={filteredGait}
                 margin={{ top: 5, right: 95, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
@@ -1682,7 +1702,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
                   padding={{ left: 10, right: 10 }}
                 />
                 <YAxis
-                  label={{ value: '% deviation from baseline', angle: -90, position: 'insideLeft' }}
+                  label={{ value: '% deviation', angle: -90, position: 'insideLeft' }}
                 />
                 <Tooltip
                   labelFormatter={(label: string) => formatTooltipDate(label)}
