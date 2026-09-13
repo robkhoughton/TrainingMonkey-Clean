@@ -49,6 +49,16 @@ interface WeightHistoryRow {
   weight_lbs: number;
 }
 
+interface GaitTrendRow {
+  date: string;
+  activity_id: number;
+  name: string;
+  running_cadence_mean: number | null;
+  stride_length_m: number | null;
+  cadence_pct_deviation: number | null;
+  stride_pct_deviation: number | null;
+}
+
 interface ProcessedWeightRow extends WeightHistoryRow {
   weight_7d_avg: number | null;
 }
@@ -137,6 +147,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
   const [hasBackcountrySkiingData, setHasBackcountrySkiingData] = useState(false);
   const [hasStrengthData, setHasStrengthData] = useState(false);
   const [weightHistory, setWeightHistory] = useState<WeightHistoryRow[]>([]);
+  const [gaitTrend, setGaitTrend] = useState<GaitTrendRow[]>([]);
   const [weightChangePct28d, setWeightChangePct28d] = useState<number | null>(null);
 
   // FIXED: Proper frozen tooltip state management
@@ -726,6 +737,25 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
       }
     };
     loadWeightHistory();
+  }, []);
+
+  // Gait mechanics trend — running-mode-only cadence/stride length, as % deviation
+  // from Rob's own trailing baseline. Fetched independently, same pattern as weight
+  // history above; observation-only, not tied to the main dateRange selector.
+  useEffect(() => {
+    const loadGaitTrend = async () => {
+      try {
+        const response = await fetch(`/api/gait-mechanics-trend?range=365&t=${new Date().getTime()}`);
+        if (!response.ok) return; // Gracefully handle if endpoint unavailable
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          setGaitTrend(result.data);
+        }
+      } catch (e) {
+        console.error('Failed to fetch gait mechanics trend:', e);
+      }
+    };
+    loadGaitTrend();
   }, []);
 
   // Fetch dashboard configuration separately for display purposes only
@@ -1626,6 +1656,89 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             {weightChangePct28d !== null && weightChangePct28d <= -3.0 && (
               ' A drop this size is factored into the daily coaching recommendation.'
             )}
+          </p>
+        </div>
+      )}
+
+      {/* Gait Mechanics Trend — running-mode-only cadence & stride length,
+          as % deviation from trailing baseline. Single axis (both series share
+          a unit), since the two are reciprocal at matched speed: near-mirror
+          movement suggests a real form change, while unequal movement suggests
+          a speed-driven change instead. */}
+      {gaitTrend.length > 0 && (
+        <div className={styles.chartContainer}>
+          <h2 className={styles.chartTitle}>Gait Mechanics Trend</h2>
+          <div className={styles.chartWrapper} style={{ width: chartDimensions.width, height: chartDimensions.height }}>
+            <ResponsiveContainer width="100%" height="100%" key={`gait-${renderKey}`}>
+              <ComposedChart
+                data={gaitTrend}
+                margin={{ top: 5, right: 95, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  interval={chartDimensions.majorTickInterval}
+                  tickFormatter={formatXAxis}
+                  padding={{ left: 10, right: 10 }}
+                />
+                <YAxis
+                  label={{ value: '% deviation from baseline', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip
+                  labelFormatter={(label: string) => formatTooltipDate(label)}
+                  formatter={(value: number, name: string, props: any) => {
+                    if (name === 'Cadence') {
+                      return [`${value > 0 ? '+' : ''}${value.toFixed(1)}% (${props.payload.running_cadence_mean} spm)`, name];
+                    }
+                    return [`${value > 0 ? '+' : ''}${value.toFixed(1)}% (${props.payload.stride_length_m} m)`, name];
+                  }}
+                />
+                <Legend />
+
+                <ReferenceLine y={0} stroke="#666" strokeWidth={1} strokeDasharray="3 3" />
+
+                <Line
+                  type="monotone"
+                  dataKey="cadence_pct_deviation"
+                  name="Cadence"
+                  stroke={colors.primary}
+                  strokeWidth={defaultTheme.lineStyles.regular.strokeWidth}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                  dot={(props: any) => {
+                    if (!props || props.payload.cadence_pct_deviation === null || props.payload.cadence_pct_deviation === undefined) return null;
+                    const isLast = props.index === gaitTrend.length - 1;
+                    return isLast ? (
+                      <text key={`cadence-label-${props.index}`} x={props.cx + 6} y={props.cy} dy={-6} fill={colors.primary} fontSize={12} fontWeight="bold">
+                        Cadence
+                      </text>
+                    ) : <circle key={`cadence-dot-${props.index}`} cx={props.cx} cy={props.cy} r={2} fill={colors.primary} />;
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="stride_pct_deviation"
+                  name="Stride Length"
+                  stroke={colors.accent}
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  connectNulls={false}
+                  isAnimationActive={false}
+                  dot={(props: any) => {
+                    if (!props || props.payload.stride_pct_deviation === null || props.payload.stride_pct_deviation === undefined) return null;
+                    const isLast = props.index === gaitTrend.length - 1;
+                    return isLast ? (
+                      <text key={`stride-label-${props.index}`} x={props.cx + 6} y={props.cy} dy={10} fill={colors.accent} fontSize={12} fontWeight="bold">
+                        Stride Length
+                      </text>
+                    ) : <circle key={`stride-dot-${props.index}`} cx={props.cx} cy={props.cy} r={2} fill={colors.accent} />;
+                  }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <p className={styles.chartNote}>
+            Running-mode only — hiking/power-hiking segments are excluded, since averaging cadence across both gaits produces a number that means nothing for either. Each line shows deviation from your own trailing 10-run baseline; the two move together when a shift reflects real form, and apart when it's really just a pace change.
           </p>
         </div>
       )}

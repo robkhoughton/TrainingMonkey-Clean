@@ -17,7 +17,8 @@ import pytz
 from stravalib.client import Client
 from stravalib.exc import ActivityUploadFailed, Fault
 from timezone_utils import should_create_rest_day, get_app_current_date, log_timezone_debug
-from db_utils import get_db_connection, execute_query, initialize_db, DB_FILE
+from db_utils import get_db_connection, execute_query, initialize_db, DB_FILE, save_gait_mode_aggregates
+from gait_classifier import classify_gait_modes
 from utils.feature_flags import is_feature_enabled
 from acwr_calculation_service import ACWRCalculationService
 from exponential_decay_engine import ActivityData
@@ -1073,6 +1074,26 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
                             f"from {len(temp_samples_c)} samples")
     except Exception as e:
         logger.warning(f"Could not get HR data for activity {activity_id}: {str(e)}")
+
+    # Gait-mode classification (running vs. hiking, via grade-adjusted speed).
+    # Isolated and non-fatal, same pattern as the HR/temp handling above --
+    # a failure here must never break activity sync. Skipped entirely if the
+    # activity lacks the required streams (e.g. non-outdoor or older activities).
+    # Rob-only (user_id == 1) by design -- extending this to all users is an open
+    # decision left to Rob in the cadence/gait-mode coaching plan, not made here.
+    try:
+        if streams and user_id == 1:
+            gait_aggregates = classify_gait_modes(streams)
+            if gait_aggregates:
+                save_gait_mode_aggregates(activity_id, user_id, gait_aggregates)
+                logger.info(
+                    f"Gait-mode aggregates saved for activity {activity_id}: "
+                    f"running={gait_aggregates['running_seconds']:.0f}s "
+                    f"hiking={gait_aggregates['hiking_seconds']:.0f}s "
+                    f"uncertain={gait_aggregates['uncertain_seconds']:.0f}s"
+                )
+    except Exception as e:
+        logger.warning(f"Could not compute gait-mode aggregates for activity {activity_id}: {str(e)}")
 
     # Calculate Banister TRIMP with feature flag support
     trimp = 0

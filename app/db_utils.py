@@ -1190,6 +1190,103 @@ def get_hr_stream_data(activity_id, user_id=None):
         return None
 
 
+def save_gait_mode_aggregates(activity_id, user_id, aggregates):
+    """
+    Save (or overwrite) gait-mode classification aggregates for an activity.
+
+    `aggregates` is the dict returned by gait_classifier.classify_gait_modes()
+    (must include 'classifier_version'). Upserts on (activity_id,
+    classifier_version) so reruns of the same classifier version are
+    idempotent — a retuned classifier gets its own version and its own rows,
+    never silently overwriting a prior version's numbers.
+
+    Returns True on success, False on failure (never raises — this must not
+    break activity sync, same as HR/temp stream handling).
+    """
+    try:
+        if not activity_id or not user_id:
+            raise ValueError("activity_id and user_id are required")
+        if not aggregates or not aggregates.get('classifier_version'):
+            raise ValueError("aggregates dict with classifier_version is required")
+
+        query = """
+            INSERT INTO gait_mode_aggregates (
+                activity_id, user_id, classifier_version,
+                running_seconds, hiking_seconds, uncertain_seconds,
+                running_cadence_mean, running_cadence_std, running_cadence_n,
+                hiking_cadence_mean, hiking_cadence_std, hiking_cadence_n,
+                low_confidence_fraction,
+                running_speed_mean, running_speed_std, running_speed_n,
+                computed_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (activity_id, classifier_version) DO UPDATE SET
+                running_seconds = EXCLUDED.running_seconds,
+                hiking_seconds = EXCLUDED.hiking_seconds,
+                uncertain_seconds = EXCLUDED.uncertain_seconds,
+                running_cadence_mean = EXCLUDED.running_cadence_mean,
+                running_cadence_std = EXCLUDED.running_cadence_std,
+                running_cadence_n = EXCLUDED.running_cadence_n,
+                hiking_cadence_mean = EXCLUDED.hiking_cadence_mean,
+                hiking_cadence_std = EXCLUDED.hiking_cadence_std,
+                hiking_cadence_n = EXCLUDED.hiking_cadence_n,
+                low_confidence_fraction = EXCLUDED.low_confidence_fraction,
+                running_speed_mean = EXCLUDED.running_speed_mean,
+                running_speed_std = EXCLUDED.running_speed_std,
+                running_speed_n = EXCLUDED.running_speed_n,
+                computed_at = NOW()
+        """
+        params = (
+            activity_id, user_id, aggregates['classifier_version'],
+            aggregates.get('running_seconds'), aggregates.get('hiking_seconds'),
+            aggregates.get('uncertain_seconds'),
+            aggregates.get('running_cadence_mean'), aggregates.get('running_cadence_std'),
+            aggregates.get('running_cadence_n'),
+            aggregates.get('hiking_cadence_mean'), aggregates.get('hiking_cadence_std'),
+            aggregates.get('hiking_cadence_n'),
+            aggregates.get('low_confidence_fraction'),
+            aggregates.get('running_speed_mean'), aggregates.get('running_speed_std'),
+            aggregates.get('running_speed_n'),
+        )
+        execute_query(query, params)
+        logger.info(f"db_utils: Saved gait-mode aggregates for activity {activity_id} "
+                    f"(classifier_version={aggregates['classifier_version']})")
+        return True
+
+    except Exception as e:
+        logger.error(f"db_utils: Error saving gait-mode aggregates for activity {activity_id}: {str(e)}")
+        return False
+
+
+def get_gait_mode_aggregates(activity_id, classifier_version=None):
+    """
+    Retrieve gait-mode aggregates for an activity. If classifier_version is
+    omitted, returns the most recently computed row (any version).
+    """
+    try:
+        if classifier_version:
+            query = """
+                SELECT * FROM gait_mode_aggregates
+                WHERE activity_id = %s AND classifier_version = %s
+            """
+            params = (activity_id, classifier_version)
+        else:
+            query = """
+                SELECT * FROM gait_mode_aggregates
+                WHERE activity_id = %s
+                ORDER BY computed_at DESC
+                LIMIT 1
+            """
+            params = (activity_id,)
+
+        result = execute_query(query, params, fetch=True)
+        return result[0] if result else None
+
+    except Exception as e:
+        logger.error(f"db_utils: Error retrieving gait-mode aggregates for activity {activity_id}: {str(e)}")
+        return None
+
+
 def update_activity_trimp_metadata(activity_id, user_id, calculation_method, sample_count, trimp_value):
     """
     Update activity with TRIMP calculation metadata

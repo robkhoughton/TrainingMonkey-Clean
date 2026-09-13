@@ -23,6 +23,7 @@ import uuid
 import db_utils
 from datetime import datetime, timedelta, date
 from timezone_utils import get_app_current_date, log_timezone_debug
+from gait_classifier import CLASSIFIER_VERSION as GAIT_CLASSIFIER_VERSION
 from llm_recommendations_module import generate_recommendations, generate_recommendations_agentic, update_recommendations_with_autopsy_learning
 from utils.feature_flags import is_feature_enabled as _is_feature_enabled
 from flask import Flask, request, jsonify, redirect, url_for, render_template, send_from_directory, session, flash, Response
@@ -5960,6 +5961,80 @@ def get_weight_history():
     except Exception as e:
         logger.error(f"Error fetching weight history: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to fetch weight history'}), 500
+
+
+@login_required
+@app.route('/api/gait-mechanics-trend', methods=['GET'])
+def get_gait_mechanics_trend():
+    """Running-mode-only cadence/stride-length trend, as % deviation from the
+    athlete's own trailing baseline (10 prior qualifying activities). Observation
+    only -- not consumed by the daily Rx or any coaching prompt.
+
+    Coverage floor (running_seconds >= 900, ~15 min) matches the Phase 1
+    validation finding that per-activity cadence/stride means stabilize well
+    before that point; activities below it are excluded from both the plotted
+    series and the baseline window so a short, noisy activity can't skew either.
+    """
+    try:
+        date_range = request.args.get('range', '365')
+        from timezone_utils import get_user_current_date
+        end_date = get_user_current_date(current_user.id)
+        start_date = end_date - timedelta(days=int(date_range))
+
+        rows = db_utils.execute_query(
+            """
+            SELECT
+                a.date,
+                g.activity_id,
+                a.name,
+                g.running_cadence_mean,
+                (g.running_speed_mean * 60.0 / NULLIF(g.running_cadence_mean, 0)) AS stride_length_m,
+                g.running_seconds,
+                AVG(g.running_cadence_mean) OVER w AS cadence_baseline,
+                AVG(g.running_speed_mean * 60.0 / NULLIF(g.running_cadence_mean, 0)) OVER w AS stride_baseline,
+                COUNT(*) OVER w AS prior_qualifying_count
+            FROM gait_mode_aggregates g
+            JOIN activities a ON a.activity_id = g.activity_id
+            WHERE g.user_id = %s
+              AND g.classifier_version = %s
+              AND g.running_seconds >= 900
+              AND g.running_cadence_mean IS NOT NULL
+              AND g.running_speed_mean IS NOT NULL
+              AND a.date >= %s AND a.date <= %s
+            WINDOW w AS (ORDER BY a.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING)
+            ORDER BY a.date ASC
+            """,
+            (current_user.id, GAIT_CLASSIFIER_VERSION, start_date.isoformat(), end_date.isoformat()),
+            fetch=True
+        )
+
+        data = []
+        for r in rows:
+            cadence_baseline = r['cadence_baseline']
+            stride_baseline = r['stride_baseline']
+            enough_history = (r['prior_qualifying_count'] or 0) >= 3
+
+            cadence_pct_deviation = None
+            stride_pct_deviation = None
+            if enough_history and cadence_baseline:
+                cadence_pct_deviation = (r['running_cadence_mean'] - cadence_baseline) / cadence_baseline * 100
+            if enough_history and stride_baseline:
+                stride_pct_deviation = (float(r['stride_length_m']) - float(stride_baseline)) / float(stride_baseline) * 100
+
+            data.append({
+                'date': str(r['date']),
+                'activity_id': r['activity_id'],
+                'name': r['name'],
+                'running_cadence_mean': round(float(r['running_cadence_mean']), 1) if r['running_cadence_mean'] is not None else None,
+                'stride_length_m': round(float(r['stride_length_m']), 2) if r['stride_length_m'] is not None else None,
+                'cadence_pct_deviation': round(cadence_pct_deviation, 1) if cadence_pct_deviation is not None else None,
+                'stride_pct_deviation': round(stride_pct_deviation, 1) if stride_pct_deviation is not None else None,
+            })
+
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        logger.error(f"Error fetching gait mechanics trend: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to fetch gait mechanics trend'}), 500
 
 
 @login_required

@@ -454,6 +454,36 @@ def _parse_and_execute_mock_query(query: str, params: tuple) -> List[Dict]:
 def _handle_select(query: str, params: tuple) -> List[Dict]:
     """Handle SELECT queries and return appropriate mock data."""
 
+    # Gait mechanics trend (dashboard chart) — synthetic running-mode cadence/stride
+    # series with a plausible trailing-baseline window already applied, so the
+    # dashboard chart has something to render in mock mode without simulating the
+    # real SQL window function. Checked BEFORE the count(*) heuristic below, since
+    # this query's own `COUNT(*) OVER w` window function would otherwise false-match
+    # the naive 'count(*) in query' substring check meant for simple aggregate queries.
+    if 'gait_mode_aggregates' in query:
+        import random
+        random.seed(42)
+        rows = []
+        base_cadence = 83.0
+        base_stride = 2.00
+        today = datetime.now().date()
+        for i in range(30):
+            d = today - timedelta(days=(29 - i) * 3)
+            cadence = base_cadence + random.uniform(-3, 3) + (i * 0.05)  # slight upward drift
+            stride = base_stride + random.uniform(-0.08, 0.08) - (i * 0.001)
+            rows.append({
+                'date': d.isoformat(),
+                'activity_id': 90000000 + i,
+                'name': f'Mock Trail Run {i + 1}',
+                'running_cadence_mean': round(cadence, 1),
+                'stride_length_m': round(stride, 2),
+                'running_seconds': 2400,
+                'cadence_baseline': base_cadence,
+                'stride_baseline': base_stride,
+                'prior_qualifying_count': min(i, 10),
+            })
+        return rows
+
     # Count queries
     if 'count(*)' in query or 'count(1)' in query:
         if 'activities' in query:
@@ -800,6 +830,16 @@ def get_hr_stream_data(activity_id: int, user_id: int = None) -> Optional[Dict]:
     hr = [150 + int(6 * (i / n)) for i in range(n)]  # gentle upward drift
     distance = [round(i * 3.155, 1) for i in range(n)]
     return {'hr_data': hr, 'sample_rate': 1, 'distance_data': distance}
+
+
+def save_gait_mode_aggregates(activity_id: int, user_id: int, aggregates: Dict) -> bool:
+    """Mock save — no-op, matches real function's non-fatal True/False contract."""
+    return True
+
+
+def get_gait_mode_aggregates(activity_id: int, classifier_version: str = None) -> Optional[Dict]:
+    """Mock get — no stored aggregates in mock mode."""
+    return None
 
 
 def get_aerobic_assessments(user_id: int) -> List[Dict]:
