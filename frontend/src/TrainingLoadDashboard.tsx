@@ -1758,7 +1758,7 @@ const TrainingLoadDashboard: React.FC<TrainingLoadDashboardProps> = ({ onNavigat
             </ResponsiveContainer>
           </div>
           <p className={styles.chartNote}>
-            Running-mode only — hiking/power-hiking segments are excluded, since averaging cadence across both gaits produces a number that means nothing for either. Each line shows deviation from your own trailing 10-run baseline; the two move together when a shift reflects real form, and apart when it's really just a pace change.
+            Running-mode only — hiking/power-hiking segments are excluded, since averaging cadence across both gaits produces a number that means nothing for either. Each line shows deviation from your own trailing 10-run baseline; the two tend to move together when a shift is really about pace (faster running raises both), and apart — one up, one down — when it reflects an actual change in form at a similar pace.
           </p>
         </div>
       )}
