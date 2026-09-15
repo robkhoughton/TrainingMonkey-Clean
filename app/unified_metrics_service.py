@@ -373,13 +373,21 @@ class UnifiedMetricsService:
             return False
 
     @staticmethod
-    def get_latest_complete_metrics(user_id):
+    def get_latest_complete_metrics(user_id, as_of_date=None):
         """
         Get the most recent complete set of training metrics for a specific user.
         Since database now has correct time-based calculations, simply read the latest values.
 
         Args:
             user_id (int): The user ID to get metrics for
+            as_of_date (str | date, optional): Bound metrics to activities on or before
+                this date. Defaults to None (unbounded — the absolute latest activity),
+                which is correct for the normal "recommend for tomorrow using today's
+                data" case. Callers building a recommendation for a SPECIFIC past date
+                (a backfill or a late/delayed generation run) must pass that date,
+                otherwise the recommendation is stamped with a past date but built from
+                today's ACWR/divergence/days-since-rest — data that didn't exist yet as
+                of the date being evaluated.
 
         Returns:
             dict: Complete metrics including ACWR, divergence, and recovery data
@@ -388,17 +396,31 @@ class UnifiedMetricsService:
             raise ValueError("user_id is required for multi-user support")
 
         try:
-            # Get the absolute latest activity for this user
-            latest_activity = execute_query(
-                """
-                SELECT * FROM activities 
-                WHERE user_id = %s
-                ORDER BY date DESC 
-                LIMIT 1
-                """,
-                (user_id,),
-                fetch=True
-            )
+            if as_of_date is None:
+                latest_activity = execute_query(
+                    """
+                    SELECT * FROM activities
+                    WHERE user_id = %s
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                    fetch=True
+                )
+            else:
+                if hasattr(as_of_date, 'strftime'):
+                    as_of_date = as_of_date.strftime('%Y-%m-%d')
+                latest_activity = execute_query(
+                    """
+                    SELECT * FROM activities
+                    WHERE user_id = %s
+                      AND date <= %s
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    (user_id, as_of_date),
+                    fetch=True
+                )
 
             if not latest_activity:
                 logger.warning(f"No activities found for user {user_id}")
@@ -413,7 +435,7 @@ class UnifiedMetricsService:
                         f"Internal ACWR={latest_activity_dict.get('trimp_acute_chronic_ratio')}")
 
             # Calculate days since rest using time-based approach for this user
-            days_since_rest = UnifiedMetricsService._calculate_days_since_rest_time_based(user_id)
+            days_since_rest = UnifiedMetricsService._calculate_days_since_rest_time_based(user_id, as_of_date=as_of_date)
 
             # Use the database values (now mathematically correct)
             normalized_divergence = latest_activity_dict.get('normalized_divergence')
@@ -543,10 +565,19 @@ class UnifiedMetricsService:
             return None
 
     @staticmethod
-    def _calculate_days_since_rest_time_based(user_id):
+    def _calculate_days_since_rest_time_based(user_id, as_of_date=None):
         """
-        Calculate days since the last recorded rest day for a specific user.
+        Calculate days since the last recorded rest day for a specific user, as of a
+        given date.
         FIXED: Uses app timezone for consistent date calculations.
+
+        Args:
+            user_id (int): User ID.
+            as_of_date (str | date, optional): Evaluate "days since rest" as of this
+                date instead of today. Both the rest-day search bound and the days-since
+                subtraction use it, so a backfilled/delayed calculation for a past date
+                doesn't count rest days that happened after that date but before the
+                calculation actually ran.
         """
         if user_id is None:
             raise ValueError("user_id is required for multi-user support")
@@ -555,7 +586,14 @@ class UnifiedMetricsService:
             # Import timezone utilities
             from timezone_utils import get_user_current_date, log_timezone_debug
 
-            logger.info(f"Calculating days since last recorded rest day for user {user_id} (user timezone)")
+            if as_of_date is None:
+                ref_date = get_user_current_date(user_id)
+            elif isinstance(as_of_date, str):
+                ref_date = ensure_date_obj(as_of_date)
+            else:
+                ref_date = as_of_date
+
+            logger.info(f"Calculating days since last recorded rest day for user {user_id} as of {ref_date}")
 
             # Find the most recent rest day: either an explicitly marked rest day activity,
             # OR any day where the user journaled but had no real Strava activity (activity_id > 0).
@@ -566,17 +604,17 @@ class UnifiedMetricsService:
                 SELECT date FROM (
                     SELECT date FROM activities
                     WHERE (type = 'rest' OR activity_id < 0) AND user_id = %s
-                    AND date < CURRENT_DATE
+                    AND date < %s
                     UNION ALL
                     SELECT date FROM activities
                     WHERE user_id = %s AND activity_id > 0
-                    AND date < CURRENT_DATE
+                    AND date < %s
                     GROUP BY date
                     HAVING COALESCE(SUM(trimp), 0) <= 10
                     UNION ALL
                     SELECT je.date FROM journal_entries je
                     WHERE je.user_id = %s
-                    AND je.date < CURRENT_DATE
+                    AND je.date < %s
                     AND NOT EXISTS (
                         SELECT 1 FROM activities a
                         WHERE a.user_id = %s AND a.date = je.date
@@ -585,7 +623,7 @@ class UnifiedMetricsService:
                 ) all_rest_days
                 ORDER BY date DESC LIMIT 1
                 """,
-                (user_id, user_id, user_id, user_id),
+                (user_id, ref_date, user_id, ref_date, user_id, ref_date, user_id),
                 fetch=True
             )
 
@@ -603,14 +641,10 @@ class UnifiedMetricsService:
                 # It's already a date object
                 last_rest_date = last_rest_date_str
 
-            # FIXED: Use user timezone instead of Pacific-only
-            today = get_user_current_date(user_id)
-
-            days_since = (today - last_rest_date).days
+            days_since = (ref_date - last_rest_date).days
 
             logger.info(
-                f"Last rest day for user {user_id}: {last_rest_date_str}. Days since: {days_since} (using app timezone)")
-            logger.info(f"Current app date: {today}")
+                f"Last rest day for user {user_id}: {last_rest_date_str}. Days since: {days_since} (as of {ref_date})")
 
             return max(0, days_since)
 

@@ -319,16 +319,24 @@ def calculate_performance_trend(race_history: List[Dict]) -> Dict:
     }
 
 
-def get_current_training_stage(user_id: int) -> Dict:
+def get_current_training_stage(user_id: int, as_of_date=None) -> Dict:
     """
-    Calculate current training stage based on race goals.
-    This calls the existing training stage endpoint logic.
+    Calculate training stage based on race goals, as of a given date.
+
+    Args:
+        user_id: User ID.
+        as_of_date (str | date, optional): The date to evaluate stage/weeks-until-race
+            for. Defaults to today. Callers building a recommendation or program for a
+            SPECIFIC date (target_date, target_week_start) — as opposed to an interactive
+            "what's my stage right now" view — must pass that date explicitly, otherwise
+            a program/recommendation generated ahead of time or backfilled after the fact
+            gets today's stage baked in instead of the target date's.
     """
     # Import here to avoid circular dependency
     from strava_app import _calculate_training_stage
-    
+
     race_goals = get_race_goals(user_id)
-    
+
     if not race_goals:
         # Shape parity with the has-race path: same keys, same casing.
         # Canonical "weeks to race" key is weeks_until_race everywhere (see refactor plan).
@@ -339,7 +347,7 @@ def get_current_training_stage(user_id: int) -> Dict:
             'priority': None,
             'details': 'No race goal set - focus on base building'
         }
-    
+
     # Find A race (or first B/C race if no A)
     a_race = next((r for r in race_goals if r['priority'] == 'A'), None)
     if not a_race:
@@ -348,8 +356,13 @@ def get_current_training_stage(user_id: int) -> Dict:
             a_race = b_race
         else:
             a_race = race_goals[0]
-    
-    current_date = get_app_current_date()
+
+    if as_of_date is None:
+        current_date = get_app_current_date()
+    elif isinstance(as_of_date, str):
+        current_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
+    else:
+        current_date = as_of_date
     race_date = datetime.strptime(a_race['race_date'], '%Y-%m-%d').date()
     
     stage_info = _calculate_training_stage(race_date, current_date)
@@ -901,7 +914,7 @@ def build_weekly_program_prompt(
     race_history = get_race_history(user_id)
     perf_trend = calculate_performance_trend(race_history)
     training_schedule = get_training_schedule(user_id)
-    training_stage = get_current_training_stage(user_id)
+    training_stage = get_current_training_stage(user_id, as_of_date=target_week_start)
     journal_obs = get_recent_journal_observations(user_id)
 
     # Fetch athlete-declared scheduling exceptions for this week

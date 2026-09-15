@@ -1374,8 +1374,10 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         start_date = activities[0]['date']
         end_date = activities[-1]['date']
 
-        # CRITICAL FIX: Get FRESH metrics after forced recalculation
-        current_metrics = get_current_metrics(user_id)
+        # CRITICAL FIX: Get FRESH metrics after forced recalculation, bounded to
+        # target_date so a backfilled/delayed generation doesn't inject data from
+        # after the date this recommendation is stamped for.
+        current_metrics = get_current_metrics(user_id, as_of_date=target_date)
         if not current_metrics:
             logger.warning(f"Failed to get current metrics for user {user_id}")
             return None
@@ -2207,7 +2209,7 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
             if _weeks_to_race is None:
                 try:
                     from coach_recommendations import get_current_training_stage
-                    _ts = get_current_training_stage(user_id)
+                    _ts = get_current_training_stage(user_id, as_of_date=ref_date_str)
                     _weeks_to_race = _ts.get('weeks_until_race')
                     _a_race_name = _ts.get('race_name', '') or ''
                 except Exception:
@@ -2559,7 +2561,7 @@ deviating from prescription, these override normal training progression logic.
     training_stage_context = ""
     try:
         from coach_recommendations import get_current_training_stage
-        stage_info = get_current_training_stage(user_id)
+        stage_info = get_current_training_stage(user_id, as_of_date=ref_date_str)
         training_stage_context = (
             f"TRAINING STAGE: {stage_info.get('stage', 'Unknown')}"
             + (f" | Weeks to {stage_info.get('race_name', 'race')}: {round(stage_info['weeks_until_race']) if stage_info.get('weeks_until_race') is not None else 'N/A'}" if stage_info.get('race_name') else "")
@@ -2976,14 +2978,21 @@ def get_recent_activities(days=ACTIVITY_ANALYSIS_DAYS, user_id=None):
         return []
 
 
-def get_current_metrics(user_id=None):
-    """Get current training metrics using unified service for consistency."""
+def get_current_metrics(user_id=None, as_of_date=None):
+    """Get training metrics as of a given date, using unified service for consistency.
+
+    as_of_date (str | date, optional): Defaults to None (unbounded — latest available
+        data), correct for the normal same-day/next-day generation case. A recommendation
+        being built for a SPECIFIC past date (backfill, delayed/batched generation) must
+        pass that date, so the ACWR/divergence/days-since-rest injected as fact reflect
+        what was true as of that date, not as of whenever generation actually ran.
+    """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
     try:
         # Use the unified metrics service instead of custom logic
-        unified_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
+        unified_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id, as_of_date=as_of_date)
 
         if not unified_metrics:
             logger.warning(f"No unified metrics available for LLM recommendation for user {user_id}")
@@ -4862,8 +4871,10 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
 
         logger.info(f"Generating autopsy-informed decision for user {user_id}, target {target_date_str}")
 
-        # Get current metrics
-        current_metrics = get_current_metrics(user_id)
+        # Get current metrics, bounded to target_date for the same reason as the
+        # other generation paths — a backfilled/delayed run must not use data from
+        # after the date it's generating a decision for.
+        current_metrics = get_current_metrics(user_id, as_of_date=target_date_str)
         if not current_metrics:
             logger.warning(f"No current metrics for autopsy-informed decision user {user_id}")
             return None
@@ -5742,9 +5753,10 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             return None
 
         # ------------------------------------------------------------------ #
-        # Get current metrics (minimal context for Turn 1)                    #
+        # Get current metrics (minimal context for Turn 1), bounded to        #
+        # target_date for the same backfill/delay reason as the other paths. #
         # ------------------------------------------------------------------ #
-        current_metrics = get_current_metrics(user_id)
+        current_metrics = get_current_metrics(user_id, as_of_date=target_date)
         if not current_metrics:
             logger.warning(f"[AGENTIC] No current metrics for user {user_id}, aborting")
             return None
