@@ -1443,32 +1443,64 @@ def delete_hr_stream_data(activity_id, user_id=None):
 # Plan Execution Loop — Phase A: Weekly Context Storage
 # =============================================================================
 
-def get_current_week_context(user_id):
-    """Return the active weekly_programs row for the current week.
+def get_current_week_context(user_id, as_of_date=None):
+    """Return the active weekly_programs row as of a given date.
 
     Fetches strategic_summary, deviation_log, revision_pending, and
-    revision_proposal for the most recent week_start_date <= today.
+    revision_proposal for the most recent week_start_date <= as_of_date.
+
+    Args:
+        user_id (int): User ID.
+        as_of_date (str | date, optional): The date whose week's plan should
+            be returned (e.g. a daily recommendation's target_date, or an
+            autopsy's activity_date). Defaults to CURRENT_DATE (today) when
+            omitted — correct for "what's my active week right now" callers,
+            but callers resolving a plan for a *specific* date (a Rx or an
+            autopsy) must pass that date explicitly. Otherwise a Rx generated
+            before the new week's program has been created (e.g. Sunday
+            morning, ahead of that evening's generation run) silently falls
+            back to the prior week's row instead of the week it's actually
+            recommending for.
 
     Returns:
         dict with keys (strategic_summary, deviation_log, revision_pending,
         revision_proposal, week_start_date, id) or None if no row found.
     """
     try:
-        result = execute_query(
-            """
-            SELECT id, week_start_date,
-                   strategic_summary, deviation_log,
-                   revision_pending, revision_proposal,
-                   program_json, schedule_constraints
-            FROM weekly_programs
-            WHERE user_id = %s
-              AND week_start_date <= CURRENT_DATE
-            ORDER BY week_start_date DESC
-            LIMIT 1
-            """,
-            (user_id,),
-            fetch=True
-        )
+        if as_of_date is None:
+            result = execute_query(
+                """
+                SELECT id, week_start_date,
+                       strategic_summary, deviation_log,
+                       revision_pending, revision_proposal,
+                       program_json, schedule_constraints
+                FROM weekly_programs
+                WHERE user_id = %s
+                  AND week_start_date <= CURRENT_DATE
+                ORDER BY week_start_date DESC
+                LIMIT 1
+                """,
+                (user_id,),
+                fetch=True
+            )
+        else:
+            if hasattr(as_of_date, 'strftime'):
+                as_of_date = as_of_date.strftime('%Y-%m-%d')
+            result = execute_query(
+                """
+                SELECT id, week_start_date,
+                       strategic_summary, deviation_log,
+                       revision_pending, revision_proposal,
+                       program_json, schedule_constraints
+                FROM weekly_programs
+                WHERE user_id = %s
+                  AND week_start_date <= %s
+                ORDER BY week_start_date DESC
+                LIMIT 1
+                """,
+                (user_id, as_of_date),
+                fetch=True
+            )
         if result:
             return dict(result[0])
         return None

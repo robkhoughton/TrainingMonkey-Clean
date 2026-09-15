@@ -2174,11 +2174,15 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
     # Build weekly context block (Phase B: Macro→Meso→Micro injection)
     weekly_context_block = ""
     try:
-        week_ctx = get_current_week_context(user_id)
+        # Determine the reference date FIRST — the recommendation being built is
+        # for this date, not necessarily today (e.g. a Rx generated the evening
+        # before its target_date). The weekly plan fetched below, and the day's
+        # prescription matched against it, must both resolve to this date's week
+        # — not to "today" at generation time, which can differ.
+        ref_date_str = target_date if target_date else current_date
+        week_ctx = get_current_week_context(user_id, as_of_date=ref_date_str)
         summary = week_ctx.get('strategic_summary') if week_ctx else None
         if summary:
-            # Determine day of week from target_date (falls back to current_date)
-            ref_date_str = target_date if target_date else current_date
             try:
                 ref_date_obj = datetime.strptime(ref_date_str, DEFAULT_DATE_FORMAT)
                 day_of_week = ref_date_obj.strftime("%A")
@@ -2228,11 +2232,19 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
 
             daily_program = program_json.get('daily_program', [])
 
-            # Find today's prescription from the daily program (more detailed than key_sessions)
+            # Find today's prescription from the daily program (more detailed than key_sessions).
+            # Matched by exact date, not day-of-week name — a day-name match can silently
+            # pull the wrong week's entry for the same weekday (e.g. last week's Monday)
+            # if the program_json in hand isn't actually the target date's week.
             today_full = next(
-                (d for d in daily_program if d.get('day', '').lower() == day_of_week.lower()),
+                (d for d in daily_program if d.get('date') == ref_date_str),
                 None
             )
+            if today_full is None:
+                today_full = next(
+                    (d for d in daily_program if d.get('day', '').lower() == day_of_week.lower()),
+                    None
+                )
 
             # Fall back to key_sessions if daily_program missing today
             if today_full:
@@ -2275,7 +2287,7 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
                     d_mi = d.get('distance_miles')
                     d_elev = d.get('elevation_gain_feet')
                     d_int = d.get('intensity', '')
-                    marker = " ← TODAY" if day_name.lower() == day_of_week.lower() else ""
+                    marker = " ← TODAY" if d.get('date') == ref_date_str else ""
                     dist_str = f"{d_mi:.1f} mi" if d_mi else ""
                     elev_str = f"+{int(d_elev)} ft" if d_elev else ""
                     detail = ", ".join(filter(None, [dist_str, elev_str, d_int]))
@@ -5806,9 +5818,11 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
                 if _block and _block.strip():
                     static_context_parts.append(_block.strip())
 
-        # Weekly strategic context — not available via get_weekly_program_day tool
+        # Weekly strategic context — not available via get_weekly_program_day tool.
+        # Anchored to target_date, not today: this recommendation may be generated
+        # before target_date's own weekly program exists yet.
         try:
-            week_ctx = get_current_week_context(user_id)
+            week_ctx = get_current_week_context(user_id, as_of_date=target_date)
             if week_ctx:
                 summary = week_ctx.get('strategic_summary') or {}
                 stage = summary.get('training_stage', 'unknown')
@@ -6090,7 +6104,10 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
             activity_date_str = str(activity_date)
 
         # --- 1. Fetch week context -----------------------------------------------
-        week_ctx = get_current_week_context(user_id)
+        # Anchored to activity_date, not today: classification can run days after
+        # the activity (autopsy generation lag), by which point "today" may already
+        # be in a different weekly_programs row than the one that governed this activity.
+        week_ctx = get_current_week_context(user_id, as_of_date=activity_date_str)
         if not week_ctx:
             logger.info(
                 f"classify_deviation: no weekly_programs row for user {user_id} — Tier 0, no action"

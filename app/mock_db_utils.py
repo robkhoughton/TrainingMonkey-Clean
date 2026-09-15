@@ -722,7 +722,7 @@ def upsert_athlete_model(user_id: int, model_data: dict) -> bool:
     return True
 
 
-def get_current_week_context(user_id: int):
+def get_current_week_context(user_id: int, as_of_date=None):
     """Return a minimal mock weekly context dict."""
     return {
         "id": 1,
