@@ -15,7 +15,9 @@ pandas>=2.0.0
 
 # API integrations
 stravalib>=1.5.0
-requests>=2.31.0
+# PINNED to the version running in production (image 20260915-162819) — same reason as
+# anthropic below: with no lockfile, `>=` lets any rebuild pull a breaking release.
+requests==2.34.2
 # PINNED — do not loosen without testing. anthropic 1.0.0 (released before 2026-08-24)
 # changed Messages.create() so `temperature` is no longer an accepted keyword, which
 # breaks every call_claude()/call_claude_with_tools() call in this codebase. The old

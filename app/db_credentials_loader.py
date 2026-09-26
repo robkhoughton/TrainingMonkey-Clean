@@ -83,8 +83,10 @@ if __name__ == "__main__":
     # Test the loader
     db_url = load_database_url()
     if db_url:
-        # Print first 50 chars for verification
-        print(f"DATABASE_URL found: {db_url[:50]}...")
+        # Password redacted: a truncated prefix still contains it
+        from urllib.parse import urlsplit
+        parts = urlsplit(db_url)
+        print(f"DATABASE_URL found: {parts.scheme}://{parts.username}:***@{parts.hostname}{parts.path}")
         print("Successfully loaded database credentials")
     else:
         print("ERROR: Could not find DATABASE_URL in .env file")

@@ -25,7 +25,7 @@ def setup_environment():
     # Set environment variable
     os.environ['DATABASE_URL'] = database_url
     
-    print(f"✅ DATABASE_URL set to: {database_url[:50]}...")
+    print("✅ DATABASE_URL set (value not printed — it contains the password)")
     
     # Verify the setting
     if os.environ.get('DATABASE_URL'):

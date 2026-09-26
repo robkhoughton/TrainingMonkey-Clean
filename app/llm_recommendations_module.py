@@ -6104,7 +6104,8 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
         alignment_score (int): 1-10 alignment score from autopsy.
         extraction_result (dict): Extracted signals from recommendation
             conversation (keys: injury_or_pain_notes, preference_note,
-            rpe_calibration_signal, nothing_significant).
+            rpe_calibration_signal, external_constraint, fatigue_reported,
+            nothing_significant).
         structured_output (dict | None): LLM structured_output block for the
             *recommendation* covering this date (may be None if no rec exists).
     """
@@ -6173,8 +6174,7 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
         # --- 4. Extract signals from extraction_result ---------------------------
         extraction_result = extraction_result or {}
         injury_note = extraction_result.get('injury_or_pain_notes')
-        preference_note = extraction_result.get('preference_note') or ''
-        rpe_signal = extraction_result.get('rpe_calibration_signal') or ''
+        rpe_signal =extraction_result.get('rpe_calibration_signal') or ''
 
         has_injury_flag = bool(injury_note)
 
@@ -6197,14 +6197,18 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
                 for f in so_flags
             )
 
+        # Fatigue and external cause are read as booleans the extraction pass
+        # (recommendation_conversation_service.run_extraction_pass) decides from the
+        # full conversation. Keyword-matching the extracted notes misfired both ways:
+        # 'work' matched "morning workouts", 'fatigue' matched "no fatigue at all",
+        # and "legs heavy and tired" or a delayed flight matched nothing. Extractions
+        # made before these fields existed read as False.
         has_fatigue_flag = (
-            'fatigue' in rpe_signal.lower()
-            or 'fatigue' in preference_note.lower()
+            extraction_result.get('fatigue_reported') is True
             or any('fatigue' in str(f).lower() for f in so_flags)
         )
 
-        external_keywords = ('weather', 'travel', 'work', 'schedule', 'sick', 'illness')
-        external_cause = any(kw in preference_note.lower() for kw in external_keywords)
+        external_cause = extraction_result.get('external_constraint') is True
 
         # --- 5. Check ACWR spike -------------------------------------------------
         acwr_external = risk.get('acwr_external')
@@ -6260,7 +6264,7 @@ def classify_deviation(user_id, activity_date, alignment_score, extraction_resul
         if tier2_reason:
             reason = tier2_reason
         elif external_cause:
-            reason = f"external constraint: {preference_note[:80]}"
+            reason = "external constraint reported in conversation"
         elif has_injury_flag:
             reason = f"injury/pain noted: {str(injury_note)[:80]}"
         elif has_fatigue_flag:

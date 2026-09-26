@@ -188,7 +188,7 @@ def initialize_database_pool_on_startup():
             return False
             
         logger.info(f"🔗 Initializing database connection pool...")
-        logger.info(f"📊 Database URL: {database_url[:50]}...")
+        logger.info(f"📊 Database URL: {db_utils.redact_database_url(database_url)}")
         
         # Try to initialize the connection pool
         success = initialize_database_pool(database_url)

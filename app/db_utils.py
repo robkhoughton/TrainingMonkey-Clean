@@ -29,14 +29,28 @@ def clean_database_url(url):
 
     return cleaned
 
+
+def redact_database_url(url):
+    """Return the URL with its password replaced by ***, safe to log.
+
+    The password sits near the front of the URL (postgresql://user:password@...), so
+    truncating the URL (e.g. url[:50]) still leaks it — always log through this.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+    parts = urlsplit(url)
+    if parts.password is None:
+        return url
+    netloc = parts.netloc.replace(f":{parts.password}@", ":***@", 1)
+    return urlunsplit(parts._replace(netloc=netloc))
+
 # Database configuration - PostgreSQL only
 DATABASE_URL = clean_database_url(os.environ.get('DATABASE_URL'))
 
 if not DATABASE_URL:
     raise ValueError('DATABASE_URL environment variable is required for PostgreSQL connection')
 
-print(f"Using PostgreSQL with connection: {DATABASE_URL[:50]}...")
-logger.info(f"db_utils: Using PostgreSQL. URL: {DATABASE_URL[:50]}...")
+print(f"Using PostgreSQL with connection: {redact_database_url(DATABASE_URL)}")
+logger.info(f"db_utils: Using PostgreSQL. URL: {redact_database_url(DATABASE_URL)}")
 
 # Legacy compatibility variables (PostgreSQL only)
 DB_FILE = None
@@ -52,9 +66,9 @@ def get_db_connection():
     conn = None
     try:
         print("Attempting PostgreSQL connection...")
-        print(f"DATABASE_URL: {DATABASE_URL[:80]}...")
+        print(f"DATABASE_URL: {redact_database_url(DATABASE_URL)}")
         logger.info("db_utils: Attempting PostgreSQL connection within context manager.")
-        logger.info(f"db_utils: DATABASE_URL: {DATABASE_URL[:80]}...")
+        logger.info(f"db_utils: DATABASE_URL: {redact_database_url(DATABASE_URL)}")
 
         # Parse connection string to avoid URL parsing issues with database names
         from urllib.parse import urlparse

@@ -18,6 +18,22 @@ from db_utils import (
 
 logger = logging.getLogger('recommendation_conversation_service')
 
+_NULLABLE_STRING = {"type": ["string", "null"]}
+EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "injury_or_pain_notes": _NULLABLE_STRING,
+        "preference_note": _NULLABLE_STRING,
+        "rpe_calibration_signal": _NULLABLE_STRING,
+        "external_constraint": {"type": "boolean"},
+        "fatigue_reported": {"type": "boolean"},
+        "nothing_significant": {"type": "boolean"},
+    },
+    "required": ["injury_or_pain_notes", "preference_note", "rpe_calibration_signal",
+                 "external_constraint", "fatigue_reported", "nothing_significant"],
+    "additionalProperties": False,
+}
+
 
 def generate_why_explanation(user_id, recommendation_date, structured_output, todays_decision):
     try:
@@ -182,12 +198,18 @@ def run_extraction_pass(user_id, recommendation_date, conversation_messages):
             f'  "injury_or_pain_notes": null,\n'
             f'  "preference_note": null,\n'
             f'  "rpe_calibration_signal": null,\n'
+            f'  "external_constraint": false,\n'
+            f'  "fatigue_reported": false,\n'
             f'  "nothing_significant": true\n'
             f"}}\n\n"
             f"Rules:\n"
             f"- injury_or_pain_notes: any injury, pain, physical issue, or rehab mention\n"
             f"- preference_note: any training preference (\"prefer mornings\", \"can't do back-to-back hard days\")\n"
             f"- rpe_calibration_signal: athlete says effort felt harder/easier than metrics suggest\n"
+            f"- external_constraint: true only if something outside training (weather/heat, travel, job, "
+            f"schedule, family, illness) changed or cut a session. A general preference is not a constraint.\n"
+            f"- fatigue_reported: true only if the athlete says they felt tired, drained, heavy-legged, or "
+            f"under-recovered. False if they deny fatigue or don't mention it.\n"
             f"- Set nothing_significant: true if none of the above apply"
         )
 
@@ -199,11 +221,18 @@ def run_extraction_pass(user_id, recommendation_date, conversation_messages):
             f"model={MODEL_SONNET}, max_tokens=800, messages={len(conversation_messages)}"
         )
 
+        # Structured output makes the API return schema-valid JSON. Without it the
+        # model wrapped its answer in a ```json fence, json.loads failed, and no
+        # extraction ever completed (0 of 13 conversations, Mar-Jul 2026).
+        # Passed via extra_body because the pinned SDK (0.55.0) predates the
+        # output_config parameter; the API field is the same.
         message = client.messages.create(
             model=MODEL_SONNET,
             max_tokens=800,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
+            extra_body={"output_config": {"format": {
+                "type": "json_schema", "schema": EXTRACTION_SCHEMA}}},
         )
 
         raw_response = message.content[0].text

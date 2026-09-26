@@ -74,10 +74,28 @@ class TestDeviationReasonIsWrittenIndependently(unittest.TestCase):
                            extraction={'injury_or_pain_notes': 'left QL locked up'})
         self.assertEqual(writes[0][0], 'physical')
 
-    def test_external_classification_from_preference_note(self):
+    def test_external_classification_from_extraction_flag(self):
         writes = self._run(append_side_effect=None,
-                           extraction={'preference_note': 'travel for work all week'})
+                           extraction={'external_constraint': True})
         self.assertEqual(writes[0][0], 'external')
+
+    def test_physical_classification_from_fatigue_flag(self):
+        writes = self._run(append_side_effect=None,
+                           extraction={'fatigue_reported': True})
+        self.assertEqual(writes[0][0], 'physical')
+
+    def test_preference_mentioning_workouts_is_not_external(self):
+        """Keyword matching read 'work' inside 'workouts' as an external cause."""
+        writes = self._run(append_side_effect=None,
+                           extraction={'preference_note': 'Prefers morning workouts before 7am'})
+        self.assertEqual(writes[0][0], 'unknown')
+
+    def test_denied_fatigue_is_not_physical(self):
+        """Keyword matching read 'no fatigue at all' as a fatigue signal."""
+        writes = self._run(append_side_effect=None, extraction={
+            'rpe_calibration_signal': 'Effort felt easier than HR suggested; no fatigue at all',
+            'fatigue_reported': False})
+        self.assertEqual(writes[0][0], 'unknown')
 
     def test_unknown_when_no_signal(self):
         writes = self._run(append_side_effect=None)
