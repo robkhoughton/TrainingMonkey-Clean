@@ -178,7 +178,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     - neuromuscular.md        — always (hill sprints, strides, overstriding form)
     - fueling.md              — always (carb timing for hard vs. easy sessions applies every week)
     - readiness.md            — when readiness_state != GREEN (extra ANS interpretation needed)
-    - periodization.md        — when nearest race is within 4 weeks (taper planning)
+    - periodization.md        — when the A race is in taper/peak or the week before taper starts
     - zone2_training.md       — when race > 28 days or no upcoming race (base period)
     - aerobic_assessment.md   — when race > 28 days or no upcoming race (AeT/AnT testing, 10% transition rule)
     - muscular_endurance.md   — when race > 56 days or no upcoming race (ME block needs 8+ weeks)
@@ -198,21 +198,27 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     days_away = None  # days until nearest upcoming race; None = no race goal set
     try:
         from coach_recommendations import get_race_goals
-        from timezone_utils import get_app_current_date
         from datetime import datetime as _dt
         goals = get_race_goals(user_id) or []
-        today = get_app_current_date()
-        # >= so race day itself counts as days_away=0 (loads periodization/taper
-        # context); a scheduled race is the day's plan, not a past event to ignore.
-        upcoming = [g for g in goals if g.get('race_date', '') >= str(today)]
+        # >= so race day itself counts as days_away=0; a scheduled race is the
+        # day's plan, not a past event to ignore.
+        upcoming = [g for g in goals if g.get('race_date', '') >= current_date]
         if upcoming:
             nearest = min(upcoming, key=lambda g: g['race_date'])
-            days_away = (_dt.strptime(nearest['race_date'], '%Y-%m-%d').date() - today).days
+            days_away = (_dt.strptime(nearest['race_date'], '%Y-%m-%d').date()
+                         - _dt.strptime(current_date, '%Y-%m-%d').date()).days
     except Exception as _re:
         logger.debug(f"Coaching context: race proximity check failed: {_re}")
 
-    if days_away is not None and days_away <= 28:
-        files_to_load.append('periodization.md')
+    # Taper protocol follows the A-race stage, not the nearest race: a B/C race
+    # gets a short pre-race taper in the weekly plan, not the A-race volume cuts.
+    try:
+        from coach_recommendations import get_current_training_stage
+        from training_stage import in_race_preparation_window
+        if in_race_preparation_window(get_current_training_stage(user_id, as_of_date=current_date)):
+            files_to_load.append('periodization.md')
+    except Exception as _se:
+        logger.debug(f"Coaching context: training stage check failed: {_se}")
 
     if days_away is None or days_away > 28:
         files_to_load.append('zone2_training.md')
@@ -775,10 +781,10 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
         stage_lower = (training_stage or '').lower()
         if stage_lower in ('base',):
             base_target = 90.0
-        elif stage_lower in ('taper', 'recovery'):
+        elif stage_lower in ('taper', 'peak', 'recovery'):  # peak = peak readiness, after taper
             base_target = 85.0
         else:
-            base_target = 80.0  # build, peak, specificity, unknown
+            base_target = 80.0  # build, specificity, unknown
 
         # Masters athlete adjustment (+5% easy if age >= 50)
         age_adj = 5.0 if (athlete_age and int(athlete_age) >= 50) else 0.0
@@ -2146,7 +2152,7 @@ def assemble_daily_context(user_id, current_metrics, *, activities=None,
         logger.debug(f"Yesterday RPE injection skipped for user {user_id}: {_yrpe_err}")
 
     # State-gated coaching context library injection
-    coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), current_date)
+    coaching_context_block = _load_coaching_context(user_id, _ans.get('state', 'UNKNOWN'), target_date or current_date)
 
     # Autopsy learning — DATA ONLY. Each builder appends its own adaptation framing
     # (see AUTOPSY_ADAPTATION_STANDARD / AUTOPSY_ADAPTATION_AUTOPSY_INFORMED), because the

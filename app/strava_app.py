@@ -23,6 +23,7 @@ import uuid
 import db_utils
 from datetime import datetime, timedelta, date
 from timezone_utils import get_app_current_date, log_timezone_debug
+from training_stage import calculate_training_stage
 from gait_classifier import CLASSIFIER_VERSION as GAIT_CLASSIFIER_VERSION
 from llm_recommendations_module import generate_recommendations, generate_recommendations_agentic, update_recommendations_with_autopsy_learning
 from utils.feature_flags import is_feature_enabled as _is_feature_enabled
@@ -14649,66 +14650,7 @@ def _validate_training_schedule(schedule: dict) -> tuple:
     return True, None
 
 
-def _calculate_training_stage(a_race_date: date, current_date: date) -> dict:
-    """
-    Calculate training stage based on weeks until A race
-    
-    Args:
-        a_race_date: Date of A race
-        current_date: Current date
-        
-    Returns:
-        Dictionary with stage info: stage, week_number, total_weeks, weeks_remaining, days_until_race
-    """
-    days_until_race = (a_race_date - current_date).days
-    weeks_until_race = days_until_race / 7.0
-    
-    # Determine training stage based on weeks until race
-    if days_until_race < 0:
-        # Race has passed - recovery phase
-        stage = 'recovery'
-        stage_description = 'Post-race recovery'
-    elif weeks_until_race < 2:
-        # 0-2 weeks: Peak week
-        stage = 'peak'
-        stage_description = 'Peak week - race ready'
-    elif weeks_until_race < 4:
-        # 2-4 weeks: Taper
-        stage = 'taper'
-        stage_description = 'Taper - reducing volume'
-    elif weeks_until_race < 8:
-        # 4-8 weeks: Specificity (Race-specific preparation)
-        stage = 'specificity'
-        stage_description = 'Race-specific training'
-    elif weeks_until_race < 12:
-        # 8-12 weeks: Build phase
-        stage = 'build'
-        stage_description = 'Building fitness and volume'
-    else:
-        # 12+ weeks: Base building
-        stage = 'base'
-        stage_description = 'Base building phase'
-    
-    # Calculate week number in training cycle (assume 16-week cycle for most ultras)
-    # Adjust based on actual race date
-    if weeks_until_race > 16:
-        total_weeks = int(weeks_until_race)
-        week_number = 1
-    else:
-        total_weeks = 16
-        week_number = int(16 - weeks_until_race) + 1
-    
-    return {
-        'stage': stage,
-        'stage_description': stage_description,
-        'week_number': week_number,
-        'total_weeks': total_weeks,
-        'weeks_until_race': round(weeks_until_race, 1),
-        'days_until_race': days_until_race
-    }
-
-
-def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> list:
+def _generate_timeline_data(a_race, b_races, c_races, current_date: date, athlete_age=None) -> list:
     """
     Generate week-by-week timeline data with training stages and race markers
     
@@ -14757,7 +14699,7 @@ def _generate_timeline_data(a_race, b_races, c_races, current_date: date) -> lis
         week_end = current_week_start + timedelta(days=6)
         
         # Calculate stage for this week
-        stage_info = _calculate_training_stage(a_race_date, current_week_start)
+        stage_info = calculate_training_stage(a_race_date, current_week_start, athlete_age)
         
         # Check if current week
         is_current_week = current_date >= current_week_start and current_date <= week_end
@@ -14989,17 +14931,19 @@ def get_training_stage():
         
         # Check for manual override
         user_settings = db_utils.execute_query(
-            "SELECT manual_training_stage FROM user_settings WHERE id = %s",
+            "SELECT manual_training_stage, age FROM user_settings WHERE id = %s",
             (user_id,),
             fetch=True
         )
-        
+
         manual_override = None
+        athlete_age = None
         if user_settings and len(user_settings) > 0:
-            manual_override = user_settings[0]['manual_training_stage'] if hasattr(user_settings[0], 'keys') else user_settings[0][0]
-        
+            manual_override = user_settings[0]['manual_training_stage']
+            athlete_age = user_settings[0]['age']
+
         # Calculate training stage
-        stage_info = _calculate_training_stage(a_race_date, current_date)
+        stage_info = calculate_training_stage(a_race_date, current_date, athlete_age)
         
         # Apply manual override if exists
         if manual_override:
@@ -15023,7 +14967,7 @@ def get_training_stage():
             logger.warning(f"No B races found! Total goals: {len(goals_list)}, Priorities: {[g.get('priority') for g in goals_list]}")
         
         # Generate timeline
-        timeline = _generate_timeline_data(a_race, b_races, c_races, current_date)
+        timeline = _generate_timeline_data(a_race, b_races, c_races, current_date, athlete_age)
         
         logger.info(f"Training stage for user {user_id}: {stage_info['stage']}, {stage_info['days_until_race']} days until A race")
         

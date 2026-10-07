@@ -142,7 +142,7 @@ def get_phase_interval_rules(stage, weeks_to_race=None, target_date=None):
     Args:
         stage: training stage string — 'base', 'build', 'specificity', 'taper', 'peak', 'recovery'
                (case-insensitive; 'Base' is accepted)
-        weeks_to_race: float or None — weeks remaining to A race (from _calculate_training_stage)
+        weeks_to_race: float or None — weeks remaining to A race (from training_stage.calculate_training_stage)
         target_date: datetime.date for ISO week rotation (defaults to today)
 
     Returns:
@@ -223,16 +223,19 @@ def get_phase_interval_rules(stage, weeks_to_race=None, target_date=None):
             'log_summary': f'{stage_lower} → {protocol["name"]} (ISO week {iso_week} rotation), strides 1-2×/wk',
         }
 
-    # ── TAPER ─────────────────────────────────────────────────────────────────
-    if stage_lower == 'taper':
-        wtr = float(weeks_to_race) if weeks_to_race is not None else 3.0
-        # Lactate Shuttle window: approximately 10 days out (1.0–2.0 weeks to race)
-        if wtr <= 2.0:
+    # ── TAPER / PEAK LACTATE SHUTTLE WINDOW ───────────────────────────────────
+    # Keyed to days-to-race, not stage: ~10 days out sits on the taper/peak boundary.
+    # weeks_to_race is measured from the week start, so the week containing
+    # race-day-minus-10 is the one starting 10-16 days before the race.
+    if stage_lower in ('taper', 'peak') and weeks_to_race is not None:
+        days_out = round(float(weeks_to_race) * 7)
+        if 10 <= days_out <= 16:
             p = WORKOUT_LIBRARY["lactate_shuttle"]["prescription"]
             prompt_block = (
-                "INTERVAL PROTOCOL — TAPER PHASE:\n"
-                f"Approximately {round(wtr * 7)} days to race — this is the Lactate Shuttle window.\n"
-                "ONE Lactate Shuttle session this week at REDUCED VOLUME: 4 cycles (not 5-6).\n"
+                f"INTERVAL PROTOCOL — {stage_lower.upper()} PHASE:\n"
+                f"Approximately {days_out} days to race — this is the Lactate Shuttle window.\n"
+                "ONE Lactate Shuttle session this week, placed ~10 days before race day, "
+                "at REDUCED VOLUME: 4 cycles (not 5-6).\n"
                 f"Structure: 4 cycles of over-under alternations (reduced from {p['structure']})\n"
                 f"Over phase: {p['over']}\n"
                 f"Under phase: {p['under']}\n"
@@ -246,23 +249,26 @@ def get_phase_interval_rules(stage, weeks_to_race=None, target_date=None):
                 'protocol_key': 'lactate_shuttle',
                 'strides_per_week_max': 2,
                 'prompt_block': prompt_block,
-                'log_summary': f'taper ({round(wtr * 7)}d out) → Lactate Shuttle reduced volume, strides 2×/wk',
+                'log_summary': f'{stage_lower} ({days_out}d out) → Lactate Shuttle reduced volume, strides 2×/wk',
             }
-        else:
-            prompt_block = (
-                "INTERVAL PROTOCOL — TAPER PHASE:\n"
-                f"Approximately {round(wtr * 7)} days to race — too far out for a hard interval session.\n"
-                "No interval session this week. Volume is reducing; preserve freshness.\n"
-                "The Lactate Shuttle window opens approximately 10 days before race day.\n\n"
-                + get_strides_placement_rules()
-            )
-            return {
-                'interval_allowed': False,
-                'protocol_key': None,
-                'strides_per_week_max': 2,
-                'prompt_block': prompt_block,
-                'log_summary': f'taper ({round(wtr * 7)}d out) → no interval, Lactate Shuttle window not yet open, strides 2×/wk',
-            }
+
+    # ── TAPER ─────────────────────────────────────────────────────────────────
+    if stage_lower == 'taper':
+        wtr = float(weeks_to_race) if weeks_to_race is not None else 3.0
+        prompt_block = (
+            "INTERVAL PROTOCOL — TAPER PHASE:\n"
+            f"Approximately {round(wtr * 7)} days to race — too far out for a hard interval session.\n"
+            "No interval session this week. Volume is reducing; preserve freshness.\n"
+            "The Lactate Shuttle window opens approximately 10 days before race day.\n\n"
+            + get_strides_placement_rules()
+        )
+        return {
+            'interval_allowed': False,
+            'protocol_key': None,
+            'strides_per_week_max': 2,
+            'prompt_block': prompt_block,
+            'log_summary': f'taper ({round(wtr * 7)}d out) → no interval, Lactate Shuttle window not yet open, strides 2×/wk',
+        }
 
     # ── PEAK ──────────────────────────────────────────────────────────────────
     if stage_lower == 'peak':

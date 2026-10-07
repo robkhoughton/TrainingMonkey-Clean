@@ -19,7 +19,7 @@ Gating logic lives in `_load_coaching_context()` in `llm_recommendations_module.
 | `neuromuscular.md` | Always — hill sprints, strides principle, overstriding form |
 | `fueling.md` | Always — carb timing for hard vs. easy sessions |
 | `readiness.md` | Readiness state != GREEN |
-| `periodization.md` | Race ≤ 28 days away |
+| `periodization.md` | A race in taper/peak stage, or the final specificity week before taper (`training_stage.in_race_preparation_window`) |
 | `zone2_training.md` | Race > 28 days away, or no race goal |
 | `aerobic_assessment.md` | Race > 28 days away, or no race goal |
 | `muscular_endurance.md` | Race > 56 days away, or no race goal |

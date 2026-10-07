@@ -35,7 +35,8 @@
 ### Seasonal Considerations:
 - **Base Building**: Target ACWR 0.9-1.1, emphasize aerobic development
 - **Build Phase**: Allow ACWR 1.1-1.3, include intensity progression
-- **Peak Phase**: Brief periods >1.3 acceptable with planned recovery
+- **Specificity Phase** (highest training load): Brief periods >1.3 acceptable with planned recovery
+- **Taper and Peak Phases**: ACWR falls toward 0.8-1.0 as volume drops — expected, not undertraining. "Peak" is peak *readiness* (final 2 weeks, after taper), not peak load.
 - **Recovery Phase**: Target ACWR 0.7-0.9, focus on adaptation
 
 ## Data Quality Indicators
@@ -543,9 +544,9 @@ Interval frequency and protocol selection must match the training phase. Using t
 |-------|---------------|-----------------|---------|
 | Base (12+ weeks out) | None | Every 10-14 days | 2-3× per week |
 | Build (8-12 weeks out) | Alternating weekly | Alternating weekly | 1-2× per week |
-| Specificity (4-8 weeks out) | Every 10-14 days | Every 10-14 days | 2× per week |
-| Taper (2-4 weeks out) | None | Once, ~10 days out | 2× per week |
-| Peak (0-2 weeks out) | None | None | 1-2× per week, short and snappy |
+| Specificity (8 weeks out → taper start) | Every 10-14 days | Every 10-14 days | 2× per week |
+| Taper (3 → 2 weeks out; 4 → 2 for age 60+) | None | None | 2× per week |
+| Peak readiness (final 2 weeks) | None | Once, reduced, ~10 days out; none in race week | 1-2× per week, short and snappy |
 | Recovery (post-race) | None | None | None weeks 1-2; 4 strides only from week 3 |
 
 #### Phase Rationale — For Athlete Communication
@@ -558,14 +559,14 @@ The goal is building a massive aerobic foundation, maximizing fat adaptation, an
 **Build Phase**
 This is where the blade gets sharpened. Lactate threshold and VO2max development become primary. Both protocols are in rotation — Norwegian 4×4 one week, Lactate Shuttle the next. Stacking both protocols, a heavy gym session, and a long run in a single 7-day week is a recipe for overtraining. The alternating rotation manages this by design.
 
-**Specificity Phase (4-8 weeks out)**
+**Specificity Phase (8 weeks out → taper start)**
 Training shifts toward race-specific demands — sustained climbing, descent running, back-to-back long efforts. Interval frequency pulls back to every 10-14 days as long runs and race simulation take recovery priority. Both protocols remain available but are no longer the primary focus.
 
-**Taper Phase**
-The hay is in the barn. Volume drops 30-50% but intensity touch-points are maintained. One Lactate Shuttle session, scheduled approximately 10 days before race day, helps maintain blood plasma volume and keeps the legs feeling snappy. No Norwegian 4×4 — Zone 5 work takes up to 14 days to fully absorb. Doing it during a taper leaves fatigue in the legs without providing usable fitness gains for race day. Strides increase to 2× per week — as volume drops, strides preserve the feeling of speed and high muscle tension.
+**Taper Phase (3 weeks out; 4 weeks for age 60+)**
+The hay is in the barn. Volume drops 25-30% but intensity touch-points are maintained. No Norwegian 4×4 — Zone 5 work takes up to 14 days to fully absorb. Doing it during a taper leaves fatigue in the legs without providing usable fitness gains for race day. Strides increase to 2× per week — as volume drops, strides preserve the feeling of speed and high muscle tension.
 
-**Peak Phase (0-2 weeks out)**
-No interval sessions. Physical adaptations are locked in — focus shifts entirely to arriving fresh. Short, easy strides 1-2× per week maintain neuromuscular readiness without accumulating fatigue.
+**Peak Readiness Phase (final 2 weeks)**
+"Peak" means peak readiness, not peak training load — it comes after taper. Volume drops 40-50%, then to 20-30% in race week. One reduced-volume Lactate Shuttle session, scheduled approximately 10 days before race day, helps maintain blood plasma volume and keeps the legs feeling snappy; it is the last hard session. No other intervals. Physical adaptations are locked in — focus shifts entirely to arriving fresh. Short, easy strides 1-2× per week maintain neuromuscular readiness without accumulating fatigue.
 
 **Recovery Phase (post-race)**
 Complete physiological restoration. No intervals for the first 2-3 weeks regardless of how good the athlete feels — cellular repair continues for 2-3 weeks post-race even when acute fatigue has resolved. No strides for the first 2 weeks. Reintroduce 4 strides only from week 3. Rushing this phase delays full recovery and increases injury risk when normal training resumes.

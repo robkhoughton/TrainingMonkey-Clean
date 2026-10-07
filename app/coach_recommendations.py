@@ -332,8 +332,7 @@ def get_current_training_stage(user_id: int, as_of_date=None) -> Dict:
             a program/recommendation generated ahead of time or backfilled after the fact
             gets today's stage baked in instead of the target date's.
     """
-    # Import here to avoid circular dependency
-    from strava_app import _calculate_training_stage
+    from training_stage import calculate_training_stage
 
     race_goals = get_race_goals(user_id)
 
@@ -364,8 +363,11 @@ def get_current_training_stage(user_id: int, as_of_date=None) -> Dict:
     else:
         current_date = as_of_date
     race_date = datetime.strptime(a_race['race_date'], '%Y-%m-%d').date()
-    
-    stage_info = _calculate_training_stage(race_date, current_date)
+
+    age_row = execute_query("SELECT age FROM user_settings WHERE id = %s", (user_id,), fetch=True)
+    athlete_age = age_row[0]['age'] if age_row else None
+
+    stage_info = calculate_training_stage(race_date, current_date, athlete_age)
     stage_info['race_name'] = a_race['race_name']
     stage_info['priority'] = a_race['priority']
     

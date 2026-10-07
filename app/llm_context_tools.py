@@ -109,28 +109,17 @@ def get_race_goals(user_id: int) -> dict:
 
     goals = [_serialize(dict(r)) for r in rows]
 
-    # Identify the A race for training stage calculation
     a_race = next((g for g in goals if (g.get('priority') or '').strip().upper() == 'A'), None)
 
     weeks_to_a_race = None
     training_stage = None
+    stage_details = None
     if a_race:
-        try:
-            a_race_date = datetime.strptime(a_race['race_date'], '%Y-%m-%d').date()
-            days_until = (a_race_date - date.today()).days
-            weeks_to_a_race = round(days_until / 7, 1)
-
-            # Simple stage bucketing (mirrors _calculate_training_stage logic)
-            if days_until <= 14:
-                training_stage = 'taper'
-            elif days_until <= 42:
-                training_stage = 'peak'
-            elif days_until <= 84:
-                training_stage = 'build'
-            else:
-                training_stage = 'base'
-        except (ValueError, TypeError):
-            pass
+        from coach_recommendations import get_current_training_stage
+        stage_info = get_current_training_stage(user_id)
+        training_stage = stage_info.get('stage')
+        stage_details = stage_info.get('details')
+        weeks_to_a_race = stage_info.get('weeks_until_race')
 
     logger.info(
         f"get_race_goals(user={user_id}): {len(goals)} goals, "
@@ -141,6 +130,7 @@ def get_race_goals(user_id: int) -> dict:
         "goals": goals,
         "a_race": a_race,
         "training_stage": training_stage,
+        "stage_details": stage_details,
         "weeks_to_a_race": weeks_to_a_race,
     }
 

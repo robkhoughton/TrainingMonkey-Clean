@@ -94,7 +94,9 @@ _Avoid_: "confidence" alone. The product roadmap itself flags this ambiguity as 
 
 **Race Goal**: `race_goals` table, Priority A/B/C (A = primary target).
 
-**Training Stage** (`_calculate_training_stage()`): `base` (12+ wks out) → `build` → `specificity` → `taper` → `peak` → `recovery`. Matches the Canonical Workout Library's phase table exactly — a clean positive example of doc/code agreement.
+**Training Stage** (`training_stage.calculate_training_stage()` — the only place stage is computed): `base` (12+ wks out) → `build` (8–12) → `specificity` (to taper start) → `taper` (3 wks out; 4 wks for age 60+) → `peak` (final 2 wks) → `recovery` (post-race). Every consumer — weekly plan, daily Rx seam, agentic `get_race_goals` tool, Coach page timeline — calls it; never re-bucket weeks-to-race locally. A second copy in `llm_context_tools` drifted into a different order and was removed 2026-10-06.
+
+**Peak (training stage)**: peak *readiness*, not peak *load*. It is the final taper and race week, and it comes **after** `taper`. Highest training load belongs to `build`/`specificity`. Known misreading: treating `peak` as a high-load phase — this produced the reversed copy above and put `peak` in the 80%-easy (build) polarized target instead of taper's 85%.
 
 **Race Readiness Score** (`/api/coach/race-readiness`): projects whether chronic load can reach race-peak load-miles before taper. Statuses: `on_track` / `not_achievable` / `already_ready`. Unrelated to Readiness State or Morning Check-in above — see the Readiness disambiguation.
 

@@ -11,7 +11,6 @@ See docs/refactor_plan_race_context_2026-06-24.md.
 """
 import os
 import sys
-import types
 import unittest
 from unittest import mock
 
@@ -38,27 +37,15 @@ class TestTrainingStageFieldContract(unittest.TestCase):
         # Casing parity with the has-race path (lowercase 'base').
         self.assertEqual(info['stage'], 'base')
 
+    @mock.patch.object(coach_recommendations, 'execute_query', return_value=[{'age': 45}])
     @mock.patch.object(coach_recommendations, 'get_race_goals')
-    def test_has_race_path_exposes_canonical_key(self, mock_goals):
+    def test_has_race_path_exposes_canonical_key(self, mock_goals, _mock_q):
         mock_goals.return_value = [{
             'race_name': 'Mountain Lakes 100',
             'race_date': '2026-09-19',
             'priority': 'A',
         }]
-        fake_stage = {
-            'stage': 'base',
-            'stage_description': 'Base building phase',
-            'week_number': 4,
-            'total_weeks': 16,
-            'weeks_until_race': 12.4,
-            'days_until_race': 87,
-        }
-        # get_current_training_stage does `from strava_app import _calculate_training_stage`
-        # at call time; inject a lightweight stub so we don't import the heavy app module.
-        fake_strava = types.ModuleType('strava_app')
-        fake_strava._calculate_training_stage = lambda race_date, current_date: dict(fake_stage)
-        with mock.patch.dict(sys.modules, {'strava_app': fake_strava}):
-            info = coach_recommendations.get_current_training_stage(user_id=1)
+        info = coach_recommendations.get_current_training_stage(user_id=1, as_of_date='2026-06-20')
 
         self.assertIn(self.CANONICAL_KEY, info)
         self.assertNotIn(self.LEGACY_KEY, info)
