@@ -150,8 +150,9 @@ class TestDynamicDivergence(unittest.TestCase):
         self.assertIsNone(da.dynamic_divergence(None, 1.0))
         self.assertIsNone(da.dynamic_divergence(1.0, None))
 
-    def test_both_zero(self):
-        self.assertEqual(da.dynamic_divergence(0, 0), 0.0)
+    def test_both_zero_is_undefined(self):
+        # Empty acute window: 0/0 is undefined, not "balanced" (divergence-rest-projection spec).
+        self.assertIsNone(da.dynamic_divergence(0, 0))
 
     def test_matches_formula(self):
         # (1.3 - 1.0) / 1.15 = 0.2609

@@ -208,8 +208,10 @@ the 42-day decay configuration when the projection is built.
     the athlete's easy profile crosses back above −0.11 within the horizon (exact values
     recomputed under the 42-day configuration when the fixture is built).
   - **Standard-method fixture** for a user on the 28-day path, so both ACWR methods are covered.
-  - **Identity check:** scaling every acute-window session's load and TRIMP by the same factor
-    leaves the projected divergence unchanged.
+  - **Identity check:** a history with constant TRIMP-per-load-mile gives divergence exactly 0
+    however volume varies, including an acute spike that moves ACWR well above 1. (Scaling only
+    the acute sessions is *not* invariant, because those days also sit inside the chronic
+    window.)
   - **Ordering check:** rest worsens divergence when the oldest acute sessions are the cheapest
     per load-mile, and improves it when they are the most expensive.
 - **Canonical calculation:** a unit test that both-zero ACWRs give undefined, for both the

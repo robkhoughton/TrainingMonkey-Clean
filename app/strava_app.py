@@ -1881,14 +1881,15 @@ def get_training_data():
         days_max         = thresholds['days_since_rest_max']
 
         avg_acwr   = ((last.get('acute_chronic_ratio') or 0) + (last.get('trimp_acute_chronic_ratio') or 0)) / 2
-        divergence = normalized_divergence or 0
+        divergence = normalized_divergence  # None = empty acute window: no divergence contribution
 
         risk_score = 0
         if avg_acwr > acwr_high + 0.2:      risk_score += 40
         elif avg_acwr > acwr_high:          risk_score += 30
         elif avg_acwr > acwr_high - 0.2:    risk_score += 20
         elif avg_acwr > acwr_undertraining: risk_score += 10
-        if divergence < div_overtraining - 0.10: risk_score += 40
+        if divergence is None:                   pass
+        elif divergence < div_overtraining - 0.10: risk_score += 40
         elif divergence < div_overtraining:      risk_score += 30
         elif divergence < div_moderate:          risk_score += 15
         if days_since_rest > days_max:          risk_score += 20

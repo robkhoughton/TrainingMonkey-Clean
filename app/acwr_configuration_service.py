@@ -341,7 +341,7 @@ class ACWRConfigurationService:
                 'enhanced_chronic_trimp': round(chronic_trimp_avg, 2),
                 'enhanced_acute_chronic_ratio': round(external_acwr, 2),
                 'enhanced_trimp_acute_chronic_ratio': round(internal_acwr, 2),
-                'enhanced_normalized_divergence': round(normalized_divergence, 2),
+                'enhanced_normalized_divergence': round(normalized_divergence, 2) if normalized_divergence is not None else None,
                 'calculation_method': 'exponential_decay_engine',
                 'data_quality': chronic_result.data_quality if hasattr(chronic_result, 'data_quality') else 'unknown'
             }

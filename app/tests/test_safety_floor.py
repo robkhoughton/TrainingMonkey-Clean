@@ -45,6 +45,72 @@ class TestFloor(unittest.TestCase):
         self.assertFalse(m.floor_violation('overtraining_risk', None))
 
 
+GATE_PASSED = {'passed': True, 'reason': None, 'max_pain': 0, 'veto': 'negative', 'zone1_ceiling_bpm': 120}
+GATE_FAILED = {'passed': False, 'reason': 'pain', 'max_pain': 45, 'veto': 'not_run', 'zone1_ceiling_bpm': 120}
+
+
+def _decision(action, intensity='easy', intent='easy', hard=None):
+    return {'action': action, 'intensity_target': intensity,
+            'polarized_session_intent': intent, 'hard_session_type': hard}
+
+
+class TestRecoveryFloor(unittest.TestCase):
+    """overtraining_risk allows Zone 1 easy sessions only when the recovery gate passed."""
+
+    def test_gate_passed_gives_recovery_floor(self):
+        self.assertEqual(m.mandated_floor('overtraining_risk', GATE_PASSED), 'recovery')
+
+    def test_gate_failed_or_missing_stays_rest(self):
+        self.assertEqual(m.mandated_floor('overtraining_risk', GATE_FAILED), 'rest')
+        self.assertEqual(m.mandated_floor('overtraining_risk', None), 'rest')
+
+    def test_mandatory_rest_ignores_the_gate(self):
+        self.assertEqual(m.mandated_floor('mandatory_rest', GATE_PASSED), 'rest')
+
+    def test_gate_does_not_touch_other_categories(self):
+        self.assertEqual(m.mandated_floor('high_acwr_risk', GATE_PASSED), 'reduce')
+
+    def test_easy_reduce_and_rest_are_allowed(self):
+        self.assertFalse(m.floor_violation('overtraining_risk', _decision('reduce'), GATE_PASSED))
+        self.assertFalse(m.floor_violation('overtraining_risk', _decision('rest', 'none', 'rest'), GATE_PASSED))
+
+    def test_reduced_tempo_is_a_violation(self):
+        self.assertTrue(m.floor_violation(
+            'overtraining_risk', _decision('reduce', 'moderate', 'hard', 'tempo'), GATE_PASSED))
+        self.assertTrue(m.floor_violation('overtraining_risk', _decision('reduce', 'moderate'), GATE_PASSED))
+
+    def test_train_is_a_violation(self):
+        self.assertTrue(m.floor_violation('overtraining_risk', _decision('train'), GATE_PASSED))
+
+    def test_easy_reduce_violates_when_gate_failed(self):
+        self.assertTrue(m.floor_violation('overtraining_risk', _decision('reduce'), GATE_FAILED))
+
+    def test_finalize_reads_gate_from_metrics_and_accepts_zone1(self):
+        cm = {'external_acwr': 0.59, 'internal_acwr': 0.69, 'normalized_divergence': -0.14,
+              'recovery_gate': GATE_PASSED}
+        sections = {'structured_output': {'decision': _decision('reduce')},
+                    'daily_recommendation': 'Zone 1 shakeout, HR under 120.'}
+        regen = mock.Mock()
+        result = m.finalize_recommendation(sections, cm, 'overtraining_risk', 'P', regen, 1, '2026-10-12')
+        self.assertEqual(result['status'], 'ok')
+        regen.assert_not_called()
+
+    @mock.patch.object(m, 'parse_llm_response')
+    def test_finalize_recovery_fallback_is_zone1_not_training(self, mock_parse):
+        cm = {'external_acwr': 0.59, 'internal_acwr': 0.69, 'normalized_divergence': -0.14,
+              'recovery_gate': GATE_PASSED}
+        tempo = {'structured_output': {'decision': _decision('reduce', 'moderate', 'hard', 'tempo')},
+                 'daily_recommendation': 'tempo'}
+        mock_parse.return_value = tempo
+        result = m.finalize_recommendation(tempo, cm, 'overtraining_risk', 'P',
+                                           mock.Mock(return_value='RAW'), 1, '2026-10-12')
+        self.assertEqual(result['status'], 'fallback')
+        decision = result['structured_output']['decision']
+        self.assertFalse(m.floor_violation('overtraining_risk', decision, GATE_PASSED))
+        self.assertIn('Zone 1', result['daily_recommendation'])
+        self.assertIn('120', result['daily_recommendation'])
+
+
 class TestSafeFallback(unittest.TestCase):
     def test_rest_fallback(self):
         cm = {'external_acwr': 1.75, 'internal_acwr': 2.13, 'normalized_divergence': -0.20}

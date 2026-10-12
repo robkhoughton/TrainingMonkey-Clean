@@ -207,8 +207,6 @@ def dynamic_divergence(external_acwr, internal_acwr_dynamic):
     """
     if external_acwr is None or internal_acwr_dynamic is None:
         return None
-    if external_acwr == 0 and internal_acwr_dynamic == 0:
-        return 0.0
     avg = (external_acwr + internal_acwr_dynamic) / 2
     if avg == 0:
         return None

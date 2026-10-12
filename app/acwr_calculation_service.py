@@ -115,7 +115,7 @@ class ACWRCalculationService:
                 'chronic_trimp_avg': round(chronic_trimp_avg, 2),
                 'acute_chronic_ratio': round(acute_chronic_ratio, 2),
                 'trimp_acute_chronic_ratio': round(trimp_acute_chronic_ratio, 2),
-                'normalized_divergence': round(normalized_divergence, 2),
+                'normalized_divergence': round(normalized_divergence, 2) if normalized_divergence is not None else None,
                 'calculation_method': 'standard'
             }
             

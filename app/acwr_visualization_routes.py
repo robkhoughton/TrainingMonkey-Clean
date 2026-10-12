@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 acwr_cache = {}
 CACHE_TTL_SECONDS = 3600  # 1 hour cache TTL
 
+
+def _divergence_or_none(value):
+    """Normalized divergence is undefined (None) on an empty acute window; keep it None."""
+    return float(value) if value is not None else None
+
 def get_cache_key(user_id, target_date, chronic_period_days, decay_rate):
     """Generate cache key for ACWR calculation"""
     return f"acwr_{user_id}_{target_date}_{chronic_period_days}_{decay_rate}"
@@ -154,12 +159,12 @@ def calculate_acwr_from_memory(activities_dict, target_date, chronic_period_days
 
         # Calculate normalized divergence using CANONICAL formula (mean-normalized, preserves valence)
         # FIXED: Changed from max-normalized abs() to mean-normalized signed for consistency
+        # Empty acute window (both ACWRs 0) is 0/0: undefined, not "balanced".
         avg_acwr = (external_acwr + internal_acwr) / 2
         if avg_acwr > 0:
-            normalized_divergence = (external_acwr - internal_acwr) / avg_acwr
+            normalized_divergence = round((external_acwr - internal_acwr) / avg_acwr, 3)
         else:
-            normalized_divergence = 0.0
-        normalized_divergence = round(normalized_divergence, 3)
+            normalized_divergence = None
         
         # Debug final results
         logger.info(f"Final ACWR: external={external_acwr:.3f}, internal={internal_acwr:.3f}, acute_load={acute_load_avg:.3f}, chronic_load={chronic_load_avg:.3f}")
@@ -402,7 +407,7 @@ def get_activities_data():
                 activities_data['dates'].append(activity_date)
                 activities_data['acwr'].append(float(acwr_result.get('enhanced_acute_chronic_ratio', 0)))
                 activities_data['trimp_acwr'].append(float(acwr_result.get('enhanced_trimp_acute_chronic_ratio', 0)))
-                activities_data['normalized_divergence'].append(float(acwr_result.get('enhanced_normalized_divergence', 0)))
+                activities_data['normalized_divergence'].append(_divergence_or_none(acwr_result.get('enhanced_normalized_divergence')))
                 activities_data['acute_load'].append(float(acwr_result.get('acute_load_avg', 0)))
                 activities_data['chronic_load'].append(float(acwr_result.get('enhanced_chronic_load', 0)))
                 activities_data['acute_trimp'].append(float(acwr_result.get('acute_trimp_avg', 0)))
@@ -630,7 +635,7 @@ def get_multi_config_data():
                     config_data['dates'].append(activity_date)
                     config_data['acwr'].append(float(acwr_result.get('enhanced_acute_chronic_ratio', 0)))
                     config_data['trimp_acwr'].append(float(acwr_result.get('enhanced_trimp_acute_chronic_ratio', 0)))
-                    config_data['normalized_divergence'].append(float(acwr_result.get('enhanced_normalized_divergence', 0)))
+                    config_data['normalized_divergence'].append(_divergence_or_none(acwr_result.get('enhanced_normalized_divergence')))
                     config_data['acute_load'].append(float(acwr_result.get('acute_load_avg', 0)))
                     config_data['chronic_load'].append(float(acwr_result.get('enhanced_chronic_load', 0)))
                     config_data['acute_trimp'].append(float(acwr_result.get('acute_trimp_avg', 0)))
@@ -788,7 +793,7 @@ def generate_sensitivity():
                         'internal_acwr': float(acwr_result.get('enhanced_trimp_acute_chronic_ratio', 0)),
                         'external_work': float(acwr_result.get('enhanced_chronic_load', 0)),
                         'internal_load': float(acwr_result.get('enhanced_chronic_trimp', 0)),
-                        'normalized_divergence': float(acwr_result.get('enhanced_normalized_divergence', 0)),
+                        'normalized_divergence': _divergence_or_none(acwr_result.get('enhanced_normalized_divergence')),
                         'chronic_load': float(acwr_result.get('enhanced_chronic_load', 0)),
                         'risk_level': 'Unknown',
                         'data_quality': acwr_result.get('data_quality', 'Good')

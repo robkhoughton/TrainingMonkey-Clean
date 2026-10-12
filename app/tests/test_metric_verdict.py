@@ -118,6 +118,92 @@ class TestVerdictBlock(unittest.TestCase):
         self.assertIn('-3.5%', block)
         self.assertIn('REDUCE', block)
 
+    def test_empty_acute_window_is_undertraining_never_a_divergence_category(self):
+        cm = metrics(external_acwr=0.0, internal_acwr=0.0, normalized_divergence=None)
+        cat = m.derive_assessment_category(cm, THRESHOLDS)
+        self.assertEqual(cat, 'undertraining_opportunity')
+
+    def test_undefined_divergence_is_stated_as_insufficient_acute_data(self):
+        cm = metrics(external_acwr=0.0, internal_acwr=0.0, normalized_divergence=None)
+        block = m.format_metric_verdict_block(cm, 'undertraining_opportunity', THRESHOLDS)
+        self.assertIn('insufficient acute data', block)
+        self.assertNotIn('Normalized divergence N/A', block)
+        self.assertNotIn('vs overtraining threshold', block)
+
+    def _projection(self, easy=True):
+        rest = [('2026-10-12', -0.188), ('2026-10-13', -0.186), ('2026-10-14', -0.184),
+                ('2026-10-15', -0.275), ('2026-10-16', -0.273), ('2026-10-17', None), ('2026-10-18', None)]
+        easy_path = [('2026-10-12', -0.131), ('2026-10-13', -0.09), ('2026-10-14', -0.04),
+                     ('2026-10-15', 0.01), ('2026-10-16', 0.03), ('2026-10-17', 0.05), ('2026-10-18', 0.06)]
+        proj = {
+            'horizon': 7,
+            'rest': [{'date': d, 'normalized_divergence': v} for d, v in rest],
+            'easy': None, 'easy_profile': None,
+            'easy_unavailable_reason': 'fewer than 5 easy sessions in the last 60 days',
+        }
+        if easy:
+            proj.update(easy=[{'date': d, 'normalized_divergence': v} for d, v in easy_path],
+                        easy_profile={'load': 4.0, 'trimp_per_load': 9.0, 'n': 12},
+                        easy_unavailable_reason=None)
+        return proj
+
+    def test_verdict_states_rest_projection_as_fact(self):
+        cm = metrics(external_acwr=0.59, internal_acwr=0.69, normalized_divergence=-0.14,
+                     divergence_projection=self._projection())
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        self.assertIn('-0.188', block)        # next day under rest
+        self.assertIn('-0.275', block)        # worst point under rest
+        self.assertIn('2026-10-15', block)    # when the worst point lands
+        self.assertIn('2026-10-17', block)    # undefined from
+        self.assertIn('does NOT clear divergence', block)
+
+    def test_verdict_states_easy_crossing_against_calibrated_threshold(self):
+        cm = metrics(external_acwr=0.59, internal_acwr=0.69, normalized_divergence=-0.14,
+                     divergence_projection=self._projection())
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        # first easy day above the calibrated -0.20 line is 2026-10-12 (-0.131)
+        self.assertIn('2026-10-12', block)
+        self.assertIn('-0.131', block)
+        self.assertIn('-0.2', block)
+
+    def test_missing_easy_profile_is_stated_without_an_easy_number(self):
+        cm = metrics(external_acwr=0.59, internal_acwr=0.69, normalized_divergence=-0.14,
+                     divergence_projection=self._projection(easy=False))
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        self.assertIn('fewer than 5 easy sessions', block)
+        self.assertNotIn('-0.131', block)
+
+    def test_gate_passed_mandates_zone1_with_ceiling(self):
+        cm = metrics(external_acwr=0.59, internal_acwr=0.69, normalized_divergence=-0.20,
+                     recovery_gate={'passed': True, 'reason': None, 'max_pain': 0, 'veto': 'negative',
+                                    'zone1_ceiling_bpm': 118})
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        self.assertIn('Zone 1', block)
+        self.assertIn('118 bpm', block)
+        self.assertIn('max pain 0%', block)
+        self.assertNotIn('The planned session is deferred, not executed at reduced volume', block)
+
+    def test_gate_failed_on_pain_keeps_rest_and_says_why(self):
+        cm = metrics(normalized_divergence=-0.20,
+                     recovery_gate={'passed': False, 'reason': 'pain', 'max_pain': 45, 'veto': 'not_run',
+                                    'zone1_ceiling_bpm': 118})
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        self.assertIn('REST', block)
+        self.assertIn('45%', block)
+        self.assertNotIn('118 bpm', block)
+
+    def test_gate_failed_on_journal_note_says_why(self):
+        cm = metrics(normalized_divergence=-0.20,
+                     recovery_gate={'passed': False, 'reason': 'journal_injury_signal', 'max_pain': 0,
+                                    'veto': 'positive'})
+        block = m.format_metric_verdict_block(cm, 'overtraining_risk', THRESHOLDS)
+        self.assertIn('journal', block.lower())
+        self.assertIn('injury or pain', block)
+
+    def test_no_projection_lines_without_projection(self):
+        block = m.format_metric_verdict_block(metrics(), 'normal_progression', THRESHOLDS)
+        self.assertNotIn('Divergence projection', block)
+
     def test_load_independent_weight_drop_suggests_medical_followup_without_gating_action(self):
         cm = metrics(external_acwr=1.0, internal_acwr=1.0, normalized_divergence=0.0,
                      weight_change_pct_28d=-4.0)

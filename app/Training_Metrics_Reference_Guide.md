@@ -174,6 +174,8 @@ For long easy sessions: duration accumulates load. A 3-hour Zone 2 run that felt
 | 80    | Unacceptable | Get off your feet and closely monitor conditions tomorrow — consider a rest day.                     |
 | 100   | Dangerous    | Halt your workouts and revisit the plan. Something is wrong.                                         |
 
+**Recovery gate under a divergence breach** (`recovery_gate.py`, decided 2026-10-12): when Normalized Divergence is past the athlete's breakdown threshold (`overtraining_risk`), the safety floor allows Zone 1 easy sessions instead of rest only if (1) the worst Pain Score in the last 3 days is **below 40%**, with at least one reading, and (2) no journal note in those 3 days, rest days included, signals injury or pain. Tightness, soreness and swelling/edema count as signals only when the note also reports pain. If either check fails, or the note check can't run, the floor stays rest. The 40% line is the "Tolerable — consider modifying" step above; a Zone 1 session is that modification. Rest alone does not clear divergence (see `CONTEXT.md` § Normalized Divergence).
+
 ### Body Weight Trend (RED-S / Underfueling Screen)
 
 **Source:** `journal_entries.weight` (kg, synced daily from intervals.icu's wellness endpoint — see `intervals_icu_sync.py`), converted to lbs for display. Computed as a rolling 7-day average now vs. a 7-day average ending 28 days ago (`weight_change_pct_28d` in `unified_metrics_service.py`). Requires at least 3 readings in each window; otherwise the signal is `None` and no flag fires — a single noisy reading (hydration, GI content, scale variance) must never trigger a safety action.

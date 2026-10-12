@@ -8,6 +8,7 @@ sophisticated, evidence-based training recommendations through Claude API.
 
 import os
 import json
+import statistics
 import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor
@@ -1416,11 +1417,9 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         else:
             logger.info("Generating standard recommendation without recent autopsy data")
 
-        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds).
-        floor_thresholds = apply_athlete_model_to_thresholds(
-            get_adjusted_thresholds(recommendation_style), user_id
-        )
-        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
+        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds),
+        # plus the divergence projection and recovery gate the verdict and guardrail share.
+        floor_category = prepare_daily_floor(user_id, current_metrics, recommendation_style, target_date)
 
         prompt = create_enhanced_prompt_with_tone(
             current_metrics, activities, pattern_analysis, training_guide,
@@ -1515,23 +1514,95 @@ def derive_assessment_category(current_metrics, thresholds):
     days_since_rest = current_metrics.get('days_since_rest', 0) or 0
     external_acwr = current_metrics.get('external_acwr', 0) or 0
     internal_acwr = current_metrics.get('internal_acwr', 0) or 0
-    divergence = current_metrics.get('normalized_divergence', 0) or 0
+    # None = empty acute window (0/0): no divergence signal, so no divergence category fires.
+    divergence = current_metrics.get('normalized_divergence')
     weight_change_pct_28d = current_metrics.get('weight_change_pct_28d')
 
     if days_since_rest > thresholds['days_since_rest_max']:
         return 'mandatory_rest'
-    if divergence <= thresholds['divergence_overtraining']:
+    if divergence is not None and divergence <= thresholds['divergence_overtraining']:
         return 'overtraining_risk'
     if (weight_change_pct_28d is not None and weight_change_pct_28d <= UNDERFUELING_WEIGHT_DROP_PCT
             and (external_acwr > thresholds['acwr_high_risk'] or internal_acwr > thresholds['acwr_high_risk'])):
         return 'underfueling_risk'
     if external_acwr > thresholds['acwr_high_risk'] and internal_acwr > thresholds['acwr_high_risk']:
         return 'high_acwr_risk'
-    if divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
+    if divergence is not None and divergence < thresholds['divergence_moderate_risk'] and days_since_rest > 5:
         return 'recovery_needed'
     if external_acwr < thresholds['acwr_undertraining'] and internal_acwr < thresholds['acwr_undertraining']:
         return 'undertraining_opportunity'
     return 'normal_progression'
+
+
+def format_divergence_projection_lines(projection, div_threshold):
+    """Compact, authoritative statement of the divergence projection (category-1 fact).
+
+    Divergence depends only on acute vs chronic TRIMP-per-load-mile, so rest moves it only
+    through window turnover; the model must use these computed values, never reason about
+    what rest "should" do to a rolling ratio.
+    """
+    if not projection:
+        return ""
+    rest = projection.get('rest') or []
+    lines = ["Divergence projection (computed server-side — authoritative):"]
+    if rest:
+        defined = [p for p in rest if p.get('normalized_divergence') is not None]
+        undefined_from = next((p['date'] for p in rest if p.get('normalized_divergence') is None), None)
+        rest_parts = []
+        if rest[0].get('normalized_divergence') is not None:
+            rest_parts.append(f"{rest[0]['date']} {rest[0]['normalized_divergence']:.3f}")
+        if defined:
+            worst = min(defined, key=lambda p: p['normalized_divergence'])
+            rest_parts.append(f"worst {worst['normalized_divergence']:.3f} on {worst['date']}")
+        if undefined_from:
+            rest_parts.append(f"undefined from {undefined_from} (empty 7-day window — not recovery)")
+        lines.append("- Under full rest: " + "; ".join(rest_parts) + ". Rest does NOT clear divergence; "
+                     "it changes only as older sessions leave the 7-day window.")
+    easy = projection.get('easy')
+    if easy:
+        profile = projection.get('easy_profile') or {}
+        crossing = next((p for p in easy if p.get('normalized_divergence') is not None
+                         and div_threshold is not None and p['normalized_divergence'] > div_threshold), None)
+        profile_s = (f"{profile['load']:.1f} load-mi at {profile['trimp_per_load']:.1f} TRIMP/load-mi"
+                     if profile else "the athlete's easy profile")
+        if crossing:
+            lines.append(f"- Under daily easy sessions ({profile_s}): back above the {div_threshold} threshold "
+                         f"on {crossing['date']} ({crossing['normalized_divergence']:.3f}).")
+        else:
+            lines.append(f"- Under daily easy sessions ({profile_s}): stays at/below the {div_threshold} "
+                         f"threshold through {easy[-1]['date']}.")
+    else:
+        reason = projection.get('easy_unavailable_reason') or 'no easy-session profile'
+        lines.append(f"- Easy-session projection unavailable: {reason}.")
+    return "\n" + "\n".join(lines)
+
+
+_RECOVERY_GATE_FAIL_REASONS = {
+    'pain': "worst Pain Score in the last 3 days is {max_pain}% (Zone 1 needs < 40%)",
+    'no_pain_readings': "no Pain Score logged in the last 3 days, so pain can't be ruled out",
+    'journal_injury_signal': "a journal note in the last 3 days reports an injury or pain signal",
+    'veto_error': "the journal-note injury check could not run, so it fails safe",
+}
+
+_OVERTRAINING_RECOVERY_MANDATE = (
+    "ZONE 1 RECOVERY or REST. Divergence is past the breakdown threshold, but there is no pain or injury "
+    "signal, so an easy Zone 1 session is allowed — it is what actually clears a breach; rest alone does not. "
+    "No strides, no quality work; any planned quality session or test is deferred."
+)
+
+
+def format_recovery_gate_line(recovery_gate):
+    """State which recovery-gate result set today's overtraining_risk floor (category-1/2 fact)."""
+    if not recovery_gate:
+        return ""
+    if recovery_gate.get('passed'):
+        ceiling = recovery_gate.get('zone1_ceiling_bpm')
+        ceiling_s = (f"Zone 1 ceiling today: {ceiling} bpm — keep HR under it."
+                     if ceiling else "Zone 1 ceiling unavailable — prescribe a truly conversational effort.")
+        return (f"\nRecovery gate: PASSED (max pain {recovery_gate.get('max_pain')}% in the last 3 days, "
+                f"no journal injury/pain signal). {ceiling_s}")
+    reason = _RECOVERY_GATE_FAIL_REASONS.get(recovery_gate.get('reason'), "recovery gate did not pass")
+    return f"\nRecovery gate: NOT PASSED — {reason.format(max_pain=recovery_gate.get('max_pain'))}. Floor stays REST."
 
 
 def format_metric_verdict_block(current_metrics, assessment_category, thresholds):
@@ -1562,10 +1633,21 @@ def format_metric_verdict_block(current_metrics, assessment_category, thresholds
         return "ABOVE (high-risk)" if value > threshold else "at/below (safer)"
 
     mandate = _CATEGORY_ACTION_MANDATE.get(assessment_category, _CATEGORY_ACTION_MANDATE['normal_progression'])
+    recovery_gate = current_metrics.get('recovery_gate') if assessment_category == 'overtraining_risk' else None
+    if mandated_floor(assessment_category, recovery_gate) == 'recovery':
+        mandate = _OVERTRAINING_RECOVERY_MANDATE
+    gate_line = format_recovery_gate_line(recovery_gate)
     ext_s = f"{ext:.2f}" if isinstance(ext, (int, float)) else "N/A"
     intl_s = f"{intl:.2f}" if isinstance(intl, (int, float)) else "N/A"
     div_s = f"{div:.3f}" if isinstance(div, (int, float)) else "N/A"
     risk_s = f"{risk_label}" + (f" ({risk_score}/100)" if risk_score is not None else "")
+    projection_lines = format_divergence_projection_lines(current_metrics.get('divergence_projection'), div_warn)
+    if div is None:
+        div_line = ("Normalized divergence: insufficient acute data — no sessions in the 7-day window, so it is "
+                    "undefined (0/0), NOT balanced. No divergence signal today in either direction.")
+    else:
+        div_line = (f"Normalized divergence {div_s} vs overtraining threshold {div_warn} (moderate-risk line {div_mod}); "
+                    f"more negative is worse — {_cmp(div, div_warn)}.")
 
     weight_change_pct_28d = current_metrics.get('weight_change_pct_28d')
     weight_line = ""
@@ -1591,8 +1673,8 @@ Assessment category: {assessment_category.upper()}
 Injury risk: {risk_s}
 External ACWR {ext_s} vs high-risk threshold {acwr_high} — {_cmp(ext, acwr_high, worse_when_below=False)}.
 Internal ACWR {intl_s} vs high-risk threshold {acwr_high} — {_cmp(intl, acwr_high, worse_when_below=False)}.
-Normalized divergence {div_s} vs overtraining threshold {div_warn} (moderate-risk line {div_mod}); more negative is worse — {_cmp(div, div_warn)}.
-Days since rest: {dsr} (mandatory-rest at >{dsr_max}).{weight_line}
+{div_line}
+Days since rest: {dsr} (mandatory-rest at >{dsr_max}).{weight_line}{projection_lines}{gate_line}
 ACTION MANDATE: {mandate}
 The weekly plan is CONDITIONAL on this verdict. If the mandate is rest/reduce, the planned session — including any scheduled test — is deferred or genuinely reduced, never executed in full and relabeled.
 """
@@ -1669,26 +1751,57 @@ _FLOOR_BY_CATEGORY = {
 UNDERFUELING_WEIGHT_DROP_PCT = -3.0
 _FLOOR_ALLOWED_ACTIONS = {
     'rest': {'rest'},
+    'recovery': {'rest', 'reduce'},
     'reduce': {'rest', 'reduce'},
     'train_allowed': {'rest', 'reduce', 'train', 'maintain'},
 }
 
+# 'recovery' floor: a 'reduce' decision must be a genuine Zone 1 easy session, not a
+# shortened tempo run. Checked against the structured decision, not the prose.
+_RECOVERY_INTENSITY_TARGETS = {'easy', 'none'}
+_RECOVERY_SESSION_INTENTS = {'easy', 'rest'}
 
-def mandated_floor(assessment_category):
-    """Return the safety floor ('rest' | 'reduce' | 'train_allowed') for a category."""
-    return _FLOOR_BY_CATEGORY.get(assessment_category, 'train_allowed')
+
+def mandated_floor(assessment_category, recovery_gate=None):
+    """Return the safety floor ('rest' | 'recovery' | 'reduce' | 'train_allowed').
+
+    overtraining_risk is rest-only unless the recovery gate passed (worst pain in the last
+    3 days < 40% and no journal-note injury signal), in which case Zone 1 easy sessions
+    are allowed ('recovery'). Decided by Rob 2026-10-12. The gate never affects any other
+    category - mandatory_rest stays rest.
+    """
+    floor = _FLOOR_BY_CATEGORY.get(assessment_category, 'train_allowed')
+    if assessment_category == 'overtraining_risk' and (recovery_gate or {}).get('passed') is True:
+        return 'recovery'
+    return floor
 
 
-def floor_violation(assessment_category, decision_action):
-    """True if the model's decision.action violates the deterministic safety floor."""
-    floor = mandated_floor(assessment_category)
-    if floor == 'train_allowed' or not decision_action:
+def floor_violation(assessment_category, decision, recovery_gate=None):
+    """True if the model's decision violates the deterministic safety floor.
+
+    `decision` is the structured decision dict, or just its action string.
+    """
+    if isinstance(decision, dict):
+        action = decision.get('action')
+    else:
+        action, decision = decision, {}
+    floor = mandated_floor(assessment_category, recovery_gate)
+    if floor == 'train_allowed' or not action:
         return False
-    return str(decision_action).strip().lower() not in _FLOOR_ALLOWED_ACTIONS[floor]
+    action = str(action).strip().lower()
+    if action not in _FLOOR_ALLOWED_ACTIONS[floor]:
+        return True
+    if floor == 'recovery' and action == 'reduce':
+        intensity = str(decision.get('intensity_target') or '').strip().lower()
+        intent = str(decision.get('polarized_session_intent') or '').strip().lower()
+        return (intensity not in _RECOVERY_INTENSITY_TARGETS
+                or intent not in _RECOVERY_SESSION_INTENTS
+                or bool(decision.get('hard_session_type')))
+    return False
 
 
-def _decision_action_of(sections):
-    """Extract decision.action from parsed sections' structured_output (dict or JSON str)."""
+def _decision_of(sections):
+    """Extract the decision dict from parsed sections' structured_output (dict or JSON str)."""
     so = sections.get('structured_output')
     if isinstance(so, str):
         try:
@@ -1696,8 +1809,13 @@ def _decision_action_of(sections):
         except Exception:
             return None
     if isinstance(so, dict):
-        return (so.get('decision') or {}).get('action')
+        return so.get('decision') or {}
     return None
+
+
+def _decision_action_of(sections):
+    """Extract decision.action from parsed sections' structured_output (dict or JSON str)."""
+    return (_decision_of(sections) or {}).get('action')
 
 
 def enforce_safety_floor(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id):
@@ -1710,10 +1828,11 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
                                                           _safe_floor_recommendation
     regenerate_fn(prompt:str) -> raw response str (path-specific call_claude / call_anthropic_api).
     """
-    if not floor_violation(floor_category, _decision_action_of(sections)):
+    gate = (current_metrics or {}).get('recovery_gate')
+    if not floor_violation(floor_category, _decision_of(sections) or {}, gate):
         return {'status': 'ok', 'sections': sections, 'response': None}
 
-    floor = mandated_floor(floor_category)
+    floor = mandated_floor(floor_category, gate)
     prior = _decision_action_of(sections)
     logger.warning(
         f"FLOOR VIOLATION user {user_id}: category={floor_category} floor={floor} action={prior} — regenerating once"
@@ -1724,6 +1843,11 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
         f"one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned training or test and prescribe rest or a "
         f"genuine reduction accordingly."
     )
+    if floor == 'recovery':
+        correction += (
+            " A 'reduce' decision is allowed only as a Zone 1 easy session: intensity_target easy, "
+            "polarized_session_intent easy, hard_session_type null."
+        )
     try:
         response2 = regenerate_fn(prompt + correction)
     except Exception as e:
@@ -1732,12 +1856,174 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
 
     if response2 and response2.strip():
         sections2 = parse_llm_response(response2.strip())
-        if not floor_violation(floor_category, _decision_action_of(sections2)):
+        if not floor_violation(floor_category, _decision_of(sections2) or {}, gate):
             logger.info(f"Floor guardrail: regeneration compliant for user {user_id}")
             return {'status': 'ok', 'sections': sections2, 'response': response2.strip()}
 
     logger.error(f"Floor guardrail: regeneration still violated floor for user {user_id}; using safe fallback")
     return {'status': 'fallback', 'sections': sections, 'response': None}
+
+
+# [DOMAIN] Journal-note injury veto for the recovery gate. Tightness, soreness and
+# swelling/edema are NOT injury signals unless the note also reports pain (Rob, 2026-10-12).
+# [COMP] One-word answer + strict parsing: anything else raises, and the gate fails safe.
+INJURY_VETO_PROMPT = """You are screening a trail runner's recent training-journal notes for an INJURY or PAIN signal.
+
+Answer YES if any note reports pain (any pain, ache described as painful, sharp/stabbing sensations, pain that
+changed how they moved) or a suspected/diagnosed injury (strain, sprain, tendinopathy, stress reaction, fracture,
+a tweak that stopped or altered a session).
+
+Answer NO when notes describe only tightness, soreness, stiffness, fatigue, heavy legs, or swelling/edema WITHOUT
+any mention of pain. Those are normal training sensations, not injury signals.
+
+Notes (date: text):
+{notes}
+
+Answer with exactly one word: YES or NO."""
+
+# Easy-session profile for the divergence projection: the athlete's own easy sessions,
+# never a population default. Lookback long enough to catch a normal training block;
+# minimum sample so one or two sessions can't define the profile.
+EASY_PROFILE_LOOKBACK_DAYS = 60
+EASY_PROFILE_MIN_SESSIONS = 5
+DIVERGENCE_PROJECTION_HORIZON_DAYS = 7
+
+
+def classify_journal_notes_for_injury(notes):
+    """LLM veto: True when any journal note signals injury or pain. Raises on an
+    unparseable answer so evaluate_recovery_gate fails safe."""
+    formatted = "\n".join(f"{d}: {text}" for d, text in notes)
+    raw = call_claude(INJURY_VETO_PROMPT.format(notes=formatted), model=MODEL_SONNET,
+                      temperature=0, max_tokens=5, task='injury_veto')
+    answer = (raw or '').strip().upper()
+    if answer.startswith('YES'):
+        return True
+    if answer.startswith('NO'):
+        return False
+    raise ValueError(f"unparseable injury-veto answer: {raw!r}")
+
+
+def _zone1_ceiling_today(user_id):
+    """Today's Zone 1 ceiling: the Zone 1/2 boundary slid by today's AeT offset (Path 2),
+    clamped above Zone 1's own floor - the same rule _build_zone_boundaries applies."""
+    from dynamic_aet import get_effective_aet
+    hr = get_user_hr_thresholds(user_id)
+    zones = (hr or {}).get('zones') or {}
+    z2_floor = (zones.get('zone2') or {}).get('min')
+    z1_floor = (zones.get('zone1') or {}).get('min')
+    if z2_floor is None:
+        return None
+    eff = get_effective_aet(user_id)
+    offset = (eff or {}).get('offset') or 0
+    ceiling = z2_floor + offset
+    if z1_floor is not None:
+        ceiling = max(ceiling, z1_floor + 1)
+    return int(round(ceiling))
+
+
+def load_recovery_gate(user_id, target_date):
+    """Evaluate the recovery gate from the athlete's journal for target_date."""
+    from recovery_gate import evaluate_recovery_gate, GATE_WINDOW_DAYS
+    target = target_date if hasattr(target_date, 'strftime') else datetime.strptime(str(target_date)[:10], '%Y-%m-%d').date()
+    if isinstance(target, datetime):
+        target = target.date()
+    rows = execute_query(
+        """
+        SELECT date, pain_percentage, notes
+        FROM journal_entries
+        WHERE user_id = %s AND date BETWEEN %s AND %s
+        """,
+        (user_id, (target - timedelta(days=GATE_WINDOW_DAYS - 1)).strftime('%Y-%m-%d'), target.strftime('%Y-%m-%d')),
+        fetch=True
+    ) or []
+    gate = evaluate_recovery_gate(rows, target, classify_journal_notes_for_injury)
+    gate['zone1_ceiling_bpm'] = _zone1_ceiling_today(user_id) if gate['passed'] else None
+    return gate
+
+
+def load_divergence_projection(user_id, current_metrics):
+    """Project divergence under rest and under the athlete's own easy sessions, using the
+    athlete's production ACWR method. Returns a JSON-safe dict for current_metrics."""
+    from divergence_projection import project_divergence
+    from acwr_configuration_service import ACWRConfigurationService
+    from utils.feature_flags import is_feature_enabled
+
+    as_of_raw = current_metrics.get('latest_activity_date')
+    if not as_of_raw:
+        return None
+    as_of = datetime.strptime(str(as_of_raw)[:10], '%Y-%m-%d').date()
+
+    method = {'kind': 'standard'}
+    chronic_days = 28
+    if is_feature_enabled('enhanced_acwr_calculation', user_id):
+        config = ACWRConfigurationService().get_user_configuration(user_id)
+        if config:
+            chronic_days = config['chronic_period_days']
+            method = {'kind': 'enhanced', 'chronic_period_days': chronic_days,
+                      'decay_rate': config['decay_rate']}
+
+    lookback = max(chronic_days, EASY_PROFILE_LOOKBACK_DAYS)
+    rows = execute_query(
+        """
+        SELECT date, type, total_load_miles, trimp,
+               time_in_zone1, time_in_zone2, time_in_zone3, time_in_zone4, time_in_zone5
+        FROM activities
+        WHERE user_id = %s AND date BETWEEN %s AND %s
+        """,
+        (user_id, (as_of - timedelta(days=lookback)).strftime('%Y-%m-%d'), as_of.strftime('%Y-%m-%d')),
+        fetch=True
+    ) or []
+    daily = [(r['date'], r['total_load_miles'] or 0.0, r['trimp'] or 0.0) for r in rows]
+
+    def _path(scenario):
+        return [{'date': p['date'].isoformat(), 'normalized_divergence': p['normalized_divergence']}
+                for p in project_divergence(daily, as_of, method, scenario,
+                                            horizon=DIVERGENCE_PROJECTION_HORIZON_DAYS)[1:]]
+
+    easy_start = as_of - timedelta(days=EASY_PROFILE_LOOKBACK_DAYS)
+    easy = [r for r in rows
+            if r['date'] >= easy_start and r.get('type') != 'rest'
+            and (r['total_load_miles'] or 0) > 0 and (r['trimp'] or 0) > 0
+            and _classify_activity_intensity(r) == 'Easy/Recovery']
+    projection = {'horizon': DIVERGENCE_PROJECTION_HORIZON_DAYS, 'method': method['kind'],
+                  'as_of': as_of.isoformat(), 'rest': _path({'kind': 'rest'}),
+                  'easy': None, 'easy_profile': None, 'easy_unavailable_reason': None}
+    if len(easy) >= EASY_PROFILE_MIN_SESSIONS:
+        load = statistics.median(r['total_load_miles'] for r in easy)
+        ratio = statistics.median(r['trimp'] / r['total_load_miles'] for r in easy)
+        projection['easy_profile'] = {'load': round(load, 2), 'trimp_per_load': round(ratio, 2), 'n': len(easy)}
+        projection['easy'] = _path({'kind': 'easy', 'load': load, 'trimp_per_load': ratio})
+    else:
+        projection['easy_unavailable_reason'] = (
+            f"fewer than {EASY_PROFILE_MIN_SESSIONS} easy sessions in the last {EASY_PROFILE_LOOKBACK_DAYS} days "
+            f"({len(easy)} found)")
+    return projection
+
+
+def prepare_daily_floor(user_id, current_metrics, recommendation_style, target_date):
+    """Single place every daily generator derives its safety-floor category.
+
+    Also attaches, once per generation, the two facts the verdict block and the guardrail
+    must agree on: the divergence projection and (only under overtraining_risk) the
+    recovery gate. Both live in current_metrics, so they are saved in metrics_snapshot.
+    Failure to compute either degrades safely: no projection lines, and no gate = rest floor.
+    """
+    floor_thresholds = apply_athlete_model_to_thresholds(
+        get_adjusted_thresholds(recommendation_style), user_id
+    )
+    category = derive_assessment_category(current_metrics, floor_thresholds)
+    try:
+        current_metrics['divergence_projection'] = load_divergence_projection(user_id, current_metrics)
+    except Exception as e:
+        logger.error(f"Divergence projection failed for user {user_id}: {e}", exc_info=True)
+        current_metrics['divergence_projection'] = None
+    if category == 'overtraining_risk':
+        try:
+            current_metrics['recovery_gate'] = load_recovery_gate(user_id, target_date)
+        except Exception as e:
+            logger.error(f"Recovery gate failed for user {user_id}; floor stays rest: {e}", exc_info=True)
+            current_metrics['recovery_gate'] = None
+    return category
 
 
 def finalize_recommendation(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id, target_date_str):
@@ -2669,12 +2955,25 @@ def _safe_floor_recommendation(assessment_category, current_metrics, target_date
     floor. Emits a plain rest/reduce recommendation grounded in the verdict — never a
     training day when the floor mandates rest. Last line of defense, not the normal path.
     """
-    floor = mandated_floor(assessment_category)
+    gate = current_metrics.get('recovery_gate')
+    floor = mandated_floor(assessment_category, gate)
     ext = current_metrics.get('external_acwr')
     intl = current_metrics.get('internal_acwr')
     div = current_metrics.get('normalized_divergence')
     cat_words = assessment_category.replace('_', ' ')
-    if floor == 'rest':
+    decision = None
+    if floor == 'recovery':
+        action = 'reduce'
+        ceiling = (gate or {}).get('zone1_ceiling_bpm')
+        hr_cap = f"heart rate under {ceiling} bpm" if ceiling else "a truly conversational effort"
+        prose = (f"DAILY RECOMMENDATION\n\nZone 1 recovery only today. Divergence ({div}) is past your breakdown "
+                 f"threshold, and rest alone will not bring it back - it changes only as older sessions leave the "
+                 f"7-day window. With no pain or injury signal in your recent journal, an easy Zone 1 session "
+                 f"({hr_cap}, no strides, no quality work) is the way back. Defer any planned quality session or "
+                 f"test. Log how you feel afterward - it shapes tomorrow's prescription.")
+        decision = {'action': 'reduce', 'intensity_target': 'easy',
+                    'polarized_session_intent': 'easy', 'hard_session_type': None}
+    elif floor == 'rest':
         action = 'rest'
         prose = (f"DAILY RECOMMENDATION\n\nToday is a rest day. Your metrics ({cat_words}) place you beyond your "
                  f"safe training threshold — external ACWR {ext}, internal ACWR {intl}, divergence {div}. Any planned "
@@ -2691,7 +2990,7 @@ def _safe_floor_recommendation(assessment_category, current_metrics, target_date
     structured = {
         'target_date': target_date_str,
         'assessment': {'category': assessment_category, 'primary_signal': 'divergence'},
-        'decision': {'action': action},
+        'decision': decision or {'action': action},
         'meta': {'source': 'floor_guardrail_fallback'},
     }
     return {
@@ -4896,11 +5195,11 @@ def generate_autopsy_informed_daily_decision(user_id, target_date=None, autopsy_
         if autopsy_insights is None:
             autopsy_insights = get_recent_autopsy_insights(user_id, days=3)
 
-        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds).
-        floor_thresholds = apply_athlete_model_to_thresholds(
-            get_adjusted_thresholds(get_user_recommendation_style(user_id)), user_id
+        # Deterministic safety floor for the post-generation guardrail (calibrated thresholds),
+        # plus the divergence projection and recovery gate the verdict and guardrail share.
+        floor_category = prepare_daily_floor(
+            user_id, current_metrics, get_user_recommendation_style(user_id), target_date
         )
-        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
 
         # Create enhanced prompt that includes autopsy learning
         prompt = create_autopsy_informed_decision_prompt(
@@ -5771,10 +6070,9 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # thresholds) — computed unconditionally, same as the standard and
         # autopsy-informed paths, via the single-authority classifier so this path
         # can't drift from theirs on boundary conditions or category coverage.
-        floor_thresholds = apply_athlete_model_to_thresholds(
-            get_adjusted_thresholds(get_user_recommendation_style(user_id)), user_id
+        floor_category = prepare_daily_floor(
+            user_id, current_metrics, get_user_recommendation_style(user_id), target_date
         )
-        floor_category = derive_assessment_category(current_metrics, floor_thresholds)
 
         ext_acwr = current_metrics.get('external_acwr', 0) or 0
         int_acwr = current_metrics.get('internal_acwr', 0) or 0

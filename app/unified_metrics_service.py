@@ -508,7 +508,8 @@ class UnifiedMetricsService:
             days_max = thresholds['days_since_rest_max']
 
             avg_acwr = ((metrics['external_acwr'] or 0) + (metrics['internal_acwr'] or 0)) / 2
-            divergence = metrics['normalized_divergence'] or 0
+            # None = empty acute window: no divergence signal, no divergence contribution.
+            divergence = metrics['normalized_divergence']
             days_rest = metrics['days_since_rest']
 
             risk_score = 0
@@ -522,7 +523,9 @@ class UnifiedMetricsService:
             elif avg_acwr > acwr_undertraining:
                 risk_score += 10
             # Divergence contribution (40%): extra 0.10 below overtraining threshold = extreme
-            if divergence < div_overtraining - 0.10:
+            if divergence is None:
+                pass
+            elif divergence < div_overtraining - 0.10:
                 risk_score += 40
             elif divergence < div_overtraining:
                 risk_score += 30
@@ -673,18 +676,16 @@ class UnifiedMetricsService:
             internal_acwr (float): Internal ACWR value (a 7d/28d TRIMP ratio)
 
         Returns:
-            float: Normalized divergence value
+            float | None: Normalized divergence value, or None when undefined. Both
+            ACWRs at 0 means an empty acute window (0/0): undefined, not "balanced".
         """
         try:
             if external_acwr is None or internal_acwr is None:
                 return None
 
-            if external_acwr == 0 and internal_acwr == 0:
-                return 0
-
             avg_acwr = (external_acwr + internal_acwr) / 2
             if avg_acwr == 0:
-                return 0
+                return None
 
             divergence = (external_acwr - internal_acwr) / avg_acwr
             return round(divergence, 3)

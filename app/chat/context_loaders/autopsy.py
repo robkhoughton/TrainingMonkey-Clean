@@ -112,7 +112,8 @@ def _load_metrics_for_date(user_id: int, date: str) -> dict:
         return {
             'external_acwr': round(metrics.get('external_acwr', 0), 2),
             'internal_acwr': round(metrics.get('internal_acwr', 0), 2),
-            'normalized_divergence': round(metrics.get('normalized_divergence', 0), 3),
+            'normalized_divergence': (round(metrics['normalized_divergence'], 3)
+                                      if metrics.get('normalized_divergence') is not None else None),
             'days_since_rest': metrics.get('days_since_rest', 0),
         }
     except Exception as e:
