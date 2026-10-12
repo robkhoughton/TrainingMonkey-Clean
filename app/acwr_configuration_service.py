@@ -315,7 +315,7 @@ class ACWRConfigurationService:
             
             # Calculate chronic averages using exponential decay engine
             chronic_result = decay_engine.calculate_weighted_averages(
-                chronic_activities, date_obj, decay_rate
+                chronic_activities, date_obj, decay_rate, chronic_days
             )
             
             chronic_load_avg = chronic_result.weighted_load_avg
