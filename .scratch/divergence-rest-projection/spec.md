@@ -57,6 +57,15 @@ the 42-day decay configuration when the projection is built.
    will and won't do, and can't promise that rest will normalize divergence.
 3. **Domain glossary correction.** Add "rest clears divergence" to the recorded misreadings of
    Normalized Divergence in the domain glossary, together with the identity above.
+4. **Zone 1 recovery is allowed under a divergence breach when the athlete isn't hurting.**
+   Under `overtraining_risk`, the safety floor allows Zone 1 easy sessions (not just rest) when
+   both of these hold:
+   - the worst Pain Score in the last 3 days is below 40%
+   - no journal note in the last 3 days, including rest-day notes, signals injury or pain
+   
+   Otherwise the floor stays rest-only. Zone 1 easy sessions are the action the projection shows
+   actually clears a breach caused by session mix, so the Rx can now prescribe the way out
+   instead of a rest loop. Decided by Rob 2026-10-12.
 
 ## User Stories
 
@@ -80,6 +89,14 @@ the 42-day decay configuration when the projection is built.
 18. As the developer, I want the glossary to record "rest clears divergence" as a known misreading with the identity behind it, so that future sessions (human or model) don't reintroduce it.
 19. As the developer, I want the verdict block to stay compact, so that the projection adds one or two lines of facts, not a table that crowds out the rest of the prompt.
 20. As a future maintainer, I want the projection horizon and the easy-profile derivation documented with their rationale, so that I can change them deliberately rather than by accident.
+21. As an athlete past my divergence breakdown threshold with no pain and no injury, I want the Rx to allow Zone 1 easy sessions, so that I can clear a breach caused by session mix instead of resting into a deeper breach.
+22. As an athlete who reported pain of 40% or more in the last 3 days, I want the floor to stay rest-only under a divergence breach, so that a mechanical problem isn't trained through.
+23. As an athlete who notes an injury or pain signal in a rest-day journal note, I want that note to be checked too, so that the app doesn't miss a warning just because I didn't run that day.
+24. As an athlete with no pain readings in the last 3 days, I want the floor to stay rest-only, so that missing data is never read as "pain-free".
+25. As an athlete allowed Zone 1, I want my Zone 1 HR ceiling stated in the Rx, so that "easy" has a number I can hold to.
+26. As the developer, I want the guardrail to reject a "reduce" decision that is really a shortened tempo run under the new recovery floor, so that Zone 1 is enforced, not just requested.
+27. As the developer, I want the journal-note injury check to be able to tighten the floor but never loosen it, so that LLM fallibility can only err toward rest.
+28. As the developer, I want a failure of the journal-note injury check (error, timeout, unparseable output) to leave the floor rest-only, so that the check fails safe.
 
 ## Implementation Decisions
 
@@ -140,6 +157,35 @@ the 42-day decay configuration when the projection is built.
 - **Domain glossary.** Add a fourth entry to the Normalized Divergence *Avoid (semantics)* block:
   "Treating rest as a way to clear divergence". Include the identity, note that rest only moves
   divergence through window turnover, and explain that the empty-window state is undefined, not 0.
+- **Safety floor for `overtraining_risk` becomes conditional** (category 2, decided by Rob
+  2026-10-12). The floor is computed server-side from two deterministic-first gates:
+  - **Pain gate.** The maximum Pain Score (`pain_percentage`) across journal entries dated within
+    the last 3 days must be below 40%. At least one non-null reading must exist in that window.
+    With no readings, the gate fails and the floor stays `rest`. The 40% line is the guide's
+    "Tolerable — consider modifying" step on the Pain Score scale, where Zone 1 counts as a
+    modification. It's also the point where the fallback alignment note already fires.
+  - **Journal-note injury veto.** An LLM classification reads the free-text journal notes from
+    the last 3 days, rest days included, and answers whether any note signals injury or pain.
+    A positive answer fails the gate. Tightness, soreness and swelling/edema are *not* injury
+    signals unless the note also reports pain (decided by Rob 2026-10-12). The classifier prompt
+    states this rule explicitly, as `[DOMAIN]`. The veto can only tighten the floor, never loosen it. An
+    error, timeout or unparseable answer counts as positive (fail safe). The existing
+    autopsy-extracted `injury_or_pain_notes` is not the source here, because autopsies run only
+    on session days and miss rest-day notes.
+  - Both gates pass → floor `recovery`. Either fails → floor `rest`. `mandatory_rest` (days
+    since rest over the maximum) is unchanged and still rest-only. It is checked first, so the
+    recovery floor can never override it.
+- **New floor tier `recovery`.** Allowed: `decision.action` of `rest`, or `reduce` with
+  `intensity_target` at the easy/recovery end, `polarized_session_intent` easy, and no
+  `hard_session_type`. A `reduce` decision carrying a hard session or moderate-or-above intensity
+  violates the floor and goes through the existing regenerate-once-then-fallback path. Checking
+  the prose itself is still the separate Landing Strip item (the safety-floor prose check) and
+  is not part of this spec.
+- **Zone 1 ceiling stated as fact.** When the floor is `recovery`, the verdict block states the
+  athlete's Zone 1 HR ceiling (from the athlete's computed HR zones, never re-derived by the
+  model) and which gate result allowed it. When the floor is `rest`, the verdict names the gate
+  that failed (pain value, journal-note veto, or no pain readings). The `overtraining_risk`
+  mandate text splits into two variants matching the two floors.
 
 ## Testing Decisions
 
@@ -168,6 +214,18 @@ the 42-day decay configuration when the projection is built.
     per load-mile, and improves it when they are the most expensive.
 - **Canonical calculation:** a unit test that both-zero ACWRs give undefined, for both the
   Banister and dynamic-AeT divergence functions.
+- **Safety floor (extend the safety-floor tests):**
+  - `overtraining_risk` with max pain 0–39% and a negative veto → floor `recovery`; `reduce` +
+    easy intensity + no hard session passes; `reduce` + tempo/hard session is a violation; `train`
+    is a violation
+  - pain exactly 40% → floor `rest` (boundary uses `<`)
+  - no pain readings in the 3-day window → floor `rest`
+  - veto positive, or veto errors → floor `rest`
+  - `mandatory_rest` stays `rest` whatever the gates say
+- **Journal-note veto:** tested at its boundary with the LLM call stubbed. The fail-safe paths
+  (exception, unparseable output) must give "positive". The classifier's own judgement on real
+  notes is checked with a small labelled fixture of journal notes, kept separate from the
+  deterministic suite.
 - **Prior art:**
   - the metric-verdict tests (fixture `metrics()` builder + thresholds dict)
   - the safety-floor tests (numeric repair against `metrics_snapshot`)
@@ -175,16 +233,14 @@ the 42-day decay configuration when the projection is built.
 
 ## Out of Scope
 
-- **Changing the `overtraining_risk` safety floor.** Today the floor allows only `rest`, while
-  the mandate text says "REST or very-light recovery only (Zone 1)". The projection shows that
-  Zone 1 easy sessions are what clear a mix-driven breach. Widening the floor to allow `reduce`
-  is a category-2 safety decision and needs Rob's explicit call. This spec only surfaces the
-  projection as fact.
+- **A structured "active injury" journal field.** Considered and not chosen. The pain gate plus
+  the journal-note veto cover it without a schema or UI change.
+- **Checking the prose against the floor.** Tracked separately on the Landing Strip.
 - **Telling a mix-driven breach apart from a fatigue-driven one** (e.g. discounting a planned test
   session). That would change what the metric means, and the glossary warns against changing the
   metric's definition on a single event.
-- **The enhanced path's per-row chronic average.** Queued separately in
-  `.scratch/enhanced-acwr-chronic-per-day/`.
+- **The enhanced path's per-row chronic average.** Fixed and shipped separately (commit
+  `9e5687a`, see `.scratch/enhanced-acwr-chronic-per-day/`).
 - Any frontend redesign beyond rendering a gap for undefined divergence.
 
 ## Further Notes
@@ -195,6 +251,8 @@ the 42-day decay configuration when the projection is built.
 - Today's journal for user 1 also reported bilateral lower-leg edema and calf tightness. These are
   independent signals that may justify rest on their own; the problem here is only that rest
   was justified *by divergence*, with a reassessment divergence couldn't meet.
-- Open question for Rob (not blocking this spec): once the projection is in the prompt, should
-  `overtraining_risk` with a mix-driven breach mandate Zone 1 easy sessions instead of full
-  rest? See Out of Scope.
+- Veto calibration reference case: user 1's 2026-10-11 note ("Mild tightness in right calf.
+  Minor bilateral lower leg edema.") is labelled **negative** (no injury signal: tightness and
+  edema without pain). With pain 0% on 10/10, 2026-10-12 would have been floor `recovery` (Zone 1
+  allowed). The labelled fixture also needs positive cases that mention pain explicitly (e.g.
+  "sharp pain in left Achilles on the climbs").
