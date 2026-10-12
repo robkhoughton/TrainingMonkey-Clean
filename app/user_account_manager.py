@@ -1,185 +1,24 @@
 """
 User Account Manager Module
 
-This module handles the complete user account creation process, integrating with:
-- Registration validation
-- Legal compliance tracking
-- Password generation
-- Account status management
-- Onboarding progress tracking
+Account status and onboarding progress tracking for existing users.
+Accounts are created through Strava OAuth (see /oauth-callback in strava_app.py).
 """
 
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Tuple
-from flask import request
-from werkzeug.security import generate_password_hash
+from typing import Dict
 
-# Import existing modules
-from auth import User
-from registration_validation import registration_validator
 from legal_compliance import get_legal_compliance_tracker
-from legal_document_versioning import get_current_legal_versions
-from db_utils import execute_query, get_db_connection
+from db_utils import execute_query
 
 logger = logging.getLogger(__name__)
 
 class UserAccountManager:
-    """Manages user account creation and status tracking"""
+    """Manages account status and onboarding progress for existing users"""
     
     def __init__(self):
         self.compliance_tracker = get_legal_compliance_tracker()
-    
-    def create_new_user_account(self, email: str, password: str, 
-                               legal_acceptances: Dict[str, bool] = None) -> Tuple[bool, Optional[int], str]:
-        """
-        Create a new user account with full registration process
-        
-        Args:
-            email: User's email address
-            password: User's password
-            legal_acceptances: Dictionary of legal document acceptances
-            
-        Returns:
-            Tuple of (success, user_id, error_message)
-        """
-        try:
-            # Validate input
-            if not email or not password:
-                return False, None, "Email and password are required"
-            
-            # Check if user already exists
-            existing_user = User.get_by_email(email)
-            if existing_user:
-                return False, None, "An account with this email address already exists"
-            
-            # Get current legal versions
-            current_versions = get_current_legal_versions()
-            
-            # Create user account with initial status
-            user_id = self._create_user_record(email, password, current_versions)
-            
-            if not user_id:
-                return False, None, "Failed to create user account"
-            
-            # Log legal acceptances if provided
-            if legal_acceptances:
-                self._log_legal_acceptances(user_id, legal_acceptances, current_versions)
-            
-            # Initialize onboarding progress
-            self._initialize_onboarding_progress(user_id)
-            
-            # Log successful account creation
-            logger.info(f"Successfully created new user account: {email} (ID: {user_id})")
-            
-            return True, user_id, ""
-            
-        except Exception as e:
-            logger.error(f"Error creating user account: {str(e)}")
-            return False, None, "Unable to create account. Please try again."
-    
-    def _create_user_record(self, email: str, password: str, 
-                           legal_versions: Dict[str, str]) -> Optional[int]:
-        """
-        Create the user record in the database
-        
-        Args:
-            email: User's email address
-            password: User's password
-            legal_versions: Current legal document versions
-            
-        Returns:
-            User ID if successful, None otherwise
-        """
-        try:
-            password_hash = generate_password_hash(password)
-            current_time = datetime.now()
-            
-            # Build the insert query with all new fields
-            query = """
-                INSERT INTO user_settings (
-                    email, password_hash, account_status, onboarding_step,
-                    terms_accepted_version, privacy_accepted_version, disclaimer_accepted_version,
-                    terms_accepted_date, privacy_accepted_date, disclaimer_accepted_date,
-                    created_at, updated_at
-                ) VALUES (%s)
-                RETURNING id
-            """
-            
-            params = (
-                email, password_hash, 'pending', 'registration_complete',
-                legal_versions.get('terms'), legal_versions.get('privacy'), legal_versions.get('disclaimer'),
-                current_time, current_time, current_time,
-                current_time, current_time
-            )
-            
-            result = execute_query_for_onboarding(query, params, fetch=True)
-            
-            if result and len(result) > 0:
-                user_id = result[0]['id']
-                
-                # Notify admin of new user registration
-                try:
-                    from admin_notifications import notify_admin_of_new_user
-                    notify_admin_of_new_user(user_id, email)
-                except Exception as e:
-                    logger.warning(f"Failed to send admin notification: {str(e)}")
-                
-                return user_id
-            else:
-                logger.error("No user ID returned from database insert")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Database error creating user record: {str(e)}")
-            return None
-    
-    def _log_legal_acceptances(self, user_id: int, legal_acceptances: Dict[str, bool], 
-                              current_versions: Dict[str, str]):
-        """
-        Log legal document acceptances for the user
-        
-        Args:
-            user_id: User ID
-            legal_acceptances: Dictionary of legal acceptances
-            current_versions: Current legal document versions
-        """
-        try:
-            ip_address = request.remote_addr
-            user_agent = request.headers.get('User-Agent', '')
-            
-            for doc_type, accepted in legal_acceptances.items():
-                if accepted and doc_type in current_versions:
-                    self.compliance_tracker.log_user_legal_acceptance(
-                        user_id, doc_type, current_versions[doc_type],
-                        ip_address, user_agent
-                    )
-                    
-        except Exception as e:
-            logger.error(f"Error logging legal acceptances: {str(e)}")
-    
-    def _initialize_onboarding_progress(self, user_id: int):
-        """
-        Initialize onboarding progress for new user
-        
-        Args:
-            user_id: User ID
-        """
-        try:
-            # Set initial onboarding step
-            query = """
-                UPDATE user_settings 
-                SET %s = %s
-                WHERE id = %s
-            """
-            
-            current_time = datetime.now()
-            execute_query(query, ('registration_complete', current_time, user_id))
-            
-            logger.info(f"Initialized onboarding progress for user {user_id}")
-            
-        except Exception as e:
-            logger.error(f"Error initializing onboarding progress: {str(e)}")
     
     def activate_user_account(self, user_id: int) -> bool:
         """

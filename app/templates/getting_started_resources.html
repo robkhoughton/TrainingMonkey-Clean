@@ -71,11 +71,11 @@
                             </div>
                             {% elif user_context and user_context.onboarding_step == 'welcome' %}
                             <div class="step-action">
-                                <a href="/signup" class="btn btn-primary btn-prominent">Create Account</a>
+                                <a href="/auth/strava-signup" class="btn btn-primary btn-prominent">Create Account</a>
                             </div>
                             {% elif not user_context or not user_context.is_authenticated %}
                             <div class="step-action">
-                                <a href="/signup" class="btn btn-primary btn-prominent">Create Account</a>
+                                <a href="/auth/strava-signup" class="btn btn-primary btn-prominent">Create Account</a>
                             </div>
                             {% endif %}
                         </div>
@@ -185,7 +185,7 @@
                             </div>
                             {% elif not user_context or not user_context.is_authenticated %}
                             <div class="step-action">
-                                <a href="/signup" class="btn btn-primary btn-prominent">Get Started</a>
+                                <a href="/auth/strava-signup" class="btn btn-primary btn-prominent">Get Started</a>
                             </div>
                             {% endif %}
                         </div>
@@ -236,7 +236,7 @@
                             </div>
                             {% elif not user_context or not user_context.is_authenticated %}
                             <div class="step-action">
-                                <a href="/signup" class="btn btn-primary btn-prominent">Get Started</a>
+                                <a href="/auth/strava-signup" class="btn btn-primary btn-prominent">Get Started</a>
                             </div>
                             {% endif %}
                         </div>
