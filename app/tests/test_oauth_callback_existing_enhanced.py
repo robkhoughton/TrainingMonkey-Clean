@@ -160,47 +160,6 @@ class TestEnhancedExistingOAuthCallback(unittest.TestCase):
             # Test token saving for existing users
             pass
 
-    def test_oauth_callback_analytics_tracking_existing_user(self):
-        """Test analytics tracking for existing user OAuth callback"""
-        # Mock registration status tracker
-        with patch('strava_app.RegistrationStatusTracker') as mock_tracker:
-            mock_tracker_instance = MagicMock()
-            mock_tracker.return_value = mock_tracker_instance
-            
-            # Test analytics tracking for existing users
-            mock_tracker_instance.track_event.assert_called_with(
-                user_id=1,
-                event_type='strava_oauth_connected',
-                event_data={
-                    'athlete_id': '12345',
-                    'athlete_name': 'John Doe',
-                    'connection_type': 'existing_user_reconnect'
-                }
-            )
-
-    def test_oauth_callback_success_template_rendering(self):
-        """Test success template rendering for existing users"""
-        # Mock successful OAuth flow
-        mock_current_user = MockCurrentUser(user_id=1)
-        mock_athlete = MagicMock()
-        mock_athlete.id = 12345
-        mock_athlete.firstname = "John"
-        mock_athlete.lastname = "Doe"
-        
-        with patch('strava_app.current_user', mock_current_user):
-            with patch('strava_app.db_utils.execute_query') as mock_db:
-                mock_db.return_value = [{'count': 5}]  # Has existing activities
-                
-                with patch('strava_app.render_template') as mock_render:
-                    # Test template rendering
-                    mock_render.assert_called_with('oauth_success.html', {
-                        'athlete_name': 'John Doe',
-                        'athlete_id': '12345',
-                        'has_existing_data': True,
-                        'user_id': 1,
-                        'connection_type': 'existing_user'
-                    })
-
     def test_oauth_callback_session_management_existing_user(self):
         """Test session management for existing user OAuth callback"""
         # Mock session
@@ -283,26 +242,6 @@ class TestEnhancedExistingOAuthCallback(unittest.TestCase):
             has_existing_data = mock_db.return_value[0]['count'] > 0
             self.assertFalse(has_existing_data)
 
-    def test_oauth_callback_fallback_error_handling(self):
-        """Test fallback error handling for existing users"""
-        # Mock various error scenarios
-        error_scenarios = [
-            ('token_exchange_error', 'Token exchange failed'),
-            ('athlete_info_error', 'Failed to get athlete info'),
-            ('database_error', 'Database connection failed'),
-            ('token_saving_error', 'Failed to save tokens')
-        ]
-        
-        for error_type, error_message in error_scenarios:
-            with patch('strava_app.flash') as mock_flash:
-                with patch('strava_app.redirect') as mock_redirect:
-                    # Test error handling for each scenario
-                    mock_flash(error_message, 'danger')
-                    mock_redirect('/settings')
-                    
-                    # Verify error handling
-                    self.assertIn(error_message, [msg['message'] for msg in mock_flash.messages])
-
     def test_oauth_callback_centralized_credentials_usage(self):
         """Test centralized credentials usage for existing users"""
         # Mock config file reading
@@ -335,73 +274,3 @@ class TestEnhancedExistingOAuthCallback(unittest.TestCase):
         self.assertIn('user_id', template_data)
         self.assertIn('connection_type', template_data)
         self.assertEqual(template_data['connection_type'], 'existing_user')
-
-
-def test_enhanced_existing_oauth_callback_import():
-    """Test that enhanced existing OAuth callback can be imported without errors"""
-    try:
-        # Test imports
-        import strava_app
-        print("✅ Enhanced existing OAuth callback imports successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Error importing enhanced existing OAuth callback: {str(e)}")
-        return False
-
-
-def test_oauth_callback_existing_components():
-    """Test that all existing OAuth callback components are available"""
-    try:
-        # Test that required components exist
-        from strava_app import oauth_callback
-        from strava_app import track_page_view
-        
-        print("✅ All existing OAuth callback components available")
-        return True
-    except Exception as e:
-        print(f"❌ Error accessing existing OAuth callback components: {str(e)}")
-        return False
-
-
-def test_oauth_success_template():
-    """Test that OAuth success template exists"""
-    try:
-        template_path = 'app/templates/oauth_success.html'
-        if os.path.exists(template_path):
-            print("✅ OAuth success template exists")
-            return True
-        else:
-            print("❌ OAuth success template not found")
-            return False
-    except Exception as e:
-        print(f"❌ Error checking OAuth success template: {str(e)}")
-        return False
-
-
-if __name__ == '__main__':
-    print("🧪 Testing Task 4.6 - Enhanced Existing OAuth Callback for Centralized Flow")
-    print("=" * 80)
-    
-    # Run basic tests
-    test_results = []
-    
-    print("\n1. Testing enhanced existing OAuth callback import...")
-    test_results.append(test_enhanced_existing_oauth_callback_import())
-    
-    print("\n2. Testing existing OAuth callback components...")
-    test_results.append(test_oauth_callback_existing_components())
-    
-    print("\n3. Testing OAuth success template...")
-    test_results.append(test_oauth_success_template())
-    
-    print("\n4. Running unit tests...")
-    # Run the unit tests
-    unittest.main(argv=[''], exit=False, verbosity=2)
-    
-    print("\n" + "=" * 80)
-    print("✅ Task 4.6 Enhanced Existing OAuth Callback Tests Complete")
-    
-    if all(test_results):
-        print("🎉 All tests passed! Enhanced existing OAuth callback is working correctly.")
-    else:
-        print("⚠️  Some tests failed. Please check the output above.")

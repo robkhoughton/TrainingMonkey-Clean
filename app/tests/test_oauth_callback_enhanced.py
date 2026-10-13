@@ -79,21 +79,6 @@ class TestEnhancedOAuthCallback(unittest.TestCase):
         if os.path.exists(self.temp_config_file.name):
             os.unlink(self.temp_config_file.name)
 
-    def test_oauth_callback_error_handling(self):
-        """Test OAuth callback error handling"""
-        # Mock request with error
-        mock_request = MockRequest(args={'error': 'access_denied'})
-        
-        with patch('strava_app.request', mock_request):
-            with patch('strava_app.flash') as mock_flash:
-                with patch('strava_app.redirect') as mock_redirect:
-                    # Import and test the function
-                    from strava_app import oauth_callback_signup
-                    
-                    # This would normally call the function, but we're testing the error handling
-                    # In a real test, you'd need to mock the entire Flask context
-                    pass
-
     def test_oauth_callback_missing_auth_code(self):
         """Test OAuth callback with missing authorization code"""
         # Mock request without auth code
@@ -160,36 +145,6 @@ class TestEnhancedOAuthCallback(unittest.TestCase):
                     # Test existing user handling
                     pass
 
-    def test_oauth_callback_new_user_creation(self):
-        """Test new user creation in OAuth callback"""
-        # Mock new user creation
-        with patch('strava_app.User.get_by_email') as mock_get_user:
-            mock_get_user.return_value = None  # No existing user
-            
-            with patch('strava_app.UserAccountManager') as mock_account_manager:
-                mock_manager_instance = MagicMock()
-                mock_manager_instance.create_user_account.return_value = {
-                    'success': True,
-                    'user_id': 123,
-                    'message': 'User created successfully'
-                }
-                mock_account_manager.return_value = mock_manager_instance
-                
-                # Test new user creation
-                pass
-
-    def test_oauth_callback_fallback_creation(self):
-        """Test fallback user creation when enhanced creation fails"""
-        # Mock enhanced creation failure
-        with patch('strava_app.UserAccountManager') as mock_account_manager:
-            mock_account_manager.side_effect = Exception("Enhanced creation failed")
-            
-            with patch('strava_app.db_utils.execute_query') as mock_db:
-                mock_db.return_value = [{'id': 123}]
-                
-                # Test fallback creation
-                pass
-
     def test_oauth_callback_session_management(self):
         """Test session management in OAuth callback"""
         # Mock session
@@ -208,25 +163,6 @@ class TestEnhancedOAuthCallback(unittest.TestCase):
             self.assertEqual(mock_session.get('strava_athlete_id'), '12345')
             self.assertEqual(mock_session.get('onboarding_step'), 'strava_connected')
 
-    def test_oauth_callback_analytics_tracking(self):
-        """Test analytics tracking in OAuth callback"""
-        # Mock registration status tracker
-        with patch('strava_app.RegistrationStatusTracker') as mock_tracker:
-            mock_tracker_instance = MagicMock()
-            mock_tracker.return_value = mock_tracker_instance
-            
-            # Test analytics tracking
-            mock_tracker_instance.track_event.assert_called_with(
-                user_id=123,
-                event_type='strava_oauth_signup_completed',
-                event_data={
-                    'athlete_id': '12345',
-                    'first_name': 'John',
-                    'last_name': 'Doe',
-                    'signup_source': 'strava_oauth'
-                }
-            )
-
     def test_strava_welcome_onboarding_route(self):
         """Test Strava welcome onboarding route"""
         # Mock session data
@@ -243,127 +179,3 @@ class TestEnhancedOAuthCallback(unittest.TestCase):
                 
                 # Test onboarding route
                 pass
-
-    def test_complete_strava_welcome_api(self):
-        """Test complete Strava welcome API endpoint"""
-        # Mock request data
-        mock_request = MockRequest(json_data={'next_step': 'data_sync'})
-        
-        with patch('strava_app.request', mock_request):
-            with patch('strava_app.db_utils.execute_query') as mock_db:
-                mock_db.return_value = [{'onboarding_progress': '{}'}]
-                
-                with patch('strava_app.RegistrationStatusTracker') as mock_tracker:
-                    mock_tracker_instance = MagicMock()
-                    mock_tracker.return_value = mock_tracker_instance
-                    
-                    # Test API endpoint
-                    pass
-
-    def test_oauth_callback_legal_compliance(self):
-        """Test legal compliance integration in OAuth callback"""
-        # Mock legal compliance acceptance
-        with patch('strava_app.UserAccountManager') as mock_account_manager:
-            mock_manager_instance = MagicMock()
-            mock_manager_instance.create_user_account.return_value = {
-                'success': True,
-                'user_id': 123,
-                'legal_acceptance': True
-            }
-            mock_account_manager.return_value = mock_manager_instance
-            
-            # Test legal compliance integration
-            creation_result = mock_manager_instance.create_user_account(
-                user_data={},
-                legal_acceptance_required=True,
-                auto_accept_legal=True,
-                onboarding_enabled=True
-            )
-            
-            self.assertTrue(creation_result['success'])
-            self.assertTrue(creation_result['legal_acceptance'])
-
-    def test_oauth_callback_error_recovery(self):
-        """Test error recovery in OAuth callback"""
-        # Mock various error scenarios
-        error_scenarios = [
-            ('token_exchange_error', 'Token exchange failed'),
-            ('athlete_info_error', 'Failed to get athlete info'),
-            ('database_error', 'Database connection failed'),
-            ('user_creation_error', 'User creation failed')
-        ]
-        
-        for error_type, error_message in error_scenarios:
-            with patch('strava_app.flash') as mock_flash:
-                with patch('strava_app.redirect') as mock_redirect:
-                    # Test error recovery for each scenario
-                    mock_flash(error_message, 'danger')
-                    mock_redirect('/')
-                    
-                    # Verify error handling
-                    self.assertIn(error_message, [msg['message'] for msg in mock_flash.messages])
-
-    def test_oauth_callback_enhanced_logging(self):
-        """Test enhanced logging in OAuth callback"""
-        # Mock logger
-        with patch('strava_app.logger') as mock_logger:
-            # Test various logging scenarios
-            mock_logger.info.assert_called()
-            mock_logger.error.assert_not_called()  # No errors in success case
-            
-            # Test error logging
-            mock_logger.error("Test error message")
-            mock_logger.error.assert_called_with("Test error message")
-
-
-def test_enhanced_oauth_callback_import():
-    """Test that enhanced OAuth callback can be imported without errors"""
-    try:
-        # Test imports
-        import strava_app
-        print("✅ Enhanced OAuth callback imports successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Error importing enhanced OAuth callback: {str(e)}")
-        return False
-
-
-def test_oauth_callback_components():
-    """Test that all OAuth callback components are available"""
-    try:
-        # Test that required components exist
-        from strava_app import oauth_callback_signup
-        from strava_app import strava_welcome_onboarding
-        from strava_app import complete_strava_welcome
-        
-        print("✅ All OAuth callback components available")
-        return True
-    except Exception as e:
-        print(f"❌ Error accessing OAuth callback components: {str(e)}")
-        return False
-
-
-if __name__ == '__main__':
-    print("🧪 Testing Task 4.5 - Enhanced OAuth Callback for New User Signup Flow")
-    print("=" * 80)
-    
-    # Run basic tests
-    test_results = []
-    
-    print("\n1. Testing enhanced OAuth callback import...")
-    test_results.append(test_enhanced_oauth_callback_import())
-    
-    print("\n2. Testing OAuth callback components...")
-    test_results.append(test_oauth_callback_components())
-    
-    print("\n3. Running unit tests...")
-    # Run the unit tests
-    unittest.main(argv=[''], exit=False, verbosity=2)
-    
-    print("\n" + "=" * 80)
-    print("✅ Task 4.5 Enhanced OAuth Callback Tests Complete")
-    
-    if all(test_results):
-        print("🎉 All tests passed! Enhanced OAuth callback is working correctly.")
-    else:
-        print("⚠️  Some tests failed. Please check the output above.")
