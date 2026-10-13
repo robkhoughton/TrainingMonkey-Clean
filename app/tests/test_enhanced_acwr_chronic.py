@@ -17,7 +17,6 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-os.environ.setdefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
 
 import acwr_configuration_service as svc_module
 

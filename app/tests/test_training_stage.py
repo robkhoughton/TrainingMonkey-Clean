@@ -6,7 +6,6 @@ from datetime import date, timedelta
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-os.environ.setdefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
 
 from training_stage import calculate_training_stage, in_race_preparation_window
 import workout_library

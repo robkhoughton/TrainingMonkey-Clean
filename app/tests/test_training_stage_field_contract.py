@@ -17,9 +17,6 @@ from unittest import mock
 # Make app modules importable regardless of where pytest is invoked from.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-# db_utils enforces DATABASE_URL at import time. These tests mock every DB call,
-# so a dummy URL satisfies the import guard without opening a connection.
-os.environ.setdefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
 
 import coach_recommendations
 

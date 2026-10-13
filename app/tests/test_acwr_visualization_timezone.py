@@ -15,7 +15,6 @@ from unittest import mock
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-os.environ.setdefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
 
 from flask import Flask
 import acwr_visualization_routes as routes_module

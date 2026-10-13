@@ -36,3 +36,9 @@ def _blocked(name):
 psycopg2.connect = _blocked('psycopg2.connect')
 psycopg2.pool.SimpleConnectionPool = _blocked('psycopg2.pool.SimpleConnectionPool')
 psycopg2.pool.ThreadedConnectionPool = _blocked('psycopg2.pool.ThreadedConnectionPool')
+
+
+def pytest_configure(config):
+    # A test that returns True/False instead of asserting passes whatever happens.
+    # Fail it rather than warn.
+    config.addinivalue_line('filterwarnings', 'error::pytest.PytestReturnNotNoneWarning')

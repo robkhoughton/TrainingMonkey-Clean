@@ -16,8 +16,6 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-# db_utils enforces DATABASE_URL at import time; mocks cover every DB call.
-os.environ.setdefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
 
 import coach_recommendations as cr
 
