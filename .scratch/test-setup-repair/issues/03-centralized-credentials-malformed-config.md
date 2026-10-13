@@ -1,8 +1,8 @@
 # 03 — `get_centralized_credentials()` skips the env-var fallback on a malformed config
 
-Status: open — needs a decision (reported, not fixed in this effort)
+Status: resolved
 Source: `../prompt.md` item 3
-Failing test: `app/tests/test_oauth_centralized.py::TestCentralizedOAuth::test_config_file_malformed` (left failing on purpose)
+Failing test: `app/tests/test_oauth_centralized.py::TestCentralizedOAuth::test_config_file_malformed`
 
 ## Behaviour (verified 2026-10-12)
 
@@ -24,4 +24,12 @@ Do both, as one change:
 1. **Delete** the module-level `get_centralized_credentials()` and its tests in `test_oauth_centralized.py`. It is a dead duplicate of the method; fixing it only keeps two copies of the logic alive.
 2. **Fix the root cause in the live method** `SimpleTokenManager.get_centralized_strava_credentials()`: narrow the `try` to the config-file read (`OSError`, `json.JSONDecodeError`), log the malformed file as an error, and fall through to the env-var lookup. Move the malformed-config test onto the method, unchanged in what it asserts.
 
-This changes app code, so it is outside this test-only effort.
+## Answer
+
+Approved by Rob on 2026-10-12 as a follow-up to the test-only pass, and implemented as recommended:
+
+- Moved 4 tests from the dead function onto `SimpleTokenManager(user_id=1).get_centralized_strava_credentials()`, with the same assertions: file_not_found, no_credentials, malformed, missing_credentials. Dropped the success-path test, which duplicated `test_simple_token_manager_centralized_credentials`. Once moved, the malformed test failed against the live method, confirming the bug was in production code.
+- Fixed the root cause in the method. Only the file read is guarded now (`OSError`, `ValueError`, which covers `JSONDecodeError`), and a config that parses to something other than a JSON object is logged and skipped. In every case the method falls through to the env-var lookup. Checked by hand: `[1,2]`, `{"invalid": json}` and an empty file all return the env credentials.
+- Deleted the module-level `get_centralized_credentials()`. No callers remain.
+
+Suite: 1 failed / 250 passed → 0 failed / 250 passed.

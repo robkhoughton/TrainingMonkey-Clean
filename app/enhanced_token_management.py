@@ -23,41 +23,45 @@ class SimpleTokenManager:
 
 
     def get_centralized_strava_credentials(self):
-        """Get centralized Strava credentials from strava_config.json"""
-        try:
-            # Try to load from strava_config.json
-            config_path = os.path.join(os.path.dirname(__file__), 'strava_config.json')
-            
-            if os.path.exists(config_path):
+        """Get centralized Strava credentials from strava_config.json, falling back to env vars"""
+        # Try to load from strava_config.json. Only the file read is guarded: an
+        # unreadable or malformed file must fall through to the env-var fallback,
+        # not abort the lookup.
+        config_path = os.path.join(os.path.dirname(__file__), 'strava_config.json')
+
+        if os.path.exists(config_path):
+            config = None
+            try:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
-                
+            except (OSError, ValueError) as e:
+                logger.error(f"Cannot read centralized config {config_path}: {str(e)}")
+
+            if isinstance(config, dict):
                 client_id = config.get('client_id')
                 client_secret = config.get('client_secret')
-                
+
                 if client_id and client_secret:
                     logger.info(f"Using centralized Strava credentials for user {self.user_id}")
                     return client_id, client_secret
                 else:
                     logger.warning(f"Centralized config file exists but missing client_id or client_secret")
-            
-            # Fallback: Try environment variables (for backward compatibility)
-            logger.info(f"Centralized config not found or incomplete for user {self.user_id}, trying environment variables")
-            
-            client_id = os.environ.get('STRAVA_CLIENT_ID')
-            client_secret = os.environ.get('STRAVA_CLIENT_SECRET')
-            
-            if client_id and client_secret:
-                logger.info(f"Using environment variable Strava credentials for user {self.user_id}")
-                return client_id, client_secret
+            elif config is not None:
+                logger.error(f"Centralized config {config_path} is not a JSON object")
 
-            # No credentials found anywhere
-            logger.error(f"No centralized Strava credentials available for user {self.user_id}")
-            return None, None
+        # Fallback: Try environment variables (for backward compatibility)
+        logger.info(f"Centralized config not found or incomplete for user {self.user_id}, trying environment variables")
 
-        except Exception as e:
-            logger.error(f"Error getting centralized Strava credentials for user {self.user_id}: {str(e)}")
-            return None, None
+        client_id = os.environ.get('STRAVA_CLIENT_ID')
+        client_secret = os.environ.get('STRAVA_CLIENT_SECRET')
+
+        if client_id and client_secret:
+            logger.info(f"Using environment variable Strava credentials for user {self.user_id}")
+            return client_id, client_secret
+
+        # No credentials found anywhere
+        logger.error(f"No centralized Strava credentials available for user {self.user_id}")
+        return None, None
 
     def validate_centralized_credentials(self, client_id, client_secret):
         """Validate that centralized credentials are properly formatted"""
@@ -765,44 +769,6 @@ def refresh_tokens_if_needed(user_id=1):
     else:
         logger.info("Tokens still valid - no refresh needed")
         return token_manager.load_tokens_from_database()
-
-
-def get_centralized_credentials():
-    """Get centralized Strava credentials for use by other modules"""
-    try:
-        import json
-        import os
-        
-        # Try to load from strava_config.json
-        config_path = os.path.join(os.path.dirname(__file__), 'strava_config.json')
-        
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            
-            client_id = config.get('client_id')
-            client_secret = config.get('client_secret')
-            
-            if client_id and client_secret:
-                logger.info("Successfully loaded centralized Strava credentials")
-                return client_id, client_secret
-        
-        # Fallback: Try environment variables
-        logger.info("Centralized config not found, trying environment variables")
-        
-        client_id = os.environ.get('STRAVA_CLIENT_ID')
-        client_secret = os.environ.get('STRAVA_CLIENT_SECRET')
-        
-        if client_id and client_secret:
-            logger.info("Successfully loaded Strava credentials from environment variables")
-            return client_id, client_secret
-
-        logger.error("No centralized Strava credentials available")
-        return None, None
-
-    except Exception as e:
-        logger.error(f"Error getting centralized Strava credentials: {str(e)}")
-        return None, None
 
 
 def get_centralized_credentials_status():

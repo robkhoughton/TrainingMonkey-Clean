@@ -14,7 +14,7 @@ import tempfile
 # Add the app directory to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from enhanced_token_management import SimpleTokenManager, get_centralized_credentials
+from enhanced_token_management import SimpleTokenManager
 
 
 class TestCentralizedOAuth(unittest.TestCase):
@@ -40,16 +40,6 @@ class TestCentralizedOAuth(unittest.TestCase):
         if os.path.exists(self.temp_config_file.name):
             os.unlink(self.temp_config_file.name)
 
-    def test_get_centralized_credentials_success(self):
-        """Test successful loading of centralized credentials"""
-        with patch('os.path.join') as mock_join:
-            mock_join.return_value = self.temp_config_file.name
-            
-            client_id, client_secret = get_centralized_credentials()
-            
-            self.assertEqual(client_id, "test_client_id_12345")
-            self.assertEqual(client_secret, "test_client_secret_abcdef")
-
     def test_get_centralized_credentials_file_not_found(self):
         """Test fallback to environment variables when config file not found"""
         with patch('os.path.join') as mock_join:
@@ -59,7 +49,7 @@ class TestCentralizedOAuth(unittest.TestCase):
                 'STRAVA_CLIENT_ID': 'env_client_id',
                 'STRAVA_CLIENT_SECRET': 'env_client_secret'
             }):
-                client_id, client_secret = get_centralized_credentials()
+                client_id, client_secret = SimpleTokenManager(user_id=1).get_centralized_strava_credentials()
                 
                 self.assertEqual(client_id, "env_client_id")
                 self.assertEqual(client_secret, "env_client_secret")
@@ -70,7 +60,7 @@ class TestCentralizedOAuth(unittest.TestCase):
             mock_join.return_value = "/nonexistent/path/strava_config.json"
             
             with patch.dict(os.environ, {}, clear=True):
-                client_id, client_secret = get_centralized_credentials()
+                client_id, client_secret = SimpleTokenManager(user_id=1).get_centralized_strava_credentials()
                 
                 self.assertIsNone(client_id)
                 self.assertIsNone(client_secret)
@@ -102,7 +92,7 @@ class TestCentralizedOAuth(unittest.TestCase):
                     'STRAVA_CLIENT_ID': 'env_client_id',
                     'STRAVA_CLIENT_SECRET': 'env_client_secret'
                 }):
-                    client_id, client_secret = get_centralized_credentials()
+                    client_id, client_secret = SimpleTokenManager(user_id=1).get_centralized_strava_credentials()
                     
                     # Should fallback to environment variables
                     self.assertEqual(client_id, "env_client_id")
@@ -132,7 +122,7 @@ class TestCentralizedOAuth(unittest.TestCase):
                     'STRAVA_CLIENT_ID': 'env_client_id',
                     'STRAVA_CLIENT_SECRET': 'env_client_secret'
                 }):
-                    client_id, client_secret = get_centralized_credentials()
+                    client_id, client_secret = SimpleTokenManager(user_id=1).get_centralized_strava_credentials()
                     
                     # Should fallback to environment variables
                     self.assertEqual(client_id, "env_client_id")
