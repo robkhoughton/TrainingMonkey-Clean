@@ -1,30 +1,44 @@
-Fix the broken test setup in `app/tests` so the auth/registration tests actually exercise the code. Use the mattpocock skills as follows:
+Clean up the remaining broken tests in `app/tests` and make it impossible for the suite to reach the database. Use the mattpocock skills as follows:
 
-1. `/mattpocock-skills:to-tickets` — break the work below into tickets in `.scratch/test-setup-repair/`. One ticket per root cause, not per file.
-2. `/mattpocock-skills:implement` — work the tickets one at a time. After each one, re-run the full suite and report the count change.
-3. `/mattpocock-skills:code-review` — review since the starting commit before committing. The diff should touch only `app/tests/`.
+1. `/mattpocock-skills:to-tickets`: break the work below into tickets in `.scratch/test-setup-repair/issues/`, one ticket per numbered item.
+2. `/mattpocock-skills:implement`: work the tickets one at a time. After each one, re-run the full suite and report the count change.
+3. `/mattpocock-skills:code-review`: review since the starting commit before committing. The diff should touch only `app/tests/` (plus `.scratch/`).
 
-TDD's red→green loop doesn't fit here, because the tests are already red. Hold each fix to this instead: a test goes green because the test is now correct, never by weakening the assertion or by changing app code. If a corrected test exposes a real app bug, stop and report it. Do not fix app code in this session.
+The tests are already red, so TDD's red→green loop doesn't apply. Hold each change to this rule instead: a test goes green only because the test is now correct. Never weaken an assertion, and never change app code. If a corrected test exposes a real app bug, stop and report it.
 
-Baseline on 2026-10-12 (commit 287fa0b): 58 failed, 357 passed. Run from `app/`: `python -m pytest tests -q -p no:cacheprovider`.
+Baseline on 2026-10-12 (commit e3a486e): 12 failed, 255 passed. Run from `app/` with an unreachable database: `DATABASE_URL=postgresql://x:y@localhost:1/z python -m pytest tests -q -p no:cacheprovider`. The tests don't load `.env`, but `db_utils` raises at import if `DATABASE_URL` is unset.
 
-Root causes, verified last session:
+## 1. Stale OAuth callback tests (11 failures)
 
-A. Flask proxies patched outside a request (~33 failures): all of `test_csrf_protection.py` (22), most of `test_registration_session_manager.py` and `test_registration_status_tracker.py`.
-- `@patch('csrf_protection.session')` / `patch('...request')` makes mock inspect the werkzeug LocalProxy (`_is_async_obj`), which raises "Working outside of request context" before the test body runs.
-- Fix: stop mocking `session`/`request`. Use a real `Flask(__name__)` app with a `secret_key` and `app.test_request_context(...)` (headers, remote_addr, etc. passed in). Then assert on the real session contents. Put a shared fixture in `app/tests/conftest.py` (none exists yet).
+`test_oauth_callback_enhanced.py` has 8 failures and `test_oauth_callback_existing_enhanced.py` has 3. They describe behavior the callback no longer has:
+- They patch `strava_app.UserAccountManager` and `strava_app.RegistrationStatusTracker`. Neither name exists in `strava_app`, and `/oauth-callback` (strava_app.py ~463) never used them in its current form.
+- They import `oauth_callback_signup` and `complete_strava_welcome`, both removed (see the comment at strava_app.py ~2903).
+- They expect a flash of "Token exchange failed" (the callback now only logs that string; the user sees "Unable to connect to Strava. Please try again."), a `render_template('oauth_success.html', ...)` the callback no longer makes, and a `logger.info` call that doesn't happen.
 
-B. Stale mock targets that let real DB queries through (8 tests). A probe on psycopg2.connect showed these are the only tests in the suite that open a connection.
-- `test_registration_validation.py`: test_validate_email_valid / _already_exists / _unique / _database_error and test_create_user_account_success / _failure. These patch `registration_validation.execute_query`, but the uniqueness check moved to `email_validation.py` (`check_email_uniqueness`). Patch where the lookup actually happens.
-- `test_registration_status_tracker.py`: test_start_registration_tracking_failure and test_track_onboarding_complete_failure. They mock `user_account_manager` but not `registration_status_tracker.execute_query` (lines ~466/489).
-- WARNING: the proxy points at PRODUCTION, and there is no test DB. Never run these with the proxy up until they're fixed. `test_create_user_account_success` would INSERT test@example.com into live `user_settings`.
-- Acceptance: re-run the connect probe (wrap psycopg2.connect and the pool constructors, record the nodeid). Zero tests may open a connection. Consider making this permanent: an autouse conftest fixture that makes psycopg2.connect raise during tests, so a stale mock fails loudly instead of quietly hitting the DB.
+Delete these 11 tests. Don't re-target them: no current code path matches what they assert.
 
-C. Patches on names that strava_app no longer imports (11): `test_oauth_callback_enhanced.py` (8) and `test_oauth_callback_existing_enhanced.py` (3) patch `strava_app.UserAccountManager` / `strava_app.RegistrationStatusTracker`. Find where the OAuth callback now gets these (grep the callback route) and patch there. If the callback no longer uses them at all, the tests are describing removed behavior. Report that rather than inventing a target.
+The same two files have 24 passing tests. Audit them in the same ticket. Several module-level functions `return True/False` instead of asserting (pytest's `PytestReturnNotNoneWarning`), so they pass whatever happens. Delete or convert those. Report which of the remaining tests exercise the real `/oauth-callback` and which only mock it.
 
-Out of scope (leave failing; note them in the final report):
-- `test_user_account_manager.py` failures: the real bug, `execute_query_for_onboarding` not imported plus a `VALUES (%s)` with 12 params, has its own session/prompt.
-- Password-rule expectation drift (`test_password_generator`, two `test_validate_password_*`): needs a product decision on the current rules.
-- Any app-code change, and pytest integration markers (deferred until a separate test database exists).
+Out of scope: writing new tests for the current callback, which needs its own decision. Note the coverage gap in the final report.
 
-Finish with: before/after failure counts per root cause, the list of remaining failures with their causes, and a commit (tests only, so no deploy).
+## 2. DB guard in a top-level conftest (0 failures; prevents a hazard)
+
+`app/tests/` has no `conftest.py`. A probe that wraps `psycopg2.connect` and the pool constructors shows no test body opens a connection today. Three connection attempts still happen outside test bodies:
+- `strava_app` import: `initialize_database_pool_on_startup()` (strava_app.py ~195) → `db_connection_manager.initialize_pool`
+- `log_api_request_async` (strava_app.py ~167): an after-request hook that writes from a background thread
+
+They only fail today because `DATABASE_URL` points nowhere. If the Cloud SQL proxy is up and a real `DATABASE_URL` is in the environment, they reach PRODUCTION. There is no test database.
+
+Add `app/tests/conftest.py` that blocks `psycopg2.connect`, `psycopg2.pool.SimpleConnectionPool` and `ThreadedConnectionPool` **at module level** (not in a per-test autouse fixture), so the block is in place before any test module imports `strava_app`. Make a blocked call raise a clearly named error. Also set a dummy `DATABASE_URL` there, so the suite runs without the env prefix.
+
+Acceptance: re-run the probe and get zero connection attempts anywhere, including at import time and from background threads. The suite count must not change.
+
+## 3. `test_oauth_centralized::test_config_file_malformed` (1 failure): report it, don't fix it
+
+This exposes real app behavior. `enhanced_token_management.get_centralized_credentials()` (~770) wraps everything in one `try`. A malformed `strava_config.json` raises in `json.load`, the `except` returns `(None, None)`, and the env-var fallback never runs. The test expects the fallback.
+
+`get_centralized_credentials` has no callers outside tests. Write this up as a ticket with a recommendation (delete the function and its tests, or fix the fallback). Leave the test failing.
+
+## Finish with
+
+Before/after failure counts per item, the remaining failures and their causes, the coverage gap from item 1, and a commit (tests only, so no deploy).
