@@ -82,3 +82,7 @@ review/
 *app*password*.txt
 .env.*
 !.env.example
+
+# Local Strava credential files - never commit (production uses Secret Manager)
+strava_config.json
+strava_tokens.json
