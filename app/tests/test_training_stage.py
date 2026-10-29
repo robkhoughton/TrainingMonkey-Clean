@@ -112,6 +112,27 @@ class TestSingleSourceOfTruth(unittest.TestCase):
         self.assertNotIn('TAPER AND RACE PREPARATION', load(c_race_close))
         self.assertIn('TAPER AND RACE PREPARATION', load(a_race_in_taper))
 
+    def test_late_race_pacing_gated_on_upcoming_race_distance(self):
+        import coach_recommendations
+        import llm_recommendations_module as lrm
+        target = '2026-10-06'
+
+        def load(goals):
+            with mock.patch.object(coach_recommendations, 'get_race_goals', return_value=goals), \
+                 mock.patch.object(coach_recommendations, 'execute_query', return_value=[{'age': 50}]):
+                return lrm._load_coaching_context(1, 'GREEN', target)
+
+        heading = 'LATE-RACE PACING'
+        self.assertNotIn(heading, load([]))
+        self.assertNotIn(heading, load([{'race_name': 'Half', 'race_date': '2027-03-01',
+                                         'priority': 'A', 'distance_miles': 13.1}]))
+        self.assertNotIn(heading, load([{'race_name': 'Unknown', 'race_date': '2027-03-01',
+                                         'priority': 'A', 'distance_miles': None}]))
+        self.assertNotIn(heading, load([{'race_name': 'Past 50K', 'race_date': '2026-09-01',
+                                         'priority': 'A', 'distance_miles': 31.0}]))
+        self.assertIn(heading, load([{'race_name': '50K', 'race_date': '2027-03-01',
+                                      'priority': 'A', 'distance_miles': 31.0}]))
+
     def test_no_local_stage_bucketing_outside_training_stage(self):
         app_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
         for fname in ('llm_context_tools.py', 'strava_app.py', 'coach_recommendations.py'):

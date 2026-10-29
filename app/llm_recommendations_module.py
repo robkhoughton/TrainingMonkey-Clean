@@ -180,6 +180,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     - fueling.md              — always (carb timing for hard vs. easy sessions applies every week)
     - readiness.md            — when readiness_state != GREEN (extra ANS interpretation needed)
     - periodization.md        — when the A race is in taper/peak or the week before taper starts
+    - late_race_pacing.md     — when any upcoming race is marathon distance or longer (HR-unreliable late-race pacing)
     - zone2_training.md       — when race > 28 days or no upcoming race (base period)
     - aerobic_assessment.md   — when race > 28 days or no upcoming race (AeT/AnT testing, 10% transition rule)
     - muscular_endurance.md   — when race > 56 days or no upcoming race (ME block needs 8+ weeks)
@@ -197,6 +198,7 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
         files_to_load.append('readiness.md')
 
     days_away = None  # days until nearest upcoming race; None = no race goal set
+    has_long_race = False  # any upcoming race of marathon distance or longer
     try:
         from coach_recommendations import get_race_goals
         from datetime import datetime as _dt
@@ -208,6 +210,10 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
             nearest = min(upcoming, key=lambda g: g['race_date'])
             days_away = (_dt.strptime(nearest['race_date'], '%Y-%m-%d').date()
                          - _dt.strptime(current_date, '%Y-%m-%d').date()).days
+        # Marathon distance is where multi-hour output fade (and HR decoupling from
+        # effort) shows up; a race with no distance set is not assumed long.
+        has_long_race = any(g.get('distance_miles') and float(g['distance_miles']) >= 26.2
+                            for g in upcoming)
     except Exception as _re:
         logger.debug(f"Coaching context: race proximity check failed: {_re}")
 
@@ -220,6 +226,10 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
             files_to_load.append('periodization.md')
     except Exception as _se:
         logger.debug(f"Coaching context: training stage check failed: {_se}")
+
+    # Whole build, not just taper: long runs are where the late-race pacing switch is rehearsed.
+    if has_long_race:
+        files_to_load.append('late_race_pacing.md')
 
     if days_away is None or days_away > 28:
         files_to_load.append('zone2_training.md')
