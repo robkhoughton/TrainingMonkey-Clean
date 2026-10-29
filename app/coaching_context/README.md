@@ -44,10 +44,11 @@ three, silently omitting `create_autopsy_informed_decision_prompt()` — which i
 the journal-triggered path (the most frequently hit one) ended up receiving none of these
 files. A manual checklist of call sites is the failure mode, not the fix.
 
-**Still outside the seam:** `generate_recommendations_agentic()` (feature-flag gated) and
-`generate_activity_autopsy_enhanced()` (the post-workout autopsy, a different prompt) each
-call `_load_coaching_context()` themselves. Check those two directly until they are
-migrated.
+**Still outside the seam:** `generate_activity_autopsy_enhanced()` (the post-workout
+autopsy, a different prompt) calls `_load_coaching_context()` itself, passing the readiness
+state reconstructed for the session date. Check it directly when a new file's gating
+depends on anything the autopsy path doesn't supply. `generate_recommendations_agentic()`
+is on the seam.
 
 ---
 

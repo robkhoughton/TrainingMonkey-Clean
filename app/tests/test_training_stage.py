@@ -133,6 +133,24 @@ class TestSingleSourceOfTruth(unittest.TestCase):
         self.assertIn(heading, load([{'race_name': '50K', 'race_date': '2027-03-01',
                                       'priority': 'A', 'distance_miles': 31.0}]))
 
+    def test_autopsy_gates_coaching_context_on_session_date_readiness(self):
+        import adequate_context_gate
+        import llm_recommendations_module as lrm
+
+        with mock.patch.object(adequate_context_gate, 'check_adequate_context', return_value={'passes': True}), \
+             mock.patch.object(lrm, 'get_user_coaching_spectrum', return_value=50), \
+             mock.patch.object(lrm, 'get_coaching_tone_instructions', return_value=''), \
+             mock.patch.object(lrm, 'get_user_autopsy_weights', return_value=(0.5, 0.5)), \
+             mock.patch.object(lrm, 'create_enhanced_autopsy_prompt_with_scoring', return_value='A'), \
+             mock.patch.object(lrm, 'create_quality_track_prompt', return_value='Q'), \
+             mock.patch.object(lrm, 'get_ans_readiness', return_value={'state': 'YELLOW'}) as ans, \
+             mock.patch.object(lrm, '_load_coaching_context', return_value='') as load_ctx, \
+             mock.patch.object(lrm, 'call_claude', return_value=''):
+            lrm.generate_activity_autopsy_enhanced(1, '2026-09-19', 'Rx', 'Run', {})
+
+        ans.assert_called_once_with(1, as_of_date=date(2026, 9, 19))
+        load_ctx.assert_called_once_with(1, 'YELLOW', '2026-09-19')
+
     def test_no_local_stage_bucketing_outside_training_stage(self):
         app_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
         for fname in ('llm_context_tools.py', 'strava_app.py', 'coach_recommendations.py'):

@@ -186,8 +186,9 @@ def _load_coaching_context(user_id: int, readiness_state: str, current_date: str
     - muscular_endurance.md   — when race > 56 days or no upcoming race (ME block needs 8+ weeks)
     - bone_health.md          — when race > 56 days or no upcoming race (HiRIT/osteogenic loading is a base/build intervention)
 
-    Adding a new file: write the .md, add a condition here, verify all active LLM call sites
-    receive it (create_enhanced_prompt_with_tone, agentic chat ~line 4321, journal endpoint).
+    Adding a new file: write the .md and add a condition here. Every daily prompt builder
+    reaches this through assemble_daily_context(); the autopsy
+    (generate_activity_autopsy_enhanced) calls it directly.
 
     Returns a formatted prompt block, or empty string if nothing to inject.
     """
@@ -3550,9 +3551,13 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
             date_str, actual_activities, observations, tone_instructions, zone_compliance
         )
 
-        # Append coaching context (unconditional files only — readiness state unknown at autopsy time)
+        # Append coaching context, gated on readiness as it was on the session date (not
+        # today's), so readiness.md is injected only when that day's readiness was non-GREEN.
         try:
-            coaching_context = _load_coaching_context(user_id, 'UNKNOWN', date_str)
+            from datetime import datetime as _dt
+            session_readiness = get_ans_readiness(
+                user_id, as_of_date=_dt.strptime(date_str, '%Y-%m-%d').date())
+            coaching_context = _load_coaching_context(user_id, session_readiness['state'], date_str)
             if coaching_context:
                 alignment_prompt += f"\n\n{coaching_context}"
                 quality_prompt += f"\n\n{coaching_context}"
