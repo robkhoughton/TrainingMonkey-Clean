@@ -366,26 +366,40 @@ def get_effective_aet(user_id, as_of_date=None):
 
     Returns the compute_effective_aet dict, or None if HR thresholds are unavailable.
     """
+    if as_of_date is None:
+        from timezone_utils import get_app_current_date
+        as_of_date = get_app_current_date()
+    return get_effective_aet_for_dates(user_id, [as_of_date]).get(as_of_date)
+
+
+def get_effective_aet_for_dates(user_id, dates):
+    """get_effective_aet for many dates: HR thresholds and the athlete model are read once,
+    readiness comes from one journal query (get_ans_readiness_for_dates). Every date runs
+    the same compute_effective_aet. Returns {date: effective-AeT dict | None}.
+    """
     from llm_recommendations_module import get_user_hr_thresholds
-    from readiness_engine import get_ans_readiness
+    from readiness_engine import get_ans_readiness_for_dates
     from db_utils import get_athlete_model
 
+    dates = sorted(set(dates))
     hr = get_user_hr_thresholds(user_id)
     if not hr or hr.get('vt1_bpm') is None:
-        return None
+        return {d: None for d in dates}
 
     zones = hr.get('zones') or {}
     z1z2_floor = (zones.get('zone2') or {}).get('min')
-
-    readiness = get_ans_readiness(user_id, as_of_date=as_of_date)
     params = OffsetParams.from_athlete_model(get_athlete_model(user_id))
+    readiness_by_date = get_ans_readiness_for_dates(user_id, dates)
 
-    return compute_effective_aet(
-        baseline_aet=hr['vt1_bpm'],
-        hrv_z=readiness.get('hrv_z'),
-        state=readiness.get('state'),
-        days_since_hrv=readiness.get('days_since_hrv'),
-        vt2=hr.get('vt2_bpm'),
-        z1z2_floor=z1z2_floor,
-        params=params,
-    )
+    return {
+        d: compute_effective_aet(
+            baseline_aet=hr['vt1_bpm'],
+            hrv_z=readiness_by_date[d].get('hrv_z'),
+            state=readiness_by_date[d].get('state'),
+            days_since_hrv=readiness_by_date[d].get('days_since_hrv'),
+            vt2=hr.get('vt2_bpm'),
+            z1z2_floor=z1z2_floor,
+            params=params,
+        )
+        for d in dates
+    }

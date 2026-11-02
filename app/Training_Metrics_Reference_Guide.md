@@ -317,6 +317,12 @@ daily autopsy and the weekly review always agree about a session.
 the weekly Seiler count. Weekly Easy% = Easy ÷ (Easy + Hard + Moderate) sessions: a black-hole
 session is not Easy.
 
+**Zone time is real seconds.** Strava downsamples long activities (~1 sample per 2–3 s on
+trail runs), so each HR sample is weighted by the gap to the next one in the stored `time`
+stream; history without a time stream spreads moving time evenly across its samples
+(`activities.zone_time_basis` records which). Minute-based checks (aerobic base ≥45 min in
+Zone 2, Hard ≥15 min above VT2) depend on this.
+
 **Effect B — dynamic internal load (dual-track):** an **Edwards** summated-HR-zone TRIMP on
 the AeT-anchored zones, `trimp_dynamic = Σ(minutes_in_zone_i × i)` with weights 1–5. On a
 suppressed-AeT day more time falls into higher-weighted Z3+, so the same effort scores

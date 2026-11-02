@@ -426,28 +426,6 @@ def get_api_key():
     return api_key.strip()
 
 
-def _classify_activity_intensity(activity):
-    """Classify a single activity row into Easy/Recovery, Moderate, or Hard using HR zone times.
-    Returns 'Unknown' when HR data is absent. Used internally by analyze_pattern_flags."""
-    z1 = activity.get('time_in_zone1') or 0
-    z2 = activity.get('time_in_zone2') or 0
-    z3 = activity.get('time_in_zone3') or 0
-    z4 = activity.get('time_in_zone4') or 0
-    z5 = activity.get('time_in_zone5') or 0
-    total = z1 + z2 + z3 + z4 + z5
-    if total == 0:
-        return 'Unknown'
-    p = [z / total * 100 for z in (z1, z2, z3, z4, z5)]
-    if p[0] > 50 or p[1] > 50:
-        return 'Easy/Recovery'
-    if p[2] > 50 or (p[1] + p[2] > 70):
-        return 'Moderate'
-    if p[3] > 30 or p[4] > 20 or (p[3] + p[4] > 40):
-        return 'Hard'
-    primary = p.index(max(p))
-    return 'Easy/Recovery' if primary <= 1 else ('Moderate' if primary == 2 else 'Hard')
-
-
 def get_user_hr_thresholds(user_id):
     """Return HR zone boundaries for user, deriving VT1/VT2 from zone 2/4 upper bounds.
 
@@ -541,6 +519,20 @@ def get_user_hr_thresholds(user_id):
 # is a black-hole (Moderate) session. Single source for both the per-session autopsy flag
 # (compute_zone_compliance) and the weekly Seiler session count (classify_session_polarized).
 BLACK_HOLE_Z3_PCT = 15
+
+
+def classify_session_dates(user_id, dates):
+    """Seiler class ('Easy' | 'Hard' | 'Moderate' | 'Unknown') for each session date.
+
+    The one intensity classification every consumer uses: zones from
+    strava_training_load.session_zone_times_for_dates (effective-AeT re-bucketed, time
+    weighted), classified by classify_session_polarized. Returns {'YYYY-MM-DD': class}.
+    """
+    from strava_training_load import session_zone_times_for_dates
+    return {
+        d: classify_session_polarized(zones) if zones else 'Unknown'
+        for d, (zones, _) in session_zone_times_for_dates(user_id, dates).items()
+    }
 
 
 def classify_session_polarized(zone_times):
@@ -750,8 +742,6 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
             start = today - timedelta(days=trailing_days - 1)
             end = today
 
-        from strava_training_load import session_zone_times
-
         rows = execute_query(
             """
             SELECT DISTINCT date
@@ -766,15 +756,12 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
         easy = hard = moderate = unknown = 0
         moderate_dates = []
 
+        # Same per-session classification the daily autopsy uses (effective-AeT
+        # re-bucketed zones), so the weekly count and the daily black-hole flag can never
+        # disagree about a session.
+        classes = classify_session_dates(user_id, [str(r.get('date'))[:10] for r in rows])
         for row in rows:
-            # Zones come from the same per-session source the daily autopsy uses
-            # (re-bucketed against that date's effective AeT), so the weekly count and
-            # the daily black-hole flag can never disagree about a session.
-            date_str = str(row.get('date'))[:10]
-            zones, _ = session_zone_times(user_id, date_str)
-            zone_dict = {f'time_in_zone{i}': int((zones or {}).get(f'time_in_zone{i}') or 0)
-                         for i in range(1, 6)}
-            cls = classify_session_polarized(zone_dict)
+            cls = classes[str(row.get('date'))[:10]]
             if cls == 'Easy':
                 easy += 1
             elif cls == 'Hard':
@@ -909,7 +896,8 @@ def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=
 
         # #5 — Back-to-back hard session detection
         last_7 = sorted({a['date']: a for a in recent_data[-7:]}.values(), key=lambda x: x['date'])
-        intensities = [(a['date'], _classify_activity_intensity(a)) for a in last_7]
+        _classes = classify_session_dates(user_id, [str(a['date'])[:10] for a in last_7]) if user_id else {}
+        intensities = [(a['date'], _classes.get(str(a['date'])[:10], 'Unknown')) for a in last_7]
         known = [(d, i) for d, i in intensities if i != 'Unknown']
         for idx in range(1, len(known)):
             if known[idx][1] == 'Hard' and known[idx - 1][1] == 'Hard':
@@ -919,7 +907,7 @@ def analyze_pattern_flags(activities, current_metrics, user_id=None, thresholds=
                 break  # Report once per analysis window
 
         # #6 — Minimum easy day guardrail (≥2 easy/recovery days in last 7)
-        easy_days = sum(1 for _, i in intensities if i == 'Easy/Recovery')
+        easy_days = sum(1 for _, i in intensities if i == 'Easy')
         if len(known) >= 5 and easy_days < 2:
             flags['red_flags'].append(
                 f"Only {easy_days} easy/recovery day(s) in the last 7 days — "
@@ -1412,7 +1400,7 @@ def generate_recommendations(force=False, user_id=None, target_tomorrow=False, t
         logger.info(f"  Normalized Divergence: {current_metrics.get('normalized_divergence')}")
         logger.info(f"  Latest activity date: {current_metrics.get('latest_activity_date')}")
 
-        pattern_analysis = analyze_training_patterns(activities)
+        pattern_analysis = analyze_training_patterns(activities, user_id)
         # spectrum_value = get_user_coaching_spectrum(user_id)
         # tone_instructions = get_coaching_tone_instructions(spectrum_value)
 
@@ -1997,10 +1985,11 @@ def load_divergence_projection(user_id, current_metrics):
                                             horizon=DIVERGENCE_PROJECTION_HORIZON_DAYS)[1:]]
 
     easy_start = as_of - timedelta(days=EASY_PROFILE_LOOKBACK_DAYS)
-    easy = [r for r in rows
-            if r['date'] >= easy_start and r.get('type') != 'rest'
-            and (r['total_load_miles'] or 0) > 0 and (r['trimp'] or 0) > 0
-            and _classify_activity_intensity(r) == 'Easy/Recovery']
+    candidates = [r for r in rows
+                  if r['date'] >= easy_start and r.get('type') != 'rest'
+                  and (r['total_load_miles'] or 0) > 0 and (r['trimp'] or 0) > 0]
+    classes = classify_session_dates(user_id, [str(r['date'])[:10] for r in candidates])
+    easy = [r for r in candidates if classes[str(r['date'])[:10]] == 'Easy']
     projection = {'horizon': DIVERGENCE_PROJECTION_HORIZON_DAYS, 'method': method['kind'],
                   'as_of': as_of.isoformat(), 'rest': _path({'kind': 'rest'}),
                   'easy': None, 'easy_profile': None, 'easy_unavailable_reason': None}
@@ -3334,7 +3323,7 @@ def get_current_metrics(user_id=None, as_of_date=None):
         return None
 
 
-def analyze_training_patterns(activities):
+def analyze_training_patterns(activities, user_id=None):
     """Analyze training patterns from activities."""
     if not activities:
         return {
@@ -3383,42 +3372,14 @@ def analyze_training_patterns(activities):
     workout_type_freq = ', '.join([f"{type}: {count}" for type, count in
                                    sorted(workout_types.items(), key=lambda x: x[1], reverse=True)[:3]])
 
-    # Count workouts in intensity zones based on TRIMP
+    # Intensity distribution: one Seiler class per session date (classify_session_dates).
+    # Dates without HR data are 'Unknown' and left out of the percentages.
     intensity_zones = {'easy': 0, 'moderate': 0, 'hard': 0}
-
-    for activity in activities:
-        # Use HR zones instead of TRIMP for more accurate intensity classification
-        zone1_time = activity.get('time_in_zone1', 0)
-        zone2_time = activity.get('time_in_zone2', 0)
-        zone3_time = activity.get('time_in_zone3', 0)
-        zone4_time = activity.get('time_in_zone4', 0)
-        zone5_time = activity.get('time_in_zone5', 0)
-        
-        total_zone_time = zone1_time + zone2_time + zone3_time + zone4_time + zone5_time
-        
-        if total_zone_time == 0:
-            # Fallback to TRIMP if no HR zone data
-            trimp = activity.get('trimp', 0)
-            if trimp <= 30:
-                intensity_zones['easy'] += 1
-            elif trimp <= 70:
-                intensity_zones['moderate'] += 1
-            else:
-                intensity_zones['hard'] += 1
-        else:
-            # Classify based on HR zone distribution
-            zone1_pct = zone1_time / total_zone_time * 100
-            zone2_pct = zone2_time / total_zone_time * 100
-            zone3_pct = zone3_time / total_zone_time * 100
-            zone4_pct = zone4_time / total_zone_time * 100
-            zone5_pct = zone5_time / total_zone_time * 100
-            
-            if zone1_pct > 50 or (zone1_pct + zone2_pct) > 70:
-                intensity_zones['easy'] += 1
-            elif zone4_pct > 30 or zone5_pct > 20 or (zone4_pct + zone5_pct) > 40:
-                intensity_zones['hard'] += 1
-            else:
-                intensity_zones['moderate'] += 1
+    if user_id:
+        session_dates = sorted({str(a['date'])[:10] for a in activities if a.get('date')})
+        for cls in classify_session_dates(user_id, session_dates).values():
+            if cls in ('Easy', 'Moderate', 'Hard'):
+                intensity_zones[cls.lower()] += 1
 
     total_workouts = sum(intensity_zones.values())
     intensity_distribution = "unknown"

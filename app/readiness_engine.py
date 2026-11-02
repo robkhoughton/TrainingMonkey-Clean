@@ -292,9 +292,58 @@ def get_ans_readiness(user_id, as_of_date=None):
         dict with keys: state, narrative, hrv_z, rhr_z, is_overreaching, days_since_hrv
         On any error, returns UNKNOWN state so callers always get a valid dict.
     """
+    ref_date = as_of_date or get_app_current_date()
     try:
-        ref_date = as_of_date or get_app_current_date()
         df = load_athlete_readiness_dataframe(user_id, as_of_date=as_of_date)
+    except Exception as exc:
+        logger.error(f"readiness_engine error for user {user_id}: {exc}", exc_info=True)
+        return _unknown_readiness()
+    return _readiness_from_df(df, ref_date, user_id)
+
+
+def get_ans_readiness_for_dates(user_id, dates):
+    """get_ans_readiness for many dates with one journal query.
+
+    Loads the union window once, then evaluates each date on exactly the slice
+    load_athlete_readiness_dataframe(as_of_date=d) would return, through the same
+    _readiness_from_df. Returns {date: readiness dict}.
+    """
+    dates = sorted(set(dates))
+    if not dates:
+        return {}
+    try:
+        span = (dates[-1] - dates[0]).days + _DEFAULT_DAYS
+        df_all = load_athlete_readiness_dataframe(user_id, days=span, as_of_date=dates[-1])
+    except Exception as exc:
+        logger.error(f"readiness_engine error for user {user_id}: {exc}", exc_info=True)
+        return {d: _unknown_readiness() for d in dates}
+    out = {}
+    for d in dates:
+        lo = pd.Timestamp(d - timedelta(days=_DEFAULT_DAYS))
+        hi = pd.Timestamp(d)
+        df = df_all[(df_all['date'] >= lo) & (df_all['date'] <= hi)].reset_index(drop=True)
+        out[d] = _readiness_from_df(df, d, user_id)
+    return out
+
+
+def _unknown_readiness():
+    return {
+        'state': 'UNKNOWN',
+        'narrative': 'Readiness data unavailable.',
+        'hrv_z': None,
+        'rhr_z': None,
+        'is_overreaching': False,
+        'sleep_modifier': 0,
+        'spo2_flag': False,
+        'hrv_reading_count': 0,
+        'rhr_reading_count': 0,
+        'days_since_hrv': None,
+    }
+
+
+def _readiness_from_df(df, ref_date, user_id):
+    """Readiness as of ref_date from its (already windowed, date-ascending) dataframe."""
+    try:
         hrv_reading_count = int(df['hrv'].dropna().shape[0])
         rhr_reading_count = int(df['rhr'].dropna().shape[0])
         # Age of the most recent HRV reading relative to ref_date — drives the dynamic-AeT
@@ -325,15 +374,4 @@ def get_ans_readiness(user_id, as_of_date=None):
         }
     except Exception as exc:
         logger.error(f"readiness_engine error for user {user_id}: {exc}", exc_info=True)
-        return {
-            'state': 'UNKNOWN',
-            'narrative': 'Readiness data unavailable.',
-            'hrv_z': None,
-            'rhr_z': None,
-            'is_overreaching': False,
-            'sleep_modifier': 0,
-            'spo2_flag': False,
-            'hrv_reading_count': 0,
-            'rhr_reading_count': 0,
-            'days_since_hrv': None,
-        }
+        return _unknown_readiness()

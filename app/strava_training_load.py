@@ -1039,6 +1039,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     hr_zone_times = [0, 0, 0, 0, 0]
     hr_stream_data = None
     distance_stream_data = None
+    time_stream_data = None
     avg_temp_f = None
     try:
         streams = get_activity_streams(client, activity_id)
@@ -1056,6 +1057,10 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
             # test-segment pace on the aerobic assessment. Forward-only; None if absent.
             if 'distance' in streams and streams['distance']:
                 distance_stream_data = streams['distance'].data
+            # Elapsed-seconds stream, index-aligned with HR — needed because Strava
+            # downsamples (a sample is not a second). Forward-only; None if absent.
+            if 'time' in streams and streams['time']:
+                time_stream_data = streams['time'].data
             logger.info(f"Retrieved HR stream data: {len(hr_stream_data)} samples for activity {activity_id}")
         else:
             logger.warning(
@@ -1164,7 +1169,8 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
                 _dz = dynamic_zone_times(
                     hr_stream_data, hr_config['max_hr'], hr_config['resting_hr'],
                     user_hr_zones_method, user_custom_hr_zones,
-                    _eff['effective_aet'], aet_offset=_eff.get('offset')
+                    _eff['effective_aet'], aet_offset=_eff.get('offset'),
+                    sample_seconds=hr_sample_seconds(len(hr_stream_data), time_stream_data)
                 )
                 trimp_dynamic = edwards_trimp(_dz)
         except Exception as _tde:
@@ -1201,6 +1207,9 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         'time_in_zone3': int(hr_zone_times[2]),
         'time_in_zone4': int(hr_zone_times[3]),
         'time_in_zone5': int(hr_zone_times[4]),
+        # How zone seconds were measured: 'time' = weighted by the Strava time stream,
+        # 'samples' = 1 s per sample (no time stream returned). NULL = no HR stream.
+        'zone_time_basis': ('time' if time_stream_data else 'samples') if hr_stream_data else None,
         # TRIMP enhancement metadata
         'trimp_calculation_method': trimp_calculation_method,
         'hr_stream_sample_count': hr_stream_sample_count,
@@ -1208,7 +1217,9 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
         # HR stream data for saving after main activity record is created
         'hr_stream_data': hr_stream_data,
         # Distance stream (metres, index-aligned with HR) — saved alongside the HR stream
-        'distance_stream_data': distance_stream_data
+        'distance_stream_data': distance_stream_data,
+        # Elapsed-seconds stream (index-aligned with HR) — saved alongside the HR stream
+        'time_stream_data': time_stream_data,
     }
 
     logger.info(
@@ -1678,117 +1689,167 @@ def edwards_trimp(zone_times_seconds):
 
 
 def dynamic_zone_times(hr_data, max_hr, resting_hr, hr_zones_method, custom_hr_zones,
-                       effective_aet, aet_offset=None):
+                       effective_aet, aet_offset=None, sample_seconds=None):
     """Bucket an in-memory HR sample list against the dynamic Zone 2 band (Path 2: the
     Z2 ceiling = effective AeT and the Z1/Z2 floor slides by aet_offset)."""
     zones, _ = _build_zone_boundaries(max_hr, resting_hr, hr_zones_method, custom_hr_zones,
                                       vt1_override=effective_aet, aet_offset=aet_offset)
-    return bucket_hr_samples(hr_data, zones)
+    return bucket_hr_samples(hr_data, zones, sample_seconds)
 
 
-def bucket_hr_samples(hr_data, zones):
-    """Count seconds (1 Hz samples) into each of the five zone boundary tuples."""
-    zone_times = [0, 0, 0, 0, 0]
-    for hr in hr_data:
-        if hr <= 0:
+# A gap longer than this between consecutive samples is a pause, not recorded time.
+MAX_SAMPLE_GAP_SECONDS = 30
+
+
+def hr_sample_seconds(n_samples, time_data=None, duration_seconds=None):
+    """Seconds each HR sample represents.
+
+    Strava streams are downsampled (smart recording: ~1 sample per 2-3 s on long trail
+    runs), so a sample is NOT a second. With the index-aligned `time` stream, each sample
+    is weighted by the gap to the next one; gaps over MAX_SAMPLE_GAP_SECONDS are pauses and
+    get the median gap instead. Without a time stream (history synced before it was
+    stored), the activity's moving time is spread evenly across the samples.
+    Returns a list of length n_samples, or None when neither source is available
+    (callers then count 1 s per sample).
+    """
+    if n_samples <= 0:
+        return None
+    if time_data and len(time_data) == n_samples and n_samples > 1:
+        gaps = [time_data[i + 1] - time_data[i] for i in range(n_samples - 1)]
+        normal = sorted(g for g in gaps if 0 < g <= MAX_SAMPLE_GAP_SECONDS)
+        median = normal[len(normal) // 2] if normal else 1
+        weights = [g if 0 < g <= MAX_SAMPLE_GAP_SECONDS else median for g in gaps]
+        weights.append(median)
+        return weights
+    if duration_seconds and duration_seconds > 0:
+        return [duration_seconds / n_samples] * n_samples
+    return None
+
+
+def bucket_hr_samples(hr_data, zones, sample_seconds=None):
+    """Sum seconds into each of the five zone boundary tuples.
+
+    sample_seconds: per-sample durations from hr_sample_seconds(); None counts 1 s per
+    sample (only correct for true 1 Hz streams). Returns whole seconds.
+    """
+    zone_times = [0.0, 0.0, 0.0, 0.0, 0.0]
+    for idx, hr in enumerate(hr_data):
+        if hr is None or hr <= 0:
             continue
+        weight = sample_seconds[idx] if sample_seconds else 1
         for i, (zone_min, zone_max) in enumerate(zones):
             if zone_min <= hr < zone_max:
-                zone_times[i] += 1
+                zone_times[i] += weight
                 break
-    return zone_times
+    return [int(round(z)) for z in zone_times]
 
 
-def rebucket_zone_times(user_id, date_str, effective_aet, aet_offset=None):
-    """Re-bucket a user's activities on a date against the dynamic Zone 2 band.
+def session_zone_times_for_dates(user_id, dates):
+    """Single source of session time-in-zone for intensity classification, for many dates.
 
-    Reads each activity's stored HR stream and re-buckets it with the Z2 ceiling set to
-    `effective_aet` and (Path 2) the Z1/Z2 floor slid by `aet_offset`, so Zone 2 is the
-    fixed-width productive-aerobic band for that day. All boundaries at VT2 and above are
-    unchanged. Falls back to the activity's stored time_in_zone* when no stream exists, so
-    the result degrades gracefully rather than dropping a session.
+    Each date's HR streams are bucketed against the effective AeT that applied on that
+    date (Training Metrics Reference Guide, Dynamic AeT "Effect A"): the Z2 ceiling is the
+    effective AeT and (Path 2) the Z1/Z2 floor slides by its offset; VT2 and above are
+    unchanged. Every consumer that classifies a session's intensity reads zones from here
+    — the daily autopsy, the weekly polarized count, the daily Rx pattern flags and
+    divergence easy profile, and the journal's activity summary — never from the stored
+    time_in_zone* columns (static boundaries miss above-AeT time on suppressed days).
 
-    Returns an aggregated dict (time_in_zone1..5, total_zone_seconds, z1_pct..z5_pct,
-    rebucketed) shaped like get_activity_summary_for_date's zone fields, or None if user
-    settings are missing.
+    Samples are weighted by real time (hr_sample_seconds). An activity with no stored
+    stream falls back to its stored time_in_zone*. With no effective AeT (no HR
+    thresholds) the static boundaries are used. Settings, activities, streams and
+    readiness are each read once for all dates.
+
+    Returns {'YYYY-MM-DD': (zones, eff_aet)} for every requested date; zones is
+    {time_in_zone1..5, total_zone_seconds, z1_pct..z5_pct, rebucketed} (all zero when the
+    date has no activity), or None if user settings are missing.
     """
-    from db_utils import execute_query, get_hr_stream_data
+    from db_utils import execute_query
+    from dynamic_aet import get_effective_aet_for_dates
+
+    date_objs = sorted({d if isinstance(d, date) else datetime.strptime(str(d)[:10], '%Y-%m-%d').date()
+                        for d in dates})
+    if not date_objs:
+        return {}
 
     us = execute_query(
         "SELECT resting_hr, max_hr, hr_zones_method, custom_hr_zones FROM user_settings WHERE id = %s",
         (user_id,), fetch=True
     )
+    eff_by_date = get_effective_aet_for_dates(user_id, date_objs)
     if not us:
-        return None
+        return {d.isoformat(): (None, eff_by_date.get(d)) for d in date_objs}
     row = us[0]
     resting_hr = row.get('resting_hr') or 65
     max_hr = row.get('max_hr') or 185
     method = row.get('hr_zones_method') or 'percentage'
     custom = row.get('custom_hr_zones')
 
-    zones, _ = _build_zone_boundaries(max_hr, resting_hr, method, custom,
-                                      vt1_override=effective_aet, aet_offset=aet_offset)
-
+    iso = [d.isoformat() for d in date_objs]
     acts = execute_query(
-        """SELECT activity_id, time_in_zone1, time_in_zone2, time_in_zone3,
-                  time_in_zone4, time_in_zone5
+        """SELECT activity_id, date, duration_minutes, time_in_zone1, time_in_zone2,
+                  time_in_zone3, time_in_zone4, time_in_zone5
            FROM activities
-           WHERE user_id = %s AND date = %s AND activity_id > 0""",
-        (user_id, date_str), fetch=True
+           WHERE user_id = %s AND date = ANY(%s::date[]) AND activity_id > 0""",
+        (user_id, iso), fetch=True
     ) or []
+    streams = {}
+    if acts:
+        for r in execute_query(
+            """SELECT DISTINCT ON (activity_id) activity_id, hr_data, time_data
+               FROM hr_streams
+               WHERE user_id = %s AND activity_id = ANY(%s)
+               ORDER BY activity_id, created_at DESC""",
+            (user_id, [a['activity_id'] for a in acts]), fetch=True
+        ) or []:
+            hr = json.loads(r['hr_data']) if isinstance(r['hr_data'], str) else r['hr_data']
+            td = json.loads(r['time_data']) if isinstance(r['time_data'], str) else r['time_data']
+            if hr:
+                streams[r['activity_id']] = (hr, td)
 
-    totals = [0, 0, 0, 0, 0]
-    rebucketed = False
+    acts_by_date = {}
     for a in acts:
-        stream = get_hr_stream_data(a['activity_id'], user_id)
-        if stream and stream.get('hr_data'):
-            zt = bucket_hr_samples(stream['hr_data'], zones)
-            rebucketed = True
-        else:
-            zt = [int(a.get(f'time_in_zone{i + 1}') or 0) for i in range(5)]
-        for i in range(5):
-            totals[i] += zt[i]
+        acts_by_date.setdefault(str(a['date'])[:10], []).append(a)
 
-    total_sec = sum(totals)
+    out = {}
+    for d, d_iso in zip(date_objs, iso):
+        eff = eff_by_date.get(d)
+        zones, _ = _build_zone_boundaries(
+            max_hr, resting_hr, method, custom,
+            vt1_override=eff['effective_aet'] if eff else None,
+            aet_offset=eff.get('offset') if eff else None,
+        )
+        totals = [0, 0, 0, 0, 0]
+        rebucketed = False
+        for a in acts_by_date.get(d_iso, []):
+            if a['activity_id'] in streams:
+                hr, td = streams[a['activity_id']]
+                weights = hr_sample_seconds(len(hr), td, float(a.get('duration_minutes') or 0) * 60)
+                zt = bucket_hr_samples(hr, zones, weights)
+                rebucketed = True
+            else:
+                zt = [int(a.get(f'time_in_zone{i + 1}') or 0) for i in range(5)]
+            for i in range(5):
+                totals[i] += zt[i]
+        total_sec = sum(totals)
 
-    def _pct(z):
-        return round(z / total_sec * 100, 1) if total_sec > 0 else 0.0
+        def _pct(z):
+            return round(z / total_sec * 100, 1) if total_sec > 0 else 0.0
 
-    return {
-        'time_in_zone1': totals[0], 'time_in_zone2': totals[1], 'time_in_zone3': totals[2],
-        'time_in_zone4': totals[3], 'time_in_zone5': totals[4],
-        'total_zone_seconds': total_sec,
-        'z1_pct': _pct(totals[0]), 'z2_pct': _pct(totals[1]), 'z3_pct': _pct(totals[2]),
-        'z4_pct': _pct(totals[3]), 'z5_pct': _pct(totals[4]),
-        'rebucketed': rebucketed,
-    }
+        out[d_iso] = ({
+            'time_in_zone1': totals[0], 'time_in_zone2': totals[1], 'time_in_zone3': totals[2],
+            'time_in_zone4': totals[3], 'time_in_zone5': totals[4],
+            'total_zone_seconds': total_sec,
+            'z1_pct': _pct(totals[0]), 'z2_pct': _pct(totals[1]), 'z3_pct': _pct(totals[2]),
+            'z4_pct': _pct(totals[3]), 'z5_pct': _pct(totals[4]),
+            'rebucketed': rebucketed,
+        }, eff)
+    return out
 
 
 def session_zone_times(user_id, date_str):
-    """Single source of a session date's time-in-zone for intensity classification.
-
-    Re-buckets the date's HR streams against the effective AeT that applied on that
-    date (Training Metrics Reference Guide, Dynamic AeT "Effect A"). Every consumer that
-    classifies a session's intensity — the daily autopsy and the weekly polarized count —
-    must read zones from here, never from the stored time_in_zone* columns (those use the
-    static zone boundaries and miss above-AeT time on suppressed days).
-
-    With no effective AeT available (no HR thresholds), the streams are bucketed against
-    the static zone boundaries instead.
-
-    Returns (zones, eff_aet): zones is rebucket_zone_times' dict (or None if user settings
-    are missing); eff_aet is the get_effective_aet dict or None.
-    """
-    from dynamic_aet import get_effective_aet
-
-    session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    eff_aet = get_effective_aet(user_id, as_of_date=session_date)
-    if eff_aet:
-        zones = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'],
-                                    aet_offset=eff_aet.get('offset'))
-    else:
-        zones = rebucket_zone_times(user_id, date_str, None)
-    return zones, eff_aet
+    """session_zone_times_for_dates for one date. Returns (zones, eff_aet)."""
+    return session_zone_times_for_dates(user_id, [date_str])[str(date_str)[:10]]
 
 
 def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
@@ -1831,7 +1892,8 @@ def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
             f"boundaries: {[(round(mn), round(mx)) for mn, mx in zones]}"
         )
 
-        zone_times = bucket_hr_samples(hr_data, zones)
+        time_data = hr_stream['time'].data if ('time' in hr_stream and hr_stream['time']) else None
+        zone_times = bucket_hr_samples(hr_data, zones, hr_sample_seconds(len(hr_data), time_data))
 
         logger.info(f"HR zone times (seconds) [{method_label}]: {zone_times}")
         return zone_times
@@ -1933,6 +1995,7 @@ def save_training_load(load_data, filename=None):
         # Extract stream data before insertion (they go to hr_streams table, not activities table)
         hr_stream_data = load_data.pop('hr_stream_data', None)
         distance_stream_data = load_data.pop('distance_stream_data', None)
+        time_stream_data = load_data.pop('time_stream_data', None)
 
         # Build the INSERT query
         columns = ', '.join(load_data.keys())
@@ -1970,7 +2033,8 @@ def save_training_load(load_data, filename=None):
             try:
                 from db_utils import save_hr_stream_data
                 save_result = save_hr_stream_data(activity_id, user_id, hr_stream_data,
-                                                  sample_rate=1.0, distance_data=distance_stream_data)
+                                                  sample_rate=1.0, distance_data=distance_stream_data,
+                                                  time_data=time_stream_data)
                 if save_result:
                     logger.info(f"Successfully saved HR stream data for activity {activity_id}")
                 else:

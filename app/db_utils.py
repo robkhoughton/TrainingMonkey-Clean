@@ -1078,7 +1078,7 @@ def get_trimp_schema_status():
         return status
 
 
-def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0, distance_data=None):
+def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0, distance_data=None, time_data=None):
     """
     Save heart rate stream data to the hr_streams table
     Args:
@@ -1089,6 +1089,9 @@ def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0, distance
         distance_data (list, optional): Per-sample cumulative distance (metres),
             index-aligned with hr_data. Enables exact test-segment pace for the aerobic
             assessment. Forward-only — NULL for streams synced before this feature.
+        time_data (list, optional): Per-sample elapsed seconds (Strava `time` stream),
+            index-aligned with hr_data. Strava downsamples long activities, so a sample is
+            not a second; zone time is weighted by this. Forward-only — NULL for history.
     Returns:
         int: The ID of the inserted record, or None if failed
     """
@@ -1111,14 +1114,19 @@ def save_hr_stream_data(activity_id, user_id, hr_data, sample_rate=1.0, distance
             json.dumps(distance_data)
             if distance_data and isinstance(distance_data, list) else None
         )
+        time_data_json = (
+            json.dumps(time_data)
+            if time_data and isinstance(time_data, list) else None
+        )
 
         # Insert HR stream data
         query = """
-            INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+            INSERT INTO hr_streams (activity_id, user_id, hr_data, sample_rate, distance_data,
+                                    time_data, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
         """
 
-        params = (activity_id, user_id, hr_data_json, sample_rate, distance_data_json)
+        params = (activity_id, user_id, hr_data_json, sample_rate, distance_data_json, time_data_json)
         result = execute_query(query, params)
         
         logger.info(f"db_utils: Successfully saved HR stream data for activity {activity_id} ({len(hr_data)} samples)")
@@ -1144,7 +1152,8 @@ def get_hr_stream_data(activity_id, user_id=None):
         # Build query with optional user_id filter
         if user_id:
             query = """
-                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at
+                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, time_data,
+                       created_at, updated_at
                 FROM hr_streams
                 WHERE activity_id = %s AND user_id = %s
                 ORDER BY created_at DESC
@@ -1153,7 +1162,8 @@ def get_hr_stream_data(activity_id, user_id=None):
             params = (activity_id, user_id)
         else:
             query = """
-                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, created_at, updated_at
+                SELECT id, activity_id, user_id, hr_data, sample_rate, distance_data, time_data,
+                       created_at, updated_at
                 FROM hr_streams
                 WHERE activity_id = %s
                 ORDER BY created_at DESC
@@ -1181,6 +1191,13 @@ def get_hr_stream_data(activity_id, user_id=None):
             except (json.JSONDecodeError, TypeError):
                 distance_data = None
 
+            # time_data: per-sample elapsed seconds, same nullable/forward-only handling.
+            raw_time = row.get('time_data')
+            try:
+                time_data = json.loads(raw_time) if isinstance(raw_time, str) else raw_time
+            except (json.JSONDecodeError, TypeError):
+                time_data = None
+
             hr_stream_info = {
                 'id': row['id'],
                 'activity_id': row['activity_id'],
@@ -1188,6 +1205,7 @@ def get_hr_stream_data(activity_id, user_id=None):
                 'hr_data': hr_data,
                 'sample_rate': row['sample_rate'],
                 'distance_data': distance_data,
+                'time_data': time_data,
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at'],
                 'sample_count': len(hr_data) if isinstance(hr_data, list) else 0

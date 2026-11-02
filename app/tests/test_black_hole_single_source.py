@@ -55,10 +55,10 @@ class TestWeeklyReadsSessionZoneTimes(unittest.TestCase):
         per_date = {'2026-10-31': _zones(z1=300, z2=1200, z3=500),
                     '2026-10-29': _zones(z1=600, z2=200)}
         with mock.patch.object(m, 'execute_query', return_value=dates), \
-             mock.patch.object(strava_training_load, 'session_zone_times',
-                               side_effect=lambda uid, d: (per_date[d], None)) as szt:
+             mock.patch.object(strava_training_load, 'session_zone_times_for_dates',
+                               side_effect=lambda uid, ds: {d: (per_date[d], None) for d in ds}) as szt:
             pr = m.compute_weekly_polarized_ratio(1, 'build', 60, week_start_date=date(2026, 10, 25))
-        self.assertEqual(szt.call_count, 2)
+        self.assertEqual(szt.call_count, 1)  # one batch, not a query per date
         self.assertEqual(pr['moderate_dates'], ['2026-10-31'])
         self.assertEqual(pr['easy_sessions'], 1)
         # A black-hole session is not Easy: 1 Easy of 2 classified = 50%, not 100%.

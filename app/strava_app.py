@@ -4619,6 +4619,15 @@ def get_journal_entries():
                     d = str(d)
                 activities_by_date.setdefault(d, []).append(r)
 
+        # Session zones for every date with a real activity, in one batch (see
+        # strava_training_load.session_zone_times_for_dates)
+        zones_by_date = {}
+        session_dates = [d for d, acts in activities_by_date.items()
+                         if any((a.get('activity_id') or 0) > 0 for a in acts)]
+        if session_dates:
+            from strava_training_load import session_zone_times_for_dates
+            zones_by_date = session_zone_times_for_dates(current_user.id, session_dates)
+
         # Generate 8-day journal structure (6 past days + today + tomorrow)
         journal_entries = []
         current_date = start_date
@@ -4663,8 +4672,12 @@ def get_journal_entries():
             else:
                 rec_structured_output, rec_target_date = None, None
 
-            # Activity summary — build from pre-fetched rows, no DB query
-            activity_summary = _build_activity_summary(activities_by_date.get(date_str, [])) if not is_future else None
+            # Activity summary — from pre-fetched rows and the page's batched session zones
+            activity_summary = (
+                _build_activity_summary(activities_by_date.get(date_str, []),
+                                        zones_by_date.get(date_str, (None, None))[0])
+                if not is_future else None
+            )
 
             # Build observations from lookup (won't exist for future dates)
             obs_data = obs_by_date.get(date_str, {})
@@ -4875,75 +4888,16 @@ def get_recommendation_meta_for_date(date_obj, user_id):
         return None, None
 
 
-def classify_workout_by_hr_zones(activity_list):
-    """
-    Classify workout based on time spent in HR zones rather than TRIMP.
-    This provides more accurate categorization that aligns with HR zone training.
-    Falls back to TRIMP-based classification when HR zone data is not available.
-    """
-    if not activity_list:
-        return 'Unknown'
-    
-    # Aggregate HR zone times across all activities for the day
-    total_zone_times = [0, 0, 0, 0, 0]  # Zone 1-5 in seconds
-    
-    for activity in activity_list:
-        total_zone_times[0] += activity.get('time_in_zone1', 0)
-        total_zone_times[1] += activity.get('time_in_zone2', 0)
-        total_zone_times[2] += activity.get('time_in_zone3', 0)
-        total_zone_times[3] += activity.get('time_in_zone4', 0)
-        total_zone_times[4] += activity.get('time_in_zone5', 0)
-    
-    # Calculate total time and percentages
-    total_time = sum(total_zone_times)
-    if total_time == 0:
-        return 'Unknown'  # No HR data available
-    
-    zone_percentages = [time / total_time * 100 for time in total_zone_times]
-    
-    # Classification logic based on HR zone distribution
-    # Zone 1: Recovery (0-60% HRR)
-    # Zone 2: Aerobic Base (60-70% HRR) 
-    # Zone 3: Aerobic (70-80% HRR)
-    # Zone 4: Threshold (80-90% HRR)
-    # Zone 5: VO2 Max (90-100% HRR)
-    
-    # Determine primary training zone
-    primary_zone = zone_percentages.index(max(zone_percentages)) + 1
-    
-    # Classification based on zone distribution
-    if zone_percentages[0] > 50:  # Zone 1 dominant
-        return 'Easy/Recovery'
-    elif zone_percentages[1] > 50:  # Zone 2 (Aerobic Base) dominant — easy, not moderate
-        return 'Easy/Recovery'
-    elif zone_percentages[2] > 50:  # Zone 3 dominant
-        return 'Moderate'
-    elif zone_percentages[3] > 30:  # Zone 4 significant
-        return 'Tempo/Threshold'
-    elif zone_percentages[4] > 20:  # Zone 5 significant
-        return 'Intervals/Hard'
-    elif zone_percentages[1] + zone_percentages[2] > 70:  # Zones 2+3 dominant
-        return 'Moderate'
-    elif zone_percentages[3] + zone_percentages[4] > 40:  # Zones 4+5 significant
-        return 'Tempo/Threshold'
-    else:
-        # Mixed zones - classify by primary zone
-        if primary_zone <= 2:
-            return 'Easy/Recovery'
-        elif primary_zone == 3:
-            return 'Moderate'
-        elif primary_zone == 4:
-            return 'Tempo/Threshold'
-        else:
-            return 'Intervals/Hard'
+def _build_activity_summary(day_activities, session_zones):
+    """Build the activity summary dict for one date from its activity rows.
 
-
-def _build_activity_summary(day_activities):
-    """Build activity summary dict from a pre-fetched list of activity rows for one date.
-
-    Accepts the same row dicts that get_activity_summary_for_date queries individually.
-    Used by the journal GET handler to avoid per-date DB queries.
+    session_zones: that date's zones from strava_training_load.session_zone_times_for_dates
+    (effective-AeT re-bucketed, time weighted). The summary's zone fields and its
+    workout_classification both come from it, so the journal label, the autopsy and the
+    weekly count all describe a session the same way.
     """
+    from llm_recommendations_module import classify_session_polarized
+
     real = [a for a in day_activities if (a.get('activity_id') or 0) > 0]
     rest = [a for a in day_activities if (a.get('activity_id') or 0) < 0]
 
@@ -4955,145 +4909,49 @@ def _build_activity_summary(day_activities):
             'elevation': 0,
             'workout_classification': 'Rest',
             'total_trimp': 0,
-            'activity_id': rest_activity_id
+            'activity_id': rest_activity_id  # Non-None when manually marked; None when no activity at all
         }
 
     total_distance = sum(float(a.get('distance_miles', 0) or 0) for a in real)
     total_elevation = sum(float(a.get('elevation_gain_feet', 0) or 0) for a in real)
     total_trimp = sum(float(a.get('trimp', 0) or 0) for a in real)
     primary = max(real, key=lambda x: x.get('distance_miles', 0) or 0)
-
-    total_z1 = sum(int(a.get('time_in_zone1') or 0) for a in real)
-    total_z2 = sum(int(a.get('time_in_zone2') or 0) for a in real)
-    total_z3 = sum(int(a.get('time_in_zone3') or 0) for a in real)
-    total_z4 = sum(int(a.get('time_in_zone4') or 0) for a in real)
-    total_z5 = sum(int(a.get('time_in_zone5') or 0) for a in real)
-    total_zone_sec = total_z1 + total_z2 + total_z3 + total_z4 + total_z5
-
-    def _pct(z):
-        return round(z / total_zone_sec * 100, 1) if total_zone_sec > 0 else 0.0
+    zones = session_zones or {}
 
     return {
         'type': primary.get('type', 'Unknown'),
         'distance': round(total_distance, 2),
         'elevation': round(total_elevation, 0),
-        'workout_classification': classify_workout_by_hr_zones(real),
+        'workout_classification': classify_session_polarized(zones) if zones else 'Unknown',
         'total_trimp': round(total_trimp, 1),
         'activity_id': primary.get('activity_id'),
-        'time_in_zone1': total_z1,
-        'time_in_zone2': total_z2,
-        'time_in_zone3': total_z3,
-        'time_in_zone4': total_z4,
-        'time_in_zone5': total_z5,
-        'total_zone_seconds': total_zone_sec,
-        'z1_pct': _pct(total_z1),
-        'z2_pct': _pct(total_z2),
-        'z3_pct': _pct(total_z3),
-        'z4_pct': _pct(total_z4),
-        'z5_pct': _pct(total_z5),
+        **{k: zones.get(k, 0) for k in (
+            'time_in_zone1', 'time_in_zone2', 'time_in_zone3', 'time_in_zone4', 'time_in_zone5',
+            'total_zone_seconds', 'z1_pct', 'z2_pct', 'z3_pct', 'z4_pct', 'z5_pct')},
     }
 
 
 def get_activity_summary_for_date(date_obj, user_id):
-    """Generate activity summary for a specific date - FIXED for Journal Page"""
+    """Activity summary for one date (journal, autopsy). See _build_activity_summary."""
     try:
         date_str = date_obj.strftime('%Y-%m-%d')
-
-        logger.info(f"Getting activity summary for date {date_str}, user {user_id}")
-
-        # Get all real activities for this date (positive activity_id = from Strava)
-        activities = db_utils.execute_query(
+        rows = db_utils.execute_query(
             """
-            SELECT
-                activity_id,
-                name,
-                type,
-                distance_miles,
-                elevation_gain_feet,
-                trimp,
-                duration_minutes,
-                avg_heart_rate,
-                max_heart_rate,
-                time_in_zone1,
-                time_in_zone2,
-                time_in_zone3,
-                time_in_zone4,
-                time_in_zone5
+            SELECT activity_id, name, type, distance_miles, elevation_gain_feet, trimp,
+                   duration_minutes, avg_heart_rate, max_heart_rate
             FROM activities
-            WHERE user_id = %s AND date = %s AND activity_id > 0
+            WHERE user_id = %s AND date = %s
             ORDER BY activity_id DESC
             """,
             (user_id, date_str),
             fetch=True
-        )
-
-        logger.info(f"Found {len(activities) if activities else 0} activities for {date_str}")
-
-        # If no real activities, check for manually-marked rest day (negative activity_id)
-        if not activities:
-            rest_day = db_utils.execute_query(
-                "SELECT activity_id FROM activities WHERE user_id = %s AND date = %s AND activity_id < 0 LIMIT 1",
-                (user_id, date_str),
-                fetch=True
-            )
-            rest_activity_id = rest_day[0]['activity_id'] if rest_day else None
-            return {
-                'type': 'rest',
-                'distance': 0,
-                'elevation': 0,
-                'workout_classification': 'Rest',
-                'total_trimp': 0,
-                'activity_id': rest_activity_id  # Non-None when manually marked; None when no activity at all
-            }
-
-        # Convert activities to dict format for easier processing
-        activity_list = [dict(activity) for activity in activities]
-
-        # Aggregate activities for the day
-        total_distance = sum(float(act.get('distance_miles', 0) or 0) for act in activity_list)
-        total_elevation = sum(float(act.get('elevation_gain_feet', 0) or 0) for act in activity_list)
-        total_trimp = sum(float(act.get('trimp', 0) or 0) for act in activity_list)
-
-        # Determine primary activity type and ID
-        # Use the activity with the longest distance as primary
-        primary_activity = max(activity_list, key=lambda x: x.get('distance_miles', 0) or 0)
-        activity_type = primary_activity.get('type', 'Unknown')
-        primary_activity_id = primary_activity.get('activity_id')
-
-        # Classify workout based on HR zones (more accurate than TRIMP)
-        workout_classification = classify_workout_by_hr_zones(activity_list)
-
-        # Aggregate zone times for compliance checking
-        total_z1 = sum(int(a.get('time_in_zone1') or 0) for a in activity_list)
-        total_z2 = sum(int(a.get('time_in_zone2') or 0) for a in activity_list)
-        total_z3 = sum(int(a.get('time_in_zone3') or 0) for a in activity_list)
-        total_z4 = sum(int(a.get('time_in_zone4') or 0) for a in activity_list)
-        total_z5 = sum(int(a.get('time_in_zone5') or 0) for a in activity_list)
-        total_zone_sec = total_z1 + total_z2 + total_z3 + total_z4 + total_z5
-
-        def _pct(z):
-            return round(z / total_zone_sec * 100, 1) if total_zone_sec > 0 else 0.0
-
-        result = {
-            'type': activity_type,
-            'distance': round(total_distance, 2),
-            'elevation': round(total_elevation, 0),
-            'workout_classification': workout_classification,
-            'total_trimp': round(total_trimp, 1),
-            'activity_id': primary_activity_id,
-            'time_in_zone1': total_z1,
-            'time_in_zone2': total_z2,
-            'time_in_zone3': total_z3,
-            'time_in_zone4': total_z4,
-            'time_in_zone5': total_z5,
-            'total_zone_seconds': total_zone_sec,
-            'z1_pct': _pct(total_z1),
-            'z2_pct': _pct(total_z2),
-            'z3_pct': _pct(total_z3),
-            'z4_pct': _pct(total_z4),
-            'z5_pct': _pct(total_z5),
-        }
-
+        ) or []
+        day_activities = [dict(r) for r in rows]
+        session_zones = None
+        if any((a.get('activity_id') or 0) > 0 for a in day_activities):
+            from strava_training_load import session_zone_times
+            session_zones, _ = session_zone_times(user_id, date_str)
+        result = _build_activity_summary(day_activities, session_zones)
         logger.info(f"Activity summary for {date_str}: {result}")
         return result
 
@@ -6630,13 +6488,11 @@ def generate_autopsy_for_date(date_str, user_id):
             # the VT1 label so prompt text and buckets agree.
             eff_aet = None
             try:
-                from strava_training_load import session_zone_times
-                rb, eff_aet = session_zone_times(user_id, date_str)
-                if rb and rb.get('total_zone_seconds', 0) > 0:
-                    activity_summary.update({k: rb[k] for k in (
-                        'time_in_zone1', 'time_in_zone2', 'time_in_zone3',
-                        'time_in_zone4', 'time_in_zone5', 'total_zone_seconds',
-                        'z1_pct', 'z2_pct', 'z3_pct', 'z4_pct', 'z5_pct')})
+                # activity_summary's zones already come from session_zone_times; the
+                # effective AeT is read here to align the prompt's VT1/zone labels.
+                from dynamic_aet import get_effective_aet
+                eff_aet = get_effective_aet(
+                    user_id, as_of_date=datetime.strptime(date_str, '%Y-%m-%d').date())
                 if eff_aet:
                     _off = eff_aet.get('offset')
                     if hr_thresholds:
@@ -12700,8 +12556,11 @@ def backfill_hr_streams():
                     hr_data = streams['heartrate'].data
                     distance_data = (streams['distance'].data
                                      if 'distance' in streams and streams['distance'] else None)
+                    time_data = (streams['time'].data
+                                 if 'time' in streams and streams['time'] else None)
                     db_utils.save_hr_stream_data(activity_id, current_user.id, hr_data,
-                                                 sample_rate=1.0, distance_data=distance_data)
+                                                 sample_rate=1.0, distance_data=distance_data,
+                                                 time_data=time_data)
                     fetched += 1
                     logger.info(f"Backfilled HR stream for activity {activity_id} ({row['name']})")
                 else:
