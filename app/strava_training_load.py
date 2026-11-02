@@ -1764,6 +1764,33 @@ def rebucket_zone_times(user_id, date_str, effective_aet, aet_offset=None):
     }
 
 
+def session_zone_times(user_id, date_str):
+    """Single source of a session date's time-in-zone for intensity classification.
+
+    Re-buckets the date's HR streams against the effective AeT that applied on that
+    date (Training Metrics Reference Guide, Dynamic AeT "Effect A"). Every consumer that
+    classifies a session's intensity — the daily autopsy and the weekly polarized count —
+    must read zones from here, never from the stored time_in_zone* columns (those use the
+    static zone boundaries and miss above-AeT time on suppressed days).
+
+    With no effective AeT available (no HR thresholds), the streams are bucketed against
+    the static zone boundaries instead.
+
+    Returns (zones, eff_aet): zones is rebucket_zone_times' dict (or None if user settings
+    are missing); eff_aet is the get_effective_aet dict or None.
+    """
+    from dynamic_aet import get_effective_aet
+
+    session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    eff_aet = get_effective_aet(user_id, as_of_date=session_date)
+    if eff_aet:
+        zones = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'],
+                                    aet_offset=eff_aet.get('offset'))
+    else:
+        zones = rebucket_zone_times(user_id, date_str, None)
+    return zones, eff_aet
+
+
 def calculate_hr_zones_from_streams(hr_stream, max_hr=180, resting_hr=60,
                                      hr_zones_method='percentage', custom_hr_zones=None):
     """

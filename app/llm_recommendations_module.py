@@ -537,6 +537,12 @@ def get_user_hr_thresholds(user_id):
         return None
 
 
+# Black-hole line (category 1): a session whose Zone 3 share exceeds this percent of HR time
+# is a black-hole (Moderate) session. Single source for both the per-session autopsy flag
+# (compute_zone_compliance) and the weekly Seiler session count (classify_session_polarized).
+BLACK_HOLE_Z3_PCT = 15
+
+
 def classify_session_polarized(zone_times):
     """Classify a session using Seiler's polarized training model (session intent, not time dominance).
 
@@ -545,7 +551,7 @@ def classify_session_polarized(zone_times):
                     (multiple activities in a day are aggregated automatically).
 
     Returns:
-        'Easy'     — session stayed in Z1/Z2: Z4+Z5 < 10% AND Z3 < 20%
+        'Easy'     — session stayed in Z1/Z2: Z4+Z5 < 10% AND Z3 <= BLACK_HOLE_Z3_PCT (15%)
         'Hard'     — meaningful high-intensity work: Z4+Z5 >= 20% OR Z4 alone >= 15%
         'Moderate' — black hole: Z3-dominant, not recovery, not adaptation
         'Unknown'  — no HR data (total zone time == 0)
@@ -578,7 +584,7 @@ def classify_session_polarized(zone_times):
 
     if p4 + p5 >= 20 or p4 >= 15:
         return 'Hard'
-    if p4 + p5 < 10 and p3 < 20:
+    if p4 + p5 < 10 and p3 <= BLACK_HOLE_Z3_PCT:
         return 'Easy'
     return 'Moderate'
 
@@ -627,7 +633,7 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, 
             'prescribed': str,
             'diagnostic': bool,             # AeT/drift test — compliance flags suppressed
             'actual_classification': str,   # Easy / Hard / Moderate / Unknown
-            'black_hole': bool,             # Easy prescribed, Z3 > 15% (always False when diagnostic)
+            'black_hole': bool,             # Easy prescribed, Z3 > BLACK_HOLE_Z3_PCT (always False when diagnostic)
             'aerobic_base_target_met': bool | None,  # >=45 min in productive Zone 2; None unless Easy
             'below_vt1_minutes': float,     # context only (Z1+Z2)
             'z2_minutes': float,
@@ -686,7 +692,7 @@ def compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, 
         aerobic_base_target_met = None
         insufficient_intensity = False
     else:
-        black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > 15
+        black_hole = has_hr and is_easy_prescribed and z_pcts.get('z3', 0) > BLACK_HOLE_Z3_PCT
         aerobic_base_target_met = (z2_min >= 45) if (has_hr and is_easy_prescribed) else None
         insufficient_intensity = has_hr and is_hard_prescribed and quality_min < 15
 
@@ -726,7 +732,7 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
             'moderate_sessions': int,   # black hole count
             'unknown_sessions': int,
             'total_sessions': int,
-            'easy_pct': float,          # easy / (easy + hard) * 100; 0 if no easy+hard sessions
+            'easy_pct': float,          # easy / (easy + hard + moderate) * 100; 0 if none classified
             'target_easy_pct': float,   # target based on training block and age
             'compliance': str,          # 'on_target' | 'too_hard' | 'too_easy' | 'insufficient_data'
             'moderate_dates': list[str],  # dates of black-hole sessions
@@ -744,17 +750,13 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
             start = today - timedelta(days=trailing_days - 1)
             end = today
 
+        from strava_training_load import session_zone_times
+
         rows = execute_query(
             """
-            SELECT date,
-                   SUM(COALESCE(time_in_zone1, 0)) AS z1,
-                   SUM(COALESCE(time_in_zone2, 0)) AS z2,
-                   SUM(COALESCE(time_in_zone3, 0)) AS z3,
-                   SUM(COALESCE(time_in_zone4, 0)) AS z4,
-                   SUM(COALESCE(time_in_zone5, 0)) AS z5
+            SELECT DISTINCT date
             FROM activities
             WHERE user_id = %s AND date >= %s AND date <= %s AND activity_id > 0
-            GROUP BY date
             ORDER BY date
             """,
             (user_id, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')),
@@ -765,13 +767,13 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
         moderate_dates = []
 
         for row in rows:
-            zone_dict = {
-                'time_in_zone1': int(row.get('z1') or 0),
-                'time_in_zone2': int(row.get('z2') or 0),
-                'time_in_zone3': int(row.get('z3') or 0),
-                'time_in_zone4': int(row.get('z4') or 0),
-                'time_in_zone5': int(row.get('z5') or 0),
-            }
+            # Zones come from the same per-session source the daily autopsy uses
+            # (re-bucketed against that date's effective AeT), so the weekly count and
+            # the daily black-hole flag can never disagree about a session.
+            date_str = str(row.get('date'))[:10]
+            zones, _ = session_zone_times(user_id, date_str)
+            zone_dict = {f'time_in_zone{i}': int((zones or {}).get(f'time_in_zone{i}') or 0)
+                         for i in range(1, 6)}
             cls = classify_session_polarized(zone_dict)
             if cls == 'Easy':
                 easy += 1
@@ -786,8 +788,11 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
                 unknown += 1
 
         total = easy + hard + moderate + unknown
-        easy_hard = easy + hard
-        easy_pct = (easy / easy_hard * 100) if easy_hard > 0 else 0.0
+        # Seiler 80:20 is a share of ALL HR-classified sessions. A black-hole (Moderate)
+        # session is not Easy, so it must count in the denominator — excluding it reported
+        # "Easy 100%" for a week with 3 of 5 sessions in the black hole.
+        classified = easy + hard + moderate
+        easy_pct = (easy / classified * 100) if classified > 0 else 0.0
 
         # Target Easy% by training block
         stage_lower = (training_stage or '').lower()
@@ -803,7 +808,7 @@ def compute_weekly_polarized_ratio(user_id, training_stage, athlete_age, week_st
         target = min(base_target + age_adj, 95.0)
 
         # Compliance window ±10 points
-        if easy_hard < 3:
+        if classified < 3:
             compliance = 'insufficient_data'
         elif easy_pct >= target - 10:
             compliance = 'on_target'

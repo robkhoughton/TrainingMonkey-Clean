@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Import existing modules
 from timezone_utils import get_app_current_date, get_current_week_start
-from unified_metrics_service import UnifiedMetricsService
+from unified_metrics_service import UnifiedMetricsService, format_days_since_rest_for_prompt
 from db_utils import execute_query, upsert_week_strategic_summary
 from readiness_engine import get_weekly_ans_summary
 from llm_recommendations_module import (
@@ -1012,14 +1012,14 @@ def build_weekly_program_prompt(
         from llm_recommendations_module import compute_weekly_polarized_ratio, get_user_hr_thresholds
         polarized_ratio = compute_weekly_polarized_ratio(
             user_id=user_id,
-            training_stage=training_stage,
+            training_stage=training_stage.get('stage', 'base'),
             athlete_age=athlete_age,
             week_start_date=target_week_start - timedelta(days=7)
         )
         hr_thresholds = get_user_hr_thresholds(user_id)
         if polarized_ratio:
             pr = polarized_ratio
-            bh_str = f"Black hole days: {', '.join(pr['moderate_dates'])}" if pr['moderate_dates'] else "No black hole sessions."
+            bh_str = f"Black hole days: {', '.join(_with_weekday(d) for d in pr['moderate_dates'])}" if pr['moderate_dates'] else "No black hole sessions."
             vt_str = f"VT1 = {hr_thresholds['vt1_bpm']} bpm | VT2 = {hr_thresholds['vt2_bpm']} bpm" if hr_thresholds else ""
             polarized_block = f"""
 **POLARIZED TRAINING COMPLIANCE — PRIOR WEEK (SEILER MODEL):**
@@ -1029,7 +1029,7 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
 {vt_str}
 """
     except Exception as _pre:
-        logger.debug(f"Polarized ratio computation skipped: {_pre}")
+        logger.warning(f"Polarized ratio computation skipped: {_pre}")
 
     # Interval protocol + stride placement rules — phase-aware, injected so the LLM prescribes correct structures
     interval_protocol_block = ""
@@ -1101,7 +1101,7 @@ Easy%: {pr['easy_pct']:.0f}% | Target: {pr['target_easy_pct']:.0f}% | Status: {p
     norm_div = format_divergence_for_prompt(current_metrics.get('normalized_divergence'))
     seven_day = format_metric(current_metrics.get('seven_day_avg'), '.1f')
     twentyeight_day = format_metric(current_metrics.get('twentyeight_day_avg'), '.1f')
-    days_since_rest = current_metrics.get('days_since_rest', 'N/A')
+    days_since_rest = format_days_since_rest_for_prompt(current_metrics)
 
     # Format personalized divergence thresholds
     div_moderate_risk = thresholds.get('divergence_moderate_risk', -0.05)
@@ -1785,6 +1785,12 @@ def _apply_structured_totals(program: Dict) -> None:
         program['predicted_metrics']['total_weekly_elevation_feet'] = round(total_vert)
 
 
+def _with_weekday(d) -> str:
+    """'2026-10-31' or date -> '2026-10-31 (Sat)', so the LLM never derives the weekday."""
+    d_obj = d if hasattr(d, 'strftime') else date.fromisoformat(str(d)[:10])
+    return f"{d_obj.isoformat()} ({d_obj.strftime('%a')})"
+
+
 def _parse_weekly_track(response: Optional[str], score_label: str) -> Tuple[int, str]:
     """Parse one weekly synthesis track — extract its 1-10 score and the narrative.
 
@@ -1910,8 +1916,8 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
 
         journal_obs = get_recent_journal_observations(user_id, days=7)
 
-        # --- Current metrics for context ---
-        metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
+        # --- End-of-week metrics: as of the week's last day, not generation day ---
+        metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id, as_of_date=week_end)
 
         # --- Build prompt ---
         plan_section = "No plan was recorded for this week." if not strategic_summary else (
@@ -1930,7 +1936,7 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
             div = d.get('normalized_divergence')
             div_str = f", div {div:.2f}" if div is not None else ""
             activity_lines.append(
-                f"  {d['date']}: {d.get('type','?')} {load:.1f}mi load "
+                f"  {_with_weekday(d['date'])}: {d.get('type','?')} {load:.1f}mi load "
                 f"(ACWR {d.get('acute_chronic_ratio') or 0:.2f}{div_str})"
             )
         activity_section = "\n".join(activity_lines) if activity_lines else "No activities recorded."
@@ -1940,7 +1946,7 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
         metrics_section = (
             f"End-of-week ACWR: {metrics.get('external_acwr', 'N/A')}\n"
             f"Divergence: {format_divergence_for_prompt(metrics.get('normalized_divergence'))}\n"
-            f"Days since rest: {metrics.get('days_since_rest', 'N/A')}"
+            f"Days since rest: {format_days_since_rest_for_prompt(metrics)}"
         ) if metrics else "Metrics unavailable."
 
         # Polarized intensity distribution for the completed week.
@@ -1959,7 +1965,7 @@ def generate_weekly_synthesis(user_id: int, week_start: date) -> Optional[str]:
                 user_id=user_id, training_stage=_stage, athlete_age=_age, week_start_date=week_start
             )
             if _pr:
-                _bh = f"Black hole days: {', '.join(_pr['moderate_dates'])}" if _pr['moderate_dates'] else "No black hole sessions."
+                _bh = f"Black hole days: {', '.join(_with_weekday(d) for d in _pr['moderate_dates'])}" if _pr['moderate_dates'] else "No black hole sessions."
                 polarized_aligned = (
                     f"\nPOLARIZED COMPLIANCE:\n"
                     f"{_pr['easy_sessions']} Easy | {_pr['hard_sessions']} Hard | {_pr['moderate_sessions']} Moderate (black hole)\n"

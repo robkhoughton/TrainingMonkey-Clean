@@ -435,7 +435,8 @@ class UnifiedMetricsService:
                         f"Internal ACWR={latest_activity_dict.get('trimp_acute_chronic_ratio')}")
 
             # Calculate days since rest using time-based approach for this user
-            days_since_rest = UnifiedMetricsService._calculate_days_since_rest_time_based(user_id, as_of_date=as_of_date)
+            rest_status = UnifiedMetricsService._rest_status(user_id, as_of_date=as_of_date)
+            days_since_rest = rest_status['days_since_rest']
 
             # Use the database values (now mathematically correct)
             normalized_divergence = latest_activity_dict.get('normalized_divergence')
@@ -455,6 +456,8 @@ class UnifiedMetricsService:
                 'twentyeight_day_avg_load': latest_activity_dict.get('twentyeight_day_avg_load', 0),
                 'twentyeight_day_avg_trimp': latest_activity_dict.get('twentyeight_day_avg_trimp', 0),
                 'days_since_rest': days_since_rest,
+                'last_rest_date': rest_status['last_rest_date'],
+                'rest_as_of_date': rest_status['as_of_date'],
                 'latest_activity_date': str(activity_date),
                 'calculation_timestamp': datetime.now().isoformat(),
                 'user_id': user_id
@@ -569,10 +572,19 @@ class UnifiedMetricsService:
 
     @staticmethod
     def _calculate_days_since_rest_time_based(user_id, as_of_date=None):
+        """Days since the last recorded rest day, as of a given date (see _rest_status)."""
+        return UnifiedMetricsService._rest_status(user_id, as_of_date)['days_since_rest']
+
+    @staticmethod
+    def _rest_status(user_id, as_of_date=None):
         """
-        Calculate days since the last recorded rest day for a specific user, as of a
-        given date.
-        FIXED: Uses app timezone for consistent date calculations.
+        Find the last recorded rest day for a user and the days since it, as of a
+        given date. Uses app timezone for consistent date calculations.
+
+        Returns {'days_since_rest': int, 'last_rest_date': date | None, 'as_of_date': date}.
+        days_since_rest is calendar days from the last rest day to as_of_date, so as_of_date
+        itself counts: rest Friday, evaluated Monday = 3, with 2 training days completed
+        (Sat, Sun) before Monday.
 
         Args:
             user_id (int): User ID.
@@ -632,7 +644,7 @@ class UnifiedMetricsService:
 
             if not last_rest_day_record:
                 logger.info(f"No rest day or journal entry found for user {user_id}. Returning 0.")
-                return 0
+                return {'days_since_rest': 0, 'last_rest_date': None, 'as_of_date': ref_date}
 
             last_rest_date_str = last_rest_day_record[0]['date']
             if isinstance(last_rest_date_str, str):
@@ -649,11 +661,12 @@ class UnifiedMetricsService:
             logger.info(
                 f"Last rest day for user {user_id}: {last_rest_date_str}. Days since: {days_since} (as of {ref_date})")
 
-            return max(0, days_since)
+            return {'days_since_rest': max(0, days_since), 'last_rest_date': last_rest_date,
+                    'as_of_date': ref_date}
 
         except Exception as e:
             logger.error(f"Error calculating days since rest for user {user_id}: {str(e)}", exc_info=True)
-            return 0
+            return {'days_since_rest': 0, 'last_rest_date': None, 'as_of_date': None}
 
     @staticmethod
     def _calculate_normalized_divergence(external_acwr, internal_acwr):
@@ -849,6 +862,32 @@ def get_weight_change_pct_28d(user_id):
     if (w.get('recent_n') or 0) >= 3 and (w.get('baseline_n') or 0) >= 3 and w.get('baseline_avg'):
         return round((float(w['recent_avg']) - float(w['baseline_avg'])) / float(w['baseline_avg']) * 100, 1)
     return None
+
+
+def format_days_since_rest_for_prompt(metrics):
+    """Render days-since-rest as an unambiguous prompt fact.
+
+    A bare "Days Since Rest: 3" was read by the LLM as "3 training days completed" when it
+    means 3 calendar days since the last rest day, counting today. State the last rest date
+    and the completed training days explicitly so the count is never re-derived.
+    """
+    if not metrics or metrics.get('days_since_rest') is None:
+        return 'N/A'
+    days = metrics['days_since_rest']
+    last_rest = metrics.get('last_rest_date')
+    as_of = metrics.get('rest_as_of_date')
+    if not last_rest or not as_of:
+        return f"{days} (no rest day on record)"
+    completed = max(0, (as_of - last_rest).days - 1)
+    if completed:
+        first = last_rest + timedelta(days=1)
+        last = as_of - timedelta(days=1)
+        span = first.strftime('%a %b %d') if completed == 1 else             f"{first.strftime('%a %b %d')}-{last.strftime('%a %b %d')}"
+        completed_str = f"{completed} training day{'s' if completed != 1 else ''} completed since ({span})"
+    else:
+        completed_str = "0 training days completed since"
+    return (f"{days} (last rest day {last_rest.strftime('%a %b %d')}; {completed_str}; "
+            f"{as_of.strftime('%a %b %d')} is day {days})")
 
 
 def get_days_since_rest(user_id=None):

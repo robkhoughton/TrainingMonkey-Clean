@@ -6630,19 +6630,15 @@ def generate_autopsy_for_date(date_str, user_id):
             # the VT1 label so prompt text and buckets agree.
             eff_aet = None
             try:
-                from dynamic_aet import get_effective_aet
-                from strava_training_load import rebucket_zone_times
-                session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                eff_aet = get_effective_aet(user_id, as_of_date=session_date)
+                from strava_training_load import session_zone_times
+                rb, eff_aet = session_zone_times(user_id, date_str)
+                if rb and rb.get('total_zone_seconds', 0) > 0:
+                    activity_summary.update({k: rb[k] for k in (
+                        'time_in_zone1', 'time_in_zone2', 'time_in_zone3',
+                        'time_in_zone4', 'time_in_zone5', 'total_zone_seconds',
+                        'z1_pct', 'z2_pct', 'z3_pct', 'z4_pct', 'z5_pct')})
                 if eff_aet:
                     _off = eff_aet.get('offset')
-                    rb = rebucket_zone_times(user_id, date_str, eff_aet['effective_aet'],
-                                             aet_offset=_off)
-                    if rb and rb.get('total_zone_seconds', 0) > 0:
-                        activity_summary.update({k: rb[k] for k in (
-                            'time_in_zone1', 'time_in_zone2', 'time_in_zone3',
-                            'time_in_zone4', 'time_in_zone5', 'total_zone_seconds',
-                            'z1_pct', 'z2_pct', 'z3_pct', 'z4_pct', 'z5_pct')})
                     if hr_thresholds:
                         hr_thresholds['vt1_bpm'] = eff_aet['effective_aet']
                         _z = hr_thresholds.get('zones')

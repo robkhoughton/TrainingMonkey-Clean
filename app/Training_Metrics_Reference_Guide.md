@@ -309,6 +309,13 @@ time pushed into Z3 is the correct slow-down signal.
 against the effective AeT of the *session's own date*, so a 130 bpm effort lands in Z3 on a
 suppressed day (black-hole detection becomes autonomic-aware). The daily recommendation
 injects a `TODAY'S EFFECTIVE AeT` authoritative fact and anchors easy-day HR cues to it.
+The weekly polarized count reads zones from the same source (`session_zone_times`), so the
+daily autopsy and the weekly review always agree about a session.
+
+**Black-hole line:** a session with **Z3 > 15%** of HR time (and Z4+Z5 < 10%) is a black-hole
+(Moderate) session. One constant, `BLACK_HOLE_Z3_PCT`, drives both the daily autopsy flag and
+the weekly Seiler count. Weekly Easy% = Easy ÷ (Easy + Hard + Moderate) sessions: a black-hole
+session is not Easy.
 
 **Effect B — dynamic internal load (dual-track):** an **Edwards** summated-HR-zone TRIMP on
 the AeT-anchored zones, `trimp_dynamic = Σ(minutes_in_zone_i × i)` with weights 1–5. On a
