@@ -22,6 +22,7 @@ from gait_classifier import classify_gait_modes
 from utils.feature_flags import is_feature_enabled
 from acwr_calculation_service import ACWRCalculationService
 from exponential_decay_engine import ActivityData
+from external_load import RUNNING_ELEVATION_FACTOR
 
 # Setup logging
 logging.basicConfig(
@@ -1003,7 +1004,7 @@ def calculate_training_load(activity, client, hr_config=None, user_id=None):
     else:
         # Running calculation (unchanged for safety)
         logger.info("Using running external load calculation")
-        elevation_load_miles = elevation_gain_feet / 750.0
+        elevation_load_miles = elevation_gain_feet / RUNNING_ELEVATION_FACTOR
         total_load_miles = distance_miles + elevation_load_miles
         # cycling, swimming, and strength fields remain None for running activities
 

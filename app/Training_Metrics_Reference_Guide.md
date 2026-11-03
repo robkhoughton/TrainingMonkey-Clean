@@ -14,7 +14,10 @@
 2. Limit high-intensity sessions (TRIMP > 70) to 2-3 per week
 3. Maintain 80/20 intensity distribution (80% easy, 20% moderate-hard)
 4. Plan step-back weeks when ACWR trends > 1.2 for 7+ days
-5. **Long Run Distance Ceiling**: Look back 30 days. Prescribed long run = longest recent run × 1.10, and must not exceed 1/3 of planned total weekly mileage. Whichever constraint is more restrictive applies.
+5. **Long Run Limits**: Look back 30 days. The prescribed long run must satisfy all three limits; the most restrictive one applies. All three are guidelines: the plan may exceed one only with a stated reason.
+   - **Distance**: at or below the longest run in the past 30 days × 1.10. Source: Frandsen et al. 2025, *Br J Sports Med* (doi:10.1136/bjsports-2024-109380; prospective cohort, n=5,205). A single session more than 10% longer than the longest run in the prior 30 days raised overuse-injury rates (HRR 1.64 for 10–30% spikes, 1.52 for 30–100%, 2.28 for >100%).
+   - **Load**: at or below the biggest run in the past 30 days, measured in Total Load Miles, × 1.10. Frandsen measured distance only. Applying the same 10% spike threshold to load miles carries it over to a measure the study did not test. The reason for doing it: climbing is load, so a run with the same distance and much more vert than recent runs is also a spike. This is an extrapolation, not a validated threshold.
+   - **Weekly share**: at or below 1/3 of the week's planned total load miles across all running days. No source; product judgment.
 6. **Hard Session Recovery Buffer**: High-intensity sessions (Tempo, Interval, Speed Work, Hill Repeats, or any Long Run) require 48 hours of recovery before the next hard session. Never schedule two hard sessions on consecutive days.
 
 ## Advanced Pattern Recognition

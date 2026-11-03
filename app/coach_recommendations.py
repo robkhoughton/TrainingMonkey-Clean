@@ -18,7 +18,7 @@ import json
 import logging
 import requests
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, NamedTuple, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
 
 # Import existing modules
@@ -44,6 +44,7 @@ from llm_recommendations_module import (
 )
 from acwr_configuration_service import ACWRConfigurationService
 from prompt_constants import NORMALIZED_DIVERGENCE_FORMULA, format_divergence_for_prompt
+from external_load import RUNNING_ELEVATION_FACTOR
 
 # Setup logging
 logging.basicConfig(
@@ -877,31 +878,75 @@ def _build_ans_prompt_block(summary):
     return "\n".join(lines) + "\n"
 
 
-LONG_RUN_CEILING_FACTOR = 1.10  # long run <= 110% of the longest run in the prior 30 days
+LONG_RUN_CEILING_FACTOR = 1.10  # single run <= 110% of the prior-30-day max (Frandsen 2025)
 
 
-def get_long_run_ceiling(user_id: int, as_of: date) -> Tuple[Optional[float], Optional[float]]:
-    """Longest run in the 30 days before `as_of`, and the long-run ceiling derived from it.
+class LongRunLimits(NamedTuple):
+    """The prior-30-day maxima and the two ceilings derived from them.
 
-    Single source for the long-run guideline the plan prompt states. Returns (max_30d_long_run, ceiling); both None with no recent running data.
+    The two maxima can come from different runs: the longest flat run sets the distance ceiling,
+    the biggest climbing run sets the load ceiling.
+    """
+    max_distance_miles: float
+    distance_ceiling: float
+    max_load_miles: float
+    load_ceiling: float
+
+
+def long_run_limits(max_distance_miles: float, max_load_miles: float) -> LongRunLimits:
+    """Apply LONG_RUN_CEILING_FACTOR to each prior-30-day maximum."""
+    return LongRunLimits(
+        max_distance_miles=max_distance_miles,
+        distance_ceiling=round(max_distance_miles * LONG_RUN_CEILING_FACTOR, 1),
+        max_load_miles=max_load_miles,
+        load_ceiling=round(max_load_miles * LONG_RUN_CEILING_FACTOR, 1),
+    )
+
+
+def get_long_run_limits(user_id: int, as_of: date) -> Optional[LongRunLimits]:
+    """Long-run limits from running in the 30 days before `as_of`; None with no recent running.
+
+    Single source for the long-run guideline the plan prompt states. Distance is the measure
+    Frandsen 2025 validated; Total Load Miles adds the vert that distance ignores on trail runs.
     """
     rows = execute_query(
         """
-        SELECT distance_miles FROM activities
+        SELECT MAX(distance_miles) AS max_distance, MAX(total_load_miles) AS max_load
+        FROM activities
         WHERE user_id = %s
           AND date >= %s AND date < %s
           AND (sport_type = 'running' OR sport_type IS NULL)
-          AND distance_miles IS NOT NULL AND distance_miles > 0
-        ORDER BY distance_miles DESC
-        LIMIT 1
+          AND distance_miles > 0
         """,
         (user_id, str(as_of - timedelta(days=30)), str(as_of)),
         fetch=True
     )
-    if not rows:
-        return None, None
-    longest = float(rows[0]['distance_miles'])
-    return longest, round(longest * LONG_RUN_CEILING_FACTOR, 1)
+    if not rows or rows[0]['max_distance'] is None:
+        return None
+    return long_run_limits(float(rows[0]['max_distance']), float(rows[0]['max_load']))
+
+
+def format_long_run_guideline(limits: Optional[LongRunLimits]) -> str:
+    """Key principle 7 of the weekly-plan prompt: the three long-run limits, stated as facts."""
+    if limits is None:
+        return (
+            "No recent long run data available — be conservative; prescribe no more than "
+            "10 miles for a long run until training history is established."
+        )
+    factor = f"{RUNNING_ELEVATION_FACTOR:.0f}"
+    return (
+        "The long run must satisfy all three limits. Load miles for any session = "
+        f"distance_miles + elevation_gain_feet / {factor}.\n"
+        f"   - Distance: at or below {limits.distance_ceiling:.1f} miles (longest run in the past "
+        f"30 days: {limits.max_distance_miles:.1f} miles × {LONG_RUN_CEILING_FACTOR:.2f}).\n"
+        f"   - Load: at or below {limits.load_ceiling:.1f} load miles (biggest run in the past "
+        f"30 days: {limits.max_load_miles:.1f} load miles × {LONG_RUN_CEILING_FACTOR:.2f}). "
+        "This counts climbing, so a long run with more vert than recent runs must be shorter.\n"
+        "   - Weekly share: at or below 1/3 of the week's total load miles across all running days "
+        "(equivalently, half the combined load miles of the other six days).\n"
+        "   These are guidelines: exceed one only with a stated reason (race-specific "
+        "preparation, athlete history), and name the limit exceeded."
+    )
 
 
 def build_weekly_program_prompt(
@@ -920,7 +965,7 @@ def build_weekly_program_prompt(
     current_metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
     activities = UnifiedMetricsService.get_recent_activities_for_analysis(days=28, user_id=user_id)
 
-    max_30d_long_run, long_run_ceiling = get_long_run_ceiling(user_id, target_week_start)
+    long_run_guideline = format_long_run_guideline(get_long_run_limits(user_id, target_week_start))
     race_goals = get_race_goals(user_id)
     # Upcoming-only for the prompt's RACE GOALS display (canonical filter, shared with the
     # daily builders). race_goals (all) is still used below for race-week detection.
@@ -1303,7 +1348,7 @@ Generate a divergence-optimized 7-day training program for the week of {target_w
 4. **Schedule Integration**: Respect athlete's availability and time constraints.
 5. **Race Goal Alignment**: Structure the week toward the primary race goal given current stage and weeks remaining.
 6. **Recovery Integration**: Plan rest/easy days based on current divergence trajectory and days since rest.
-7. **Long Run Distance (GUIDELINE)**: {f"The athlete's longest run in the past 30 days is {max_30d_long_run:.1f} miles. As a guideline, keep the long run at or below {long_run_ceiling:.1f} miles ({max_30d_long_run:.1f} × 1.10) and at or below half the combined distance of the other six days (equivalently, 1/3 of the weekly total); exceed either only with a stated reason (race-specific preparation, athlete history)." if long_run_ceiling else "No recent long run data available — be conservative; prescribe no more than 10 miles for a long run until training history is established."}
+7. **Long Run Limits (GUIDELINE)**: {long_run_guideline}
 8. **Hard Session Recovery Buffer (HARD CONSTRAINT)**: High-intensity sessions (Tempo Run, Interval/Speed Work, Hill Repeats) and Long Runs all require 48 hours of recovery before the next hard session. Never place two hard sessions on consecutive days. A Long Run on Saturday means Friday must be Easy/Recovery/Rest, and Sunday must be Easy/Recovery/Rest.
 9. **Polarized Training (Seiler 80:20 Model)**: Target {f"{polarized_ratio['target_easy_pct']:.0f}" if polarized_ratio else "80"}% of sessions as Easy (stay below VT1). Hard sessions must achieve 15+ minutes above VT2. Zone 3 (moderate intensity) is the "black hole" — fatigue without adaptation. Set hard_session_type for all High-intensity days: "tempo" (sustained Z4, 25-35 min), "intervals" (repeated Z4/Z5 blocks with Z1/Z2 recovery), "hills", or "race_sim".
 {polarized_block}{interval_protocol_block}

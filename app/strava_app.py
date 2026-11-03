@@ -70,6 +70,7 @@ from strava_training_load import (
     load_tokens,
     save_tokens
 )
+from external_load import running_load_miles
 
 # Setup logging
 logging.basicConfig(
@@ -6252,7 +6253,7 @@ def get_journal_context():
                     continue
                 planned_dist = float(entry.get('distance_miles') or 0)
                 planned_vert = float(entry.get('elevation_gain_feet') or 0)
-                planned_load = planned_dist + planned_vert / 750.0
+                planned_load = running_load_miles(planned_dist, planned_vert)
                 planned_days.append({
                     'date':  d_str,
                     'miles': round(planned_load, 2),
@@ -11389,7 +11390,7 @@ def get_race_readiness():
         if not distance_miles:
             return jsonify({'success': True, 'readiness': None, 'reason': 'no_distance_set'})
 
-        race_total_load = float(distance_miles) + float(elevation_gain_feet) / 750.0
+        race_total_load = running_load_miles(float(distance_miles), float(elevation_gain_feet))
 
         # Current chronic load (28-day avg daily load)
         metrics = UnifiedMetricsService.get_latest_complete_metrics(user_id)
