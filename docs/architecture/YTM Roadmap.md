@@ -132,3 +132,4 @@ Untagged bullets below the Landing Strip are legacy backlog from before this pro
 - **Nutrition**
 - Nutrition guidance is flawed generic advice
 - Build nutrition module
+- Athlete rest-day preferences (e.g. never Sunday) in `training_schedule_json`, passed to the weekly plan prompt as a constraint. Today the reflection is the only channel, and the 11-02 plan still chose Sunday rest after Saturday's long run. (2026-11-02)

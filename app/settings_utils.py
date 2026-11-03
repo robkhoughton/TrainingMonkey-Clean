@@ -6,10 +6,11 @@ This module handles the critical connection between Settings page changes
 and analytics recalculation, ensuring user settings immediately affect their training data.
 """
 
+import json
 import logging
 from datetime import datetime
 from db_utils import execute_query
-from strava_training_load import calculate_banister_trimp, update_moving_averages
+from strava_training_load import compute_activity_trimp, update_moving_averages
 
 logger = logging.getLogger(__name__)
 
@@ -117,155 +118,66 @@ def get_complete_user_settings(user_id):
 
 
 def recalculate_trimp_for_user(user_id, user_settings):
-    """
-    Recalculate TRIMP values when heart rate settings change.
+    """Recalculate every activity's TRIMP after heart rate settings change, then the
+    moving averages, ACWR and divergence that depend on it.
 
-    Args:
-        user_id (int): User ID
-        user_settings (dict): Complete user settings
-
-    Returns:
-        dict: Recalculation result
+    Uses strava_training_load.compute_activity_trimp, the same computation as sync: stream
+    TRIMP from the stored HR stream (time-weighted), average-HR TRIMP only for activities
+    with no stored stream.
     """
     if user_id is None:
         raise ValueError("user_id is required for multi-user support")
 
-    try:
-        # Get current heart rate settings
-        resting_hr = user_settings.get('resting_hr')
-        max_hr = user_settings.get('max_hr')
-        hr_method = user_settings.get('hr_zones_method', 'percentage')
-
-        # Validate required settings
-        if not all([resting_hr, max_hr]):
-            error_msg = f"Missing HR settings for user {user_id}: resting_hr={resting_hr}, max_hr={max_hr}"
-            logger.error(error_msg)
-            return {'success': False, 'error': error_msg, 'activity_count': 0}
-
-        if resting_hr >= max_hr:
-            error_msg = f"Invalid HR settings for user {user_id}: resting ({resting_hr}) >= max ({max_hr})"
-            logger.error(error_msg)
-            return {'success': False, 'error': error_msg, 'activity_count': 0}
-
-        # Get all activities with heart rate data for this user
-        activities = execute_query(
-            """
-            SELECT activity_id as id, avg_heart_rate as average_heartrate, duration_minutes, date, type
-            FROM activities 
-            WHERE user_id = %s 
-            AND avg_heart_rate IS NOT NULL
-            AND avg_heart_rate > 0
-            ORDER BY date
-            """,
-            (user_id,),
-            fetch=True
-        )
-
-        if not activities:
-            logger.warning(f"No activities with HR data found for user {user_id}")
-            return {'activity_count': 0, 'success': True, 'message': 'No HR activities to recalculate'}
-
-        logger.info(f"Recalculating TRIMP for {len(activities)} activities for user {user_id}")
-
-        updated_count = 0
-        errors = []
-
-        for activity in activities:
-            try:
-                # Calculate new TRIMP with updated settings
-                new_trimp = calculate_trimp_with_settings(
-                    activity['average_heartrate'],
-                    activity['duration_minutes'] * 60,  # Convert to seconds
-                    resting_hr,
-                    max_hr,
-                    hr_method
-                )
-
-                if new_trimp is not None:
-                    # Update the activity with new TRIMP
-                    execute_query(
-                        "UPDATE activities SET %s = %s WHERE activity_id = %s AND user_id = %s",
-                        (new_trimp, activity['id'], user_id)
-                    )
-                    updated_count += 1
-                else:
-                    errors.append(f"Could not calculate TRIMP for activity {activity['id']}")
-
-            except Exception as e:
-                error_msg = f"Error recalculating TRIMP for activity {activity['id']}: {str(e)}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-                continue
-
-        logger.info(f"TRIMP recalculation complete for user {user_id}: {updated_count}/{len(activities)} activities")
-
-        # OPTIMIZED: Trigger moving average recalculation more efficiently
-        try:
-            logger.info(f"Triggering optimized moving average recalculation for user {user_id}")
-
-            # Call the helper function that recalculates only actual activity dates
-            recalculate_all_moving_averages(user_id)
-
-            logger.info(f"Moving average and divergence recalculation completed for user {user_id}")
-
-        except Exception as moving_avg_error:
-            logger.error(f"Moving average recalculation failed: {str(moving_avg_error)}")
-            # Don't fail the whole operation if moving averages fail
-            errors.append(f"Moving average recalculation failed: {str(moving_avg_error)}")
-
-        return {
-            'activity_count': updated_count,
-            'total_activities': len(activities),
-            'success': True,
-            'success_rate': (updated_count / len(activities) * 100) if activities else 0,
-            'errors': len(errors)
-        }
-
-    except Exception as e:
-        error_msg = f"Error in TRIMP recalculation for user {user_id}: {str(e)}"
+    resting_hr = user_settings.get('resting_hr')
+    max_hr = user_settings.get('max_hr')
+    if not resting_hr or not max_hr or resting_hr >= max_hr:
+        error_msg = f"Invalid HR settings for user {user_id}: resting_hr={resting_hr}, max_hr={max_hr}"
         logger.error(error_msg)
         return {'success': False, 'error': error_msg, 'activity_count': 0}
 
+    gender_row = execute_query("SELECT gender FROM user_settings WHERE id = %s", (user_id,), fetch=True)
+    hr_config = {
+        'resting_hr': resting_hr,
+        'max_hr': max_hr,
+        'gender': (gender_row[0].get('gender') if gender_row else None) or 'male',
+    }
 
-def calculate_trimp_with_settings(avg_hr, duration_seconds, resting_hr, max_hr, hr_method):
-    """
-    Calculate TRIMP using user-specific heart rate settings.
+    activities = execute_query(
+        """
+        SELECT a.activity_id, a.duration_minutes, a.avg_heart_rate, s.hr_data, s.time_data
+        FROM activities a
+        LEFT JOIN LATERAL (
+            SELECT hr_data, time_data FROM hr_streams h
+            WHERE h.activity_id = a.activity_id AND h.user_id = a.user_id
+            ORDER BY h.created_at DESC LIMIT 1
+        ) s ON TRUE
+        WHERE a.user_id = %s AND a.activity_id > 0
+          AND (s.hr_data IS NOT NULL OR a.avg_heart_rate > 0)
+        """,
+        (user_id,),
+        fetch=True
+    ) or []
 
-    Args:
-        avg_hr (float): Average heart rate for the activity
-        duration_seconds (int): Activity duration in seconds
-        resting_hr (int): User's resting heart rate
-        max_hr (int): User's maximum heart rate
-        hr_method (str): 'percentage' or 'karvonen'/'reserve'
+    updated = 0
+    for a in activities:
+        hr_data, time_data = a['hr_data'], a['time_data']
+        hr_data = json.loads(hr_data) if isinstance(hr_data, str) else hr_data
+        time_data = json.loads(time_data) if isinstance(time_data, str) else time_data
+        trimp, method, sample_count = compute_activity_trimp(
+            float(a['duration_minutes'] or 0), float(a['avg_heart_rate'] or 0), hr_config,
+            hr_data, time_data)
+        execute_query(
+            """UPDATE activities SET trimp = %s, trimp_calculation_method = %s,
+                      hr_stream_sample_count = %s, trimp_processed_at = NOW()
+               WHERE activity_id = %s AND user_id = %s""",
+            (trimp, method, sample_count, a['activity_id'], user_id)
+        )
+        updated += 1
+    logger.info(f"TRIMP recalculated for {updated} activities for user {user_id}")
 
-    Returns:
-        float: TRIMP value or None if calculation fails
-    """
-    if not all([avg_hr, duration_seconds, resting_hr, max_hr]):
-        return None
+    recalculate_all_moving_averages(user_id)
+    return {'activity_count': updated, 'total_activities': len(activities), 'success': True}
 
-    try:
-        duration_minutes = duration_seconds / 60
-
-        if hr_method == 'karvonen' or hr_method == 'reserve':
-            # Karvonen method: (HR - HRrest) / (HRmax - HRrest)
-            hr_reserve = max_hr - resting_hr
-            if hr_reserve <= 0:
-                logger.warning(f"Invalid HR reserve: {hr_reserve} (max: {max_hr}, rest: {resting_hr})")
-                return None
-            hr_intensity = max(0, min(1, (avg_hr - resting_hr) / hr_reserve))
-        else:
-            # Percentage method: HR / HRmax
-            hr_intensity = max(0, min(1, avg_hr / max_hr))
-
-        # Banister TRIMP formula
-        trimp = duration_minutes * hr_intensity
-
-        return round(trimp, 2)
-
-    except Exception as e:
-        logger.error(f"Error calculating TRIMP: {str(e)}")
-        return None
 
 def recalculate_all_moving_averages(user_id):
     """

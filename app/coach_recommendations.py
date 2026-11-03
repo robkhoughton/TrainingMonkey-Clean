@@ -15,7 +15,6 @@ Generates structured 7-day training programs via Claude API.
 
 import os
 import json
-import math
 import logging
 import requests
 from datetime import datetime, date, timedelta
@@ -884,8 +883,7 @@ LONG_RUN_CEILING_FACTOR = 1.10  # long run <= 110% of the longest run in the pri
 def get_long_run_ceiling(user_id: int, as_of: date) -> Tuple[Optional[float], Optional[float]]:
     """Longest run in the 30 days before `as_of`, and the long-run ceiling derived from it.
 
-    Single source for the ceiling: the prompt states it and long_run_violations() enforces
-    it. Returns (max_30d_long_run, ceiling); both None with no recent running data.
+    Single source for the long-run guideline the plan prompt states. Returns (max_30d_long_run, ceiling); both None with no recent running data.
     """
     rows = execute_query(
         """
@@ -904,41 +902,6 @@ def get_long_run_ceiling(user_id: int, as_of: date) -> Tuple[Optional[float], Op
         return None, None
     longest = float(rows[0]['distance_miles'])
     return longest, round(longest * LONG_RUN_CEILING_FACTOR, 1)
-
-
-def long_run_violations(program: Dict, ceiling: Optional[float]) -> List[Dict]:
-    """Check each Long Run day against the two hard limits, computed from the plan itself.
-
-    - distance <= ceiling (110% of the longest run in the prior 30 days)
-    - distance <= 1/3 of the weekly total, i.e. <= half the combined miles of the other days
-      (the LLM re-derived the weekly total and checked against 38 mi on a 32 mi plan)
-
-    Returns one dict per violating day: {date, distance, cap, reason}; cap is rounded
-    down to the nearest 0.5 mi.
-    """
-    daily = program.get('daily_program', []) or []
-    total = sum(float(w.get('distance_miles') or 0) for w in daily)
-    violations = []
-    for w in daily:
-        if 'long run' not in (w.get('workout_type') or '').lower():
-            continue
-        dist = float(w.get('distance_miles') or 0)
-        third_cap = (total - dist) / 2
-        cap, reason = third_cap, (
-            f"{dist:.1f} mi is more than 1/3 of the {total:.1f} mi week "
-            f"(other days total {total - dist:.1f} mi, so the long run may be at most {third_cap:.1f} mi)"
-        )
-        if ceiling is not None and ceiling < cap:
-            cap, reason = ceiling, (
-                f"{dist:.1f} mi exceeds the {ceiling:.1f} mi ceiling "
-                f"(110% of the longest run in the past 30 days)"
-            )
-        if dist > cap + 0.05:
-            violations.append({
-                'date': w.get('date'), 'distance': dist,
-                'cap': math.floor(cap * 2) / 2, 'reason': reason,
-            })
-    return violations
 
 
 def build_weekly_program_prompt(
@@ -1340,7 +1303,7 @@ Generate a divergence-optimized 7-day training program for the week of {target_w
 4. **Schedule Integration**: Respect athlete's availability and time constraints.
 5. **Race Goal Alignment**: Structure the week toward the primary race goal given current stage and weeks remaining.
 6. **Recovery Integration**: Plan rest/easy days based on current divergence trajectory and days since rest.
-7. **Long Run Distance Ceiling (HARD CONSTRAINT)**: {f"The athlete's longest run in the past 30 days is {max_30d_long_run:.1f} miles. The prescribed long run must not exceed {long_run_ceiling:.1f} miles ({max_30d_long_run:.1f} × 1.10). It must also be no more than half the combined distance of the other six days (equivalently, at most 1/3 of the weekly total). Both limits are checked in code after generation; a violating plan is regenerated." if long_run_ceiling else "No recent long run data available — be conservative; prescribe no more than 10 miles for a long run until training history is established."}
+7. **Long Run Distance (GUIDELINE)**: {f"The athlete's longest run in the past 30 days is {max_30d_long_run:.1f} miles. As a guideline, keep the long run at or below {long_run_ceiling:.1f} miles ({max_30d_long_run:.1f} × 1.10) and at or below half the combined distance of the other six days (equivalently, 1/3 of the weekly total); exceed either only with a stated reason (race-specific preparation, athlete history)." if long_run_ceiling else "No recent long run data available — be conservative; prescribe no more than 10 miles for a long run until training history is established."}
 8. **Hard Session Recovery Buffer (HARD CONSTRAINT)**: High-intensity sessions (Tempo Run, Interval/Speed Work, Hill Repeats) and Long Runs all require 48 hours of recovery before the next hard session. Never place two hard sessions on consecutive days. A Long Run on Saturday means Friday must be Easy/Recovery/Rest, and Sunday must be Easy/Recovery/Rest.
 9. **Polarized Training (Seiler 80:20 Model)**: Target {f"{polarized_ratio['target_easy_pct']:.0f}" if polarized_ratio else "80"}% of sessions as Easy (stay below VT1). Hard sessions must achieve 15+ minutes above VT2. Zone 3 (moderate intensity) is the "black hole" — fatigue without adaptation. Set hard_session_type for all High-intensity days: "tempo" (sustained Z4, 25-35 min), "intervals" (repeated Z4/Z5 blocks with Z1/Z2 recovery), "hills", or "race_sim".
 {polarized_block}{interval_protocol_block}
@@ -1499,32 +1462,6 @@ def generate_weekly_program(
     try:
         response_text, program = _generate(prompt)
 
-        # Long-run hard limits are enforced, not requested: regenerate once with the exact
-        # numbers, then clamp deterministically if the retry still violates.
-        _, long_run_ceiling = get_long_run_ceiling(user_id, target_week_start)
-        violations = long_run_violations(program, long_run_ceiling)
-        if violations:
-            logger.warning(f"Weekly plan long-run violation for user {user_id}: {violations} — regenerating")
-            correction = "\n".join(
-                f"- {v['date']}: {v['reason']}. Prescribe at most {v['cap']:.1f} mi." for v in violations
-            )
-            response_text, program = _generate(
-                prompt + "\n\nCORRECTION — your previous plan broke a hard long-run limit:\n"
-                + correction + "\nRebuild the plan so every Long Run day satisfies both limits."
-            )
-            violations = long_run_violations(program, long_run_ceiling)
-            if violations:
-                logger.warning(f"Long-run violation persisted after retry for user {user_id}: {violations} — clamping")
-                by_date = {v['date']: v for v in violations}
-                for w in program.get('daily_program', []):
-                    v = by_date.get(w.get('date'))
-                    if v:
-                        w['distance_miles'] = v['cap']
-                        w['description'] = (
-                            f"[Distance capped at {v['cap']:.1f} mi by the weekly long-run limit.] "
-                            + (w.get('description') or '')
-                        )
-                _apply_structured_totals(program)
 
         # Ensure week_start_date matches target
         program['week_start_date'] = target_week_start.strftime('%Y-%m-%d')

@@ -5,7 +5,6 @@ One session-intensity classification, one zone source, one readiness computation
   that read the stored static-zone columns are gone; every consumer uses
   classify_session_dates -> session_zone_times_for_dates -> classify_session_polarized.
 - get_ans_readiness_for_dates must give each date exactly what get_ans_readiness gives.
-- long_run_violations enforces the long-run limits from the plan's own numbers.
 """
 import inspect
 import os
@@ -18,7 +17,6 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-import coach_recommendations as cr
 import llm_recommendations_module as m
 import readiness_engine as re_
 
@@ -58,29 +56,6 @@ class TestReadinessBatchMatchesSingle(unittest.TestCase):
             batch = re_.get_ans_readiness_for_dates(1, targets)
             for d in targets:
                 self.assertEqual(batch[d], re_.get_ans_readiness(1, as_of_date=d), d)
-
-
-def _plan(long_miles, other_miles):
-    days = [{'date': f'2026-11-0{i + 2}', 'workout_type': 'Easy Run', 'distance_miles': mi}
-            for i, mi in enumerate(other_miles)]
-    days.append({'date': '2026-11-09', 'workout_type': 'Long Run', 'distance_miles': long_miles})
-    return {'daily_program': days}
-
-
-class TestLongRunLimits(unittest.TestCase):
-    def test_one_third_of_week(self):
-        # 11 mi long run in a 32 mi week: other days total 21, so the cap is 10.5.
-        v = cr.long_run_violations(_plan(11.0, [5, 4, 6.5, 4, 0, 1.5]), ceiling=11.7)
-        self.assertEqual(len(v), 1)
-        self.assertEqual(v[0]['cap'], 10.5)
-
-    def test_ceiling_binds_first(self):
-        v = cr.long_run_violations(_plan(12.0, [8, 8, 8, 8, 0, 0]), ceiling=11.7)
-        self.assertEqual(v[0]['cap'], 11.5)
-        self.assertIn('ceiling', v[0]['reason'])
-
-    def test_compliant_plan(self):
-        self.assertEqual(cr.long_run_violations(_plan(10.0, [5, 5, 5, 5, 0, 0]), ceiling=11.7), [])
 
 
 if __name__ == '__main__':
