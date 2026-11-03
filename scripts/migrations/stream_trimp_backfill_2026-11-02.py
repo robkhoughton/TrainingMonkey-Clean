@@ -107,7 +107,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--apply', action='store_true')
     ap.add_argument('--user', type=int)
+    ap.add_argument('--accept-stale-stored', action='store_true',
+                    help='with --user only: write even if the fidelity check fails because the '
+                         'stored metrics are stale (verified by hand, e.g. user 95 on 2026-11-02)')
     args = ap.parse_args()
+    if args.accept_stale_stored and not args.user:
+        ap.error('--accept-stale-stored requires --user')
 
     conn = psycopg2.connect(os.environ['DATABASE_URL'])
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -121,11 +126,19 @@ def main():
     """.format('AND a.user_id = %s' if args.user else ''), (args.user,) if args.user else ())
 
     totals = {'users': 0, 'trimp_rows': 0, 'metric_rows': 0, 'fidelity_mismatch': 0}
+    cur.close()
+    conn.close()
     for u in users:
+        # Fresh connection per user: a single connection held across all users is dropped
+        # by the Cloud SQL proxy partway through (2026-11-02, after 61 users).
+        conn = psycopg2.connect(os.environ['DATABASE_URL'])
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         user_id, first_date = u['user_id'], u['first_date']
         s = fetch(cur, "SELECT resting_hr, max_hr, gender FROM user_settings WHERE id = %s", (user_id,))
         if not s or not s[0]['resting_hr'] or not s[0]['max_hr']:
             print(f'user {user_id}: SKIPPED, no resting/max HR in settings')
+            cur.close()
+            conn.close()
             continue
         hr_config = {'resting_hr': s[0]['resting_hr'], 'max_hr': s[0]['max_hr'],
                      'gender': s[0]['gender'] or 'male'}
@@ -178,8 +191,10 @@ def main():
               f"latest {last} divergence {stored[last]['normalized_divergence']} -> {new[last]['normalized_divergence']}; "
               f"fidelity mismatches {mism}/{len(comparable)}")
 
-        if args.apply and mism:
+        if args.apply and mism and not args.accept_stale_stored:
             print(f'user {user_id}: NOT WRITTEN, replay does not reproduce stored metrics')
+            cur.close()
+            conn.close()
             continue
         if args.apply:
             wcur = conn.cursor()
@@ -203,9 +218,9 @@ def main():
         totals['users'] += 1
         totals['trimp_rows'] += len(trimp_updates)
         totals['metric_rows'] += len(metric_updates)
+        cur.close()
+        conn.close()
 
-    cur.close()
-    conn.close()
     print(f"\n{'APPLIED' if args.apply else 'DRY RUN'}: {totals}")
 
 
