@@ -3173,7 +3173,9 @@ Fill in ALL fields with actual computed values. Use only the allowed enum values
     "hard_session_type": null,
     "volume_modifier": 0.0,
     "specific_workout_type": null,
-    "duration_minutes_suggested": null
+    "duration_minutes_suggested": null,
+    "target_distance_miles": null,
+    "target_elevation_gain_feet": null
   }},
   "risk": {{
     "injury_risk_level": "low",
@@ -3214,6 +3216,7 @@ Allowed enum values:
 - decision.intensity_target: easy | moderate | hard | race_effort | none
 - decision.polarized_session_intent: easy | hard | rest | unknown (Seiler session-count model: classify entire session by intent — easy=stay below VT1, hard=achieve 15+ min above VT2, rest=no training)
 - decision.hard_session_type: tempo | intervals | hills | race_sim | null (set only when polarized_session_intent=hard; null for easy/rest days)
+- decision.target_distance_miles / decision.target_elevation_gain_feet: the distance and climbing of the run you prescribe (0 ft for flat), the same numbers the prose states. State both in the prose for every running session, including duration-based ones. null on rest and cross-training days. The autopsy scores volume compliance against these in load miles.
 - risk.injury_risk_level: low | moderate | high | critical
 - risk.pain_location: Extract from athlete notes — the specific body part if pain is mentioned (e.g., "left knee", "right achilles", "lower back", "hip flexor"). Set to null if no pain is mentioned in the notes.
 - context.alignment_trend: improving | stable | declining | insufficient_data
@@ -3508,10 +3511,19 @@ def generate_activity_autopsy_enhanced(user_id, date_str, prescribed_action, act
         tone_instructions = get_coaching_tone_instructions(spectrum_value)
         w_align, w_quality = get_user_autopsy_weights(user_id)
 
+        # Volume compliance is scored against the race itself on race days, so skip it there.
+        volume_block = ""
+        if not race_goal:
+            try:
+                volume_block = build_volume_compliance_block(user_id, date_str)
+            except Exception as _vc_err:
+                logger.warning(f"Could not build volume compliance for autopsy user {user_id}, {date_str}: {_vc_err}")
+
         # Build both track prompts
         alignment_prompt = create_enhanced_autopsy_prompt_with_scoring(
             date_str, prescribed_action, actual_activities, observations,
-            tone_instructions, zone_compliance=zone_compliance, race_goal=race_goal
+            tone_instructions, zone_compliance=zone_compliance, race_goal=race_goal,
+            volume_block=volume_block
         )
         quality_prompt = create_quality_track_prompt(
             date_str, actual_activities, observations, tone_instructions, zone_compliance
@@ -3921,8 +3933,88 @@ def get_coaching_style_from_spectrum(spectrum_value):
             'description': 'Technical, data-driven coaching'
         }
 
+def format_actual_activities(activity_summary):
+    """The ACTUAL TRAINING COMPLETED line both autopsy callers send (from get_activity_summary_for_date)."""
+    if not isinstance(activity_summary, dict):
+        return str(activity_summary)
+    return (
+        f"{activity_summary.get('type', 'Activity').title()} workout: "
+        f"{activity_summary.get('distance', 0)} miles, {activity_summary.get('elevation', 0)} ft elevation, "
+        f"TRIMP: {activity_summary.get('total_trimp', 0)} "
+        f"({activity_summary.get('workout_classification', 'Unknown')} intensity)"
+    )
+
+
+def build_volume_compliance_block(user_id, date_str):
+    """VOLUME COMPLIANCE block for the alignment track: prescribed vs actual load miles, computed here.
+
+    The target is the Rx's decision.target_distance_miles / target_elevation_gain_feet. Returns ''
+    when the Rx set no target (rest, cross-training, or an Rx generated before those fields existed)
+    or the day has no recorded activity, so the autopsy never scores volume against a guessed target.
+    Also flags a single-run spike over either 30-day ceiling (coach_recommendations.get_long_run_limits).
+    """
+    from datetime import datetime as _dt
+    from strava_app import get_recommendation_meta_for_date
+    from coach_recommendations import get_long_run_limits, LONG_RUN_CEILING_FACTOR
+    from external_load import volume_compliance, format_volume_compliance
+
+    session_date = _dt.strptime(date_str, '%Y-%m-%d').date()
+    structured_output, _ = get_recommendation_meta_for_date(session_date, user_id)
+    decision = (structured_output or {}).get('decision') or {}
+    target_distance = decision.get('target_distance_miles')
+    target_vert = decision.get('target_elevation_gain_feet')
+    if target_distance is None:
+        return ''
+
+    rows = execute_query(
+        """
+        SELECT distance_miles, elevation_gain_feet, total_load_miles FROM activities
+        WHERE user_id = %s AND date = %s AND activity_id > 0
+        """,
+        (user_id, date_str), fetch=True
+    ) or []
+    if not rows:
+        return ''
+
+    vc = volume_compliance(
+        float(target_distance), float(target_vert or 0),
+        sum(float(r['distance_miles'] or 0) for r in rows),
+        sum(float(r['elevation_gain_feet'] or 0) for r in rows),
+        sum(float(r['total_load_miles'] or 0) for r in rows),
+    )
+    lines = [
+        "VOLUME COMPLIANCE (computed — use these numbers, do not recompute them):",
+        format_volume_compliance(vc),
+        # [DOMAIN] vert is load: judge volume on load miles, not distance alone
+        "Judge volume compliance on load miles, not distance alone: climbing is load. Distance on "
+        "target with vert well over is a volume overshoot; distance short with extra vert can still "
+        "be close to the prescribed load. Use the distance/vert split to say where any deviation came from.",
+    ]
+
+    limits = get_long_run_limits(user_id, session_date)
+    if limits:
+        longest = max(float(r['distance_miles'] or 0) for r in rows)
+        biggest = max(float(r['total_load_miles'] or 0) for r in rows)
+        spikes = []
+        if longest > limits.distance_ceiling:
+            spikes.append(
+                f"distance {longest:.1f} mi > ceiling {limits.distance_ceiling:.1f} mi "
+                f"(30-day longest {limits.max_distance_miles:.1f} mi × {LONG_RUN_CEILING_FACTOR:.2f}; Frandsen 2025: single runs "
+                f">10% over the 30-day longest raised overuse-injury rates 1.5–2.3×)")
+        if biggest > limits.load_ceiling:
+            spikes.append(
+                f"load {biggest:.1f} load miles > ceiling {limits.load_ceiling:.1f} "
+                f"(30-day biggest {limits.max_load_miles:.1f} load miles × {LONG_RUN_CEILING_FACTOR:.2f})")
+        if spikes:
+            lines.append(
+                "SINGLE-RUN SPIKE: " + "; ".join(spikes) + ". This is an injury-risk signal for the "
+                "coaching takeaways. It lowers alignment only if the prescription did not call for a run this size.")
+    return "\n".join(lines) + "\n"
+
+
 def create_enhanced_autopsy_prompt_with_scoring(date_str, prescribed_action, actual_activities, observations,
-                                                tone_instructions=None, zone_compliance=None, race_goal=None):
+                                                tone_instructions=None, zone_compliance=None, race_goal=None,
+                                                volume_block=""):
     """Create autopsy prompt that compares prescribed vs actual without metrics confusion.
 
     When race_goal is provided, the date is a scheduled race day: scoring is
@@ -4047,7 +4139,8 @@ INTENSITY TARGET MISSED: Hard session only achieved {q_min:.0f} min above VT2 (t
         race_autopsy_block = ""
         score_guidance = (
             "Compare prescribed vs actual training. Score 10=perfect compliance, 8-9=minor deviations, "
-            "5-7=moderate changes, 1-4=major deviations. Consider volume, intensity, workout type, and "
+            "5-7=moderate changes, 1-4=major deviations. Consider volume (in load miles, from VOLUME "
+            "COMPLIANCE when present), intensity, workout type, and "
             "execution quality. If athlete deviated, check notes for reasons (injury, time constraints, etc.)."
         )
         if race_goal:
@@ -4098,7 +4191,7 @@ PRESCRIBED TRAINING DECISION:
 {race_autopsy_block}{diagnostic_autopsy_block}
 ACTUAL TRAINING COMPLETED:
 {activity_summary}
-{zone_block}
+{volume_block}{zone_block}
 USER OBSERVATIONS:
 - Energy Level: {energy_level}/5 (How did the athlete feel going into the session? 5=Fired up, 1=Barely got out of bed)
 - RPE (Rate of Perceived Exertion): {rpe_score}/10 (How hard did the workout feel? 10=Maximum effort, 1=Very easy)
@@ -5517,7 +5610,9 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
     "hard_session_type": null,
     "volume_modifier": 0.0,
     "specific_workout_type": null,
-    "duration_minutes_suggested": null
+    "duration_minutes_suggested": null,
+    "target_distance_miles": null,
+    "target_elevation_gain_feet": null
   }},
   "risk": {{
     "injury_risk_level": "low",
@@ -5541,7 +5636,7 @@ SIGN CONVENTION: {NORMALIZED_DIVERGENCE_FORMULA}
 }}
 </structured_output>
 
-Allowed values — assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity. divergence.direction: positive | negative | balanced. divergence.severity: none | mild | moderate | high | critical. divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data. decision.action: train | rest | cross_train | reduce. risk.injury_risk_level: low | moderate | high | critical. risk.pain_location: specific body part extracted from athlete notes (e.g., "left knee", "right achilles") or null if no pain mentioned.
+Allowed values — assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity. divergence.direction: positive | negative | balanced. divergence.severity: none | mild | moderate | high | critical. divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data. decision.action: train | rest | cross_train | reduce. risk.injury_risk_level: low | moderate | high | critical. risk.pain_location: specific body part extracted from athlete notes (e.g., "left knee", "right achilles") or null if no pain mentioned. decision.target_distance_miles / decision.target_elevation_gain_feet: the distance and climbing of the run you prescribe (0 ft for flat), the same numbers the prose states. State both in the prose for every running session, including duration-based ones. null on rest and cross-training days. The autopsy scores volume compliance against these in load miles.
 """
 
     return prompt
@@ -5564,7 +5659,8 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
             logger.info(f"Generating enhanced autopsy for past date: {journal_date}")
 
             # Get required data for autopsy
-            from strava_app import get_todays_decision_for_date, get_activity_summary_for_date
+            from strava_app import (get_todays_decision_for_date, get_activity_summary_for_date,
+                                    compute_autopsy_zone_compliance)
 
             prescribed_action = get_todays_decision_for_date(journal_date_obj, user_id)
             activity_summary = get_activity_summary_for_date(journal_date_obj, user_id)
@@ -5594,12 +5690,10 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                     }
                     logger.info(f"Using existing autopsy for {journal_date}, alignment: {autopsy_result['alignment_score']}/10")
                 else:
-                    # Format activity summary as string for autopsy generation
-                    if isinstance(activity_summary, dict):
-                        actual_activities = f"{activity_summary.get('type', 'Activity').title()} workout: {activity_summary.get('distance', 0)} miles, {activity_summary.get('elevation', 0)} ft elevation, TRIMP: {activity_summary.get('total_trimp', 0)} ({activity_summary.get('workout_classification', 'Unknown')} intensity)"
-                    else:
-                        actual_activities = str(activity_summary)
-                    
+                    actual_activities = format_actual_activities(activity_summary)
+                    zone_compliance = compute_autopsy_zone_compliance(
+                        user_id, journal_date, activity_summary, observations)
+
                     # Detect a scheduled race — racing as planned is not a deviation.
                     _race_goal = None
                     try:
@@ -5615,6 +5709,7 @@ def update_recommendations_with_autopsy_learning(user_id, journal_date):
                         prescribed_action,
                         actual_activities,
                         observations,
+                        zone_compliance=zone_compliance,
                         race_goal=_race_goal
                     )
 

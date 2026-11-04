@@ -6423,6 +6423,70 @@ def get_app_state():
         return jsonify({'route': 'dashboard', 'activity_name': None, 'activity_date': None, 'has_morning_entry': True})
 
 
+def compute_autopsy_zone_compliance(user_id, date_str, activity_summary, observations):
+    """Zone compliance for the autopsy of one date: polarized flags, dynamic-AeT zone labels,
+    diagnostic-test suppression. Shared by both autopsy callers; None when it cannot be computed."""
+    zone_compliance = None
+    try:
+        from llm_recommendations_module import get_user_hr_thresholds, compute_zone_compliance, is_diagnostic_session
+        hr_thresholds = get_user_hr_thresholds(user_id)
+        structured_output, _ = get_recommendation_meta_for_date(
+            datetime.strptime(date_str, '%Y-%m-%d').date(), user_id
+        )
+        prescribed_intent = None
+        if structured_output and isinstance(structured_output, dict):
+            prescribed_intent = (
+                structured_output.get('decision', {}).get('polarized_session_intent')
+                or structured_output.get('decision', {}).get('intensity_target')
+            )
+
+        # AeT/HR-drift tests drift into Zone 3 by protocol (that crossing IS the AeT
+        # measurement), so suppress black-hole / aerobic-base compliance for them.
+        is_diagnostic = is_diagnostic_session(structured_output, observations)
+        if is_diagnostic:
+            logger.info(f"Autopsy {date_str} user {user_id}: diagnostic AeT/drift test detected — compliance flags suppressed")
+
+        # Dynamic AeT (Effect A): classify this session against the effective AeT that
+        # applied on its OWN date — re-bucket the HR stream so the Z2/Z3 line reflects
+        # autonomic state (a 130 bpm effort lands in Z3 on a suppressed day), and align
+        # the VT1 label so prompt text and buckets agree.
+        eff_aet = None
+        try:
+            # activity_summary's zones already come from session_zone_times; the
+            # effective AeT is read here to align the prompt's VT1/zone labels.
+            from dynamic_aet import get_effective_aet
+            eff_aet = get_effective_aet(
+                user_id, as_of_date=datetime.strptime(date_str, '%Y-%m-%d').date())
+            if eff_aet:
+                _off = eff_aet.get('offset')
+                if hr_thresholds:
+                    hr_thresholds['vt1_bpm'] = eff_aet['effective_aet']
+                    _z = hr_thresholds.get('zones')
+                    if _z and 'zone2' in _z and 'zone3' in _z:
+                        _z['zone2']['max'] = eff_aet['effective_aet']
+                        _z['zone3']['min'] = eff_aet['effective_aet']
+                        # Path 2: slide the Z1/Z2 floor by the same daily offset so the
+                        # displayed Zone 2 band keeps its width.
+                        if _off and 'zone1' in _z:
+                            _new_floor = int(round(_z['zone2']['min'] + _off))
+                            _new_floor = max(_new_floor, _z['zone1']['min'] + 1)
+                            _z['zone1']['max'] = _new_floor
+                            _z['zone2']['min'] = _new_floor
+        except Exception as _eae:
+            logger.warning(f"Dynamic AeT re-bucketing failed for {date_str}: {_eae}")
+            eff_aet = None
+
+        zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, is_diagnostic=is_diagnostic)
+        if zone_compliance and eff_aet:
+            zone_compliance['effective_aet'] = eff_aet['effective_aet']
+            zone_compliance['baseline_aet'] = eff_aet['baseline_aet']
+            zone_compliance['aet_offset'] = eff_aet['offset']
+            zone_compliance['aet_fallback'] = eff_aet['fallback_reason']
+    except Exception as _zce:
+        logger.warning(f"Zone compliance computation failed for {date_str}: {_zce}")
+    return zone_compliance
+
+
 def generate_autopsy_for_date(date_str, user_id):
     """Generate AI autopsy for a specific date using enhanced LLM analysis with proper validation"""
     try:
@@ -6460,67 +6524,10 @@ def generate_autopsy_for_date(date_str, user_id):
         observations = dict(journal_entry[0]) if journal_entry else {}
 
         # Format activity summary text
-        actual_activities = f"{activity_summary['type'].title()} workout: {activity_summary['distance']} miles, {activity_summary['elevation']} ft elevation, TRIMP: {activity_summary['total_trimp']} ({activity_summary['workout_classification']} intensity)"
+        from llm_recommendations_module import format_actual_activities
+        actual_activities = format_actual_activities(activity_summary)
 
-        # Compute zone compliance for autopsy
-        zone_compliance = None
-        try:
-            from llm_recommendations_module import get_user_hr_thresholds, compute_zone_compliance, is_diagnostic_session
-            hr_thresholds = get_user_hr_thresholds(user_id)
-            structured_output, _ = get_recommendation_meta_for_date(
-                datetime.strptime(date_str, '%Y-%m-%d').date(), user_id
-            )
-            prescribed_intent = None
-            if structured_output and isinstance(structured_output, dict):
-                prescribed_intent = (
-                    structured_output.get('decision', {}).get('polarized_session_intent')
-                    or structured_output.get('decision', {}).get('intensity_target')
-                )
-
-            # AeT/HR-drift tests drift into Zone 3 by protocol (that crossing IS the AeT
-            # measurement), so suppress black-hole / aerobic-base compliance for them.
-            is_diagnostic = is_diagnostic_session(structured_output, observations)
-            if is_diagnostic:
-                logger.info(f"Autopsy {date_str} user {user_id}: diagnostic AeT/drift test detected — compliance flags suppressed")
-
-            # Dynamic AeT (Effect A): classify this session against the effective AeT that
-            # applied on its OWN date — re-bucket the HR stream so the Z2/Z3 line reflects
-            # autonomic state (a 130 bpm effort lands in Z3 on a suppressed day), and align
-            # the VT1 label so prompt text and buckets agree.
-            eff_aet = None
-            try:
-                # activity_summary's zones already come from session_zone_times; the
-                # effective AeT is read here to align the prompt's VT1/zone labels.
-                from dynamic_aet import get_effective_aet
-                eff_aet = get_effective_aet(
-                    user_id, as_of_date=datetime.strptime(date_str, '%Y-%m-%d').date())
-                if eff_aet:
-                    _off = eff_aet.get('offset')
-                    if hr_thresholds:
-                        hr_thresholds['vt1_bpm'] = eff_aet['effective_aet']
-                        _z = hr_thresholds.get('zones')
-                        if _z and 'zone2' in _z and 'zone3' in _z:
-                            _z['zone2']['max'] = eff_aet['effective_aet']
-                            _z['zone3']['min'] = eff_aet['effective_aet']
-                            # Path 2: slide the Z1/Z2 floor by the same daily offset so the
-                            # displayed Zone 2 band keeps its width.
-                            if _off and 'zone1' in _z:
-                                _new_floor = int(round(_z['zone2']['min'] + _off))
-                                _new_floor = max(_new_floor, _z['zone1']['min'] + 1)
-                                _z['zone1']['max'] = _new_floor
-                                _z['zone2']['min'] = _new_floor
-            except Exception as _eae:
-                logger.warning(f"Dynamic AeT re-bucketing failed for {date_str}: {_eae}")
-                eff_aet = None
-
-            zone_compliance = compute_zone_compliance(activity_summary, prescribed_intent, hr_thresholds, is_diagnostic=is_diagnostic)
-            if zone_compliance and eff_aet:
-                zone_compliance['effective_aet'] = eff_aet['effective_aet']
-                zone_compliance['baseline_aet'] = eff_aet['baseline_aet']
-                zone_compliance['aet_offset'] = eff_aet['offset']
-                zone_compliance['aet_fallback'] = eff_aet['fallback_reason']
-        except Exception as _zce:
-            logger.warning(f"Zone compliance computation failed for {date_str}: {_zce}")
+        zone_compliance = compute_autopsy_zone_compliance(user_id, date_str, activity_summary, observations)
 
         # Detect a scheduled race on this date — completing a planned race is the
         # prescription, not a deviation. Reframes autopsy scoring around execution.

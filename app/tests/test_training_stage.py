@@ -141,6 +141,7 @@ class TestSingleSourceOfTruth(unittest.TestCase):
              mock.patch.object(lrm, 'get_user_coaching_spectrum', return_value=50), \
              mock.patch.object(lrm, 'get_coaching_tone_instructions', return_value=''), \
              mock.patch.object(lrm, 'get_user_autopsy_weights', return_value=(0.5, 0.5)), \
+             mock.patch.object(lrm, 'build_volume_compliance_block', return_value=''), \
              mock.patch.object(lrm, 'create_enhanced_autopsy_prompt_with_scoring', return_value='A'), \
              mock.patch.object(lrm, 'create_quality_track_prompt', return_value='Q'), \
              mock.patch.object(lrm, 'get_ans_readiness', return_value={'state': 'YELLOW'}) as ans, \
