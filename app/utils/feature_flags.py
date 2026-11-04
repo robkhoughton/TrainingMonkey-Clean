@@ -59,9 +59,11 @@ def is_feature_enabled(feature_name, user_id=None):
         cutover_user_ids = []  # e.g. [1] once thresholds are recalibrated
         return user_id in cutover_user_ids
 
-    # Phase 4: Agentic context — enabled for beta users (Rob, tballaine, iz.houghton)
+    # Phase 4: Agentic context — enabled for user_id=1 (Rob) only. Do NOT widen until the
+    # agentic path emits <structured_output> (the safety floor reads decision.action from
+    # it) and a same-day A/B parity check against the standard path has passed.
     if feature_name == 'agentic_context':
-        agentic_beta_ids = [1, 2, 3]  # Rob (admin), tballaine, iz.houghton
+        agentic_beta_ids = [1]  # Rob only
         if user_id in agentic_beta_ids:
             logger.info(f"Agentic context access granted to user {user_id} (Phase 4 beta)")
             return True

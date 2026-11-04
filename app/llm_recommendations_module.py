@@ -1822,6 +1822,23 @@ def _decision_action_of(sections):
     return (_decision_of(sections) or {}).get('action')
 
 
+def _floor_breached(floor_category, decision, recovery_gate=None):
+    """True if the floor is violated OR cannot be verified.
+
+    floor_violation() deliberately returns False for a missing action (it must not flag a
+    decision it cannot see). But when the floor requires rest/reduce, "no parsed decision"
+    is not evidence of compliance: a prompt that omitted the structured_output block (the
+    agentic path did, until 2026-11-03) would pass the guardrail untouched. Fail safe: on a
+    non-'train_allowed' floor, a response with no decision.action is treated as a breach so
+    it is regenerated once and then replaced by the safe fallback.
+    """
+    decision = decision or {}
+    if floor_violation(floor_category, decision, recovery_gate):
+        return True
+    return (mandated_floor(floor_category, recovery_gate) != 'train_allowed'
+            and not decision.get('action'))
+
+
 def enforce_safety_floor(sections, current_metrics, floor_category, prompt, regenerate_fn, user_id):
     """Shared safety-floor guardrail for BOTH daily generators (autopsy + enhanced).
 
@@ -1833,20 +1850,31 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
     regenerate_fn(prompt:str) -> raw response str (path-specific call_claude / call_anthropic_api).
     """
     gate = (current_metrics or {}).get('recovery_gate')
-    if not floor_violation(floor_category, _decision_of(sections) or {}, gate):
+    if not _floor_breached(floor_category, _decision_of(sections), gate):
         return {'status': 'ok', 'sections': sections, 'response': None}
 
     floor = mandated_floor(floor_category, gate)
     prior = _decision_action_of(sections)
+    unverifiable = not prior
     logger.warning(
-        f"FLOOR VIOLATION user {user_id}: category={floor_category} floor={floor} action={prior} — regenerating once"
+        f"FLOOR {'UNVERIFIABLE (no decision.action parsed)' if unverifiable else 'VIOLATION'} user {user_id}: "
+        f"category={floor_category} floor={floor} action={prior} — regenerating once"
     )
-    correction = (
-        f"\n\nCORRECTION — your previous decision.action was '{prior}', which VIOLATES the non-negotiable ACTION "
-        f"MANDATE floor ('{floor}') for category {floor_category}. Re-issue the FULL response; decision.action must be "
-        f"one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned training or test and prescribe rest or a "
-        f"genuine reduction accordingly."
-    )
+    if unverifiable:
+        correction = (
+            f"\n\nCORRECTION — your previous response contained no parseable <structured_output> block with a "
+            f"decision.action, so the non-negotiable ACTION MANDATE floor ('{floor}') for category {floor_category} "
+            f"cannot be verified. Re-issue the FULL response including the <structured_output> block; "
+            f"decision.action must be one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned training or "
+            f"test and prescribe rest or a genuine reduction accordingly."
+        )
+    else:
+        correction = (
+            f"\n\nCORRECTION — your previous decision.action was '{prior}', which VIOLATES the non-negotiable ACTION "
+            f"MANDATE floor ('{floor}') for category {floor_category}. Re-issue the FULL response; decision.action must be "
+            f"one of {sorted(_FLOOR_ALLOWED_ACTIONS[floor])}. Defer any planned training or test and prescribe rest or a "
+            f"genuine reduction accordingly."
+        )
     if floor == 'recovery':
         correction += (
             " A 'reduce' decision is allowed only as a Zone 1 easy session: intensity_target easy, "
@@ -1860,7 +1888,7 @@ def enforce_safety_floor(sections, current_metrics, floor_category, prompt, rege
 
     if response2 and response2.strip():
         sections2 = parse_llm_response(response2.strip())
-        if not floor_violation(floor_category, _decision_of(sections2) or {}, gate):
+        if not _floor_breached(floor_category, _decision_of(sections2), gate):
             logger.info(f"Floor guardrail: regeneration compliant for user {user_id}")
             return {'status': 'ok', 'sections': sections2, 'response': response2.strip()}
 
@@ -3005,6 +3033,95 @@ def _safe_floor_recommendation(assessment_category, current_metrics, target_date
     }
 
 
+def structured_output_instructions(target_date, recommendation_style):
+    """The <structured_output> instruction block (JSON template + allowed enum values).
+
+    Single source for every single-section daily generator that must emit a machine-
+    readable decision: the safety-floor guardrail (enforce_safety_floor) reads
+    decision.action from this block, and floor_violation() treats a missing action as
+    compliant -- so a generator whose prompt omits this block silently bypasses the
+    floor. The agentic path did exactly that until this was shared.
+    """
+    return f"""### STRUCTURED OUTPUT (Phase 1)
+After your prose recommendation, append a machine-readable JSON block inside XML tags.
+
+DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal. {NORMALIZED_DIVERGENCE_FORMULA}
+
+Set assessment.primary_signal to "divergence" unless another signal clearly dominates.
+
+Fill in ALL fields with actual computed values. Use only the allowed enum values for string fields.
+
+<structured_output>
+{{
+  "target_date": "{target_date or 'YYYY-MM-DD'}",
+  "assessment": {{
+    "primary_signal": "divergence",
+    "category": "normal_progression",
+    "confidence": 0.85,
+    "primary_driver": "One concise sentence explaining the deciding factor"
+  }},
+  "divergence": {{
+    "value": 0.0,
+    "direction": "balanced",
+    "severity": "none",
+    "interpretation": "balanced"
+  }},
+  "decision": {{
+    "action": "train",
+    "intensity_target": "moderate",
+    "polarized_session_intent": "easy",
+    "hard_session_type": null,
+    "volume_modifier": 0.0,
+    "specific_workout_type": null,
+    "duration_minutes_suggested": null,
+    "target_distance_miles": null,
+    "target_elevation_gain_feet": null
+  }},
+  "risk": {{
+    "injury_risk_level": "low",
+    "acwr_external": 0.0,
+    "acwr_internal": 0.0,
+    "divergence": 0.0,
+    "days_since_rest": 0,
+    "flags": [],
+    "pain_location": null
+  }},
+  "context": {{
+    "autopsy_informed": false,
+    "alignment_trend": "insufficient_data",
+    "training_stage": null,
+    "weeks_to_a_race": null,
+    "weekly_plan_prescribed": null,
+    "weekly_plan_deviation": false,
+    "weekly_plan_deviation_reason": null
+  }},
+  "meta": {{
+    "coaching_spectrum": 50,
+    "risk_tolerance": "{recommendation_style}",
+    "athlete_model_injected": false,
+    "div_low_n": 0,
+    "threshold_n": 0,
+    "divergence_overtraining_threshold": 0.0
+  }}
+}}
+</structured_output>
+
+Allowed enum values:
+- assessment.primary_signal: divergence | acwr_external | acwr_internal | days_since_rest | pattern
+- assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity
+- divergence.direction: positive | negative | balanced
+- divergence.severity: none | mild | moderate | high | critical
+- divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data
+- decision.action: train | rest | cross_train | reduce
+- decision.intensity_target: easy | moderate | hard | race_effort | none
+- decision.polarized_session_intent: easy | hard | rest | unknown (Seiler session-count model: classify entire session by intent — easy=stay below VT1, hard=achieve 15+ min above VT2, rest=no training)
+- decision.hard_session_type: tempo | intervals | hills | race_sim | null (set only when polarized_session_intent=hard; null for easy/rest days)
+- decision.target_distance_miles / decision.target_elevation_gain_feet: the distance and climbing of the run you prescribe (0 ft for flat), the same numbers the prose states. State both in the prose for every running session, including duration-based ones. null on rest and cross-training days. The autopsy scores volume compliance against these in load miles.
+- risk.injury_risk_level: low | moderate | high | critical
+- risk.pain_location: Extract from athlete notes — the specific body part if pain is mentioned (e.g., "left knee", "right achilles", "lower back", "hip flexor"). Set to null if no pain is mentioned in the notes.
+- context.alignment_trend: improving | stable | declining | insufficient_data"""
+
+
 def create_enhanced_prompt_with_tone(current_metrics, activities, pattern_analysis, training_guide, user_id, tone_instructions, autopsy_insights=None, target_date=None, recommendation_style=None):
     """Create an enhanced prompt using the training guide framework with coaching tone and optional autopsy learning.
 
@@ -3142,84 +3259,7 @@ CRITICAL REQUIREMENTS:
 - Maintain evidence-based analysis while adapting communication style and risk tolerance
 - Do NOT add sub-headers like "**TRAINING DECISION: [date]**", "**ASSESSMENT:**", "**WEEKLY PLANNING:**", or "**PATTERN INSIGHTS:**". DAILY RECOMMENDATION is the only structural element — write in prose paragraphs. weekly_recommendation and pattern_insights are owned by the Coach page weekly program and the autopsy system respectively; do not regenerate them here.
 
-### STRUCTURED OUTPUT (Phase 1)
-After your prose recommendation, append a machine-readable JSON block inside XML tags.
-
-DIVERGENCE-FIRST RULE: Evaluate the divergence between External ACWR and Internal ACWR BEFORE assessing raw ACWR values. Divergence is the primary YTM signal. {NORMALIZED_DIVERGENCE_FORMULA}
-
-Set assessment.primary_signal to "divergence" unless another signal clearly dominates.
-
-Fill in ALL fields with actual computed values. Use only the allowed enum values for string fields.
-
-<structured_output>
-{{
-  "target_date": "{target_date or 'YYYY-MM-DD'}",
-  "assessment": {{
-    "primary_signal": "divergence",
-    "category": "normal_progression",
-    "confidence": 0.85,
-    "primary_driver": "One concise sentence explaining the deciding factor"
-  }},
-  "divergence": {{
-    "value": 0.0,
-    "direction": "balanced",
-    "severity": "none",
-    "interpretation": "balanced"
-  }},
-  "decision": {{
-    "action": "train",
-    "intensity_target": "moderate",
-    "polarized_session_intent": "easy",
-    "hard_session_type": null,
-    "volume_modifier": 0.0,
-    "specific_workout_type": null,
-    "duration_minutes_suggested": null,
-    "target_distance_miles": null,
-    "target_elevation_gain_feet": null
-  }},
-  "risk": {{
-    "injury_risk_level": "low",
-    "acwr_external": 0.0,
-    "acwr_internal": 0.0,
-    "divergence": 0.0,
-    "days_since_rest": 0,
-    "flags": [],
-    "pain_location": null
-  }},
-  "context": {{
-    "autopsy_informed": false,
-    "alignment_trend": "insufficient_data",
-    "training_stage": null,
-    "weeks_to_a_race": null,
-    "weekly_plan_prescribed": null,
-    "weekly_plan_deviation": false,
-    "weekly_plan_deviation_reason": null
-  }},
-  "meta": {{
-    "coaching_spectrum": 50,
-    "risk_tolerance": "{recommendation_style}",
-    "athlete_model_injected": false,
-    "div_low_n": 0,
-    "threshold_n": 0,
-    "divergence_overtraining_threshold": 0.0
-  }}
-}}
-</structured_output>
-
-Allowed enum values:
-- assessment.primary_signal: divergence | acwr_external | acwr_internal | days_since_rest | pattern
-- assessment.category: normal_progression | mandatory_rest | overtraining_risk | divergence_warning | detraining_signal | recovery_needed | undertraining_opportunity
-- divergence.direction: positive | negative | balanced
-- divergence.severity: none | mild | moderate | high | critical
-- divergence.interpretation: overtraining_risk | detraining | balanced | insufficient_data
-- decision.action: train | rest | cross_train | reduce
-- decision.intensity_target: easy | moderate | hard | race_effort | none
-- decision.polarized_session_intent: easy | hard | rest | unknown (Seiler session-count model: classify entire session by intent — easy=stay below VT1, hard=achieve 15+ min above VT2, rest=no training)
-- decision.hard_session_type: tempo | intervals | hills | race_sim | null (set only when polarized_session_intent=hard; null for easy/rest days)
-- decision.target_distance_miles / decision.target_elevation_gain_feet: the distance and climbing of the run you prescribe (0 ft for flat), the same numbers the prose states. State both in the prose for every running session, including duration-based ones. null on rest and cross-training days. The autopsy scores volume compliance against these in load miles.
-- risk.injury_risk_level: low | moderate | high | critical
-- risk.pain_location: Extract from athlete notes — the specific body part if pain is mentioned (e.g., "left knee", "right achilles", "lower back", "hip flexor"). Set to null if no pain is mentioned in the notes.
-- context.alignment_trend: improving | stable | declining | insufficient_data
+{structured_output_instructions(target_date, recommendation_style)}
 """
 
     return prompt
@@ -6146,8 +6186,9 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
         # thresholds) — computed unconditionally, same as the standard and
         # autopsy-informed paths, via the single-authority classifier so this path
         # can't drift from theirs on boundary conditions or category coverage.
+        recommendation_style = get_user_recommendation_style(user_id)
         floor_category = prepare_daily_floor(
-            user_id, current_metrics, get_user_recommendation_style(user_id), target_date
+            user_id, current_metrics, recommendation_style, target_date
         )
 
         ext_acwr = current_metrics.get('external_acwr', 0) or 0
@@ -6297,6 +6338,9 @@ def generate_recommendations_agentic(user_id, target_date=None, force=False):
             f"section headers — those concerns are owned by the Coach page weekly "
             f"program and the autopsy system respectively; content in those sections "
             f"will be truncated by the parser.\n\n"
+            # The safety-floor guardrail reads decision.action from this block. Without it
+            # floor_violation() sees no action and passes -- the floor is silently bypassed.
+            f"{structured_output_instructions(target_date, recommendation_style)}\n\n"
             f"Request the tools you need now."
         )
 
