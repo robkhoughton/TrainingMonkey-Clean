@@ -57,6 +57,8 @@
 | 7 | Extract pain location in autopsy | 3 | Add `pain_location` to autopsy `structured_output` schema. Zero journal friction — extracted from notes by LLM at autopsy time. |
 | 8 | Age-adjusted thresholds | 5 | Modify `get_adjusted_thresholds()` to apply age multiplier. Depends on #1. |
 
+- Conditional (from the 2026-11-02 daily note): when research digests produce evidence on masters recovery, taper or ACWR rules, add citations to or revise `app/coaching_context/readiness.md`, `app/coaching_context/periodization.md` and #8 above.
+
 ### Tier 3 — Structural Additions (1–2 weeks each)
 
 | # | Item | Layer | Notes |

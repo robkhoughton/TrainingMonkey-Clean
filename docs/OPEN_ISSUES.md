@@ -23,3 +23,9 @@ avoidance in case something was missed and needs a quick rollback.
 KeyError/DB-write regressions tied to this change, drop both columns via a migration
 (`ALTER TABLE llm_recommendations DROP COLUMN weekly_recommendation, DROP COLUMN pattern_insights;`).
 If anything surfaced in the meantime, investigate before dropping.
+
+## Conditional / later
+
+Plain bullets, not tasks. When a condition is met, the next step becomes an item in the vault's YTM tracker (`YTM_Admin/Open_Items.md`).
+
+- Optional (from the 2026-10-29 daily note): a `docs/reference/` paired doc for `app/coaching_context/late_race_pacing.md`, now that its sources are in Zotero.
